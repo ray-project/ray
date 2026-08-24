@@ -93,7 +93,12 @@ Similar to the uniform request router, the custom request router can be defined 
 (round-robin-request-router)=
 ## Experimental: Use the round-robin request router
 
-`RoundRobinRouter` cycles through replicas in round-robin fashion, starting at an arbitrary replica so routers spun up together don't synchronize on the same first replica. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor, so with multiple routers (for example, one per Ray Serve proxy) the fan-out is round-robin per router and approximately uniform across replicas in aggregate. The router mixes in [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
+`RoundRobinRouter` cycles through replicas in round-robin fashion. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor, so with multiple routers (for example, one per Ray Serve proxy) the fan-out is round-robin per router and approximately uniform across replicas in aggregate.
+
+The router mixes in:
+
+- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) to support model multiplexing, first preferring replicas that have the requested model loaded.
+- [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
 
 ### When to use
 Use the round-robin router when you want a predictable, even distribution across replicas and don't need load-aware or locality-aware decisions. It fits stateless workloads with roughly uniform per-request latency. Unlike the default power-of-two-choices router, the round-robin router doesn't compare replicas by their number of ongoing requests. It only skips a replica once it reaches `max_ongoing_requests`. Therefore, requests can pile up behind a slow replica before it falls back to the next one.
@@ -119,7 +124,7 @@ Two parameters are configurable through [`request_router_kwargs`](../api/doc/ray
 * `num_fallback_replicas` (default `2`): clockwise successors tried after the primary rejects. Set to `0` for strict affinity with no fallback.
 
 ### When to use
-Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, for example in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads, since affinity sacrifices queue-aware balancing and a hot session can saturate its assigned replica while others are idle. The router does not combine with queue-depth, locality, or multiplexed-model signals, since mixing them in would break determinism and therefore break affinity.
+Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, for example in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads, since affinity sacrifices queue-aware balancing and a hot session can saturate its assigned replica while others are idle. It does not support model multiplexing, queue-depth, or locality signals, since mixing them in would break consistent hashing's determinism and therefore break affinity.
 
 ### Example
 Configure the router via [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) and pass tuning parameters through `request_router_kwargs`:
