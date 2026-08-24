@@ -337,6 +337,7 @@ def orchestrate(a):
                     f"{r['rows']:>9}  {rr:>5} {rw:>6}  {gates}"
                 )
 
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as fh:
         json.dump({"cells": results, "verdict": verdict}, fh, indent=2)
     fails = {k: v for k, v in verdict.items() if not v["passed"]}
