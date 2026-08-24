@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 import gc
 import os
@@ -401,7 +402,7 @@ def test_idle_termination_submission_failure_has_no_retry_loop(monkeypatch):
         actor_set.join()
 
 
-def test_readiness_failure_releases_slot_for_retry():
+def test_actor_init_failure_releases_slot_for_retry():
     failed_actor = _FakeActor(ready=False)
     replacement_actor = _FakeActor()
     actors = [failed_actor, replacement_actor]
@@ -411,7 +412,7 @@ def test_readiness_failure_releases_slot_for_retry():
 
     actor_set.submit(None, [])
     failed_actor.readiness_ref.completion.set_exception(
-        RuntimeError("initializer failed")
+        ray.exceptions.RayActorError(actor_init_failed=True)
     )
 
     assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
@@ -422,6 +423,83 @@ def test_readiness_failure_releases_slot_for_retry():
     actor_set.close()
     replacement_actor.exit_ref.completion.set_result(None)
     actor_set.join()
+
+
+def test_ambiguous_readiness_failure_retains_actor_and_fails_closed():
+    actor = _FakeActor(ready=False)
+    created = []
+
+    def create_actor():
+        created.append(actor)
+        return actor
+
+    actor_set = _ElasticActorSet(
+        create_actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    actor.readiness_ref.completion.set_exception(
+        RuntimeError("readiness result became unavailable")
+    )
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set._slots[0].actor is actor
+    assert created == [actor]
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+    assert created == [actor]
+
+    actor_set.close()
+    batch_ref.completion.set_result([])
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_cancelled_readiness_does_not_reuse_live_actor(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=0, max_concurrency=4)
+    class ProbeActor:
+        async def ping(self):
+            await asyncio.sleep(60)
+
+        async def run_batch(self, _func, _batch):
+            await asyncio.sleep(60)
+
+        def alive(self):
+            return True
+
+    actors = []
+
+    def create_actor():
+        actor = ProbeActor.remote()
+        actors.append(actor)
+        return actor
+
+    actor_set = _ElasticActorSet(
+        create_actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+    batch_ref = actor_set.submit(None, [])
+    with actor_set._condition:
+        readiness_ref = actor_set._slots[0].readiness_ref
+
+    ray.cancel(readiness_ref, recursive=False)
+    _wait_for(lambda: actor_set._error is not None)
+
+    assert isinstance(actor_set._error, ray.exceptions.TaskCancelledError)
+    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert ray.get(actors[0].alive.remote())
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+    assert len(actors) == 1
+
+    actor_set.terminate()
+    _wait_for(
+        lambda: actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)], timeout=20
+    )
+    actor_set.join()
+    with pytest.raises(ray.exceptions.RayError):
+        ray.get(batch_ref)
 
 
 @pytest.mark.parametrize(

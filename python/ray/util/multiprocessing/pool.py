@@ -446,7 +446,15 @@ class _ElasticActorSet:
                 self._condition.notify_all()
                 return
             if error is not None:
-                self._clear_slot_locked(slot)
+                if isinstance(error, ray.exceptions.RayActorError):
+                    # Ray has confirmed that this actor can no longer execute
+                    # work, so its bounded slot is safe to reuse.
+                    self._clear_slot_locked(slot)
+                else:
+                    # An ObjectRef can fail while its actor remains alive (for
+                    # example, if the readiness task is cancelled). Retain the
+                    # handle and fail closed until shutdown confirms actor exit.
+                    self._error = error
                 self._condition.notify_all()
                 return
             slot.state = _ElasticSlotState.ACTIVE
