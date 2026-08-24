@@ -64,6 +64,30 @@ class GcsSubscriber {
       const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const rpc::StatusCallback &done);
 
+  /// Subscribe to the failure of a single worker. Unlike
+  /// SubscribeAllWorkerFailures, only messages published with \p id as the
+  /// key are delivered, so the GCS fans out each worker-failure publish only
+  /// to subscribers interested in that specific worker.
+  ///
+  /// Do not mix this with SubscribeAllWorkerFailures in the same process:
+  /// when both subscriptions exist, the publisher mails each matching
+  /// message once per subscription but the subscriber resolves every
+  /// delivery to the all-workers callback (see
+  /// SubscriberChannel::GetSubscriptionItemCallback), so the keyed callback
+  /// would be starved and the all-workers callback would see duplicates.
+  ///
+  /// \param id The worker whose failure to subscribe to.
+  /// \param subscribe Callback that will be called when the worker fails.
+  /// \param done Callback that will be called when subscription is complete.
+  void SubscribeWorkerFailure(const WorkerID &id,
+                              const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                              const rpc::StatusCallback &done);
+
+  /// Cancel a subscription made by SubscribeWorkerFailure.
+  ///
+  /// \param id The worker previously subscribed to.
+  void UnsubscribeWorkerFailure(const WorkerID &id);
+
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;
 

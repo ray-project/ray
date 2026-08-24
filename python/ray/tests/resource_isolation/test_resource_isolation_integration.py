@@ -88,6 +88,13 @@ _EXPECTED_DASHBOARD_SUBPROCESS_MODULES = [
     "ray.dashboard.modules.state.state_head.StateHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
+# TaskEventsHead only runs as a subprocess when the migration flag is on. Mirror the
+# loader (is_enabled reads the same flag) so the expected count tracks the flag rather
+# than assuming a fixed default.
+if ray._config.enable_task_events_to_dashboard_head():
+    _EXPECTED_DASHBOARD_MODULES.append(
+        "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead"
+    )
 
 # multiprocessing leaves two of its own processes under the dashboard head, and the
 # system cgroup picks them up alongside the modules: the forkserver, and the

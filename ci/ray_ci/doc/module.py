@@ -3,16 +3,7 @@ import inspect
 from types import ModuleType
 from typing import List
 
-from ci.ray_ci.doc.api import API, AnnotationType, CodeType
-
-
-def _is_directly_annotated(obj: object) -> bool:
-    """Return whether an object owns an API annotation, rather than
-    inheriting one from a base class."""
-    annotation_owner = getattr(obj, "_annotated", None)
-    return annotation_owner is not None and annotation_owner == getattr(
-        obj, "__name__", None
-    )
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType, _is_directly_annotated
 
 
 class Module:

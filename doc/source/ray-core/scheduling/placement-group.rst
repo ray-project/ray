@@ -1,3 +1,6 @@
+.. meta::
+   :description: Atomically reserve resources across nodes with placement groups, Ray's gang scheduling primitive, using bundles and placement strategies.
+
 Placement Groups
 ================
 
@@ -844,7 +847,7 @@ put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown 
 
   .. code-block:: bash
 
-    # Inside each Ray pod, start the worker using the label value
+    # Inside each Pod, start the worker using the label value
     ray start \
       --address="${RAY_HEAD_ADDRESS}" \
       --num-gpus=4 \
