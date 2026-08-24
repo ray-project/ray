@@ -236,7 +236,7 @@ Created Ray Cluster: raycluster-tpu-sample-3
 If GKE supports a TPU configuration that the plugin hasn't listed yet, pass `--skip-tpu-validation`. The plugin then skips accelerator, topology, and host-count checks.
 
 ```text
-$ kubectl ray create cluster raycluster-tpu-sample-4 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=<accelerator>,cloud.google.com/gke-tpu-topology=<topology> --skip-tpu-validation
+$ kubectl ray create cluster raycluster-tpu-sample-4 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=ACCELERATOR,cloud.google.com/gke-tpu-topology=TOPOLOGY --skip-tpu-validation
 Created Ray Cluster: raycluster-tpu-sample-4
 ```
 
