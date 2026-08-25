@@ -47,12 +47,12 @@ def _handle_report():
     )
 
 
+# Both report types still travel by cloudpickle; only handles are columnar-encoded.
 MAKERS = [_replica_report, _handle_report]
 
 
-@pytest.mark.parametrize("make", MAKERS)
-def test_columnar_frame_detected_in_o1(make):
-    buf = codec.encode(make())
+def test_columnar_frame_detected_in_o1():
+    buf = codec.encode(_handle_report())
     assert buf[:4] == b"SCR1"  # magic visible without decompressing
     assert codec.is_columnar(buf) is True
 

@@ -42,19 +42,6 @@ def _state(agg=AggregationFunction.MEAN):
     return st
 
 
-def _replica_report(i, rng):
-    npts = rng.randint(1, 6)
-    series = [
-        TimeStampedValue(round(NOW - 6.0 * (npts - 1 - j), 2), float(rng.randint(0, 9)))
-        for j in range(npts)
-    ]
-    return ReplicaMetricReport(
-        replica_id=ReplicaID(f"r{i}", DEP),
-        metrics={RUNNING_REQUESTS_KEY: series},
-        timestamp=NOW,
-    )
-
-
 def _handle_report(hid, queued):
     return HandleMetricReport(
         deployment_id=DEP,
