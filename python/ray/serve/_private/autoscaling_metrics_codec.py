@@ -44,8 +44,9 @@ from ray.serve._private.constants import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _MAGIC = b"SCR1"
-# Warn at most once per process that numpy is missing (see should_encode_columnar).
+# Warn at most once per process each (see should_encode_columnar / can_decode_columnar).
 _WARNED_NUMPY_MISSING = False
+_WARNED_NUMPY_UNDECODABLE = False
 
 
 def is_columnar(buf: bytes) -> bool:
@@ -140,6 +141,27 @@ def should_encode_columnar(
         return False
     # Width gate: rationale at RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS (constants.py).
     return _widest_metric(report) >= RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS
+
+
+def can_decode_columnar() -> bool:
+    """Whether this process can decode columnar frames. The producer's numpy is not
+    the controller's: replicas carry per-deployment runtime_envs, so a frame can
+    arrive here from a process that had numpy when this one does not."""
+    return np is not None
+
+
+def warn_columnar_undecodable_once() -> None:
+    """Warn once per process; a dropped report would otherwise just undercount load."""
+    global _WARNED_NUMPY_UNDECODABLE
+    if _WARNED_NUMPY_UNDECODABLE:
+        return
+    _WARNED_NUMPY_UNDECODABLE = True
+    logger.warning(
+        "Dropping columnar autoscaling metrics: they were sent by a process that has "
+        "numpy, but numpy is not installed here, so they cannot be decoded. Autoscaling "
+        "will undercount load for the affected deployments until numpy is installed in "
+        "this process's environment."
+    )
 
 
 def _widest_metric(report: HandleMetricReport) -> int:

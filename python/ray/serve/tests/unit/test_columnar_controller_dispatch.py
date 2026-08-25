@@ -113,6 +113,20 @@ def test_handle_cloudpickle_uses_object_store(monkeypatch):
     asm.record_request_metrics_for_handle.assert_called_once()
 
 
+def test_columnar_frame_dropped_when_this_process_lacks_numpy(monkeypatch):
+    """A producer with numpy (replicas get their own runtime_env) can send columnar
+    frames to a controller without it. Wire-detect needs no numpy but decoding does,
+    so the frame must be dropped with a warning rather than raising inside ingest."""
+    monkeypatch.setattr(codec, "np", None)
+    assert codec.can_decode_columnar() is False
+    monkeypatch.setattr(codec, "_WARNED_NUMPY_UNDECODABLE", False)
+    warn = MagicMock()
+    monkeypatch.setattr(codec.logger, "warning", warn)
+    codec.warn_columnar_undecodable_once()
+    codec.warn_columnar_undecodable_once()
+    assert warn.call_count == 1  # once per process, not once per report
+
+
 if __name__ == "__main__":
     import sys
 
