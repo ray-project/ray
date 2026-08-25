@@ -576,6 +576,15 @@ class Quantized(Sampler):
         quantized_domain = copy(domain)
         quantized_domain.lower = np.ceil(domain.lower / self.q) * self.q
         quantized_domain.upper = np.floor(domain.upper / self.q) * self.q
+        if isinstance(domain, Integer):
+            # `Integer` sampling is upper-exclusive, but the bounds above are grid
+            # points and quantization documents the upper one as inclusive, so pass
+            # the exclusive equivalent. Without it the draw stops one short of the
+            # top grid point, which is then only reachable by rounding up, and
+            # `np.round` (half to even) rounds the other way for some (upper, q):
+            # `qrandint(2, 10, 2)` never returns 10. A grid with a single point has
+            # nothing left to draw at all and raises `ValueError: low >= high`.
+            quantized_domain.upper = quantized_domain.upper + 1
         values = self.sampler.sample(
             quantized_domain, config, size, random_state=random_state
         )

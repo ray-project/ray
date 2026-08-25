@@ -437,6 +437,40 @@ class SearchSpaceTest(unittest.TestCase):
         samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testQuantizedIntegerBounds(self):
+        # qrandint/qlograndint document the upper bound as inclusive, so the top grid
+        # point has to be drawable, and a grid with a single point has to sample at all.
+        random_state = np.random.RandomState(1000)
+
+        for lower, upper, q in [
+            (2, 10, 2),
+            (1, 11, 2),
+            (1, 9, 5),
+            (3, 11, 8),
+            (2, 20, 2),
+        ]:
+            top = (upper // q) * q
+            for name, domain in [
+                ("qrandint", tune.qrandint(lower, upper, q)),
+                ("qlograndint", tune.qlograndint(lower, upper, q)),
+            ]:
+                where = f"{name}({lower}, {upper}, {q})"
+                sampled = {
+                    domain.sample(size=1, random_state=random_state)
+                    for _ in range(2000)
+                }
+                self.assertIn(
+                    top, sampled, msg=f"{where} never sampled its upper bound {top}"
+                )
+                self.assertTrue(
+                    all(lower <= s <= upper for s in sampled),
+                    msg=f"{where} sampled out of bounds",
+                )
+                self.assertTrue(
+                    all(s % q == 0 for s in sampled),
+                    msg=f"{where} sampled off the grid",
+                )
+
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
 
