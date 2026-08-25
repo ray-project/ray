@@ -78,7 +78,7 @@ You can also configure proxy health checks and lifecycle behavior with the follo
 
 ## HTTP config 
 
-The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime. Applying a config that changes it while Serve is running fails with a `RayServeConfigException` instead of being ignored; shut Serve down and start it again to change these values.
+The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime. Applying a config that changes it while Serve is running fails with a `RayServeConfigException` instead of being ignored. To change these values, shut Serve down and start it again.
 
 - **`host`**: The host IP address for Serve's HTTP proxies. This is optional and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly. If you're using Kubernetes, you must set `host` to `0.0.0.0` to expose your deployments outside the cluster.
 - **`port`**: The port for Serve's HTTP proxies. This parameter is optional and can be omitted. By default, the port is set to `8000`. 
