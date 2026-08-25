@@ -45,7 +45,6 @@ class MetricsGroup(Enum):
     OUTPUTS = "outputs"
     TASKS = "tasks"
     OBJECT_STORE_MEMORY = "object_store_memory"
-    MISC = "misc"
     ACTORS = "actors"
 
 
@@ -542,9 +541,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Byte size of used memory in object store.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
-
-    # === Miscellaneous metrics ===
-    # Use "metrics_group: "misc" in the metadata for new metrics in this section.
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
