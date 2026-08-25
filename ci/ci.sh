@@ -39,7 +39,11 @@ compile_pip_dependencies() {
     python -c "import torch" 2>/dev/null && HAS_TORCH=1
     pip install --no-cache-dir numpy torch
 
-    pip-compile --verbose --resolver=backtracking \
+    # pip-compile writes whatever index it used into the lockfile. Keep CI's temporary
+    # mirror URL out, or the regenerated file stops matching the committed one.
+    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
+      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
+      pip-compile --verbose --resolver=backtracking \
       --pip-args --no-deps --strip-extras --no-header \
       --unsafe-package ray \
       --unsafe-package pip \
