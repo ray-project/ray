@@ -173,18 +173,20 @@ def _shutdown_order(recorder: ray.actor.ActorHandle, expected: Set[str]) -> List
     `serve.shutdown()` gives up after 30s and returns with teardown still in
     flight, so reading the recorder as soon as it returns can truncate.
     """
+    order: List[str] = []
 
-    def recorded() -> List[str]:
-        return ray.get(recorder.get.remote())
+    def _recorded() -> bool:
+        order[:] = ray.get(recorder.get.remote())
+        return set(order) == expected
 
     try:
-        wait_for_condition(lambda: set(recorded()) == expected, timeout=60)
+        wait_for_condition(_recorded, timeout=60)
     except RuntimeError:
         raise AssertionError(
-            f"Expected {sorted(expected)} to record a teardown, got {recorded()}."
+            f"Expected {sorted(expected)} to record a teardown, got {order}."
         )
 
-    return recorded()
+    return order
 
 
 def _replica_actor(deployment_name: str, app_name: str) -> ray.actor.ActorHandle:
