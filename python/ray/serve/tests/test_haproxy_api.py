@@ -1025,9 +1025,7 @@ def _create_replica_server(port: int, replica_id_header: str):
         for name, value in req.headers.items():
             if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
                 res.headers[f"echo-{name}"] = value
-            if name.replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID.replace(
-                "-", "_"
-            ):
+            if name.replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID.replace("-", "_"):
                 res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
@@ -1254,9 +1252,7 @@ async def test_ingress_request_router_forwards_trusted_headers(
         metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
         spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
         multiplexed_model_header = SERVE_MULTIPLEXED_MODEL_ID
-        hyphenated_multiplexed_model_header = multiplexed_model_header.replace(
-            "_", "-"
-        )
+        hyphenated_multiplexed_model_header = multiplexed_model_header.replace("_", "-")
 
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
