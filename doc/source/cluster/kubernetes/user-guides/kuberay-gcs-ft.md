@@ -258,9 +258,21 @@ Starting with KubeRay v1.1.0, KubeRay changes the Redis cleanup behavior from a 
 
 Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`. Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.
 
-By default, cleanup deletes each namespace key with `DEL`. With Redis's default `lazyfree-lazy-user-del no` setting, `DEL` reclaims memory synchronously; Redis operators can configure `DEL` itself to reclaim memory asynchronously. Operators using a Redis instance shared with live clusters can opt in to `UNLINK` by setting `RAY_redis_namespace_cleanup_use_unlink=1`. `UNLINK` requires Redis 4.0 or later and a Redis user with permission to run the command. Ray doesn't probe for support or fall back to `DEL`; if Redis rejects `UNLINK`, the cleanup request is retried and then the cleanup process fails.
+By default, cleanup deletes each namespace key with `DEL`. Redis reclaims memory synchronously when `lazyfree-lazy-user-del` has its default value of `no`. Redis operators can also configure `DEL` to reclaim memory asynchronously.
 
-`UNLINK` removes keys from the keyspace immediately and reclaims their memory on a background thread, so deleting a large namespace doesn't add latency to other clients of the same Redis instance. As a consequence, `used_memory` may not drop until shortly after cleanup returns; `INFO memory` shows the backlog in `lazyfree_pending_objects`. The environment variable must reach the process that runs cleanup: for KubeRay, set it in the head group's pod template `env`. KubeRay builds the Redis cleanup Job's pod from the head pod template, so the Job inherits it; the variable has no effect on the running head itself. For manual cleanup, set it in the shell that invokes `cleanup_redis_storage`.
+To use `UNLINK`, set `RAY_redis_namespace_cleanup_use_unlink=1`. This option is useful when the Redis instance is shared with live clusters. `UNLINK` requires Redis 4.0 or later. The Redis user must have permission to run `UNLINK`.
+
+:::{caution}
+Ray doesn't check whether Redis supports `UNLINK`. Ray also doesn't fall back to `DEL`. If Redis rejects `UNLINK`, Ray retries the request. The cleanup process fails after the retries are exhausted.
+:::
+
+`UNLINK` removes keys from the keyspace immediately. It reclaims their memory on a background thread. This avoids blocking the Redis main thread while it reclaims memory for a large namespace.
+
+The `used_memory` value might not decrease immediately after cleanup returns. Use `INFO memory` to check the backlog in `lazyfree_pending_objects`.
+
+The environment variable must be available to the process that runs cleanup. For KubeRay, set it in the head group's pod template `env`. KubeRay builds the Redis cleanup Job's pod from this template. The Job therefore inherits the variable. The variable has no effect on the running head process.
+
+For manual cleanup, set the variable in the shell that invokes `cleanup_redis_storage`.
 
 ### Step 10: Delete the Kubernetes cluster
 
