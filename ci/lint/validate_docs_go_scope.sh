@@ -46,9 +46,18 @@
 
 set -uo pipefail
 
-git fetch --depth=500 origin master >/dev/null 2>&1 || true
-if ! base="$(git merge-base origin/master HEAD 2>/dev/null)"; then
-  echo "docs-go scope guard: could not determine merge-base with origin/master; failing closed."
+# Diff against the PR's actual base branch, not a hardcoded master. On a
+# release-branch backport the merge-base with master is where the release
+# branch diverged, so diffing against master attributes every release-only
+# change to the PR and the guard fails a genuinely content-only backport.
+# BUILDKITE_PULL_REQUEST_BASE_BRANCH is the base the PR targets; fall back to
+# master for local runs, matching ci/lint/lint.sh and
+# ci/pipeline/determine_tests_to_run.py.
+base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+
+git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+if ! base="$(git merge-base "origin/${base_branch}" HEAD 2>/dev/null)"; then
+  echo "docs-go scope guard: could not determine merge-base with origin/${base_branch}; failing closed."
   exit 1
 fi
 
