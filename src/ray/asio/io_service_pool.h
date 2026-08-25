@@ -44,8 +44,8 @@ class IOServicePool {
 
   /// Select io_service by hash.
   ///
-  /// \param hash Use this hash to pick a io_service.
-  /// The same hash will alway get the same io_service.
+  /// \param hash Use this hash to pick an io_service.
+  /// The same hash will always get the same io_service.
   /// \return io_service
   instrumented_io_context *Get(size_t hash);
 
