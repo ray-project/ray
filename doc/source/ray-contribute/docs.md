@@ -441,6 +441,20 @@ If you run into a problem building the docs, following these steps can help isol
 4. **Enable breakpoints in Sphinx.** Add `-P` to the `SPHINXOPTS` in `doc/Makefile` to tell `sphinx` to stop when it encounters a breakpoint, and remove `-j auto` to disable parallel builds. Now you can put breakpoints in the modules you're trying to import, or in `sphinx` code itself, which can help isolate stubborn build issues.
 5. **[Incremental build] Side navigation bar doesn't reflect new pages.** If you're adding new pages, they should always show up in the side navigation bar on index pages. However, incremental builds with `make local` skip rebuilding many other pages, so Sphinx doesn't update the side navigation bar on those pages. To build docs with a correct side navigation bar on all pages, consider using `make develop`.
 
+(backport-docs-to-release)=
+
+## Getting a docs change onto the released version
+
+`docs.ray.io/en/latest` is built from the newest `releases/X.Y.Z` branch, not from `master`. A docs change merged to `master` appears on `docs.ray.io/en/master` right away, but only reaches the default `/latest` site once it's cherry-picked onto the current release branch.
+
+If a merged docs change should be live on the released version — for example, documentation for a feature that has already shipped — open a cherry-pick pull request against the `releases/X.Y.Z` branch:
+
+- Base the PR on `releases/X.Y.Z` and title it `[cherry-pick][X.Y.Z][docs] ...` to match the branch's convention.
+- Apply the commits with `git cherry-pick -x --signoff` to preserve provenance and the required DCO sign-off.
+- Before you start, check that the change isn't already backported under a different commit (`git log --oneline releases/X.Y.Z --grep "#<PR>)"`) and that no cherry-pick PR is already open against the branch.
+
+If you use Claude Code, the `/backport-docs` skill walks through this end to end, including the build-safety checks. See {ref}`agent-development`.
+
 ## Where to go from here?
 
 There are many ways to contribute to Ray other than documentation. See {doc}`our contributor guide <getting-involved>` for more information.
