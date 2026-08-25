@@ -88,14 +88,13 @@ def _view(descriptors, raw, base, name) -> np.ndarray:
 
 
 def _flatten_series(series_list):
-    """Concatenate a list of TimeSeries into flat ts/val python lists + per-series lengths."""
-    ts, val, lengths = [], [], []
+    """Concatenate a list of TimeSeries into flat ts/val python lists."""
+    ts, val = [], []
     for series in series_list:
-        lengths.append(len(series))
         for p in series:
             ts.append(p.timestamp)
             val.append(p.value)
-    return ts, val, lengths
+    return ts, val
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +191,7 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
                 replica_keys.append(key)
             entries.append((mi[m], rk[key], 0, len(series)))  # offset filled below
             series_list.append(series)
-    ts, val, _ = _flatten_series(series_list)
+    ts, val = _flatten_series(series_list)
     # fill offsets
     off = 0
     for i, (a, b, _o, n) in enumerate(entries):
