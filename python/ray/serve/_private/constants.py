@@ -1118,10 +1118,6 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
-# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
-RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
-    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
-)
 
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers

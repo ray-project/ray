@@ -17,8 +17,6 @@ from ray.serve._private.common import (
     TimeSeries,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -549,8 +547,7 @@ class DeploymentAutoscalingState:
         """Calculate total requests using aggregate metrics mode with timeseries data.
 
         This method works with raw timeseries metrics data and performs aggregation
-        at the controller level, providing more accurate and stable metrics compared
-        to simple mode.
+        at the controller level.
 
         Processing Steps:
             1. Collect raw timeseries data (eg: running request) from replicas (if available)
@@ -640,87 +637,6 @@ class DeploymentAutoscalingState:
 
         return ongoing_requests
 
-    def _calculate_total_requests_simple_mode(self) -> float:
-        """Calculate total requests using simple aggregated metrics mode.
-
-        This method works with pre-aggregated metrics that are computed by averaging
-        (or other functions) over the past look_back_period_s seconds.
-
-        Metrics Collection:
-            Metrics can be collected at two levels:
-            1. Replica level: Each replica reports one aggregated metric value
-            2. Handle level: Each handle reports metrics for multiple replicas
-
-        Replica-Level Metrics Example:
-            For 3 replicas (r1, r2, r3), metrics might look like:
-            {
-                "r1": 10,
-                "r2": 20,
-                "r3": 30
-            }
-            Total requests = 10 + 20 + 30 = 60
-
-        Handle-Level Metrics Example:
-            For 3 handles (h1, h2, h3), each managing 2 replicas:
-            - h1 manages r1, r2
-            - h2 manages r2, r3
-            - h3 manages r3, r1
-
-            Metrics structure:
-            {
-                "h1": {"r1": 10, "r2": 20},
-                "h2": {"r2": 20, "r3": 30},
-                "h3": {"r3": 30, "r1": 10}
-            }
-
-            Total requests = 10 + 20 + 20 + 30 + 30 + 10 = 120
-
-            Note: We can safely sum all handle metrics because each unique request
-            is counted only once across all handles (no double-counting).
-
-        Queued Requests:
-            Queued request metrics are always tracked at the handle level, regardless
-            of whether running request metrics are collected at replicas or handles.
-
-        Returns:
-            Total number of requests (running + queued) across all replicas/handles.
-        """
-        total_requests: float = 0
-
-        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
-        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
-        for report in self._replica_metrics.values():
-            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
-            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
-                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
-
-        metrics_collected_on_replicas = total_requests > 0
-
-        # Add handle metrics
-        for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.aggregated_queued_requests
-            # Add running requests from handles if not collected on replicas
-            if not metrics_collected_on_replicas:
-                running_reqs = handle_metric.aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, {}
-                )
-                for replica_str, count in running_reqs.items():
-                    if replica_str in self._cached_running_replica_strs:
-                        total_requests += count
-        return total_requests
-
-    def _should_aggregate_metrics_at_controller(self) -> bool:
-        """
-        Determine if metrics should be aggregated at the controller.
-        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
-
-        Returns:
-            True if metrics should be aggregated at the controller, False otherwise.
-        """
-        return (
-            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
-        )
-
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -732,10 +648,7 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if self._should_aggregate_metrics_at_controller():
-            return self._calculate_total_requests_aggregate_mode()
-        else:
-            return self._calculate_total_requests_simple_mode()
+        return self._calculate_total_requests_aggregate_mode()
 
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
@@ -751,22 +664,13 @@ class DeploymentAutoscalingState:
         """Calculate the total number of queued requests across all handles.
 
         Returns:
-            Sum of queued requests at all handles. Uses aggregated values in simple mode,
-            or aggregates timeseries data in aggregate mode.
+            Sum of queued requests at all handles, aggregated from handle timeseries.
         """
-        if self._should_aggregate_metrics_at_controller():
-            # Aggregate mode: collect and aggregate timeseries
-            queued_timeseries = self._collect_handle_queued_requests()
-            if not queued_timeseries:
-                return 0.0
+        queued_timeseries = self._collect_handle_queued_requests()
+        if not queued_timeseries:
+            return 0.0
 
-            return self._merge_and_aggregate_timeseries(queued_timeseries)
-        else:
-            # Simple mode: sum pre-aggregated values
-            return sum(
-                handle_metric.aggregated_queued_requests
-                for handle_metric in self._handle_requests.values()
-            )
+        return self._merge_and_aggregate_timeseries(queued_timeseries)
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:
         """Aggregate custom metrics from replica metric reports.
