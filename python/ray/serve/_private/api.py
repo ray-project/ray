@@ -5,7 +5,18 @@ from enum import Enum
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
-from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from pydantic import BaseModel
 
@@ -39,6 +50,8 @@ from ray.serve.schema import LoggingConfig, ServeDeploySchema, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
 # Reported as "<redacted>" instead of their value in the start-time config error.
 _REDACTED_FIELDS = frozenset({"http_options.ssl_keyfile_password"})
 
@@ -59,9 +72,25 @@ def _coerce_controller_options(
     )
 
 
+def _coerce_options(
+    requested: Union[None, dict, ModelT], model: Type[ModelT]
+) -> Optional[ModelT]:
+    """Validate the caller's options into `model`, or None if they sent none.
+
+    `model_fields_set` on the result is exactly the fields the caller supplied, so
+    validating here loses nothing a raw dict carried.
+    """
+    if not requested:
+        return None
+    if isinstance(requested, dict):
+        # pyrefly drops the TypeVar bound on a classmethod access; mypy accepts it.
+        return model.model_validate(requested)  # pyrefly: ignore[missing-attribute]
+    return requested
+
+
 def _diff_start_time_options(
     label: str,
-    requested: Union[None, dict, BaseModel],
+    requested: Optional[BaseModel],
     current: BaseModel,
     apply_defaults: Callable[[Any], BaseModel],
     ignore: FrozenSet[str] = frozenset(),
@@ -75,18 +104,14 @@ def _diff_start_time_options(
     through the controller's own defaulting, so an env-var default (e.g.
     RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S) can't masquerade as a requested change.
     """
-    if not requested:
+    if requested is None:
         return {}
 
-    if isinstance(requested, dict):
-        provided = set(requested)
-        requested = type(current).model_validate(requested)
-    else:
-        provided = set(requested.model_fields_set)
-
-    # Unknown keys are dropped by pydantic on the start path too, so ignore them
-    # here rather than reporting a change for a field Serve never reads.
-    provided &= set(type(current).model_fields) - ignore
+    # Unknown keys are dropped by pydantic on the start path too, so they never
+    # reach `model_fields_set` and can't be reported as a change.
+    provided = set(requested.model_fields_set) & (
+        set(type(current).model_fields) - ignore
+    )
     requested = apply_defaults(requested)
     return {
         f"{label}.{field}": (getattr(current, field), getattr(requested, field))
@@ -106,7 +131,7 @@ def _describe(field: str, value: Any) -> str:
 
 
 def _requested_proxy_location(
-    http_options: Union[None, dict, HTTPOptions],
+    http_options: Optional[HTTPOptions],
     proxy_location: Union[None, str, ProxyLocation],
 ) -> Optional[ProxyLocation]:
     """The placement the caller asked for, or None if they didn't ask.
@@ -115,9 +140,7 @@ def _requested_proxy_location(
     resolves placement. It is read whether or not the caller set it, because
     `host=None` backfills it to Disabled and that is what startup resolves to.
     """
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.model_validate(http_options)
-    location = http_options.location if isinstance(http_options, HTTPOptions) else None
+    location = http_options.location if http_options is not None else None
 
     return ProxyLocation._normalize(
         location if location is not None else proxy_location
@@ -136,9 +159,11 @@ def _check_start_time_config_unchanged(
     starts, so these can only change across a restart. Failing here is what keeps
     the request from being silently dropped.
     """
+    requested_http = _coerce_options(http_options, HTTPOptions)
+    requested_grpc = _coerce_options(grpc_options, gRPCOptions)
     diff = _diff_start_time_options(
         "http_options",
-        http_options,
+        requested_http,
         client.http_config,
         configure_http_options_with_defaults,
         # `location` is reported as `proxy_location` below, against the resolved
@@ -148,7 +173,7 @@ def _check_start_time_config_unchanged(
     diff.update(
         _diff_start_time_options(
             "grpc_options",
-            grpc_options,
+            requested_grpc,
             client.grpc_config,
             set_proxy_default_grpc_options,
         )
@@ -158,7 +183,7 @@ def _check_start_time_config_unchanged(
     # in effect: direct-ingress mode overrides it, and the override isn't a change
     # any config can request or avoid.
     current_location = client.requested_proxy_location
-    requested_location = _requested_proxy_location(http_options, proxy_location)
+    requested_location = _requested_proxy_location(requested_http, proxy_location)
     if requested_location is not None and requested_location != current_location:
         diff["proxy_location"] = (current_location, requested_location)
 
