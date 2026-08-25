@@ -35,6 +35,52 @@ export RAY_DASHBOARD_ENABLE_PROFILING=1
 If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable {ref}`token authentication <token-auth>` when using profiling on an exposed dashboard.
 :::
 
+(profiling-defaults)=
+### Configuring profiling defaults
+
+Stack trace, CPU flame graph, and memory profile requests each accept several parameters. When a request omits a parameter, its value falls back to a cluster-wide default. Set the following environment variables on the Ray head node to change those defaults. An explicit query parameter always takes precedence.
+
+```{list-table}
+:header-rows: 1
+:widths: 45 40 15
+
+* - Environment variable
+  - Meaning
+  - Default
+* - `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT`
+  - Include native (C/C++) stack frames. Adds significant overhead. Only takes effect on Linux for stack traces and CPU profiling. Memory profiling honors it on every platform memray supports.
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT`
+  - Also profile child processes of the target (stack trace and CPU profiling).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_IDLE_DEFAULT`
+  - Include off-CPU or sleeping threads (CPU profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT`
+  - Report memory leaks instead of peak usage (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT`
+  - Record `pymalloc` allocations (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT`
+  - Duration in seconds for CPU profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `5`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT`
+  - Duration in seconds for memory profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `10`
+* - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
+  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so Ray caps it rather than leaving it open-ended. Raise or lower it per cluster. The minimum is always 1 second. An explicit `duration` query value above this maximum returns HTTP 400.
+  - `60`
+* - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
+  - Output format for CPU profiling. One of `flamegraph`, `raw`, or `speedscope`.
+  - `flamegraph`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT`
+  - Output format for memory profiling. One of `flamegraph` or `table`.
+  - `flamegraph`
+```
+
+For example, to make native frames the default for stack traces across the cluster, set `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` on the head node. Enable it only when sampling the Python layer alone isn't enough, because native frames significantly increase profiling overhead.
+
 (profiling-cpu)=
 ## CPU profiling
 Profile the CPU usage for Driver and Worker processes. This helps you understand the CPU usage by different processes and debug unexpectedly high or low usage.
