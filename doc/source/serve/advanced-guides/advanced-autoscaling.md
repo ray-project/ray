@@ -135,9 +135,9 @@ The controller aggregates the raw timeseries to compute total ongoing requests a
 - **Output**: Single value representing total ongoing requests
 
 :::{note}
-Earlier releases also supported a "simple mode" that summed averages pre-computed at each replica and handle, selected by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`. That flag and that mode are removed: the controller now always aggregates raw timeseries. Two consequences if you are upgrading from a release that had the flag, where it defaulted to simple mode:
+Earlier releases also supported a "simple mode" that summed averages pre-computed at each replica and handle, selected by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`. That flag and that mode are removed. The controller now always aggregates raw timeseries. Two consequences if you're upgrading from a release that had the flag, where it defaulted to simple mode:
 - [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) now always applies. Under simple mode it was ignored, so a deployment that set `max` or `min` and never enabled the flag scaled on a mean and now scales on a peak or a trough.
-- Aggregating timeseries costs the controller more than summing pre-computed averages, and the cost grows with the number of replicas. Watch controller CPU on deployments with very high replica counts.
+- Aggregating timeseries costs the controller more than summing pre-computed averages, and the cost grows with the number of replicas. Watch controller CPU on deployments with high replica counts.
 :::
 
 #### Stage 4: Policy execution
