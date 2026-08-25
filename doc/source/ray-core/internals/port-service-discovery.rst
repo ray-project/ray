@@ -88,7 +88,6 @@ independently on each Raylet. Without it, every Raylet sharing a network namespa
 port range starts from the lower bound of the range and deterministically contends for
 the same ports. Randomizing lowers the odds of a collision; it isn't a reservation
 protocol, so two Raylets can still pick the same port and rely on the retry path below.
-Set ``worker_port_shuffle_enabled`` to ``false`` to keep the configured order.
 
 If the worker fails to bind the port (e.g., port already in use by external process),
 it crashes. Raylet detects the socket disconnect via

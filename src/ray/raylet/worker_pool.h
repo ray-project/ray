@@ -67,19 +67,17 @@ using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 /// \param max_worker_port The upper bound of the port range (--max-worker-port).
 /// 0 means the range extends to the maximum valid port.
 /// \param gen The random bit generator used to shuffle the ports.
-/// \return The validated ports in a random order, or an empty vector if no port
+/// \return The configured ports in a random order, or an empty vector if no port
 /// pool is configured, in which case workers bind port 0 and let the OS pick.
 ///
-/// All configured ports must be within [1024, 65535], matching the Python-side
-/// validation: ports below 1024 are well-known ports that unprivileged workers
-/// cannot bind.
+/// Explicit list values are preserved as configured. Port ranges retain the
+/// existing WorkerPool validation that their bounds are within [1, 65535].
 ///
 /// The order is randomized so that raylets sharing a network namespace and the
 /// same port range don't all start from the low end of the range and
 /// deterministically contend for the same ports. This lowers the odds of a
 /// collision; it is not a cross-raylet port reservation protocol, and two
-/// raylets can still pick the same port. Set `worker_port_shuffle_enabled` to
-/// false to keep the configured order.
+/// raylets can still pick the same port.
 std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
                                      int min_worker_port,
                                      int max_worker_port,
