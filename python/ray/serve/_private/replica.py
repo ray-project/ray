@@ -962,21 +962,12 @@ class ReplicaMetricsManager:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
 
-        new_aggregated_metrics = {}
         # The store keys are `Hashable`; this replica only ever records `str` keys.
         new_metrics = cast(Dict[str, TimeSeries], {**self._metrics_store.data})
-
-        if self.should_collect_ongoing_requests():
-            # Keep the legacy window_avg ongoing requests in the merged metrics dict
-            window_avg = (
-                self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
-            )
-            new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
 
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
             timestamp=time.time(),
-            aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
         with self._metrics_push_lock:
