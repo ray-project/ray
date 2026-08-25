@@ -157,7 +157,7 @@ Configure the History Server with the following environment variables and comman
 * - 
   - `--use-auth-token-mode`
   - `false`
-  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets, see [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
+  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
 * - 
   - `--kube-api-qps`
   - `100`

@@ -271,7 +271,7 @@ Configuration
 HTTP publishing is configured via environment variables:
 
 - **RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR**: HTTP endpoint URL (e.g., `http://localhost:8080/events`)
-- **RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES**: Comma-separated list of event types to expose. Set it to ``ALL`` to expose every event type, supported in Ray 2.54.0 and later.
+- **RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES**: Comma-separated list of event types to expose. Set it to ``ALL`` to expose every event type. ``ALL`` is supported in Ray 2.54.0 and later.
 - **RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE**: Enable/disable flag (default: True)
 
 Creating New Event Types
