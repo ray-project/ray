@@ -61,6 +61,10 @@ class AutoscalingContext:
     Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
     You can pass callables that will be evaluated only when accessed, with results
     cached for subsequent accesses.
+
+    Note: total_num_requests and total_queued_requests are both aggregated over
+    `look_back_period_s` using the deployment's `aggregation_function`, so under `min`
+    or `max` they report the window trough or peak rather than the current value.
     """
 
     def __init__(
@@ -112,10 +116,10 @@ class AutoscalingContext:
 
         # Built-in metrics
         self._total_num_requests_value = (
-            total_num_requests  #: Total number of requests across all replicas.
+            total_num_requests  #: Ongoing (running + queued) requests.
         )
         self._total_queued_requests_value = (
-            total_queued_requests  #: Number of requests currently queued.
+            total_queued_requests  #: Requests queued at handles.
         )
 
         # Custom metrics - store potentially lazy callables privately
@@ -172,8 +176,9 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # NOTE: for non-additive aggregation functions, total_running_requests is not
-        # accurate, consider this is an approximation.
+        # Exact only because both sides share the deployment's `aggregation_function`;
+        # for non-additive ones (min/max) this difference is an approximation. Keep them
+        # on the same function -- aggregating either side differently breaks it outright.
         return self.total_num_requests - self.total_queued_requests
 
     @property

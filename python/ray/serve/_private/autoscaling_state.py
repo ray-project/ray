@@ -652,7 +652,8 @@ class DeploymentAutoscalingState:
         """Calculate the total number of queued requests across all handles.
 
         Returns:
-            Sum of queued requests at all handles, aggregated from handle timeseries.
+            The merged instantaneous total of every handle's queued-requests
+            timeseries, aggregated over the window by `aggregation_function`.
         """
         return self._merge_and_aggregate_timeseries(
             self._collect_handle_queued_requests()
