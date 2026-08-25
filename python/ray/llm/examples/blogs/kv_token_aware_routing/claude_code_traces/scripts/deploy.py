@@ -13,8 +13,9 @@ import urllib.error
 import urllib.request
 import uuid
 
-import ray
 import routers
+
+import ray
 from ray import serve
 from ray.serve.config import RequestRouterConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app

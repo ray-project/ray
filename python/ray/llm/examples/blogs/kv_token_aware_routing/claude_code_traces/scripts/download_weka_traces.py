@@ -7,9 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
-from datasets import load_dataset
-
 from aiperf.dataset.loader.weka_trace import WekaTrace, _trace_peak_context_length
+from datasets import load_dataset
 
 
 def main() -> int:
