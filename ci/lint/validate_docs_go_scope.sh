@@ -55,7 +55,7 @@ set -uo pipefail
 # ci/pipeline/determine_tests_to_run.py.
 base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
 
-git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+git fetch -q --depth=500 origin "${base_branch}" || true
 if ! base="$(git merge-base "origin/${base_branch}" HEAD 2>/dev/null)"; then
   echo "docs-go scope guard: could not determine merge-base with origin/${base_branch}; failing closed."
   exit 1
