@@ -5,14 +5,90 @@ import math
 import os
 import threading
 import time
+import urllib.parse
+import urllib.request
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
+PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+# Do not let an unavailable Prometheus server hang the benchmark indefinitely.
+PROMETHEUS_QUERY_TIMEOUT_S = 30
+
+
+def _get_peak_head_node_memory_used_bytes(
+    start_unix_time: float, end_unix_time: float
+) -> float:
+    """Return peak head-node physical memory reported by Prometheus."""
+    assert start_unix_time <= end_unix_time, (start_unix_time, end_unix_time)
+
+    # Read only the head node from the current Ray session.
+    session_name = ray.get_runtime_context().get_session_name()
+    metric_selector = (
+        "ray_node_mem_used_host{"
+        f'RayNodeType="head",SessionName={json.dumps(session_name)}'
+        "}"
+    )
+
+    # Ray's default Prometheus scrape interval is 10 seconds, so shorter benchmark
+    # cases may have no sample in their time window.
+    # Prometheus requires a positive range, so use 1 ms for a zero-duration case.
+    duration_ms = max(1, math.ceil((end_unix_time - start_unix_time) * 1000))
+    query_params = urllib.parse.urlencode(
+        {
+            "query": f"max_over_time({metric_selector}[{duration_ms}ms])",
+            "time": end_unix_time,
+        }
+    )
+    prometheus_host = os.environ.get(
+        PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
+    ).rstrip("/")
+    url = f"{prometheus_host}/api/v1/query?{query_params}"
+
+    try:
+        with urllib.request.urlopen(
+            url, timeout=PROMETHEUS_QUERY_TIMEOUT_S
+        ) as response:
+            payload = json.load(response)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Failed to query Prometheus for head-node memory at {prometheus_host}."
+        ) from exc
+
+    if payload.get("status") != "success":
+        raise RuntimeError(
+            "Prometheus head-node memory query failed: "
+            f"{payload.get('error', payload)!r}."
+        )
+
+    # The session and head-node filters should match exactly one time series.
+    results = payload.get("data", {}).get("result", [])
+    if len(results) != 1:
+        raise RuntimeError(
+            f"Expected one head-node physical-memory result, got {len(results)}."
+        )
+
+    # Prometheus returns an instant value as [timestamp, value].
+    try:
+        _, raw_value = results[0]["value"]
+        peak_memory_bytes = float(raw_value)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "Prometheus returned an invalid head-node physical-memory value."
+        ) from exc
+
+    if not math.isfinite(peak_memory_bytes):
+        raise RuntimeError(
+            "Prometheus returned an invalid head-node physical-memory value."
+        )
+
+    return peak_memory_bytes
 
 
 def _get_spilled_bytes_total(state) -> float:
@@ -178,10 +254,15 @@ class BenchmarkMetric(Enum):
     OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
     OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
     OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
+    HEAD_NODE_MEMORY_USED_PEAK_GB = "head_node_memory_used_peak_gb"
 
 
 class Benchmark:
     """Runs benchmarks in a way that's compatible with our release test infrastructure.
+
+    Args:
+        max_head_node_memory_bytes: If set, query Prometheus after each case and fail
+            if peak physical memory used on the head node exceeds this limit.
 
     Here's an example of typical usage:
 
@@ -208,8 +289,12 @@ class Benchmark:
         {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self):
+    def __init__(self, *, max_head_node_memory_bytes: Optional[int] = None):
+        if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
+            raise ValueError("max_head_node_memory_bytes must be greater than 0.")
+
         self.result = {}
+        self._max_head_node_memory_bytes = max_head_node_memory_bytes
 
     def run_fn(
         self,
@@ -233,6 +318,7 @@ class Benchmark:
         state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
         with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_unix_time = time.time()
             start_time = time.perf_counter()
             start_spilled_bytes = _get_spilled_bytes_total(state)
 
@@ -240,6 +326,7 @@ class Benchmark:
                 fn_output = fn(*fn_args, **fn_kwargs)
             finally:
                 duration = time.perf_counter() - start_time
+                end_unix_time = time.time()
 
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
@@ -266,8 +353,31 @@ class Benchmark:
                 else:
                     raise ValueError(f"Unexpected metric key type: {type(key)}")
 
+        max_head_node_memory_bytes = self._max_head_node_memory_bytes
+        peak_head_node_memory_bytes = None
+        if max_head_node_memory_bytes is not None:
+            peak_head_node_memory_bytes = _get_peak_head_node_memory_used_bytes(
+                start_unix_time, end_unix_time
+            )
+            curr_case_metrics[
+                BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
+            ] = _bytes_to_gb(peak_head_node_memory_bytes)
+
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
+
+        if (
+            peak_head_node_memory_bytes is not None
+            and max_head_node_memory_bytes is not None
+            and peak_head_node_memory_bytes > max_head_node_memory_bytes
+        ):
+            self.write_result()
+            raise AssertionError(
+                f"Benchmark case {name!r} peak head-node physical memory "
+                f"({_bytes_to_gb(peak_head_node_memory_bytes)} GiB) exceeded the "
+                f"configured limit "
+                f"({_bytes_to_gb(max_head_node_memory_bytes)} GiB)."
+            )
 
     def write_result(self):
         """Write all results to the appropriate JSON file.
@@ -280,5 +390,5 @@ class Benchmark:
         with open(test_output_json, "w") as f:
             f.write(json.dumps(self.result))
 
-        print(f"Finished benchmark, metrics exported to '{test_output_json}':")
+        print(f"Benchmark metrics exported to '{test_output_json}':")
         print(json.dumps(self.result, indent=4))
