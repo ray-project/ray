@@ -40,6 +40,7 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
@@ -69,9 +70,15 @@ TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 # Topologies that are always sub-host or single-host
 TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
-# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
-# Accelerators that are 1 core per chip: v5e, v6e
+# TPU generations fall into three hardware/software accounting categories:
+# 1) Megacore (v2, v3, v4, v5p): 2 TensorCores per chip, but fused into 1 logical XLA
+#    device per chip (3D topology, e.g. "2,2,1"). Listed in neither set below.
+# 2) Single-Core (v5litepod, v6e): 1 TensorCore per chip and 1 logical XLA device per chip
+#    (3D topology, e.g. "2,4,1"). Listed in SINGLE_CORE_TPU_TYPES.
+# 3) Dual-Device (v7x): 2 discrete chiplets, enumerated as 2 logical XLA devices
+#    per chip (4D topology, e.g. "2,2,1,2"). Listed in DUAL_DEVICE_TPU_TYPES.
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+DUAL_DEVICE_TPU_TYPES = ("v7x",)
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
@@ -613,6 +620,34 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     return False
 
 
+def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
+    """Returns the number of TPU custom resources per chip for a TPU accelerator type."""
+    val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
+    if val is not None:
+        try:
+            rpc_val = int(val)
+            if rpc_val <= 0:
+                raise ValueError
+            return rpc_val
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, got: {val!r}"
+            )
+
+    if not accelerator_type:
+        accelerator_type = (
+            TPUAcceleratorManager.get_current_node_tpu_pod_type()
+            or os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+        )
+
+    acc_str = (accelerator_type or "").lower().replace("tpu-", "")
+    if acc_str.startswith("tpu"):
+        acc_str = "v" + acc_str[3:]
+    if any(acc_str.startswith(t) for t in DUAL_DEVICE_TPU_TYPES):
+        return 2
+    return 1
+
+
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
@@ -636,7 +671,21 @@ class TPUAcceleratorManager(AcceleratorManager):
         if tpu_visible_chips == "":
             return []
 
-        return list(tpu_visible_chips.split(","))
+        visible_chips = list(tpu_visible_chips.split(","))
+        cores_per_chip = get_tpu_resource_per_chip()
+        if cores_per_chip <= 1:
+            return visible_chips
+
+        # Expand physical chip indices to logical device IDs for multi-core TPUs
+        logical_ids = []
+        for chip in visible_chips:
+            try:
+                chip_idx = int(chip)
+                for core_idx in range(cores_per_chip):
+                    logical_ids.append(str(chip_idx * cores_per_chip + core_idx))
+            except ValueError:
+                logical_ids.append(chip)
+        return logical_ids
 
     @staticmethod
     @lru_cache()
@@ -761,29 +810,51 @@ class TPUAcceleratorManager(AcceleratorManager):
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
         Args:
-            visible_tpu_chips: List of str representing TPU chips.
+            visible_tpu_chips: List of str representing TPU chips, or device IDs
+                for TPUs with multiple logical devices per chip.
         """
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        num_visible_tpu_chips = len(visible_tpu_chips)
+        cores_per_chip = get_tpu_resource_per_chip()
+
+        # Map logical device IDs to physical chip IDs
+        physical_chips = set()
+        for device_id in visible_tpu_chips:
+            try:
+                dev_idx = int(device_id)
+                physical_chip = (
+                    dev_idx // cores_per_chip if cores_per_chip > 0 else dev_idx
+                )
+                physical_chips.add(str(physical_chip))
+            except ValueError:
+                physical_chips.add(str(device_id))
+
+        sorted_physical_chips = sorted(
+            physical_chips,
+            key=lambda x: (0, int(x)) if x.isdigit() else (1, x),
+        )
+        num_visible_chips = len(sorted_physical_chips)
         num_accelerators_on_node = (
             TPUAcceleratorManager.get_current_node_num_accelerators()
         )
-        if num_visible_tpu_chips == num_accelerators_on_node:
+        if (
+            len(visible_tpu_chips) == num_accelerators_on_node
+            or num_visible_chips * cores_per_chip == num_accelerators_on_node
+        ):
             # Let the ML framework use the defaults
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
             os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_tpu_chips])
-        if num_visible_tpu_chips == 1:
+        ] = ",".join(sorted_physical_chips)
+        if num_visible_chips == 1:
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 2:
+        elif num_visible_chips == 2:
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG

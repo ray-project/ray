@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -6,6 +7,8 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
@@ -2706,6 +2709,93 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+@pytest.mark.parametrize(
+    "accel_type,visible_chips,env_override,expected_ids",
+    [
+        # Single-core and Megacore TPUs -> returns chips as-is (1 resource per chip)
+        ("v6e-4", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v5litepod-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v4-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v5p-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        # Dual-device TPUs (v7x / tpu7x) -> expands chips to logical devices
+        ("v7x-16", "0,1,2,3", None, ["0", "1", "2", "3", "4", "5", "6", "7"]),
+        ("tpu7x-16", "0,1,2,3", None, ["0", "1", "2", "3", "4", "5", "6", "7"]),
+        # Partial chip masks on dual-device TPUs
+        ("v7x-16", "2,3", None, ["4", "5", "6", "7"]),
+        # Explicit RAY_TPU_RESOURCE_PER_CHIP override
+        ("v6e-4", "0,1", "2", ["0", "1", "2", "3"]),
+    ],
+)
+def test_tpu_visible_accelerator_ids_expansion(
+    accel_type, visible_chips, env_override, expected_ids
+):
+    env = {"TPU_ACCELERATOR_TYPE": accel_type, "TPU_VISIBLE_CHIPS": visible_chips}
+    if env_override is not None:
+        env[RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR] = env_override
+    with patch.dict(os.environ, env, clear=True):
+        assert (
+            TPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+            == expected_ids
+        )
+
+
+def test_tpu_resource_and_label_spec_resolution_with_visible_chips():
+    # Dual-device (v7x-16) with TPU_VISIBLE_CHIPS="0,1,2,3" and 8 detected devices
+    with patch.dict(
+        os.environ,
+        {
+            "TPU_VISIBLE_CHIPS": "0,1,2,3",
+            "TPU_ACCELERATOR_TYPE": "v7x-16",
+            "TPU_TOPOLOGY": "2x2x1",
+        },
+        clear=False,
+    ):
+        with patch.object(
+            TPUAcceleratorManager,
+            "get_current_node_num_accelerators",
+            return_value=8,
+        ):
+            with patch("ray.util.get_node_ip_address", return_value="10.0.0.1"):
+                # Auto-detect resolves all 8 TPUs
+                spec = ResourceAndLabelSpec()
+                spec.resolve(is_head=True)
+                assert spec.to_resource_dict().get("TPU") == 8
+
+                # Explicit --resources='{"TPU": 8}' succeeds
+                spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+                spec_override.resolve(is_head=True)
+                assert spec_override.to_resource_dict().get("TPU") == 8
+
+
+@pytest.mark.parametrize(
+    "visible_tpu_chips,expected_chip,expected_bounds",
+    [
+        (["0"], "0", "1,1,1"),
+        (["1"], "0", "1,1,1"),
+        (["4"], "2", "1,1,1"),
+        (["6", "7"], "3", "1,1,1"),
+        (["0", "unknown"], "0,unknown", "1,2,1"),
+    ],
+)
+def test_tpu_set_visible_accelerator_ids_mapping(
+    visible_tpu_chips, expected_chip, expected_bounds
+):
+    with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": "v7x-16"}, clear=True):
+        with patch.object(
+            TPUAcceleratorManager,
+            "get_current_node_num_accelerators",
+            return_value=8,
+        ):
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                visible_tpu_chips
+            )
+            assert (
+                os.environ[TPUAcceleratorManager.get_visible_accelerator_ids_env_var()]
+                == expected_chip
+            )
+            assert os.environ["TPU_CHIPS_PER_HOST_BOUNDS"] == expected_bounds
 
 
 if __name__ == "__main__":
