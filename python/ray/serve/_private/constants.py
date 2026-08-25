@@ -801,8 +801,14 @@ RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = get_env_int(
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.
+#
+# Every reload leaves the outgoing worker soft-stopping with a frozen copy of
+# the backend list, alive until hard-stop-after, so the number of workers
+# routing from a stale snapshot scales with the reload rate. The window trades
+# a bounded amount of propagation delay for a large reduction in that
+# population; it is additive with the reload itself, which dominates it.
 RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
-    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 1.0
 )
 
 # Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
@@ -850,12 +856,12 @@ RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
     else None
 )
 
-RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    # Guarded by the truthiness check below; the two get() calls can't be
-    # narrowed by mypy.
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
-    else None
+# Connection timeout to a replica, in seconds. Replicas are in-cluster, so a
+# connect that takes seconds means the node is gone rather than busy; bounding
+# it lets `retry-on conn-failure` + `option redispatch` reach another replica
+# while the request still has budget.
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", 5
 )
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
@@ -908,7 +914,7 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # redispatch + the `backup` fallback take over. Health checks revive a false
 # positive in ~0.5s. Backup/fallback servers are never observed.
 RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
-    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "0"
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
@@ -918,9 +924,17 @@ RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT = get_env_int_positive(
     "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT", 3
 )
 
-# The balancing algorithm to use in HAProxy backends. Default is leastconn.
+# The balancing algorithm to use in HAProxy backends.
+#
+# Every node runs its own HAProxy and they all receive the same fleet-wide
+# backend list, but each one only observes the connections it opened itself.
+# `leastconn` picks the minimum of that private view, so N proxies reading
+# near-identical state converge on the same replica and pile onto it.
+# `random(2)` (power-of-two-choices) samples two servers and takes the less
+# loaded one, which keeps the local signal useful without synchronizing the
+# proxies. Set to `leastconn` to restore the previous behavior.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
-    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "random(2)"
 )
 
 # Timeout shared by the ingress-request-router Lua call and the frontend
