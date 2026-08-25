@@ -462,10 +462,11 @@ class DeploymentAutoscalingState:
 
         for handle_metric in self._handle_requests.values():
             running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
-            for replica_str in self._cached_running_replica_strs:
-                if replica_str not in running_reqs:
-                    continue
-                timeseries_list.append(running_reqs[replica_str])
+            # Iterate the handle's own replicas, not every running replica: a handle
+            # usually routes to a subset, and the merge is order-independent.
+            for replica_str, timeseries in running_reqs.items():
+                if replica_str in self._cached_running_replica_strs:
+                    timeseries_list.append(timeseries)
 
         return timeseries_list
 
@@ -543,11 +544,17 @@ class DeploymentAutoscalingState:
 
         return 0.0
 
-    def _calculate_total_requests_aggregate_mode(self) -> float:
-        """Calculate total requests using aggregate metrics mode with timeseries data.
+    def get_total_num_requests(self) -> float:
+        """Get average total number of requests aggregated over the past
+        `look_back_period_s` number of seconds.
 
-        This method works with raw timeseries metrics data and performs aggregation
-        at the controller level.
+        Works with raw timeseries metrics data and performs aggregation at the
+        controller level. If there are 0 running replicas, then returns the total
+        number of requests queued at handles.
+
+        This code assumes that the metrics are either emmited on handles
+        or on replicas, but not both. Its the responsibility of the writer
+        to ensure enclusivity of the metrics.
 
         Processing Steps:
             1. Collect raw timeseries data (eg: running request) from replicas (if available)
@@ -555,12 +562,6 @@ class DeploymentAutoscalingState:
             3. Collect raw timeseries data (eg: running request) from handles (if not available from replicas)
             4. Merge timeseries using instantaneous approach for mathematically correct totals
             5. Calculate time-weighted average running requests from the merged timeseries
-
-        Key Differences from Simple Mode:
-            - Uses raw timeseries data instead of pre-aggregated metrics
-            - Performs instantaneous merging for exact gauge semantics
-            - Aggregates at the controller level rather than using pre-computed averages
-            - Uses time-weighted averaging over the look_back_period_s interval for accurate calculations
 
         Metrics Collection:
             Running requests are collected with either replica-level or handle-level metrics.
@@ -637,19 +638,6 @@ class DeploymentAutoscalingState:
 
         return ongoing_requests
 
-    def get_total_num_requests(self) -> float:
-        """Get average total number of requests aggregated over the past
-        `look_back_period_s` number of seconds.
-
-        If there are 0 running replicas, then returns the total number
-        of requests queued at handles
-
-        This code assumes that the metrics are either emmited on handles
-        or on replicas, but not both. Its the responsibility of the writer
-        to ensure enclusivity of the metrics.
-        """
-        return self._calculate_total_requests_aggregate_mode()
-
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values: Dict[str, List[TimeSeries]] = defaultdict(list)
@@ -666,11 +654,9 @@ class DeploymentAutoscalingState:
         Returns:
             Sum of queued requests at all handles, aggregated from handle timeseries.
         """
-        queued_timeseries = self._collect_handle_queued_requests()
-        if not queued_timeseries:
-            return 0.0
-
-        return self._merge_and_aggregate_timeseries(queued_timeseries)
+        return self._merge_and_aggregate_timeseries(
+            self._collect_handle_queued_requests()
+        )
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:
         """Aggregate custom metrics from replica metric reports.

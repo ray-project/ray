@@ -2,13 +2,17 @@ import pytest
 
 from ray.serve._private.common import (
     REPLICA_ID_FULL_ID_STR_PREFIX,
+    RUNNING_REQUESTS_KEY,
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
+    HandleMetricReport,
     ReplicaID,
     RunningReplicaInfo,
+    TimeStampedValue,
 )
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
 from ray.serve._private.utils import get_deployment_actor_name, get_random_string
@@ -249,6 +253,31 @@ def test_running_replica_info():
     )
     assert replica6._hash != replica7._hash
     assert replica6._hash != replica8._hash
+
+
+def test_handle_metric_report_total_requests():
+    """Peaks are summed, so a handle that drained by its last sample still reports load."""
+    deployment_id = DeploymentID(name="D", app_name="app")
+    replica_str = ReplicaID("r1", deployment_id=deployment_id).to_full_id_str()
+
+    def report(queued, running):
+        return HandleMetricReport(
+            deployment_id=deployment_id,
+            handle_id="h1",
+            actor_id="a1",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=queued,
+            metrics={RUNNING_REQUESTS_KEY: running} if running else {},
+            timestamp=2,
+        )
+
+    drained = report(
+        [TimeStampedValue(1, 3), TimeStampedValue(2, 0)],
+        {replica_str: [TimeStampedValue(1, 5), TimeStampedValue(2, 0)]},
+    )
+    assert drained.total_requests == 8
+
+    assert report([], {}).total_requests == 0
 
 
 if __name__ == "__main__":

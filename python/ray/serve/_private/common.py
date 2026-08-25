@@ -1010,17 +1010,12 @@ class HandleMetricReport:
 
     @property
     def total_requests(self) -> float:
-        """Most recently observed queued + running requests across this handle's
-        replicas. Diagnostic only (reported when a handle's metrics are dropped), so
-        the latest sample is enough and no windowing is applied."""
-
-        def latest(series: TimeSeries) -> float:
-            return series[-1].value if series else 0.0
-
-        return latest(self.queued_requests) + sum(
-            latest(series)
-            for series in self.metrics.get(RUNNING_REQUESTS_KEY, {}).values()
-        )
+        """Upper bound on queued + running requests over this handle's reported window.
+        Diagnostic only (logged when a handle's metrics are dropped); peaks are summed
+        so a handle that was busy earlier in the window is not reported as idle."""
+        running = self.metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        series = [self.queued_requests, *running]
+        return sum(max(point.value for point in s) for s in series if s)
 
     @property
     def is_serve_component_source(self) -> bool:

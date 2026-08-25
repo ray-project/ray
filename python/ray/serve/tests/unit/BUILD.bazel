@@ -73,12 +73,12 @@ py_test_module_list(
 py_test_module_list_with_env_variants(
     size = "small",
     env_variants = {
-        "metr_disab": {
+        "metr_collect_on_replica": {
             "env": {
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
                 "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
             },
-            "name_suffix": "_metr_disab",
+            "name_suffix": "_metr_collect_on_replica",
         },
         "metr_collect_on_handle": {
             "env": {

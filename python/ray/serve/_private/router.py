@@ -498,7 +498,7 @@ class RouterMetricsManager:
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
                 running_requests[
                     replica_id.to_full_id_str()

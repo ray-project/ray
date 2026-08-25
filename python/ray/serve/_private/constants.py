@@ -1118,7 +1118,6 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
-
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers
 # like replica IDs from controller-emitted metrics.

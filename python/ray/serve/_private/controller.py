@@ -390,20 +390,21 @@ class ServeController:
         self,
         timestamp: float,
         deployment_id: DeploymentID,
-        histogram: metrics.Histogram,
-        record_delay: Callable[[float], None],
+        report_delay: Callable[..., None],
+        record_delay: Optional[Callable[[float], None]] = None,
     ) -> None:
-        """Report ingest delay. A histogram lets Prometheus aggregate reports from all
-        sources of a deployment, so the per-source tag is omitted to bound cardinality."""
+        """Report ingest delay. Prometheus aggregates reports from all sources of a
+        deployment, so the per-source tag is omitted to bound cardinality."""
         delay_ms = (time.time() - timestamp) * 1000
-        histogram.observe(
+        report_delay(
             delay_ms,
             tags={
                 "deployment": deployment_id.name,
                 "application": deployment_id.app_name,
             },
         )
-        record_delay(delay_ms)
+        if record_delay is not None:
+            record_delay(delay_ms)
 
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
@@ -415,7 +416,7 @@ class ServeController:
         self._record_metrics_delay(
             replica_metric_report.timestamp,
             replica_metric_report.replica_id.deployment_id,
-            self.replica_metrics_delay_histogram,
+            self.replica_metrics_delay_histogram.observe,
             self._health_metrics_tracker.record_replica_metrics_delay,
         )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
@@ -432,7 +433,7 @@ class ServeController:
         self._record_metrics_delay(
             handle_metric_report.timestamp,
             handle_metric_report.deployment_id,
-            self.handle_metrics_delay_histogram,
+            self.handle_metrics_delay_histogram.observe,
             self._health_metrics_tracker.record_handle_metrics_delay,
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
@@ -443,15 +444,10 @@ class ServeController:
         self, report: AsyncInferenceTaskQueueMetricReport
     ):
         """Record async inference task queue metrics pushed from QueueMonitor."""
-        latency = time.time() - report.timestamp_s
-        latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.async_inference_task_queue_metrics_delay_gauge.set(
-            latency_ms,
-            tags={
-                "deployment": report.deployment_id.name,
-                "application": report.deployment_id.app_name,
-            },
+        self._record_metrics_delay(
+            report.timestamp_s,
+            report.deployment_id,
+            self.async_inference_task_queue_metrics_delay_gauge.set,
         )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 

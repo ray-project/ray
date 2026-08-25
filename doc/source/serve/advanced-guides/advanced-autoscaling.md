@@ -125,33 +125,19 @@ Replicas and deployment handles continuously record autoscaling metrics:
 
 Periodically, replicas and handles push their metrics to the controller:
 - **Frequency**: Every 10s (configurable via `RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and `RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S`)
-- **Data sent**: Both raw timeseries data and pre-aggregated metrics
-  - **Raw timeseries**: Data points are clipped to the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window before sending (only recent measurements within the window are sent)
-  - **Pre-aggregated metrics**: A simple average computed over the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window at the replica/handle
-- **Controller usage**: The controller decides which data to use based on the `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER` setting (see Stage 3 below)
+- **Data sent**: Raw timeseries data. Data points are clipped to the [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) window before sending (only recent measurements within the window are sent)
 
 #### Stage 3: Metric aggregation
 
-The controller aggregates metrics to compute total ongoing requests across all replicas. Ray Serve supports two aggregation modes (controlled by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`):
-
-**Simple mode (default - `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER=0`):**
-- **Input**: Pre-aggregated simple averages from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
-- **Method**: Sums the pre-aggregated values from all sources. Each component computes a simple average (arithmetic mean) before sending.
-- **Output**: Single value representing total ongoing requests
-- **Characteristics**: Lightweight and works well for most workloads. However, because it uses simple averages rather than time-weighted averages, it can be less accurate when replicas have different metric reporting intervals or when metrics arrive at different times.
-
-**Aggregate mode (experimental - `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER=1`):**
+The controller aggregates the raw timeseries to compute total ongoing requests across all replicas:
 - **Input**: Raw timeseries data from replicas/handles (already clipped to [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst))
 - **Method**: Time-weighted aggregation using the [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) (mean, max, or min). Uses an instantaneous merge approach that treats metrics as right-continuous step functions.
 - **Output**: Single value representing total ongoing requests
-- **Characteristics**: Provides more mathematically accurate aggregation, especially when replicas report metrics at different intervals or you need precise time-weighted averages. The trade-off is increased controller overhead.
 
 :::{note}
-The [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameter only applies in aggregate mode. In simple mode, the aggregation is always a sum of the pre-computed simple averages.
-:::
-
-:::{note}
-The long-term plan is to deprecate simple mode in favor of aggregate mode. Aggregate mode provides more accurate metrics aggregation and will become the default in a future release. Consider testing aggregate mode(`RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER=1`) in your deployments to prepare for this transition.
+Earlier releases also supported a "simple mode" that summed averages pre-computed at each replica and handle, selected by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`. That flag and that mode are removed: the controller now always aggregates raw timeseries. Two consequences if you are upgrading from a release that had the flag, where it defaulted to simple mode:
+- [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) now always applies. Under simple mode it was ignored, so a deployment that set `max` or `min` and never enabled the flag scaled on a mean and now scales on a peak or a trough.
+- Aggregating timeseries costs the controller more than summing pre-computed averages, and the cost grows with the number of replicas. Watch controller CPU on deployments with very high replica counts.
 :::
 
 #### Stage 4: Policy execution
@@ -200,10 +186,6 @@ Several environment variables control autoscaling behavior at a lower level. The
 * **`RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S`** (default: 10.0s): Maximum time allowed for the `record_autoscaling_stats()` method to complete in custom metrics collection. If this timeout is exceeded, the metrics collection fails and a warning is logged.
 
 * **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`** (default: 10.0s): Minimum timeout for handle metrics collection. The system uses the maximum of this value and `2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to determine when to drop stale handle metrics.
-
-#### Advanced feature flags
-
-* **`RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`** (default: false): Enables an experimental metrics aggregation mode where the controller aggregates raw timeseries data instead of using pre-aggregated metrics. This mode provides more accurate time-weighted averages but may increase controller overhead. See Stage 3 in "How autoscaling metrics work" for details.
 
 
 ## Model composition example

@@ -163,7 +163,7 @@ class TestInMemoryMetricsStore:
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
-        assert s.aggregate_avg(["m1"]) == (1.5, 1)
+        assert [p.value for p in s.data["m1"]] == [1, 2]
         assert s.get_latest("m1") == 2
 
     def test_out_of_order_insert(self):
@@ -173,30 +173,23 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 3}, timestamp=3)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
-        assert s.aggregate_avg(["m1"]) == (3, 1)
+        assert [p.value for p in s.data["m1"]] == [1, 2, 3, 4, 5]
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.aggregate_avg(["m1"]) == (None, 0)
+        assert "m1" not in s.data
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
-        assert s.aggregate_avg(["m1"]) == (1, 1)
+        assert [p.value for p in s.data["m1"]] == [1]
         s.prune_keys_and_compact_data(10)
-        assert s.aggregate_avg(["m1"]) == (None, 0)
+        assert "m1" not in s.data
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
-        assert s.aggregate_avg(["m1"]) == (1.5, 1)
-        assert s.aggregate_avg(["m2"]) == (-1.5, 1)
-        assert s.aggregate_avg(["m1", "m2"]) == (0, 2)
-
-    def test_empty_key_mix(self):
-        s = InMemoryMetricsStore()
-        s.add_metrics_point({"m1": 1}, timestamp=1)
-        assert s.aggregate_avg(["m1", "m2"]) == (1, 1)
-        assert s.aggregate_avg(["m2"]) == (None, 0)
+        assert [p.value for p in s.data["m1"]] == [1, 2]
+        assert [p.value for p in s.data["m2"]] == [-1, -2]
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
