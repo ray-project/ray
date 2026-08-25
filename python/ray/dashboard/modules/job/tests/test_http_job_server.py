@@ -641,7 +641,17 @@ def test_version_endpoint(job_sdk_client):
 
 
 def test_request_headers(job_sdk_client):
+    from ray._raylet import AuthenticationTokenLoader
+
     client = job_sdk_client
+    # The client attaches the cluster's auth token on top of the caller's headers
+    # when auth is on, so expect both here.
+    expected_headers = {"Connection": "keep-alive"}
+    expected_headers.update(
+        AuthenticationTokenLoader.instance().get_token_for_http_header(
+            ignore_auth_mode=True
+        )
+    )
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -654,7 +664,7 @@ def test_request_headers(job_sdk_client):
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
-            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+            headers=expected_headers,
             verify=True,
         )
 
