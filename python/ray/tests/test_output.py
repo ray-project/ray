@@ -253,7 +253,10 @@ while True:
         print("Running test case for level:", event_level)
         proc = run_string_as_driver_nonblocking(
             script,
+            # Inherit the parent env so the driver carries the cluster's auth
+            # token when auth is on; a bare env would connect without it.
             env={
+                **os.environ,
                 "PYTHONUNBUFFERED": "1",
                 "RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level,
             },
