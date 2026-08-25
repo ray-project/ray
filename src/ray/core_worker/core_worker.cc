@@ -894,6 +894,7 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
         to_erase.push_back(generator_id);
         // Mark the gen task canceled so the executor loop bails before the
         // next gen.send instead of running another iteration of user code.
+        absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
         canceled_tasks_.insert(generator_id.TaskId());
       }
     }
@@ -1833,7 +1834,7 @@ Status CoreWorker::GetLocationFromOwner(
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
-                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+                 std::chrono::milliseconds(timeout_ms)) != std::future_status::ready) {
     std::ostringstream stream;
     stream << "Failed querying object locations within " << timeout_ms
            << " milliseconds.";
@@ -2656,7 +2657,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
   // populated when CancelTask RPC is received.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&canceled_tasks_mutex_);
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
@@ -3184,7 +3185,10 @@ Status CoreWorker::ExecuteTask(
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
     // Clean up cancellation state for this task
-    canceled_tasks_.erase(task_spec.TaskId());
+    {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
+      canceled_tasks_.erase(task_spec.TaskId());
+    }
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -3466,6 +3470,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
                        << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
+        waiter->OnObjectReportAccepted();
         if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
@@ -3473,9 +3478,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
-        }
-        waiter->OnObjectReportAccepted();
-        if (!status.ok()) {
+
           waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
           if (actor_metadata) {
             actor_metadata->Teardown();
@@ -4363,6 +4366,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
     requested_task_running = main_thread_task_id_ == task_id;
 
     if (requested_task_running) {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
       canceled_tasks_.insert(task_id);
     }
   }
@@ -4419,6 +4423,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
 
         if (is_running) {
+          absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
           canceled_tasks_.insert(task_id);
         }
       }
@@ -5021,6 +5026,9 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
+  RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
+                                    object_id.Hex());
+
   const size_t warn_backlog = static_cast<size_t>(
       RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {

@@ -368,8 +368,12 @@ class Reconciler:
             and instance.status
             not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
-        launch_errors: Dict[str, LaunchNodeError] = {
-            error.request_id: error
+        # A single launch request could launch multiple node types, so a launch
+        # request id alone doesn't identify a launch error: key the errors by
+        # (request id, node type) so that errors of different node types from the
+        # same request don't overwrite each other.
+        launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError] = {
+            (error.request_id, error.node_type): error
             for error in cloud_provider_errors
             if isinstance(error, LaunchNodeError)
         }
@@ -408,7 +412,7 @@ class Reconciler:
     def _try_resolve_pending_allocation(
         im_instance: IMInstance,
         unassigned_cloud_instances_by_type: Dict[str, List[CloudInstance]],
-        launch_errors: Dict[str, LaunchNodeError],
+        launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError],
     ) -> Optional[IMInstanceUpdateEvent]:
         """
         Allocate, or fail the cloud instance allocation for the instance.
@@ -416,7 +420,8 @@ class Reconciler:
         Args:
             im_instance: The instance to allocate or fail.
             unassigned_cloud_instances_by_type: The unassigned cloud instances by type.
-            launch_errors: The launch errors from the cloud provider.
+            launch_errors: The launch errors from the cloud provider, keyed by
+                (launch request id, node type).
 
         Returns:
             Instance update to ALLOCATED: if there's a matching unassigned cloud
@@ -451,8 +456,10 @@ class Reconciler:
             )
 
         # If there's a launch error, transition to ALLOCATION_FAILED.
-        launch_error = launch_errors.get(im_instance.launch_request_id)
-        if launch_error and launch_error.node_type == im_instance.instance_type:
+        launch_error = launch_errors.get(
+            (im_instance.launch_request_id, im_instance.instance_type)
+        )
+        if launch_error:
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,

@@ -1236,7 +1236,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  team: serve
+  team: core
 
   cluster:
     anyscale_sdk_2026: true
@@ -1365,7 +1365,7 @@
 - name: jobs_check_cuda_available
   python: "3.10"
   group: Jobs tests
-  team: serve
+  team: reef
 
   frequency: nightly
   working_dir: jobs_tests
@@ -1419,7 +1419,7 @@
 - name: "jobs_check_cuda_version_cu130_py{{python}}"
   python: "{{python}}"
   group: Jobs tests
-  team: serve
+  team: reef
   frequency: nightly
   working_dir: jobs_tests
   matrix:
