@@ -563,6 +563,18 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
         },
         "name_suffix": "_metr_collect_on_handle",
     },
+    # Aggregate-at-controller is required for the columnar arrays to actually be
+    # read; without it the controller reconstructs and takes the object path.
+    "metr_columnar": {
+        "env": {
+            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+            # Gate defaults to 64 replicas; these tests run far below that.
+            "RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS": "2",
+            # Make sure queued metrics are cleared out quickly.
+            "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        },
+        "name_suffix": "_metr_columnar",
+    },
 }
 
 py_test_module_list_with_env_variants(
