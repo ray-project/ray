@@ -9,7 +9,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-from ray.serve.llm.deployment import LLMServer
+from ray.serve.llm.deployment import LLMServer, SGLangServer
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -406,4 +406,5 @@ __all__ = [
     "build_dp_deployment",
     "build_dp_openai_app",
     "LLMServer",
+    "SGLangServer",
 ]

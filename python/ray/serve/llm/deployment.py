@@ -1,6 +1,9 @@
 from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
+from ray.llm._internal.serve.engines.sglang.sglang_engine import (
+    SGLangServer as _SGLangServer,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer as _DPServer,
 )
@@ -65,6 +68,16 @@ class LLMServer(InternalLLMServer):
             )
             response = ray.get(model_handle.chat(request))
             print(response)
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class SGLangServer(_SGLangServer):
+    """SGLang engine deployment for Ray Serve LLM.
+
+    Pass this class to ``LLMConfig.server_cls`` to serve a model with SGLang.
     """
 
     pass
@@ -142,6 +155,7 @@ class DPServer(_DPServer):
 
 __all__ = [
     "LLMServer",
+    "SGLangServer",
     "PDDecodeServer",
     "PDPrefillServer",
     "DPServer",
