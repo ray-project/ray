@@ -80,12 +80,12 @@ py_test_module_list_with_env_variants(
             },
             "name_suffix": "_metr_disab",
         },
-        "metr_agg_at_controller": {
+        "metr_collect_on_handle": {
             "env": {
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1",
                 "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
             },
-            "name_suffix": "_metr_agg_at_controller",
+            "name_suffix": "_metr_collect_on_handle",
         },
     },
     files = [
