@@ -356,9 +356,13 @@ class Benchmark:
         max_head_node_memory_bytes = self._max_head_node_memory_bytes
         peak_head_node_memory_bytes = None
         if max_head_node_memory_bytes is not None:
-            peak_head_node_memory_bytes = _get_peak_head_node_memory_used_bytes(
-                start_unix_time, end_unix_time
-            )
+            try:
+                peak_head_node_memory_bytes = _get_peak_head_node_memory_used_bytes(
+                    start_unix_time, end_unix_time
+                )
+            except RuntimeError:
+                self.write_result()
+                raise
             curr_case_metrics[
                 BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
             ] = _bytes_to_gb(peak_head_node_memory_bytes)
