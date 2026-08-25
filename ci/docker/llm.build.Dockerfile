@@ -44,9 +44,15 @@ else:
     raise SystemExit("vLLM import_utils.py not found")
 PY
 )"
+# RayExecutorV2 seeds the TCPStore port from the local DP rank, but a non-DP
+# config reports rank 0, so co-located engines all pick the same low port.
+# TODO (jeffreywang): Remove this patch once the upstream vLLM fix lands.
+VLLM_RAY_EXECUTOR_TCPSTORE_PORT_PATCH="$(pwd)/python/requirements/llm/patches/vllm-ray-executor-tcpstore-port.patch"
+
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    git apply "${VLLM_RAY_EXECUTOR_TCPSTORE_PORT_PATCH}"
 )
 
 EOF
