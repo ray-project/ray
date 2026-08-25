@@ -353,6 +353,8 @@ class Benchmark:
                 else:
                     raise ValueError(f"Unexpected metric key type: {type(key)}")
 
+        self.result[name] = curr_case_metrics
+
         max_head_node_memory_bytes = self._max_head_node_memory_bytes
         peak_head_node_memory_bytes = None
         if max_head_node_memory_bytes is not None:
@@ -367,7 +369,6 @@ class Benchmark:
                 BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
             ] = _bytes_to_gb(peak_head_node_memory_bytes)
 
-        self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
 
         if (
