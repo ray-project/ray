@@ -170,10 +170,10 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 3: Worker process has been started, but the worker registered back to raylet
   /// timeout.
   //  Case 4: Any fails of runtime env creation.
-  /// Of course, the callback will also be executed when a valid worker found in following
+  /// The callback will also be executed when a valid worker is found in the following
   /// cases:
-  /// Case 1: An suitable worker was found in idle worker pool.
-  /// Case 2: An suitable worker registered to raylet.
+  /// Case 1: A suitable worker was found in idle worker pool.
+  /// Case 2: A suitable worker registered with the raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
   virtual void PopWorker(const LeaseSpecification &lease_spec,
                          const PopWorkerCallback &callback) = 0;
@@ -441,7 +441,7 @@ class WorkerPool : public WorkerPoolInterface {
   void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle spill I/O worker from the pool and trigger a callback when
-  /// an spill I/O worker is available.
+  /// a spill I/O worker is available.
   /// The caller is responsible for pushing the worker back onto the
   /// pool once the worker has completed its work.
   ///
@@ -455,7 +455,7 @@ class WorkerPool : public WorkerPoolInterface {
   void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle restore I/O worker from the pool and trigger a callback when
-  /// an restore I/O worker is available.
+  /// a restore I/O worker is available.
   /// The caller is responsible for pushing the worker back onto the
   /// pool once the worker has completed its work.
   ///

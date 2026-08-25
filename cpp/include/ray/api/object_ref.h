@@ -94,7 +94,7 @@ class ObjectRef {
 
   bool operator==(const ObjectRef<T> &object) const;
 
-  /// Get a untyped ID of the object
+  /// Get an untyped ID of the object
   const std::string &ID() const;
 
   /// Get the object from the object store.
@@ -192,7 +192,7 @@ class ObjectRef<void> {
 
   bool operator==(const ObjectRef<void> &object) const { return id_ == object.id_; }
 
-  /// Get a untyped ID of the object
+  /// Get an untyped ID of the object
   const std::string &ID() const { return id_; }
 
   /// Get the object from the object store.
@@ -209,7 +209,6 @@ class ObjectRef<void> {
   ///
   /// \param timeout_ms The maximum amount of time in milliseconds to wait before
   /// returning.
-  ///  \return shared pointer of the result.
   void Get(const int &timeout_ms) const {
     auto packed_object = internal::GetRayRuntime()->Get(id_, timeout_ms);
     CheckResult(packed_object);

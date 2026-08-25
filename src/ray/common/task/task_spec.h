@@ -39,7 +39,7 @@ extern "C" {
 namespace ray {
 
 /// ConcurrencyGroup is a group of actor methods that shares
-/// a executing thread pool.
+/// an executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
   std::string name_;

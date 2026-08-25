@@ -129,7 +129,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
                                              const std::string &ray_namespace);
 
   /// Handle placement_group creation task failure. This should be called when scheduling
-  /// an placement_group creation task is infeasible.
+  /// a placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
@@ -314,7 +314,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// The pending placement_groups which will not be scheduled until there's a
   /// resource change. The pending queue is represented as an ordered map, where
   /// the key is the time to schedule the pg and value if a pair containing the
-  /// actual placement group and a exp-backoff.
+  /// actual placement group and an exponential backoff.
   /// When error happens, we'll retry it later and this can be simply done by
   /// inserting an element into the queue with a bigger key. With this, we don't
   /// need to post retry job to io context. And when schedule pending placement
