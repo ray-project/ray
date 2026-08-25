@@ -807,6 +807,22 @@
     script: >
       python backpressure_benchmark.py --case fast-producer-slow-consumer
 
+- name: backpressure_many_tiny_objects
+  python: "3.10"
+  group: data-backpressure
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    # 100,000 x 1 KiB outputs keep the payload near 100 MiB, so object count
+    # rather than data volume is the source of pressure.
+    script: >
+      python backpressure_benchmark.py --case many-tiny-objects
+      --num-input-blocks 100000 --output-batch-nbytes 1024
+      --consumer-sleep-s 0.01
+
 - name: backpressure_training_prefetch
   python: "3.10"
   cluster:

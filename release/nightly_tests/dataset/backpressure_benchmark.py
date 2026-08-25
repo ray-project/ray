@@ -13,13 +13,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backpressure benchmark")
     parser.add_argument(
         "--case",
-        choices=["fast-producer-slow-consumer", "training-prefetch"],
+        choices=[
+            "fast-producer-slow-consumer",
+            "many-tiny-objects",
+            "training-prefetch",
+        ],
         required=True,
     )
     parser.add_argument("--num-input-blocks", type=int, default=128)
     parser.add_argument("--output-batches-per-input-batch", type=int, default=8)
     parser.add_argument("--output-batch-rows", type=int, default=128)
     parser.add_argument("--output-row-bytes", type=int, default=1024**2)
+    parser.add_argument("--output-batch-nbytes", type=int, default=1024)
     parser.add_argument("--consumer-sleep-s", type=float, default=1.0)
     parser.add_argument("--num-trainers", type=int, default=8)
     parser.add_argument("--prefetch-batches", type=int, default=8)
@@ -56,13 +61,11 @@ def consume_slow(batch, *, sleep_s: float):
     return {"status": ["ok"]}
 
 
-def run_fast_producer_slow_consumer(args: argparse.Namespace):
-    producer = functools.partial(
-        produce,
-        output_batches_per_input_batch=args.output_batches_per_input_batch,
-        output_batch_rows=args.output_batch_rows,
-        output_row_bytes=args.output_row_bytes,
-    )
+def produce_tiny_object(_, *, output_batch_nbytes: int):
+    return {"data": np.zeros((1, output_batch_nbytes), dtype=np.uint8)}
+
+
+def run_slow_consumer_pipeline(args: argparse.Namespace, producer):
     consumer = functools.partial(consume_slow, sleep_s=args.consumer_sleep_s)
 
     ds = (
@@ -73,7 +76,37 @@ def run_fast_producer_slow_consumer(args: argparse.Namespace):
     for _ in ds.iter_internal_ref_bundles():
         pass
 
-    return vars(args)
+
+def run_fast_producer_slow_consumer(args: argparse.Namespace):
+    producer = functools.partial(
+        produce,
+        output_batches_per_input_batch=args.output_batches_per_input_batch,
+        output_batch_rows=args.output_batch_rows,
+        output_row_bytes=args.output_row_bytes,
+    )
+    run_slow_consumer_pipeline(args, producer)
+
+    return {
+        "num_input_blocks": args.num_input_blocks,
+        "output_batches_per_input_batch": args.output_batches_per_input_batch,
+        "output_batch_rows": args.output_batch_rows,
+        "output_row_bytes": args.output_row_bytes,
+        "consumer_sleep_s": args.consumer_sleep_s,
+    }
+
+
+def run_many_tiny_objects(args: argparse.Namespace):
+    producer = functools.partial(
+        produce_tiny_object,
+        output_batch_nbytes=args.output_batch_nbytes,
+    )
+    run_slow_consumer_pipeline(args, producer)
+
+    return {
+        "num_input_blocks": args.num_input_blocks,
+        "output_batch_nbytes": args.output_batch_nbytes,
+        "consumer_sleep_s": args.consumer_sleep_s,
+    }
 
 
 def run_training_prefetch(args: argparse.Namespace):
@@ -113,7 +146,16 @@ def run_training_prefetch(args: argparse.Namespace):
         ]
     )
 
-    return vars(args)
+    return {
+        "num_input_blocks": args.num_input_blocks,
+        "output_batches_per_input_batch": args.output_batches_per_input_batch,
+        "output_batch_rows": args.output_batch_rows,
+        "output_row_bytes": args.output_row_bytes,
+        "consumer_sleep_s": args.consumer_sleep_s,
+        "num_trainers": args.num_trainers,
+        "prefetch_batches": args.prefetch_batches,
+        "disable_locality_hints": args.disable_locality_hints,
+    }
 
 
 @ray.remote(num_cpus=1)
@@ -138,6 +180,8 @@ def main(args: argparse.Namespace):
 
     if args.case == "fast-producer-slow-consumer":
         benchmark.run_fn(args.case, run_fast_producer_slow_consumer, args)
+    elif args.case == "many-tiny-objects":
+        benchmark.run_fn(args.case, run_many_tiny_objects, args)
     elif args.case == "training-prefetch":
         benchmark.run_fn(args.case, run_training_prefetch, args)
     else:
