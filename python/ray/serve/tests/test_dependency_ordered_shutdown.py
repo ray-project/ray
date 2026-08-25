@@ -26,6 +26,11 @@ def shutdown_test_cluster(request, monkeypatch):
     ray.shutdown()
 
 
+# A healthy replica cannot drain faster than graceful_shutdown_wait_loop_s, whose
+# 2s default exceeds the tier timeout below, so every tier would time out.
+_SHORT_DRAIN = {"graceful_shutdown_wait_loop_s": 0.1}
+
+
 class _RecordsShutdown:
     """Record a deployment name when its replica is torn down."""
 
@@ -37,7 +42,7 @@ class _RecordsShutdown:
         await self._shutdown_recorder.add.remote(self._shutdown_name)
 
 
-@serve.deployment
+@serve.deployment(**_SHORT_DRAIN)
 class Node(_RecordsShutdown):
     """A deployment that calls its downstream handles and records its teardown."""
 
@@ -52,7 +57,7 @@ class Node(_RecordsShutdown):
         return "/".join([self._shutdown_name, *results])
 
 
-@serve.deployment
+@serve.deployment(**_SHORT_DRAIN)
 class LinkedNode(_RecordsShutdown):
     """Builds its downstream handle in the constructor.
 
@@ -74,7 +79,7 @@ class LinkedNode(_RecordsShutdown):
         return f"{self._shutdown_name}/{await self._downstream.remote()}"
 
 
-@serve.deployment
+@serve.deployment(**_SHORT_DRAIN)
 class LazyNode(_RecordsShutdown):
     """Builds its downstream handle per request, after it reported as ready."""
 
@@ -93,7 +98,7 @@ class LazyNode(_RecordsShutdown):
         return f"{self._shutdown_name}/{await handle.remote()}"
 
 
-@serve.deployment
+@serve.deployment(**_SHORT_DRAIN)
 class PlainNode:
     """A placeholder for a deployment a LinkedNode needs to already exist."""
 
@@ -104,7 +109,7 @@ class PlainNode:
         return "plain"
 
 
-@serve.deployment(graceful_shutdown_timeout_s=1000)
+@serve.deployment(graceful_shutdown_timeout_s=1000, **_SHORT_DRAIN)
 class WedgedNode:
     """A deployment whose replica never finishes shutting down."""
 
@@ -162,8 +167,24 @@ def _wait_for_topology(expected: Dict[Tuple[str, str], Set[Tuple[str, str]]]):
         raise AssertionError(f"Expected topology {expected}, controller sees {seen}.")
 
 
-def _shutdown_order(recorder: ray.actor.ActorHandle) -> List[str]:
-    return ray.get(recorder.get.remote())
+def _shutdown_order(recorder: ray.actor.ActorHandle, expected: Set[str]) -> List[str]:
+    """Wait for every expected replica to record its teardown, then return the order.
+
+    `serve.shutdown()` gives up after 30s and returns with teardown still in
+    flight, so reading the recorder as soon as it returns can truncate.
+    """
+
+    def recorded() -> List[str]:
+        return ray.get(recorder.get.remote())
+
+    try:
+        wait_for_condition(lambda: set(recorded()) == expected, timeout=60)
+    except RuntimeError:
+        raise AssertionError(
+            f"Expected {sorted(expected)} to record a teardown, got {recorded()}."
+        )
+
+    return recorded()
 
 
 def _replica_actor(deployment_name: str, app_name: str) -> ray.actor.ActorHandle:
@@ -200,7 +221,8 @@ class TestKnownTopologyShutdown:
 
         serve.shutdown()
 
-        assert _shutdown_order(recorder) == ["Ingress", "Middle", "Leaf"]
+        expected = ["Ingress", "Middle", "Leaf"]
+        assert _shutdown_order(recorder, set(expected)) == expected
 
     def test_cross_app_chain(self, shutdown_test_cluster):
         """A caller in one app is torn down before its callee in another."""
@@ -227,7 +249,8 @@ class TestKnownTopologyShutdown:
 
         serve.shutdown()
 
-        assert _shutdown_order(recorder) == ["Caller", "Middle", "Leaf"]
+        expected = ["Caller", "Middle", "Leaf"]
+        assert _shutdown_order(recorder, set(expected)) == expected
 
 
 class TestBestEffortTopologyShutdown:
@@ -255,8 +278,7 @@ class TestBestEffortTopologyShutdown:
 
         serve.shutdown()
 
-        order = _shutdown_order(recorder)
-        assert set(order) == {"Ingress", "Middle", "Leaf"}
+        order = _shutdown_order(recorder, {"Ingress", "Middle", "Leaf"})
 
         # The known edge is still respected.
         assert order.index("Ingress") < order.index("Middle")
@@ -283,13 +305,13 @@ class TestBestEffortTopologyShutdown:
 
         serve.shutdown()
 
-        order = _shutdown_order(recorder)
+        order = _shutdown_order(recorder, {"Ingress", "A", "B"})
         assert order[0] == "Ingress"
         assert sorted(order[1:]) == ["A", "B"]
 
     @pytest.mark.parametrize(
         "shutdown_test_cluster",
-        [{"RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S": "2"}],
+        [{"RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S": "5"}],
         indirect=True,
     )
     def test_tier_that_never_drains(self, shutdown_test_cluster):
@@ -317,10 +339,9 @@ class TestBestEffortTopologyShutdown:
         client = _get_global_client()
         ray.get(client._controller.graceful_shutdown.remote(False))
 
-        # Leaf can only be torn down while Middle is still stopping, so its
-        # teardown proves shutdown advanced past the tier that never drained.
-        wait_for_condition(lambda: "Leaf" in _shutdown_order(recorder), timeout=20)
-        assert _shutdown_order(recorder) == ["Ingress", "Leaf"]
+        # Ingress drains well inside the tier timeout, so Leaf is only reached by
+        # timing out on Middle, the one tier that never drains.
+        assert _shutdown_order(recorder, {"Ingress", "Leaf"}) == ["Ingress", "Leaf"]
         middle_replica = _replica_actor("Middle", "chain")
 
         # Cleanup Middle so it doesn't sit in __del__ for its full 1000s grace period
