@@ -16,7 +16,7 @@ The initialization phase of a serve.llm deployment involves many steps, includin
 - **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory
 - **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
 - **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
-- **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
+- **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs/)
 - **Warmup**: Initialize KV cache, run model inference.
 
 
@@ -333,7 +333,7 @@ RunAI Streamer is a vLLM extension that streams model weights directly from remo
 
 :::{note}
 These snippets are examples. Check the
-[RunAI Streamer docs](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer.html)
+[RunAI Streamer docs](https://docs.vllm.ai/en/stable/models/extensions/runai_model_streamer/)
 for S3, Azure, and GCS compatibility with your vLLM version.
 :::
 
