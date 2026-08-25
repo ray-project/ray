@@ -420,19 +420,6 @@ def test_stale_columnar_handle_report_rejected(monkeypatch):
     assert st._handle_report_ts["h1"] == NOW
 
 
-def test_on_replica_stopped_clears_columnar_stores(monkeypatch):
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
-    st = _state()
-    rid = ReplicaID("r0", DEP)
-    st._replica_running_arrays[rid] = (np.array([NOW]), np.array([1.0]), NOW)
-    st._replica_custom_arrays[rid] = {"m": (np.array([NOW]), np.array([1.0]))}
-    st._replica_report_ts[rid] = NOW
-    st.on_replica_stopped(rid)
-    assert rid not in st._replica_running_arrays
-    assert rid not in st._replica_custom_arrays
-    assert rid not in st._replica_report_ts
-
-
 # ---- producer-side gate (the branch inversion the review flagged) ----
 
 

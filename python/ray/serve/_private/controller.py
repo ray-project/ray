@@ -411,35 +411,6 @@ class ServeController:
     ):
         _ingest_start = time.time()
         if isinstance(replica_metric_report, bytes):
-            if autoscaling_metrics_codec.is_columnar(replica_metric_report):
-                if not autoscaling_metrics_codec.can_decode_columnar():
-                    # Wire-detect works without numpy but decoding does not.
-                    autoscaling_metrics_codec.warn_columnar_undecodable_once()
-                    return
-                _decode_start = time.time()
-                (
-                    replica_id,
-                    metric_arrays,
-                    report_ts,
-                ) = autoscaling_metrics_codec.decode_replica_all_metrics(
-                    replica_metric_report
-                )
-                self._health_metrics_tracker.record_decompress(
-                    (time.time() - _decode_start) * 1000
-                )
-                self._record_metrics_delay(
-                    report_ts,
-                    replica_id.deployment_id,
-                    self.replica_metrics_delay_histogram,
-                    self._health_metrics_tracker.record_replica_metrics_delay,
-                )
-                self.autoscaling_state_manager.record_columnar_metrics_for_replica(
-                    replica_id, metric_arrays, report_ts
-                )
-                self._health_metrics_tracker.record_replica_ingest(
-                    (time.time() - _ingest_start) * 1000
-                )
-                return
             _decompress_start = time.time()
             replica_metric_report = decompress_metric_report(replica_metric_report)
             self._health_metrics_tracker.record_decompress(

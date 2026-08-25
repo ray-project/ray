@@ -68,28 +68,6 @@ def test_handle_columnar_direct_ingress_uses_fast_store(monkeypatch):
 
 
 # ---------------------------- replica ----------------------------
-def test_replica_columnar_aggregate_uses_fast_store(monkeypatch):
-    _set_mode(monkeypatch, aggregate=True)
-    s = MagicMock()
-    ServeController.record_autoscaling_metrics_from_replica(
-        s, codec.encode(_replica_report())
-    )
-    asm = s.autoscaling_state_manager
-    asm.record_columnar_metrics_for_replica.assert_called_once()
-    asm.record_request_metrics_for_replica.assert_not_called()
-
-
-def test_replica_cloudpickle_uses_object_store(monkeypatch):
-    _set_mode(monkeypatch, aggregate=True)  # mode irrelevant for cloudpickle wire
-    s = MagicMock()
-    ServeController.record_autoscaling_metrics_from_replica(
-        s, compress_metric_report(_replica_report())
-    )
-    asm = s.autoscaling_state_manager
-    asm.record_columnar_metrics_for_replica.assert_not_called()
-    asm.record_request_metrics_for_replica.assert_called_once()
-
-
 # ---------------------------- handle -----------------------------
 def test_handle_columnar_aggregate_uses_fast_store(monkeypatch):
     _set_mode(monkeypatch, aggregate=True)

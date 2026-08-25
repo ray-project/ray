@@ -5,7 +5,6 @@ can BOTH hold data: the controller wire-detects the format from the frame magic.
 aggregation must count both, never double-count, and be exact for every aggregation
 function.
 """
-import random
 import sys
 
 import pytest
@@ -54,78 +53,6 @@ def _replica_report(i, rng):
         metrics={RUNNING_REQUESTS_KEY: series},
         timestamp=NOW,
     )
-
-
-@pytest.mark.parametrize(
-    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
-)
-def test_mixed_rollout_equals_all_object(agg, monkeypatch):
-    """B: a fleet split across columnar + cloudpickle stores totals the SAME as
-    all-cloudpickle -- no drop, and exact for every aggregation function (the additive
-    sum of two separate aggregations would be wrong for MAX/MIN)."""
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
-    rng = random.Random(7)
-    for _ in range(200):
-        n = rng.randint(2, 6)
-        reports = [_replica_report(i, rng) for i in range(n)]
-        running = {r.replica_id for r in reports}
-        ref = _state(agg)
-        for r in reports:
-            ref._replica_metrics[r.replica_id] = r
-        ref._running_replicas = running
-        ref_total = ref._calculate_total_requests_aggregate_mode()
-        mix = _state(agg)
-        k = rng.randint(1, n - 1)
-        for r in reports[:k]:
-            mix._replica_metrics[r.replica_id] = r
-        for r in reports[k:]:
-            rid, ts, val, t = codec.decode_replica_running_requests(codec.encode(r))
-            mix._replica_running_arrays[rid] = (ts, val, t)
-        mix._running_replicas = running
-        assert abs(ref_total - mix._calculate_total_requests_aggregate_mode()) < 1e-9
-
-
-def test_columnar_counted_by_wire_detection(monkeypatch):
-    """E: columnar arrays are aggregated whenever present -- the aggregation path does
-    not depend on how the report was produced, so the controller counts columnar frames
-    purely by wire-detecting them."""
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
-    rng = random.Random(3)
-    reports = [_replica_report(i, rng) for i in range(4)]
-    st = _state()
-    for r in reports:
-        rid, ts, val, t = codec.decode_replica_running_requests(codec.encode(r))
-        st._replica_running_arrays[rid] = (ts, val, t)
-    st._running_replicas = {r.replica_id for r in reports}
-    assert st._replica_metrics == {}
-    assert st._calculate_total_requests_aggregate_mode() > 0.0
-
-
-def test_dedup_at_write_replica(monkeypatch):
-    """B: a replica that switches wire format lives in exactly one store (no double)."""
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
-    st = _state()
-    r = _replica_report(0, random.Random(1))
-    st.record_request_metrics_for_replica(r)
-    assert r.replica_id in st._replica_metrics
-    nxt = ReplicaMetricReport(
-        replica_id=r.replica_id,
-        metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(NOW, 5.0)]},
-        timestamp=NOW + 1,
-    )
-    rid, ma, t = codec.decode_replica_all_metrics(codec.encode(nxt))
-    st.record_columnar_metrics_for_replica(rid, ma, t)
-    assert rid not in st._replica_metrics  # object entry cleared
-    assert rid in st._replica_running_arrays
-    st.record_request_metrics_for_replica(
-        ReplicaMetricReport(
-            replica_id=r.replica_id,
-            metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(NOW, 5.0)]},
-            timestamp=NOW + 2,
-        )
-    )
-    assert rid not in st._replica_running_arrays  # array entry cleared
-    assert r.replica_id in st._replica_metrics
 
 
 def _handle_report(hid, queued):
@@ -192,68 +119,6 @@ def _handle_report_running(hid, replica_str, running, queued):
         metrics={RUNNING_REQUESTS_KEY: {replica_str: running}},
         timestamp=NOW,
     )
-
-
-@pytest.mark.parametrize(
-    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
-)
-def test_stale_replica_arrays_do_not_suppress_handle_running(agg, monkeypatch):
-    """Regression (@cursor): _columnar_aggregate_total_requests must gate the replica
-    branch on whether a RUNNING replica reported, NOT on _replica_running_arrays being
-    non-empty. A dict holding only a stale stopped-replica entry (populated until
-    on_replica_stopped clears it) must fall through to the handle-running path exactly
-    as the object path does -- otherwise handle-collected running metrics are dropped
-    and the total collapses to queued-only.
-
-    Fleet: one RUNNING replica whose running is reported ON A HANDLE (handle collection)
-    plus one STOPPED replica whose columnar running array still lingers. The columnar
-    total must equal its all-cloudpickle twin for every aggregation function.
-    """
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
-    live = ReplicaID("r_live", DEP)
-    stale = ReplicaID("r_stale", DEP)
-    live_str = live.to_full_id_str()
-    running = [TimeStampedValue(NOW - 6, 4.0), TimeStampedValue(NOW, 6.0)]
-    queued = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 3.0)]
-    handle = _handle_report_running("h0", live_str, running, queued)
-    # Stale stopped replica: large values that MUST be ignored (it is not running).
-    stale_rep = ReplicaMetricReport(
-        replica_id=stale,
-        metrics={
-            RUNNING_REQUESTS_KEY: [
-                TimeStampedValue(NOW - 6, 99.0),
-                TimeStampedValue(NOW, 99.0),
-            ]
-        },
-        timestamp=NOW,
-    )
-
-    # Object twin (reference): handle + stale replica in the cloudpickle stores.
-    ref = _state(agg)
-    ref._handle_requests["h0"] = handle
-    ref._replica_metrics[stale] = stale_rep
-    ref._running_replicas = {live}
-    ref._cached_running_replica_strs = {live_str}
-    ref_total = ref._calculate_total_requests_aggregate_mode()
-
-    # Columnar fleet: handle running via columnar arrays; the stale replica's columnar
-    # array lingers in _replica_running_arrays (never cleared -> dict stays non-empty).
-    mix = _state(agg)
-    mix.record_columnar_metrics_for_handle(
-        codec.decode_handle_flat(codec.encode(handle))
-    )
-    rid, ts, val, t = codec.decode_replica_running_requests(codec.encode(stale_rep))
-    mix._replica_running_arrays[rid] = (ts, val, t)
-    mix._running_replicas = {live}
-    mix._cached_running_replica_strs = {live_str}
-    assert mix._replica_running_arrays  # non-empty dict == the buggy gate's trigger
-    assert rid not in mix._running_replicas  # ...but its only entry is not running
-    mix_total = mix._calculate_total_requests_aggregate_mode()
-
-    # Pre-fix this collapsed to queued-only (handle running dropped); post-fix it
-    # matches the object twin exactly for MEAN/MAX/MIN.
-    assert mix_total > 0.0
-    assert abs(ref_total - mix_total) < 1e-9
 
 
 @pytest.mark.parametrize(

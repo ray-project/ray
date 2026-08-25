@@ -22,7 +22,7 @@ import json
 import logging
 import struct
 import zlib
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 try:
     import numpy as np
@@ -33,8 +33,6 @@ from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
-    ReplicaID,
-    ReplicaMetricReport,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS,
@@ -103,15 +101,11 @@ def _flatten_series(series_list):
 # ---------------------------------------------------------------------------
 # encode
 # ---------------------------------------------------------------------------
-def encode(report: Union[HandleMetricReport, ReplicaMetricReport]) -> bytes:
-    if isinstance(report, HandleMetricReport):
-        return _encode_handle(report)
-    return _encode_replica(report)
+def encode(report: HandleMetricReport) -> bytes:
+    return _encode_handle(report)
 
 
-def should_encode_columnar(
-    report: Union[HandleMetricReport, ReplicaMetricReport]
-) -> bool:
+def should_encode_columnar(report: HandleMetricReport) -> bool:
     """Whether a producer should serialize this report columnar (vs Python objects).
 
     Format is chosen by report TYPE and self-identifies on the wire (see is_columnar),
@@ -230,41 +224,6 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
     return _frame(header, blob)
 
 
-def _encode_replica(rep: ReplicaMetricReport) -> bytes:
-    metric_names = list(rep.metrics.keys())
-    mi = {m: i for i, m in enumerate(metric_names)}
-    entries, series_list = [], []
-    for m in metric_names:
-        series = rep.metrics[m]
-        entries.append((mi[m], 0, len(series)))
-        series_list.append(series)
-    ts, val, _ = _flatten_series(series_list)
-    off = 0
-    for i, (a, _o, n) in enumerate(entries):
-        entries[i] = (a, off, n)
-        off += n
-    arrays = {
-        "entries": (
-            np.array(entries, dtype="<i8") if entries else np.zeros((0, 3), "<i8")
-        ).reshape(-1, 3),
-        "ts": np.array(ts, dtype="<f8"),
-        "val": np.array(val, dtype="<f8"),
-    }
-    descriptors, blob = _pack(arrays)
-    header = {
-        "type": "replica",
-        "replica_unique_id": rep.replica_id.unique_id,
-        "deployment": [
-            rep.replica_id.deployment_id.name,
-            rep.replica_id.deployment_id.app_name,
-        ],
-        "timestamp": rep.timestamp,
-        "metric_names": metric_names,
-        "arrays": descriptors,
-    }
-    return _frame(header, blob)
-
-
 def _frame(header: dict, blob: bytes) -> bytes:
     hb = json.dumps(header).encode()
     # level=1: metric reports are serialized on the producer hot path (per
@@ -319,46 +278,6 @@ def decode(buf: bytes) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # round-trip self-test (TimeStampedValue.value is compare=False, so compare deeply)
 # ---------------------------------------------------------------------------
-def _series_eq(a, b):
-    return len(a) == len(b) and all(
-        x.timestamp == y.timestamp and x.value == y.value for x, y in zip(a, b)
-    )
-
-
-def decode_replica_running_requests(payload, metric_name=RUNNING_REQUESTS_KEY):
-    """For a REPLICA columnar payload, return (replica_id, ts_arr, val_arr, timestamp)
-    for the given metric -- zero-copy arrays, no per-point objects."""
-    view = decode(payload)
-    h = view["header"]
-    dep = DeploymentID(h["deployment"][0], h["deployment"][1])
-    replica_id = ReplicaID(h["replica_unique_id"], dep)
-    ts_arr, val_arr = view["ts"][:0], view["val"][:0]
-    names = h["metric_names"]
-    if metric_name in names:
-        mi = names.index(metric_name)
-        for row in view["entries"]:
-            if int(row[0]) == mi:
-                off, n = int(row[1]), int(row[2])
-                ts_arr, val_arr = view["ts"][off : off + n], view["val"][off : off + n]
-                break
-    return replica_id, ts_arr, val_arr, h["timestamp"]
-
-
-def decode_replica_all_metrics(payload):
-    """For a REPLICA columnar payload, return (replica_id, {metric_name: (ts, val)},
-    timestamp) for ALL metrics -- zero-copy arrays, no per-point objects. Carries
-    custom autoscaling metrics through the columnar path, not just running_requests."""
-    view = decode(payload)
-    h = view["header"]
-    dep = DeploymentID(h["deployment"][0], h["deployment"][1])
-    replica_id = ReplicaID(h["replica_unique_id"], dep)
-    names = h["metric_names"]
-    ts_all, val_all = view["ts"], view["val"]
-    metric_arrays = {}
-    for row in view["entries"]:
-        mi, off, n = int(row[0]), int(row[1]), int(row[2])
-        metric_arrays[names[mi]] = (ts_all[off : off + n], val_all[off : off + n])
-    return replica_id, metric_arrays, h["timestamp"]
 
 
 def decode_handle_flat(payload):

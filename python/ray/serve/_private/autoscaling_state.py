@@ -25,7 +25,6 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TargetCapacityDirection,
     TimeSeries,
-    TimeStampedValue,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
@@ -88,10 +87,8 @@ class DeploymentAutoscalingState:
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
         # Columnar per-replica running-requests arrays (wire-detected; producers
         # choose the format via should_encode_columnar).
-        self._replica_running_arrays: Dict[ReplicaID, tuple] = dict()
         # Non-running columnar metrics per replica (custom autoscaling metrics):
         # replica_id -> {metric_name: (ts_arr, val_arr)}.
-        self._replica_custom_arrays: Dict[ReplicaID, Dict[str, tuple]] = dict()
         # Unified per-replica "last accepted report timestamp" across BOTH wire formats.
         # Gates the object AND columnar ingest paths so a delayed report in either format
         # can't overwrite fresher data the other wrote. Cleared only on replica stop --
@@ -214,8 +211,6 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
-        self._replica_running_arrays.pop(replica_id, None)
-        self._replica_custom_arrays.pop(replica_id, None)
         self._replica_report_ts.pop(replica_id, None)
 
     def get_num_replicas_lower_bound(self) -> int:
@@ -293,67 +288,17 @@ class DeploymentAutoscalingState:
             self._replica_report_ts[replica_id] = send_timestamp
             # dedup-at-write: this source now reports via cloudpickle; drop any
             # columnar entries so the stores never double-count it.
-            self._replica_running_arrays.pop(replica_id, None)
-            self._replica_custom_arrays.pop(replica_id, None)
-
-    def record_columnar_metrics_for_replica(
-        self, replica_id, metric_arrays, timestamp
-    ) -> None:
-        """Store columnar per-metric arrays for a replica (no per-point objects).
-        running_requests feeds the hot-path store; any other metrics feed the custom
-        store used by custom autoscaling policies (the columnar decode is lossless)."""
-        prev_ts = self._replica_report_ts.get(replica_id)
-        if prev_ts is not None and timestamp <= prev_ts:
-            return
-        self._replica_report_ts[replica_id] = timestamp
-        running = metric_arrays.get(RUNNING_REQUESTS_KEY)
-        if running is not None:
-            self._replica_running_arrays[replica_id] = (
-                running[0],
-                running[1],
-                timestamp,
-            )
-        else:
-            # A newer report that omits running_requests must drop the stale running
-            # timeseries -- the object path replaces the whole report, so missing
-            # running stops contributing there too.
-            self._replica_running_arrays.pop(replica_id, None)
-        custom = {m: a for m, a in metric_arrays.items() if m != RUNNING_REQUESTS_KEY}
-        if custom:
-            self._replica_custom_arrays[replica_id] = custom
-        else:
-            self._replica_custom_arrays.pop(replica_id, None)
-        # dedup-at-write: drop any cloudpickle entry for this source.
-        self._replica_metrics.pop(replica_id, None)
 
     def _columnar_aggregate_total_requests(self) -> float:
         """Aggregate-mode total over pure-columnar stores: replica (direct-ingress)
         running arrays when a RUNNING replica reported, else handle running arrays,
         plus queued -- one fused numpy merge (no per-replica Python objects)."""
-        # Gate on whether a RUNNING replica actually reported, NOT on the store being
-        # non-empty: a lingering stopped-replica array (before on_replica_stopped
-        # clears it) must fall through to handle-running exactly like the object
-        # path, else handle-collected running is dropped (total reads queued-only).
-        replica_segments = self._replica_columnar_segments()
-        if replica_segments:
-            return self._aggregate_segments(
-                replica_segments + self._queued_columnar_segments()
-            )
         if not self._handle_arrays:
             return 0.0
         return self._aggregate_segments(
             self._handle_running_columnar_segments(self._cached_running_replica_strs)
             + self._queued_columnar_segments()
         )
-
-    def _replica_columnar_segments(self):
-        """RUNNING replicas' columnar running-request arrays as (ts, val) segments."""
-        segs = []
-        for replica_id in self._running_replicas:
-            a = self._replica_running_arrays.get(replica_id)
-            if a is not None and a[0].size:
-                segs.append((a[0], a[1]))
-        return segs
 
     def _queued_columnar_segments(self):
         """Columnar per-handle queued arrays as (ts, val) segments."""
@@ -811,7 +756,7 @@ class DeploymentAutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
-        has_columnar = bool(self._replica_running_arrays or self._handle_arrays)
+        has_columnar = bool(self._handle_arrays)
         has_object = bool(self._replica_metrics or self._handle_requests)
         # Homogeneous fleets keep their native fast path. Columnar arrays are used
         # whenever present -- the controller wire-detects the format from the frame
@@ -862,8 +807,7 @@ class DeploymentAutoscalingState:
         are converted to small arrays. Empty object series are dropped so they
         cannot flip metrics_collected_on_replicas and suppress handle-side running
         (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
-        segments = self._replica_columnar_segments()
-        segments += self._series_segments(self._collect_replica_running_requests())
+        segments = self._series_segments(self._collect_replica_running_requests())
         metrics_collected_on_replicas = bool(segments)
         if not metrics_collected_on_replicas:
             segments += self._handle_running_columnar_segments(
@@ -931,8 +875,6 @@ class DeploymentAutoscalingState:
             Dict mapping metric name to dict of replica ID to aggregated metric value.
         """
         aggregated_metrics: Dict[str, Dict[ReplicaID, float]] = defaultdict(dict)
-        now = time.time()
-        agg = self._config.aggregation_function
         for replica_id in self._running_replicas:
             # A replica is in the object store OR the columnar stores (dedup-at-write).
             replica_metric_report = self._replica_metrics.get(replica_id)
@@ -942,18 +884,6 @@ class DeploymentAutoscalingState:
                         replica_id
                     ] = self._merge_and_aggregate_timeseries([timeseries])
                 continue
-            running = self._replica_running_arrays.get(replica_id)
-            if running is not None and running[0].size:
-                aggregated_metrics[RUNNING_REQUESTS_KEY][
-                    replica_id
-                ] = self._aggregate_single_array(running[0], running[1], now, agg)
-            custom = self._replica_custom_arrays.get(replica_id)
-            if custom:
-                for metric_name, (ts, val) in custom.items():
-                    if ts.size:
-                        aggregated_metrics[metric_name][
-                            replica_id
-                        ] = self._aggregate_single_array(ts, val, now, agg)
         return dict(aggregated_metrics)
 
     def _get_raw_custom_metrics(
@@ -971,19 +901,6 @@ class DeploymentAutoscalingState:
                 for metric_name, timeseries in replica_metric_report.metrics.items():
                     raw_metrics[metric_name][replica_id] = timeseries
                 continue
-            running = self._replica_running_arrays.get(replica_id)
-            if running is not None and running[0].size:
-                raw_metrics[RUNNING_REQUESTS_KEY][replica_id] = [
-                    TimeStampedValue(float(running[0][k]), float(running[1][k]))
-                    for k in range(running[0].size)
-                ]
-            custom = self._replica_custom_arrays.get(replica_id)
-            if custom:
-                for metric_name, (ts, val) in custom.items():
-                    raw_metrics[metric_name][replica_id] = [
-                        TimeStampedValue(float(ts[k]), float(val[k]))
-                        for k in range(ts.size)
-                    ]
         return dict(raw_metrics)
 
 
@@ -1236,15 +1153,6 @@ class ApplicationAutoscalingState:
                 dep_id
             ].record_request_metrics_for_replica(replica_metric_report)
 
-    def record_columnar_metrics_for_replica(
-        self, replica_id, metric_arrays, timestamp
-    ) -> None:
-        dep_id = replica_id.deployment_id
-        if dep_id in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[
-                dep_id
-            ].record_columnar_metrics_for_replica(replica_id, metric_arrays, timestamp)
-
     def record_request_metrics_for_handle(
         self, handle_metric_report: HandleMetricReport
     ):
@@ -1440,15 +1348,6 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_replica(replica_metric_report)
-
-    def record_columnar_metrics_for_replica(
-        self, replica_id, metric_arrays, timestamp
-    ) -> None:
-        app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
-        if app_state:
-            app_state.record_columnar_metrics_for_replica(
-                replica_id, metric_arrays, timestamp
-            )
 
     def record_request_metrics_for_handle(
         self,
