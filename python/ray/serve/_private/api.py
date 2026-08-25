@@ -111,16 +111,13 @@ def _requested_proxy_location(
 ) -> Optional[ProxyLocation]:
     """The placement the caller asked for, or None if they didn't ask.
 
-    The deprecated `HTTPOptions.location` wins over `proxy_location`, matching how
-    the controller resolves placement.
+    `HTTPOptions.location` wins over `proxy_location`, matching how the controller
+    resolves placement. It is read whether or not the caller set it, because
+    `host=None` backfills it to Disabled and that is what startup resolves to.
     """
-    location = None
     if isinstance(http_options, dict):
-        location = http_options.get("location")
-    elif isinstance(http_options, HTTPOptions) and (
-        "location" in http_options.model_fields_set
-    ):
-        location = http_options.location
+        http_options = HTTPOptions.model_validate(http_options)
+    location = http_options.location if isinstance(http_options, HTTPOptions) else None
 
     return ProxyLocation._normalize(
         location if location is not None else proxy_location

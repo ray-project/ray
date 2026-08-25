@@ -191,6 +191,25 @@ def test_proxy_location():
         _check_start_time_config_unchanged(client, proxy_location="EveryNode")
 
 
+def test_host_none_requests_disabled_placement():
+    """`host=None` backfills location=Disabled without recording it as set.
+
+    Startup resolves that to Disabled, so re-issuing the same call must not read as
+    a request to change placement to whatever `proxy_location` says.
+    """
+    client = fake_client(HTTPOptions(host=None), proxy_location=ProxyLocation.Disabled)
+    _check_start_time_config_unchanged(
+        client, http_options={"host": None}, proxy_location="EveryNode"
+    )
+    _check_start_time_config_unchanged(
+        client, http_options=HTTPOptions(host=None), proxy_location="EveryNode"
+    )
+
+    # Asking for a placement without disabling the server is still a real change.
+    with pytest.raises(RayServeConfigException, match="proxy_location"):
+        _check_start_time_config_unchanged(client, proxy_location="EveryNode")
+
+
 def test_deprecated_location_is_compared_against_resolved_placement():
     """`HTTPOptions.location` is an alias for `proxy_location` and wins over it."""
     client = fake_client(proxy_location=ProxyLocation.HeadOnly)
