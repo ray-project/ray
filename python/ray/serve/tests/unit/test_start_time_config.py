@@ -9,6 +9,7 @@ from ray.serve._private.api import (
 )
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
 from ray.serve._private.http_util import configure_http_options_with_defaults
+from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeDeploySchema
@@ -86,17 +87,30 @@ def test_full_schema_dump_is_not_a_change():
 
 
 def test_declarative_config_reports_only_what_it_declared():
-    """A config that omits a section must not request that section's defaults.
+    """A config that omits a section must not request that section's defaults."""
+    client = fake_client(HTTPOptions(port=8001))
+    config = ServeDeploySchema.model_validate({"applications": []})
+    _check_start_time_config_unchanged(client, **declared_start_time_options(config))
+
+    # The full dump is what the same paths pass to *start* Serve, and it does differ.
+    with pytest.raises(RayServeConfigException, match=r"http_options\.port"):
+        _check_start_time_config_unchanged(
+            client, http_options=config.http_options.model_dump()
+        )
+
+
+@skip_if_haproxy("HAProxy mode defaults host to all interfaces, as the schema does")
+def test_schema_and_internal_host_defaults_diverge():
+    """The divergence that makes the full dump reject an untouched config.
 
     `HTTPOptionsSchema.host` defaults to 0.0.0.0 while `HTTPOptions.host` defaults
-    to the loopback, so diffing the full dump rejects every declarative apply to a
-    Serve instance that was started from Python.
+    to the loopback, so a config with no http_options rejects every declarative
+    apply to a Serve instance started from Python.
     """
     client = fake_client()
     config = ServeDeploySchema.model_validate({"applications": []})
     _check_start_time_config_unchanged(client, **declared_start_time_options(config))
 
-    # The full dump is what the same paths pass to *start* Serve, and it does differ.
     with pytest.raises(RayServeConfigException, match=r"http_options\.host"):
         _check_start_time_config_unchanged(
             client, http_options=config.http_options.model_dump()
