@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import sys
 import time
 
 import ray
@@ -24,6 +25,21 @@ from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 logger = logging.getLogger(__name__)
 
 BACKOFF_S = 5
+
+
+class _MaxLevelFilter(logging.Filter):
+    """Filter that passes only records below a given level.
+
+    Args:
+        level: Records at or above this level are dropped.
+    """
+
+    def __init__(self, level: int):
+        super().__init__()
+        self._level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno < self._level
 
 
 def _get_log_dir(gcs_client: GcsClient) -> str:
@@ -130,14 +146,31 @@ def _setup_logging(log_dir: str) -> None:
         backup_count=backup_count,
     )
 
-    # For the autoscaler, the root logger _also_ needs to write to stderr, not just
-    # ray_constants.MONITOR_LOG_FILE_NAME.
+    # For the autoscaler, the root logger _also_ needs to write to the container's
+    # stdout/stderr, not just ray_constants.MONITOR_LOG_FILE_NAME.
+    #
+    # Route by severity: sub-WARNING records go to stdout and WARNING and above go
+    # to stderr. Container runtimes tag each log line with a severity derived from
+    # the stream it arrived on, so emitting INFO on stderr makes every autoscaler
+    # log line show up as an error in log collectors.
     level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
-    stderr_handler = logging._StderrHandler()
-    stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
-    stderr_handler.setLevel(level)
-    logging.root.setLevel(level)
-    logging.root.addHandler(stderr_handler)
+    formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
 
-    # The stdout handler was set up in the Ray CLI entry point.
-    # See ray.scripts.scripts::cli().
+    # The KubeRay entry point does not redirect stdout after logging setup.
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    stdout_handler.setLevel(level)
+    stdout_handler.addFilter(_MaxLevelFilter(logging.WARNING))
+
+    stderr_handler = logging._StderrHandler()
+    stderr_handler.setFormatter(formatter)
+    stderr_handler.setLevel(level)
+    # Floor stderr at WARNING, but keep a stricter LOGGER_LEVEL (e.g. "error"). The level
+    # is read back rather than reusing `level` because getLevelName() returns a string
+    # like "Level FOO" for names it does not recognize; setLevel is what rejects those,
+    # raising ValueError as this function has always done for an invalid LOGGER_LEVEL.
+    stderr_handler.setLevel(max(stderr_handler.level, logging.WARNING))
+
+    logging.root.setLevel(level)
+    logging.root.addHandler(stdout_handler)
+    logging.root.addHandler(stderr_handler)
