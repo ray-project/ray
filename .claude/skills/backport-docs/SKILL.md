@@ -17,7 +17,7 @@ that started as a fork. Don't assume.
 ## 1. Find the release branch that `/latest` serves
 
 ```bash
-git ls-remote --heads <remote> 'refs/heads/releases/*' | sort -t/ -k3 -V | tail -5
+git ls-remote --heads <remote> 'refs/heads/releases/*' | sort -t/ -k4 -V | tail -5
 ```
 
 The highest `releases/X.Y.Z` version is what `/latest` tracks. Fetch it:
@@ -97,8 +97,8 @@ the build. For every file the backport changed:
 - **Cross-references resolve on the branch.** Collect the `{ref}` and `{doc}`
   targets and confirm each label exists:
   ```bash
-  git grep -nE "^\(<label>\)=" -- 'doc/source/**'   # MyST label
-  git grep -nE "^\.\. _<label>:" -- 'doc/source/**'  # rST label
+  git grep -nE "^\(<label>\)=" -- 'doc/source/'   # MyST label
+  git grep -nE "^\.\. _<label>:" -- 'doc/source/'  # rST label
   ```
 - **New toctree entries point at files that exist** on the branch.
 - Sanity-check that each changed file matches master except for the hunks you

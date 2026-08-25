@@ -451,7 +451,7 @@ If a merged docs change should be live on the released version — for example, 
 
 - Base the PR on `releases/X.Y.Z` and title it `[cherry-pick][X.Y.Z][docs] ...` to match the branch's convention.
 - Apply the commits with `git cherry-pick -x --signoff` to preserve provenance and the required DCO sign-off.
-- Before you start, check that the change isn't already backported under a different commit (`git log --oneline releases/X.Y.Z --grep "#<PR>)"`) and that no cherry-pick PR is already open against the branch.
+- Before you start, check that the change isn't already backported under a different commit (`git log --oneline <remote>/releases/X.Y.Z --grep "#<PR>)"`) and that no cherry-pick PR is already open against the branch.
 
 If you use Claude Code, the `/backport-docs` skill walks through this end to end, including the build-safety checks. See {ref}`agent-development`.
 
