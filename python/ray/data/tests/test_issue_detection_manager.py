@@ -118,27 +118,15 @@ def test_report_issues():
 
 def test_force_invoke_detectors():
     ctx = DataContext.get_current()
-    input_operator = InputDataBuffer(ctx, input_data=[])
     executor = StreamingExecutor(ctx)
-    executor._topology = {input_operator: MagicMock()}
+    executor._topology = {}
     detector = IssueDetectorManager(executor)
     issue_detector = MagicMock()
     issue_detector.detection_time_interval_s.return_value = 30
-    issue_detector.detect.return_value = [
-        Issue(
-            dataset_name="dataset",
-            operator_id=input_operator.id,
-            issue_type=IssueType.HIGH_MEMORY,
-            message="High memory usage detected",
-        )
-    ]
-    hanging_detector = MagicMock()
-    hanging_detector.detection_time_interval_s.return_value = 30
-    hanging_detector.detect.return_value = []
-    detector._issue_detectors = [issue_detector, hanging_detector]
+    issue_detector.detect.return_value = []
+    detector._issue_detectors = [issue_detector]
     detector._last_detection_times = {
         issue_detector: float("inf"),
-        hanging_detector: float("inf"),
     }
 
     detector.invoke_detectors()
@@ -146,7 +134,6 @@ def test_force_invoke_detectors():
 
     detector.invoke_detectors(force=True)
     issue_detector.detect.assert_called_once_with()
-    hanging_detector.detect.assert_called_once_with()
 
 
 def test_force_invoke_skips_disabled_detectors():

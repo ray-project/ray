@@ -1,7 +1,7 @@
 import math
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -36,10 +36,10 @@ or disable the warning by setting value to -1. (current value:
 
 HIGH_MEMORY_FINAL_WARNING = """
 Operator '{op_name}' used up to {max_memory} of memory per worker.
-{memory_configuration} To avoid out-of-memory errors, set
+The configured logical memory was {memory_configuration}. To avoid out-of-memory errors, set
 `memory={recommended_memory_bytes}` ({recommended_memory}) in the appropriate
 function or method call.
-"""
+"""  # noqa: E501
 
 
 @dataclass
@@ -56,6 +56,7 @@ class HighMemoryIssueDetector(IssueDetector):
     ):
         self._dataset_id = dataset_id
         self._detector_cfg = config
+        self._operators = operators
         self._completion_checked_operators: Set[MapOperator] = set()
 
         self._initial_memory_requests: Dict[MapOperator, Optional[int]] = {}
@@ -85,12 +86,13 @@ class HighMemoryIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
         issues = []
-        for op, memory_request in self._initial_memory_requests.items():
-            if op.has_completed():
-                if op in self._completion_checked_operators:
-                    continue
-                self._completion_checked_operators.add(op)
-                issue = self._detect_issue_on_operator_completion(op, memory_request)
+        for op in self._operators:
+            if not isinstance(op, MapOperator):
+                continue
+
+            memory_request = self._initial_memory_requests[op]
+            if op.is_shut_down() or op.has_completed():
+                issue = self._detect_issue_from_final_metrics(op, memory_request)
                 if issue is not None:
                     issues.append(issue)
                 continue
@@ -128,9 +130,12 @@ class HighMemoryIssueDetector(IssueDetector):
 
         return issues
 
-    def _detect_issue_on_operator_completion(
+    def _detect_issue_from_final_metrics(
         self, op: MapOperator, memory_request: Optional[int]
     ) -> Optional[Issue]:
+        if op in self._completion_checked_operators:
+            return None
+        self._completion_checked_operators.add(op)
         if memory_request is None:
             return None
 
@@ -138,18 +143,14 @@ class HighMemoryIssueDetector(IssueDetector):
         if max_uss_bytes is None:
             return None
 
-        max_uss_bytes = int(max_uss_bytes)
         recommended_memory = _get_recommended_memory(max_uss_bytes)
         if recommended_memory <= memory_request:
             return None
 
-        memory_configuration = (
-            f"The configured logical memory was {memory_string(memory_request)}."
-        )
         message = HIGH_MEMORY_FINAL_WARNING.format(
             op_name=op.name,
             max_memory=memory_string(max_uss_bytes),
-            memory_configuration=memory_configuration,
+            memory_configuration=memory_string(memory_request),
             recommended_memory=memory_string(recommended_memory),
             recommended_memory_bytes=recommended_memory,
         )
@@ -164,9 +165,8 @@ class HighMemoryIssueDetector(IssueDetector):
         return self._detector_cfg.detection_time_interval_s
 
 
-def _get_recommended_memory(memory_usage: Union[int, float]) -> int:
-    if isinstance(memory_usage, int):
-        return (5 * memory_usage + 3) // 4
+def _get_recommended_memory(memory_usage: float) -> int:
+    # Add 25% headroom to the observed memory usage.
     return math.ceil(5 * memory_usage / 4)
 
 

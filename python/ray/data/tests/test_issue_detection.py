@@ -14,6 +14,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
+from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -25,6 +26,10 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
     DEFAULT_OP_TASK_STATS_STD_FACTOR,
     HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
+)
+from ray.data._internal.issue_detection.detectors.hash_shuffle_detector import (
+    HashShuffleAggregatorIssueDetector,
+    HashShuffleAggregatorIssueDetectorConfig,
 )
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
@@ -201,6 +206,21 @@ class TestHangingExecutionIssueDetector:
         assert "has been running or stuck in scheduling for" in issues[0].message
         assert "longer than the average task duration" in issues[0].message
 
+        with patch.object(type(op), "is_shut_down", return_value=True):
+            assert detector.detect() == []
+
+
+def test_hash_shuffle_detector_skips_shutdown_operator():
+    hash_shuffle_operator = MagicMock(spec=HashShuffleOperator)
+    hash_shuffle_operator.is_shut_down.return_value = True
+    hash_shuffle_detector = HashShuffleAggregatorIssueDetector(
+        dataset_id="id",
+        operators=[hash_shuffle_operator],
+        config=HashShuffleAggregatorIssueDetectorConfig(),
+    )
+
+    assert hash_shuffle_detector.detect() == []
+
 
 @pytest.mark.parametrize(
     "configured_memory, actual_memory, should_return_issue",
@@ -246,27 +266,28 @@ def test_high_memory_detection(
 
 
 @pytest.mark.parametrize(
-    "configured_memory, max_memory, expected_memory_configuration, expected_memory",
+    "configured_memory, max_memory, expected_memory_configuration, expected_memory, operator_termination",
     [
-        (10 * GiB, 8 * GiB, None, None),
+        (10 * GiB, 8 * GiB, None, None, "completed"),
         (
             10 * GiB - 1,
             8 * GiB,
             "The configured logical memory was 10.0GiB.",
             10 * GiB,
+            "completed",
         ),
-        (None, 8 * GiB, None, None),
-        (None, 1 * GiB, None, None),
-        (0, 1, "The configured logical memory was 0.0B.", 2),
-        (1, 1, "The configured logical memory was 1.0B.", 2),
-        (None, None, None, None),
+        (None, 8 * GiB, None, None, "completed"),
+        (0, 1, "The configured logical memory was 0.0B.", 2, "completed"),
+        (1, None, None, None, "completed"),
+        (1, 1, "The configured logical memory was 1.0B.", 2, "shutdown"),
     ],
 )
-def test_high_memory_detection_on_operator_completion(
+def test_high_memory_detection_on_operator_termination(
     configured_memory,
     max_memory,
     expected_memory_configuration,
     expected_memory,
+    operator_termination,
     restore_data_context,
 ):
     ctx = DataContext.get_current()
@@ -278,8 +299,12 @@ def test_high_memory_detection_on_operator_completion(
         ray_remote_args={"memory": configured_memory},
     )
     if max_memory is not None:
+        map_operator.metrics.max_uss_bytes.add_sample(max_memory // 2)
         map_operator.metrics.max_uss_bytes.add_sample(max_memory)
-    map_operator.has_completed = MagicMock(return_value=True)
+    if operator_termination == "completed":
+        map_operator.has_completed = MagicMock(return_value=True)
+    else:
+        map_operator.is_shut_down = MagicMock(return_value=True)
 
     detector = HighMemoryIssueDetector(
         dataset_id="id",
