@@ -360,6 +360,105 @@ def extract_tar_layer(
             pass
 
 
+_IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+_KEEP_IMAGE_TARBALL_ENV = "RAY_SANDBOX_KEEP_IMAGE_TARBALL"
+_USERS_DIRNAME = ".users"
+
+
+def mark_image_in_use(image_dir: str, instance_id: str) -> None:
+    """Record that a live sandbox uses this cached image (blocks eviction).
+
+    Args:
+        image_dir: The image's cache directory.
+        instance_id: The sandbox instance using it.
+    """
+    try:
+        users_dir = os.path.join(image_dir, _USERS_DIRNAME)
+        os.makedirs(users_dir, exist_ok=True)
+        with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
+            pass
+    except OSError:
+        pass
+
+
+def release_image_use(image_dir: str, instance_id: str) -> None:
+    """Drop a sandbox's in-use record for a cached image.
+
+    Args:
+        image_dir: The image's cache directory.
+        instance_id: The sandbox instance releasing it.
+    """
+    try:
+        os.remove(os.path.join(image_dir, _USERS_DIRNAME, instance_id))
+    except OSError:
+        pass
+
+
+def _dir_size_bytes(path: str) -> int:
+    total = 0
+    for dirpath, _, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def evict_images_over_cap(images_dir: str, max_bytes: int) -> None:
+    """Evict least-recently-extracted images until the cache fits the cap.
+
+    Sandbox images are large (a rootfs per image), nodes cache every image
+    they ever ran, and nothing else reclaims the space — a long-lived node
+    eventually fills its disk, which takes down far more than sandboxes.
+    Called before each new pull when ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES``
+    is set.
+
+    Safety: only images with an ``.extracted`` marker, no live users
+    (``mark_image_in_use``), and whose per-image lock can be taken without
+    blocking are candidates; candidates are removed oldest-first.
+
+    Args:
+        images_dir: Root image cache directory.
+        max_bytes: The cache size cap in bytes.
+    """
+    try:
+        entries = []
+        for name in os.listdir(images_dir):
+            img_dir = os.path.join(images_dir, name)
+            marker = os.path.join(img_dir, ".extracted")
+            if not (os.path.isdir(img_dir) and os.path.exists(marker)):
+                continue
+            entries.append((os.path.getmtime(marker), name, img_dir))
+    except OSError:
+        return
+
+    total = sum(_dir_size_bytes(img_dir) for _, _, img_dir in entries)
+    for _, name, img_dir in sorted(entries):
+        if total <= max_bytes:
+            return
+        users_dir = os.path.join(img_dir, _USERS_DIRNAME)
+        try:
+            if os.path.isdir(users_dir) and os.listdir(users_dir):
+                continue
+        except OSError:
+            continue
+        lock_path = os.path.join(images_dir, f"{name}.lock")
+        try:
+            with open(lock_path, "w", encoding="utf-8") as f_lock:
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                size = _dir_size_bytes(img_dir)
+                shutil.rmtree(img_dir, ignore_errors=True)
+                tar_path = os.path.join(images_dir, f"{name}.tar")
+                if os.path.exists(tar_path):
+                    size += os.path.getsize(tar_path)
+                    os.remove(tar_path)
+                total -= size
+                logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+        except OSError:
+            continue
+
+
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
@@ -381,6 +480,10 @@ def pull_and_extract_container_image(
         raise SandboxCreationError(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
+
+    max_cache = int(os.environ.get(_IMAGE_CACHE_MAX_BYTES_ENV, "0") or "0")
+    if max_cache > 0:
+        evict_images_over_cap(images_dir, max_cache)
 
     safe_name = sanitize_image_name(image)
     target_dir = os.path.join(images_dir, safe_name)
@@ -531,8 +634,12 @@ def pull_and_extract_container_image(
                                 tmp_blob_file.seek(0)
                                 extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
 
-                    with tarfile.open(tar_path, "w") as tar:
-                        tar.add(tmp_extract_dir, arcname=".")
+                    # The uncompressed tarball doubles every image's disk
+                    # footprint for a rarely-exercised restore path; keep it
+                    # only on request.
+                    if os.environ.get(_KEEP_IMAGE_TARBALL_ENV) == "1":
+                        with tarfile.open(tar_path, "w") as tar:
+                            tar.add(tmp_extract_dir, arcname=".")
 
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)

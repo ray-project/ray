@@ -7,6 +7,10 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.image_utils import (
+    mark_image_in_use,
+    release_image_use,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -56,6 +60,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             self._image_manager.pull_image(
                 config.image, timeout_seconds=config.timeout_seconds
+            )
+            # Protect the cached image from eviction while this sandbox
+            # lives (its extracted rootfs is the overlay lower layer).
+            mark_image_in_use(
+                self._image_manager.get_image_dir(config.image), sandbox_id
             )
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
@@ -186,6 +195,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if meta:
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
+            release_image_use(
+                self._image_manager.get_image_dir(config.image), sandbox_id
+            )
             proc = meta.get("proc")
             stderr_file = meta.get("stderr_file")
 

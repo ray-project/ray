@@ -587,6 +587,39 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
 
     assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
     assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+def test_image_cache_eviction(tmp_path):
+    """LRU eviction under a size cap skips in-use and unextracted images."""
+    import os
+    import time
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        evict_images_over_cap,
+        mark_image_in_use,
+    )
+
+    def make_image(name, size, extracted=True, age=0):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "blob").write_bytes(b"x" * size)
+        if extracted:
+            marker = d / ".extracted"
+            marker.write_text("ok")
+            past = time.time() - age
+            os.utime(marker, (past, past))
+        return d
+
+    oldest = make_image("old", 1000, age=300)
+    newer = make_image("new", 1000, age=100)
+    busy = make_image("busy", 1000, age=200)
+    partial = make_image("partial", 1000, extracted=False)
+    mark_image_in_use(str(busy), "sb-live")
+
+    evict_images_over_cap(str(tmp_path), max_bytes=2500)
+
+    assert not oldest.exists()  # oldest evictable goes first
+    assert newer.exists()
+    assert busy.exists()  # in use: protected
+    assert partial.exists()  # mid-pull (no marker): protected
 
 
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
