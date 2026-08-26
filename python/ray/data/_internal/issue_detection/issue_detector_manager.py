@@ -43,7 +43,7 @@ class IssueDetectorManager:
         # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
         self._detected_issues_lock = threading.Lock()
 
-    def invoke_detectors(self) -> None:
+    def invoke_detectors(self, force: bool = False) -> None:
         curr_time = time.perf_counter()
         issues = []
         for detector in self._issue_detectors:
@@ -51,7 +51,8 @@ class IssueDetectorManager:
                 continue
 
             if (
-                curr_time - self._last_detection_times[detector]
+                force
+                or curr_time - self._last_detection_times[detector]
                 > detector.detection_time_interval_s()
             ):
                 issues.extend(detector.detect())

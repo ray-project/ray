@@ -21,3 +21,13 @@ class IssueDetectionExecutionCallback(ExecutionCallback):
     def on_execution_step(self, executor: "StreamingExecutor"):
         # Invoke all issue detectors
         executor._issue_detector_manager.invoke_detectors()
+
+    def after_execution_succeeds(self, executor: "StreamingExecutor"):
+        # Force one final issue detection pass.
+        executor._issue_detector_manager.invoke_detectors(force=True)
+
+    def after_execution_fails(
+        self, executor: "StreamingExecutor", error: Exception
+    ) -> None:
+        # Force one final issue detection pass.
+        executor._issue_detector_manager.invoke_detectors(force=True)

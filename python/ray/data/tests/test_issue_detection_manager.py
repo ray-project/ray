@@ -7,6 +7,9 @@ import pytest
 
 import ray
 from ray._private import ray_constants
+from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -111,6 +114,58 @@ def test_report_issues():
         ]
     )
     assert detector.get_detected_issues() == expected_issues
+
+
+def test_force_invoke_detectors():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = 30
+    issue_detector.detect.return_value = []
+    detector._issue_detectors = [issue_detector]
+    detector._last_detection_times = {
+        issue_detector: float("inf"),
+    }
+
+    detector.invoke_detectors()
+    issue_detector.detect.assert_not_called()
+
+    detector.invoke_detectors(force=True)
+    issue_detector.detect.assert_called_once_with()
+
+
+def test_force_invoke_skips_disabled_detectors():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = -1
+    detector._issue_detectors = [issue_detector]
+
+    detector.invoke_detectors(force=True)
+
+    issue_detector.detect.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "callback_name, callback_args",
+    [
+        ("after_execution_succeeds", ()),
+        ("after_execution_fails", (RuntimeError(),)),
+    ],
+)
+def test_issue_detection_callback_forces_final_detection(callback_name, callback_args):
+    callback = IssueDetectionExecutionCallback()
+    executor = MagicMock()
+
+    getattr(callback, callback_name)(executor, *callback_args)
+
+    executor._issue_detector_manager.invoke_detectors.assert_called_once_with(
+        force=True
+    )
 
 
 if __name__ == "__main__":

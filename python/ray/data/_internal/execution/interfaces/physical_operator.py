@@ -802,6 +802,10 @@ class PhysicalOperator(Operator):
             and not self.has_next()
         )
 
+    def is_shut_down(self) -> bool:
+        """Return whether shutdown has started for this operator."""
+        return self._shutdown
+
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError

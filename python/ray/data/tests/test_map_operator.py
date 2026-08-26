@@ -445,6 +445,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         compute_strategy=compute_strategy,
         ray_remote_args={"num_cpus": 0, "num_gpus": 1},
     )
+    assert not op.is_shut_down()
 
     # Start one task and then cancel.
     op.start(ExecutionOptions(), noop_counter())
@@ -458,6 +459,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     # After proper shutdown, both should return the GPU to ray.available_resources().
     force_shutdown = use_actors
     op.shutdown(timer=Timer(), force=force_shutdown)
+    assert op.is_shut_down()
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
