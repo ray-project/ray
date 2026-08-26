@@ -57,7 +57,7 @@ STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 UNKNOWN = "unknown"
 UNKNOWN_UUID = "unknown_uuid"
-_DISTRIBUTION_METRIC_STATISTICS = ("mean", "max")
+DISTRIBUTION_METRIC_STATISTICS = ("mean", "max")
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -709,7 +709,7 @@ class _StatsActor:
                         description=f"{metric_description} ({statistic})",
                         tag_keys=tag_keys,
                     )
-                    for statistic in _DISTRIBUTION_METRIC_STATISTICS
+                    for statistic in DISTRIBUTION_METRIC_STATISTICS
                 }
         return metrics
 

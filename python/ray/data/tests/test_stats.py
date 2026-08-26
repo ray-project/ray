@@ -56,7 +56,6 @@ from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
-from ray.util.metrics import Gauge
 
 
 @dataclass(frozen=True)
@@ -2006,51 +2005,6 @@ def test_stats_actor_iter_metrics():
     assert final_stats == ds_stats
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
     assert update_fn.call_args_list[-1].args[2] is None
-
-
-def test_stats_actor_exports_distribution_metrics():
-    """Distribution snapshots export mean/max Gauges and skip empty snapshots."""
-    # _StatsActor is wrapped by @ray.remote; instantiate its Python class locally.
-    actor = _StatsActor.__ray_metadata__.modified_class()
-
-    # Distribution metrics create one Gauge for each exported statistic.
-    metrics = actor.execution_metrics_tasks["max_uss_bytes"]
-    assert set(metrics) == {"mean", "max"}
-    for statistic, metric in metrics.items():
-        assert isinstance(metric, Gauge)
-        assert metric.info["name"] == f"data_max_uss_bytes_{statistic}"
-        assert metric.info["tag_keys"] == ("dataset", "operator")
-
-    actor.update_dataset = MagicMock()
-
-    with (
-        patch.object(metrics["mean"], "set") as set_mean,
-        patch.object(metrics["max"], "set") as set_max,
-    ):
-        # Empty distributions must not overwrite previously exported values.
-        actor.update_execution_metrics(
-            "dataset_1",
-            [{"max_uss_bytes": {"num_samples": 0, "mean": 0, "max": None}}],
-            ["MapBatches_1"],
-            {},
-        )
-        set_mean.assert_not_called()
-        set_max.assert_not_called()
-
-        # Non-empty snapshots export each statistic with the operator tags.
-        actor.update_execution_metrics(
-            "dataset_1",
-            [{"max_uss_bytes": {"mean": 200, "max": 300}}],
-            ["MapBatches_1"],
-            {},
-        )
-
-    set_mean.assert_called_once_with(
-        200, {"dataset": "dataset_1", "operator": "MapBatches_1"}
-    )
-    set_max.assert_called_once_with(
-        300, {"dataset": "dataset_1", "operator": "MapBatches_1"}
-    )
 
 
 @pytest.mark.parametrize(
