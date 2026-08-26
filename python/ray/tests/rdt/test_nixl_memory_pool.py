@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from ray.experimental.rdt.nixl_memory_pool import (
+    BLOCK_ALIGNMENT,
     MemoryPoolManager,
     NixlOutOfMemoryError,
 )
@@ -335,9 +336,9 @@ class TestEdgeCases:
         sizes = [10, 50, 20, 40]
         result = pool._allocate_memory_blocks(sizes)
 
-        # Each result block should match the requested size, in order.
+        # Each result block should fit the requested size, in order.
         for i, size in enumerate(sizes):
-            assert result[i].size == size
+            assert size <= result[i].size < size + BLOCK_ALIGNMENT
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +353,14 @@ class TestAllocateMemoryBlocks:
         blocks = pool._allocate_memory_blocks(sizes)
         assert len(blocks) == 3
         for block, size in zip(blocks, sizes):
-            assert block.size == size
+            assert size <= block.size < size + BLOCK_ALIGNMENT
+
+    def test_block_offsets_are_aligned(self):
+        """Unaligned request sizes should still produce aligned offsets."""
+        pool = MemoryPoolManager(pool_size=256, device=torch.device("cpu"))
+        blocks = pool._allocate_memory_blocks([1, 3, 7, 9])
+        for block in blocks:
+            assert block.offset % BLOCK_ALIGNMENT == 0
 
     def test_atomic_allocation_failure(self):
         pool = MemoryPoolManager(pool_size=16, device=torch.device("cpu"))
@@ -369,8 +377,9 @@ class TestAllocateMemoryBlocks:
 class TestAllocateForTensorMeta:
     def test_view_backed_by_pool_tensor(self):
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-        views = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+        views, blocks = pool.allocate_for_tensor_meta([((3,), torch.float32)])
         assert len(views) == 1
+        assert len(blocks) == 1
         assert views[0].shape == (3,)
         assert views[0].dtype == torch.float32
         assert (
@@ -378,17 +387,86 @@ class TestAllocateForTensorMeta:
             == pool.get_pool_tensor().untyped_storage().data_ptr()
         )
 
-    def test_finalizer_frees_block_on_gc(self):
-        import gc
+    def test_oom_does_not_leak_blocks(self):
+        """A failed allocation should leave the pool's free space untouched,
+        including when it fails partway through because of fragmentation."""
+        pool = MemoryPoolManager(pool_size=24, device=torch.device("cpu"))
+        meta = [((2,), torch.float32)]  # 8 bytes
+        _, first = pool.allocate_for_tensor_meta(meta)
+        _, middle = pool.allocate_for_tensor_meta(meta)
+        _, last = pool.allocate_for_tensor_meta(meta)
+        pool.free_blocks(first + last)
 
+        # 16 bytes are free but split around the still-allocated middle block.
+        with pytest.raises(NixlOutOfMemoryError):
+            pool.allocate_for_tensor_meta([((4,), torch.float32)])
+
+        assert sum(block.size for block in pool._free_blocks) == 16
+        pool.free_blocks(middle)
+        views, _ = pool.allocate_for_tensor_meta([((4,), torch.float32)])
+        assert views[0].shape == (4,)
+
+    def test_mixed_dtypes_are_viewable(self):
+        """A small int8 allocation must not leave the next block at an offset
+        that a wider dtype cannot view."""
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        views, _ = pool.allocate_for_tensor_meta(
+            [((1,), torch.int8), ((3,), torch.float32), ((2,), torch.float64)]
+        )
+        assert [view.dtype for view in views] == [
+            torch.int8,
+            torch.float32,
+            torch.float64,
+        ]
+
+
+class TestCopyOutAndFree:
+    def test_copies_are_independent_of_pool(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        views, blocks = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+        views[0].copy_(torch.tensor([1.0, 2.0, 3.0]))
+
+        copies = pool.copy_out_and_free(views, blocks)
+
+        assert torch.equal(copies[0], torch.tensor([1.0, 2.0, 3.0]))
+        assert (
+            copies[0].untyped_storage().data_ptr()
+            != pool.get_pool_tensor().untyped_storage().data_ptr()
+        )
+
+        # Reusing the block must not disturb the copy.
+        reused, _ = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+        reused[0].fill_(99.0)
+        assert torch.equal(copies[0], torch.tensor([1.0, 2.0, 3.0]))
+
+    def test_blocks_are_reusable_without_gc(self):
+        """Blocks come back immediately, so sequential receives can exceed the
+        pool size in aggregate."""
         pool = MemoryPoolManager(pool_size=12, device=torch.device("cpu"))
-        views = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+        for _ in range(3):
+            views, blocks = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+            pool.copy_out_and_free(views, blocks)
 
-        del views
-        gc.collect()
+        assert sum(block.size for block in pool._free_blocks) == 12
 
-        # Previously OOM'd allocation should now succeed.
-        pool.allocate_for_tensor_meta([((3,), torch.float32)])
+    def test_multiple_tensors(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        views, blocks = pool.allocate_for_tensor_meta(
+            [((2,), torch.float32), ((3,), torch.int64)]
+        )
+        views[0].copy_(torch.tensor([1.0, 2.0]))
+        views[1].copy_(torch.tensor([3, 4, 5]))
+
+        copies = pool.copy_out_and_free(views, blocks)
+
+        assert torch.equal(copies[0], torch.tensor([1.0, 2.0]))
+        assert torch.equal(copies[1], torch.tensor([3, 4, 5]))
+        assert sum(block.size for block in pool._free_blocks) == 64
+
+    def test_free_blocks_is_noop_for_empty_list(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        pool.free_blocks([])
+        assert sum(block.size for block in pool._free_blocks) == 64
 
 
 if __name__ == "__main__":

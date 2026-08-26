@@ -307,11 +307,13 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     tensor — subsequent mutations to that storage may not be reflected in outstanding refs.
     Clone the tensor before ``ray.put`` if snapshot semantics are required.
 
-    On the receiver side, incoming tensors are read directly into the pool when
-    ``ray.get`` fetches via NIXL. Each received tensor pins its pool
-    block until the tensor is garbage-collected. If user-supplied target buffers
-    are used instead, the pool is bypassed and the traditional register/deregister
-    path is used.
+    On the receiver side, incoming tensors are read into the pool when ``ray.get``
+    fetches via NIXL, then copied out into ordinary tensors and the pool blocks
+    are returned as soon as the transfer completes. The tensor you get back is
+    independent of the pool, so the pool size only bounds how much data can be
+    in flight at once, not how much received data you can hold. If user-supplied
+    target buffers are used instead, the pool is bypassed and the traditional
+    register/deregister path is used.
 
     If the pool has insufficient space for an allocation,
     :class:`NixlOutOfMemoryError` is raised.

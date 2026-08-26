@@ -939,8 +939,9 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_nixl_recv_memory_pool(ray_start_regular, device):
     """
-    Test receiver-side NIXL memory pool: incoming tensors are read directly
-    into the pre-registered pool, and blocks are returned when tensors are freed.
+    Test receiver-side NIXL memory pool: incoming tensors are read into the
+    pre-registered pool and then copied out, so the tensor handed to the user
+    does not alias the pool and the block is returned right after the transfer.
     """
 
     @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -956,52 +957,51 @@ def test_nixl_recv_memory_pool(ray_start_regular, device):
             assert tensor.device.type == device
             transport = get_tensor_transport_manager("NIXL")
             pool = transport._memory_pool
+            # The received tensor is a copy, so it does not alias the pool.
             assert (
                 tensor.untyped_storage().data_ptr()
-                == pool.get_pool_tensor().untyped_storage().data_ptr()
+                != pool.get_pool_tensor().untyped_storage().data_ptr()
             )
+            # The block is back in the pool even though the tensor is alive.
+            assert self._pool_free_bytes() == pool.pool_size
             value = tensor.sum().item()
             self._held_tensors.append(tensor)
             return value
 
-        def clear_held(self):
-            import gc
-
-            self._held_tensors.clear()
-            gc.collect()
-
-        def get_pool_free_bytes(self):
+        def _pool_free_bytes(self):
             transport = get_tensor_transport_manager("NIXL")
             pool = transport._memory_pool
             return sum(block.size for block in pool._free_blocks)
 
-    src_actor = GPUTestActor.remote()
-    # Each int64 tensor [1,2,3] is 24 bytes; pool fits two concurrent receives.
-    dst_actor = RecvPoolActor.remote(device, 48)
+        def get_pool_free_bytes(self):
+            return self._pool_free_bytes()
 
+    src_actor = GPUTestActor.remote()
+    # Each int64 tensor [1,2,3] is 24 bytes, so the pool holds exactly one.
+    dst_actor = RecvPoolActor.remote(device, 24)
+
+    # Receives totaling more than the pool succeed, because each block is
+    # freed once its data has been copied out, even though the receiver keeps
+    # every tensor alive.
     refs = src_actor.produce.remote([torch.tensor([1, 2, 3]).to(device)])
     assert ray.get(dst_actor.consume_one.remote(refs, device)) == 6
 
     refs = src_actor.produce.remote([torch.tensor([4, 5, 6]).to(device)])
     assert ray.get(dst_actor.consume_one.remote(refs, device)) == 15
 
-    # Pool is full while both tensors are held.
     refs = src_actor.produce.remote([torch.tensor([7, 8, 9]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 24
+
+    # A single transfer that doesn't fit in the pool still fails.
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3, 4, 5, 6]).to(device)])
     with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(dst_actor.consume_one.remote(refs, device))
     assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
         excinfo.value
     )
 
-    ray.get(dst_actor.clear_held.remote())
-    wait_for_condition(
-        lambda: ray.get(dst_actor.get_pool_free_bytes.remote()) == 48,
-        timeout=10,
-        retry_interval_ms=100,
-    )
-
-    refs = src_actor.produce.remote([torch.tensor([1, 2, 3, 4, 5, 6]).to(device)])
-    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 21
+    # The failed transfer left the pool intact.
+    assert ray.get(dst_actor.get_pool_free_bytes.remote()) == 24
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)

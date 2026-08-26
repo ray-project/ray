@@ -2,13 +2,22 @@
 
 import logging
 import threading
-import weakref
 from typing import TYPE_CHECKING, Dict, List, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
 
 logger = logging.getLogger(__name__)
+
+# Pool offsets are kept at a multiple of this many bytes. ``Tensor.view(dtype)``
+# requires the byte offset into the storage to be divisible by the target dtype's
+# element size, so an unpadded 1-byte allocation would otherwise leave the next
+# block at an offset that no wider dtype can view.
+BLOCK_ALIGNMENT = 8
+
+
+def _align_up(size: int) -> int:
+    return ((size + BLOCK_ALIGNMENT - 1) // BLOCK_ALIGNMENT) * BLOCK_ALIGNMENT
 
 
 class NixlOutOfMemoryError(RuntimeError):
@@ -94,6 +103,10 @@ class MemoryPoolManager:
 
         Either all allocations succeed, or none of them do.
 
+        Blocks are padded up to ``BLOCK_ALIGNMENT`` so that every block offset
+        stays aligned, which means a returned block may be larger than the
+        requested size.
+
         Args:
             sizes: List of sizes to allocate in bytes.
 
@@ -134,17 +147,22 @@ class MemoryPoolManager:
                 allocated = False
                 for i, block in enumerate(temp_free_blocks):
                     if block.size >= size:
-                        # Allocate at the start of the current free block
+                        # Allocate at the start of the current free block. Take
+                        # the padding along with the requested bytes so the next
+                        # block starts aligned; a trailing free block that is
+                        # too small to hold the padding is consumed whole
+                        # instead of leaving an unaligned remainder.
                         offset = block.offset
-                        remaining_after = block.size - size
+                        consumed = min(_align_up(size), block.size)
+                        remaining_after = block.size - consumed
 
                         if remaining_after == 0:
                             temp_free_blocks.pop(i)
                         else:
-                            block.offset = offset + size
+                            block.offset = offset + consumed
                             block.size = remaining_after
 
-                        allocations.append(MemoryBlock(offset, size))
+                        allocations.append(MemoryBlock(offset, consumed))
                         allocated = True
                         break
 
@@ -171,20 +189,25 @@ class MemoryPoolManager:
     def allocate_for_tensor_meta(
         self,
         tensor_meta: List[Tuple[Union["torch.Size", Tuple[int, ...]], "torch.dtype"]],
-    ) -> List["torch.Tensor"]:
+    ) -> Tuple[List["torch.Tensor"], List[MemoryBlock]]:
         """Allocate pool-backed receive buffers for the given tensor metadata.
 
         For each ``(shape, dtype)`` entry, allocates a pool block sized to the
-        tensor byte count and returns a typed view backed by the pool. Registers
-        a finalizer on each view to return its block when the view is
-        garbage-collected.
+        tensor byte count and returns a typed view backed by the pool.
+
+        The views are only valid until their blocks are freed, so the caller
+        owns the returned blocks and must pass them to ``copy_out_and_free``
+        once the transfer completes, or to ``free_blocks`` if it fails. The
+        views must not be handed to user code, since a pool block returned to
+        the pool can be overwritten by the next transfer.
 
         Args:
             tensor_meta: List of ``(shape, dtype)`` tuples describing tensors
                 to receive.
 
         Returns:
-            List of pool-backed tensor views, one per metadata entry.
+            A tuple of (pool-backed tensor views, blocks backing those views),
+            one entry each per metadata entry.
 
         Raises:
             NixlOutOfMemoryError: If the pool has insufficient space.
@@ -199,20 +222,54 @@ class MemoryPoolManager:
             sizes.append(numel * torch.tensor([], dtype=dtype).element_size())
 
         blocks = self._allocate_memory_blocks(sizes)
-        views: List["torch.Tensor"] = []
-        handed_off = 0
         try:
-            for block, (shape, dtype) in zip(blocks, tensor_meta):
-                view = self._view_for_block(block, shape, dtype)
-                weakref.finalize(view, self._free_multiple_blocks, [block])
-                views.append(view)
-                handed_off += 1
+            views = [
+                self._view_for_block(block, shape, dtype)
+                for block, (shape, dtype) in zip(blocks, tensor_meta)
+            ]
         except Exception:
-            unowned = blocks[handed_off:]
-            if unowned:
-                self._free_multiple_blocks(unowned)
+            self._free_multiple_blocks(blocks)
             raise
-        return views
+        return views, blocks
+
+    def copy_out_and_free(
+        self, views: List["torch.Tensor"], blocks: List[MemoryBlock]
+    ) -> List["torch.Tensor"]:
+        """Copy pool-backed views into independent tensors and free their blocks.
+
+        This decouples the returned tensors from the pool, so their lifetime is
+        no longer tied to the pool's free list. Callers can hand the copies to
+        user code and the blocks are immediately reusable by the next transfer.
+
+        Args:
+            views: Pool-backed views returned by ``allocate_for_tensor_meta``.
+            blocks: The blocks backing those views.
+
+        Returns:
+            One independently allocated tensor per view, in the same order.
+        """
+        import torch
+
+        try:
+            copies = [view.clone() for view in views]
+            if self.device.type == "cuda":
+                # The clones are queued on the current stream, while the pool
+                # block is reused by NIXL outside of any stream ordering, so
+                # wait for the copies before the block becomes reusable.
+                torch.cuda.synchronize(self.device)
+        finally:
+            self.free_blocks(blocks)
+        return copies
+
+    def free_blocks(self, blocks: List[MemoryBlock]) -> None:
+        """Return the given blocks to the pool.
+
+        Args:
+            blocks: Memory blocks to free. An empty list is a no-op.
+        """
+        if not blocks:
+            return
+        self._free_multiple_blocks(blocks)
 
     def _view_for_block(
         self,

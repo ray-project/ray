@@ -13,7 +13,7 @@ import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
 )
-from ray.experimental.rdt.nixl_memory_pool import MemoryPoolManager
+from ray.experimental.rdt.nixl_memory_pool import MemoryBlock, MemoryPoolManager
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     FetchRequest,
@@ -119,6 +119,9 @@ class NixlFetchRequest(FetchRequest):
         nixl_agent: Reference to the NIXL agent.
         remote_name: Name of the remote NIXL agent.
         remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
+        pool_blocks: Memory pool blocks backing the receive buffers, or None if
+            the receive-side pool was not used. Cleared once the blocks have
+            been returned to the pool.
     """
 
     xfer_handle: Any = None
@@ -126,16 +129,31 @@ class NixlFetchRequest(FetchRequest):
     remote_name: Optional[str] = None
     remove_tensor_descs: bool = False
     transport: Any = None
+    pool_blocks: Optional[List[MemoryBlock]] = None
+
+    def release(self) -> None:
+        """Releases the transfer's resources, and is safe to call repeatedly.
+
+        Callers that fail before handing the tensors back should call this
+        instead of waiting for ``__del__``: a raised exception keeps this
+        request alive through its traceback, which would hold pool blocks that
+        later transfers need.
+        """
+        transport, self.transport = self.transport, None
+        if transport is None:
+            return
+        pool_blocks, self.pool_blocks = self.pool_blocks, None
+        transport._cleanup_transfer(
+            self.obj_id,
+            self.tensors,
+            self.xfer_handle,
+            self.remote_name,
+            self.remove_tensor_descs,
+            pool_blocks,
+        )
 
     def __del__(self):
-        if self.transport is not None:
-            self.transport._cleanup_transfer(
-                self.obj_id,
-                self.tensors,
-                self.xfer_handle,
-                self.remote_name,
-                self.remove_tensor_descs,
-            )
+        self.release()
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -405,6 +423,7 @@ class NixlTensorTransport(TensorTransportManager):
         xfer_handle = None
         added_tensor_descs = False
         tensors = None
+        pool_blocks = None
 
         try:
             nixl_agent = self.get_nixl_agent()
@@ -417,7 +436,10 @@ class NixlTensorTransport(TensorTransportManager):
                 == self._memory_pool.get_pool_tensor().device.type
             )
             if recv_pool_eligible:
-                tensors = self._memory_pool.allocate_for_tensor_meta(
+                # The pool-backed buffers are only used for the transfer
+                # itself. wait_fetch_complete copies them out into independent
+                # tensors before returning them to the caller.
+                tensors, pool_blocks = self._memory_pool.allocate_for_tensor_meta(
                     tensor_transport_metadata.tensor_meta
                 )
             else:
@@ -474,12 +496,17 @@ class NixlTensorTransport(TensorTransportManager):
                 remote_name=remote_name,
                 remove_tensor_descs=added_tensor_descs,
                 transport=self,
+                pool_blocks=pool_blocks,
             )
         except Exception:
-            if tensors is not None:
-                self._cleanup_transfer(
-                    obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
-                )
+            self._cleanup_transfer(
+                obj_id,
+                tensors or [],
+                xfer_handle,
+                remote_name,
+                added_tensor_descs,
+                pool_blocks,
+            )
             # TODO(swang): There is a circular import error because ray.util
             # currently depends on ray.experimental.internal_kv.
             from ray.exceptions import RayDirectTransportError
@@ -536,11 +563,26 @@ class NixlTensorTransport(TensorTransportManager):
                 elif state == "DONE":
                     break
 
+            if fetch_request.pool_blocks is not None:
+                blocks = fetch_request.pool_blocks
+                fetch_request.pool_blocks = None
+                fetch_request.tensors = self._memory_pool.copy_out_and_free(
+                    fetch_request.tensors, blocks
+                )
             return fetch_request.tensors
         except TimeoutError:
+            # The transfer is still in flight and may keep writing into the
+            # receive buffers, so leave them allocated.
             raise
         except Exception:
             from ray.exceptions import RayDirectTransportError
+
+            try:
+                fetch_request.release()
+            except Exception:
+                logger.exception(
+                    f"Failed to release NIXL transfer resources for object id: {obj_id}."
+                )
 
             raise RayDirectTransportError(
                 f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
@@ -554,23 +596,29 @@ class NixlTensorTransport(TensorTransportManager):
         xfer_handle: Any,
         remote_name: Optional[str],
         remove_tensor_descs: bool,
+        pool_blocks: Optional[List[MemoryBlock]] = None,
     ) -> None:
         """Cleans up resources after a transfer completes or fails."""
         # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
         # so doing best effort cleanup.
         nixl_agent = self._nixl_agent
-        if nixl_agent is None:
-            return
-        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
-        # so doing best effort cleanup.
-        with self._aborted_transfer_obj_ids_lock:
-            self._aborted_transfer_obj_ids.discard(obj_id)
-        if xfer_handle:
-            nixl_agent.release_xfer_handle(xfer_handle)
-        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
-            nixl_agent.remove_remote_agent(remote_name)
-        if remove_tensor_descs:
-            self._remove_tensor_descs(tensors)
+        try:
+            if nixl_agent is None:
+                return
+            with self._aborted_transfer_obj_ids_lock:
+                self._aborted_transfer_obj_ids.discard(obj_id)
+            if xfer_handle:
+                nixl_agent.release_xfer_handle(xfer_handle)
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
+                nixl_agent.remove_remote_agent(remote_name)
+            if remove_tensor_descs:
+                self._remove_tensor_descs(tensors)
+        finally:
+            # Reclaim the receive buffers only after the transfer handle is
+            # released, so that a block cannot be reused while NIXL still
+            # references it.
+            if pool_blocks and self._memory_pool is not None:
+                self._memory_pool.free_blocks(pool_blocks)
 
     def recv_multiple_tensors(
         self,
