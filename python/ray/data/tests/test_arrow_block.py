@@ -515,6 +515,11 @@ def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
     assert df3["a"].dtype == np.int64
     assert df3["b"].dtype == np.float64
 
+    # A dataset with no blocks at all (and hence no schema) still converts
+    # cleanly to an empty, column-less DataFrame.
+    df4 = ray.data.range(0).to_pandas()
+    assert len(df4) == 0
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
