@@ -926,13 +926,14 @@ RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT = get_env_int_positive(
 
 # The balancing algorithm to use in HAProxy backends.
 #
-# Every node runs its own HAProxy and they all receive the same fleet-wide
-# backend list, but each one only observes the connections it opened itself.
-# `leastconn` picks the minimum of that private view, so N proxies reading
-# near-identical state converge on the same replica and pile onto it.
-# `random(2)` (power-of-two-choices) samples two servers and takes the less
-# loaded one, which keeps the local signal useful without synchronizing the
-# proxies. Set to `leastconn` to restore the previous behavior.
+# Each node's HAProxy renders the same fleet-wide backend list but counts only
+# its own connections, so a stable server set balances fine. Autoscaling keeps
+# it unstable: a replica that appears or returns from DOWN reads as zero
+# connections on every proxy at once, and `leastconn` deterministically prefers
+# it until local counts catch up. HAProxy's `slowstart` damps that herd; Serve
+# does not set it. `random(2)` ranks by the same counts across two sampled
+# servers, so identical observations stop producing identical choices.
+# Set `leastconn` to restore the previous behavior.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "random(2)"
 )
