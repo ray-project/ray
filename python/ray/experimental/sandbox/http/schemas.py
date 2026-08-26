@@ -270,6 +270,15 @@ class SandboxAPISettings(BaseModel):
         gt=0,
         description="Completed exec records retained per sandbox.",
     )
+    scheduling_grace_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        description=(
+            "How long a request may wait on a sandbox whose hosting actor "
+            "has not been scheduled yet (e.g. the cluster is scaling up) "
+            "before reporting the sandbox as pending instead of blocking."
+        ),
+    )
     default_actor_num_cpus: float = Field(
         default=1.0,
         ge=0,

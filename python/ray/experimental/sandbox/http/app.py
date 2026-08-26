@@ -15,6 +15,7 @@ The service holds no state: every sandbox lives in a named detached
 can scale or restart freely.
 """
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -64,6 +65,18 @@ class _ApiError(Exception):
 
 def _sandbox_not_found(sandbox_id: str) -> _ApiError:
     return _ApiError(404, "sandbox_not_found", f"no sandbox with id {sandbox_id!r}")
+
+
+class _SchedulingTimeout(_ApiError):
+    """The sandbox's hosting actor has not been scheduled within the grace."""
+
+    def __init__(self, sandbox_id: str) -> None:
+        super().__init__(
+            409,
+            "conflict",
+            f"sandbox {sandbox_id} is not ready yet (its actor is still "
+            "being scheduled); retry shortly",
+        )
 
 
 def _is_actor_gone(exc: BaseException) -> bool:
@@ -193,6 +206,48 @@ def create_app(
     resolver = handle_resolver or RayActorHandleResolver(settings)
     token = os.environ.get(settings.token_env_var) or None
 
+    async def _bounded_call(
+        sandbox_id: str, awaitable: Awaitable[Any], extra_wait: float = 0.0
+    ) -> Any:
+        """Await a SandboxHost call, but never block behind actor scheduling.
+
+        A named detached actor exists the moment it is created, but on a
+        cluster that is scaling up it may not be *scheduled* for a while —
+        and a call to an unscheduled actor blocks indefinitely. Cap the wait
+        at the request's own long-poll budget plus a grace period.
+        """
+        try:
+            return await asyncio.wait_for(
+                _actor_call(sandbox_id, awaitable),
+                timeout=extra_wait + settings.scheduling_grace_seconds,
+            )
+        except asyncio.TimeoutError:
+            raise _SchedulingTimeout(sandbox_id)
+
+    async def _describe_or_pending(
+        sandbox_id: str, handle: Any, wait_seconds: float = 0.0
+    ) -> Dict[str, Any]:
+        try:
+            return await _bounded_call(
+                sandbox_id,
+                handle.describe.remote(wait_seconds=wait_seconds),
+                extra_wait=wait_seconds,
+            )
+        except _SchedulingTimeout:
+            # The actor owns the spec, so report a shape-complete pending
+            # info with the fields only it knows left empty.
+            return {
+                "sandbox_id": sandbox_id,
+                "status": "pending",
+                "image": "",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "ttl_seconds": None,
+                "expires_at": None,
+                "network": "none",
+                "labels": {},
+                "error": None,
+            }
+
     async def require_bearer_token(request: Request) -> None:
         if token is None:
             return
@@ -234,7 +289,7 @@ def create_app(
             sandbox_id = _sandbox_name_for_token(request.client_token)
             existing = resolver.get(sandbox_id)
             if existing is not None:
-                info = await _actor_call(sandbox_id, existing.describe.remote())
+                info = await _describe_or_pending(sandbox_id, existing)
                 return JSONResponse(status_code=200, content=info)
         else:
             sandbox_id = f"{SANDBOX_ID_PREFIX}{uuid.uuid4().hex[:12]}"
@@ -330,9 +385,9 @@ def create_app(
             if handle is None:
                 continue
             try:
-                info = await handle.describe.remote()
-            except Exception as exc:
-                if _is_actor_gone(exc):
+                info = await _describe_or_pending(name, handle)
+            except _ApiError as exc:
+                if exc.code == "sandbox_not_found":
                     continue
                 raise
             if all(info.get("labels", {}).get(k) == v for k, v in filters.items()):
@@ -346,9 +401,7 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        return await _actor_call(
-            sandbox_id, handle.describe.remote(wait_seconds=wait_seconds)
-        )
+        return await _describe_or_pending(sandbox_id, handle, wait_seconds)
 
     @v1.delete("/sandboxes/{sandbox_id}")
     async def delete_sandbox(sandbox_id: str) -> Dict[str, str]:
@@ -385,7 +438,7 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        result = await _actor_call(
+        result = await _bounded_call(
             sandbox_id,
             handle.start_exec.remote(
                 command=request.command,
@@ -406,9 +459,10 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        result = await _actor_call(
+        result = await _bounded_call(
             sandbox_id,
             handle.get_exec.remote(exec_id, wait_seconds=wait_seconds),
+            extra_wait=wait_seconds,
         )
         if result.get("error_code") == "exec_not_found":
             raise _ApiError(404, "exec_not_found", result["message"])
@@ -437,7 +491,7 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        result = await _actor_call(sandbox_id, handle.write_file.remote(path, body))
+        result = await _bounded_call(sandbox_id, handle.write_file.remote(path, body))
         if result.get("error_code") == "conflict":
             raise _ApiError(409, "conflict", result["message"])
         return Response(status_code=204)
@@ -448,7 +502,7 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        result = await _actor_call(sandbox_id, handle.read_file.remote(path))
+        result = await _bounded_call(sandbox_id, handle.read_file.remote(path))
         if result.get("error_code") == "conflict":
             raise _ApiError(409, "conflict", result["message"])
         if result.get("error_code") == "file_not_found":
@@ -495,7 +549,10 @@ def build_app(args: Optional[Dict[str, Any]] = None) -> Any:
     settings = SandboxAPISettings(**(args or {}))
     fastapi_app = create_app(settings)
 
-    @serve.deployment(name="RaySandboxAPI")
+    # The API is long-poll based (requests deliberately hold a slot for up
+    # to ~30s), so the replica must admit far more concurrent requests than
+    # Serve's default allows.
+    @serve.deployment(name="RaySandboxAPI", max_ongoing_requests=1000)
     @serve.ingress(fastapi_app)
     class SandboxAPIIngress:
         pass
