@@ -90,9 +90,10 @@ class HighMemoryIssueDetector(IssueDetector):
             if not isinstance(op, MapOperator):
                 continue
 
-            memory_request = self._initial_memory_requests[op]
             if op.is_shut_down() or op.has_completed():
-                issue = self._detect_issue_from_final_metrics(op, memory_request)
+                issue = self._detect_issue_from_final_metrics(
+                    op, self._initial_memory_requests[op]
+                )
                 if issue is not None:
                     issues.append(issue)
                 continue
@@ -103,19 +104,18 @@ class HighMemoryIssueDetector(IssueDetector):
 
             remote_args = op._get_dynamic_ray_remote_args()
             safe_memory_per_task = get_safe_default_logical_memory(remote_args)
-            initial_memory_request = memory_request or 0
 
             if (
-                max_uss_bytes.mean > initial_memory_request
+                max_uss_bytes.mean > (self._initial_memory_requests[op] or 0)
                 and max_uss_bytes.mean >= safe_memory_per_task
             ):
-                recommended_memory = _get_recommended_memory(
-                    op.metrics.average_max_uss_per_task
-                )
+                recommended_memory = _get_recommended_memory(max_uss_bytes.mean)
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(max_uss_bytes.mean),
-                    initial_memory_request=memory_string(initial_memory_request),
+                    initial_memory_request=memory_string(
+                        self._initial_memory_requests[op] or 0
+                    ),
                     recommended_memory=memory_string(recommended_memory),
                     recommended_memory_bytes=recommended_memory,
                     detection_time_interval_s=self.detection_time_interval_s(),
