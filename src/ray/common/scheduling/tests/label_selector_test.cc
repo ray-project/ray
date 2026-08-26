@@ -15,11 +15,15 @@
 #include "ray/common/scheduling/label_selector.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <map>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -206,6 +210,80 @@ TEST(LabelSelectorTest, Deduplication) {
       "instance", LabelSelectorOperator::LABEL_IN, {"spot"});
   selector.AddConstraint(duplicate_constraint);
   ASSERT_EQ(selector.GetConstraints().size(), 4);
+}
+
+namespace {
+
+LabelSelector OneConstraint(const std::string &key,
+                            LabelSelectorOperator op,
+                            const absl::flat_hash_set<std::string> &values) {
+  LabelSelector selector;
+  selector.AddConstraint(LabelConstraint(key, op, values));
+  return selector;
+}
+
+LabelSelector RegionSelector(const absl::flat_hash_set<std::string> &values) {
+  return OneConstraint("region", LabelSelectorOperator::LABEL_IN, values);
+}
+
+}  // namespace
+
+// A constraint holds its values in a flat_hash_set and operator== compares them as a
+// set, so selectors built from the same labels have to hash alike however the set was
+// filled. Which slot an element takes depends on the order elements were inserted, when
+// two contend for one, and on a salt absl derives from the address of the table's control
+// bytes, so sweep shuffled orders rather than trusting one layout.
+TEST(LabelSelectorTest, EqualSelectorsHashEquallyWhateverTheValueOrder) {
+  std::vector<std::string> values;
+  values.reserve(64);
+  for (int i = 0; i < 64; i++) {
+    values.push_back("region-" + std::to_string(i));
+  }
+  const LabelSelector reference =
+      RegionSelector(absl::flat_hash_set<std::string>(values.begin(), values.end()));
+
+  absl::flat_hash_set<size_t> hashes;
+  absl::flat_hash_set<std::vector<std::string>> layouts;
+  std::mt19937 rng(20260826);
+  for (int round = 0; round < 16; round++) {
+    std::shuffle(values.begin(), values.end(), rng);
+    absl::flat_hash_set<std::string> set(values.begin(), values.end());
+    const LabelSelector selector = RegionSelector(set);
+    // operator== compares the constraint vectors, so it also passes when both sides are
+    // empty; the count needs its own assertion, which also guards the [0] below.
+    ASSERT_EQ(selector.GetConstraints().size(), 1u);
+    ASSERT_EQ(selector, reference);
+    const auto &stored = selector.GetConstraints()[0].GetLabelValues();
+    layouts.insert(std::vector<std::string>(stored.begin(), stored.end()));
+    hashes.insert(absl::HashOf(selector));
+  }
+
+  // Without more than one layout the hash assertion below holds for an order-dependent
+  // hash too, so the test would pass while guarding nothing.
+  ASSERT_GT(layouts.size(), 1u);
+  EXPECT_EQ(hashes.size(), 1u);
+}
+
+// The order sweep above would also pass if the values stopped reaching the hash at all,
+// so pin that they contribute.
+TEST(LabelSelectorTest, SelectorsWithDifferentValuesHashDifferently) {
+  EXPECT_NE(absl::HashOf(RegionSelector({"us-east", "us-west"})),
+            absl::HashOf(RegionSelector({"eu-central", "ap-south"})));
+  EXPECT_NE(absl::HashOf(RegionSelector({"us-east", "us-west"})),
+            absl::HashOf(RegionSelector({"us-east", "us-west", "eu-central"})));
+  EXPECT_NE(absl::HashOf(RegionSelector({})), absl::HashOf(RegionSelector({"us-east"})));
+}
+
+// The key and the operator need their own case: with only the cases above, dropping
+// either one from the hash leaves this file green.
+TEST(LabelSelectorTest, SelectorsDifferingOnlyInKeyOrOperatorHashDifferently) {
+  const absl::flat_hash_set<std::string> values = {"us-east"};
+  EXPECT_NE(
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_IN, values)),
+      absl::HashOf(OneConstraint("zone", LabelSelectorOperator::LABEL_IN, values)));
+  EXPECT_NE(
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_IN, values)),
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_NOT_IN, values)));
 }
 
 }  // namespace ray
