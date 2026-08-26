@@ -10,6 +10,7 @@ downstream ``ReadFiles`` physical op by
 :func:`plan_read_files_op_with_checkpoint_filter`, matching V1's
 dispatch pattern.
 """
+
 from __future__ import annotations
 
 import logging
@@ -67,6 +68,7 @@ def plan_list_files_op(
     filesystem = op.filesystem
     indexer = op.file_indexer
     partitioner = op.file_partitioner
+    ray_remote_args = dict(op.ray_remote_args)
 
     shuffle_config = op.shuffle_config_factory()
 
@@ -117,6 +119,9 @@ def plan_list_files_op(
 
     map_transformer = MapTransformer(transform_fns)
 
+    if not indexer.requires_file_io:
+        ray_remote_args.setdefault("_generator_backpressure_num_objects", -1)
+
     map_op = MapOperator.create(
         map_transformer,
         _create_input_data_buffer(
@@ -130,14 +135,15 @@ def plan_list_files_op(
         ),
         data_context,
         name="ListFiles",
-        # Listing is extremely fast; default backpressure would starve the
-        # downstream reader of inputs.
-        ray_remote_args={"_generator_backpressure_num_objects": -1},
+        # Metadata-only listing is extremely fast; default backpressure would
+        # starve the downstream reader of inputs. Header/footer-aware indexers
+        # perform real file I/O and retain normal backpressure.
+        ray_remote_args=ray_remote_args,
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
     )
-    map_op.throttling_disabled = lambda: True
+    map_op.throttling_disabled = lambda: not indexer.requires_file_io
     return map_op
 
 
