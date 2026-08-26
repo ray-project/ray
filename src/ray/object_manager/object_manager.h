@@ -285,11 +285,15 @@ class ObjectManager : public ObjectManagerInterface,
  private:
   friend class ObjectManagerTest;
 
-  /// Pushing a known local object to a remote object manager.
+  /// Try to push an object to a remote object manager from this node's in-memory
+  /// object store.
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+  /// \return true if the object was resident and the push was started; false if the
+  ///         store read failed (stale mirror from ObjectManager's local_objects_),
+  ///         so the caller should fall back to the spilled copy.
+  bool PushFromPlasma(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
@@ -398,11 +402,14 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t chunk_index,
                           const std::string &data);
 
-  /// Send pull request
-  ///
-  /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+  /**
+   * Send pull request for a batch of objects to a single remote node.
+   *
+   * \param object_ids Objects to pull from the same remote node. Must be
+   *     non-empty.
+   * \param client_id Remote server client id.
+   */
+  void SendPullRequest(const std::vector<ObjectID> &object_ids, const NodeID &client_id);
 
   /// Get the rpc client according to the node ID
   ///

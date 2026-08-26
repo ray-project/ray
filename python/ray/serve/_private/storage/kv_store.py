@@ -3,7 +3,7 @@ from typing import Optional
 
 import ray
 import ray.serve._private.constants as serve_constants
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
 logger = logging.getLogger(serve_constants.SERVE_LOGGER_NAME)

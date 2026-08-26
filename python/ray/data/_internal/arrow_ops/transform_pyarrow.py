@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
+import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
@@ -16,12 +17,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -130,8 +125,9 @@ def _hash_partition(
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
         ).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
+        # avoid in-place np.mod(..., out=hashes). See #64552.
+        partitions = np.mod(hashes, num_partitions)
 
     return partitions
 
@@ -416,17 +412,17 @@ def unify_schemas(
     if not overrides:
         raise pyarrow_exception
 
-    # Apply overrides to schemas
+    # Apply overrides to schemas. Rebuild each schema once by scanning its
+    # fields a single time, rather than calling Schema.set() per override:
+    # set() copies the whole schema on every call, which is O(n^2) when
+    # many/all columns diverge. This is O(fields + overrides) per schema.
     updated_schemas = []
     for schema in schemas_to_unify:
-        for name, new_type in overrides.items():
-            try:
-                idx = schema.get_field_index(name)
-                field = schema.field(name).with_type(new_type)
-                schema = schema.set(idx, field)
-            except KeyError:
-                pass
-        updated_schemas.append(schema)
+        fields = [
+            field.with_type(overrides[field.name]) if field.name in overrides else field
+            for field in schema
+        ]
+        updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
     schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied

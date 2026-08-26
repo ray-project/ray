@@ -1,0 +1,195 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "ray/common/monitors/memory_monitor_test_fixture.h"
+
+#include "ray/common/monitors/memory_monitor_utils.h"
+#include "ray/util/logging.h"
+
+namespace ray {
+
+std::string MemoryMonitorTestFixture::MockProcMemoryUsage(pid_t pid,
+                                                          const std::string &usage_kb) {
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_proc_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &proc_dir = mock_proc_dirs_.back()->GetPath();
+
+  StatusOr<std::unique_ptr<TempDirectory>> proc_subdir_or =
+      TempDirectory::Create(proc_dir + "/" + std::to_string(pid));
+  RAY_CHECK(proc_subdir_or.ok())
+      << "Failed to create temp directory: " << proc_subdir_or.status().message();
+  mock_proc_dirs_.push_back(std::move(proc_subdir_or.value()));
+
+  // Create smaps_rollup file.
+  std::string usage_filename = proc_dir + "/" + std::to_string(pid) + "/smaps_rollup";
+  mock_proc_files_.push_back(std::make_unique<TempFile>(usage_filename));
+  mock_proc_files_.back()->AppendLine("SomeHeader");
+  mock_proc_files_.back()->AppendLine("Private_Clean: " + usage_kb + " kB");
+
+  return proc_dir;
+}
+
+std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
+    int64_t total_bytes,
+    int64_t current_bytes,
+    std::optional<int64_t> anon_memory_bytes,
+    std::optional<int64_t> shmem_memory_bytes,
+    int64_t inactive_file_bytes,
+    int64_t active_file_bytes,
+    std::optional<int64_t> swapcached_bytes) {
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_cgroup_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &cgroup_path = mock_cgroup_dirs_.back()->GetPath();
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryMaxPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryUsagePath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryStatPath));
+  if (anon_memory_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryAnonKey) + " " +
+        std::to_string(*anon_memory_bytes));
+  }
+  if (shmem_memory_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryShmemKey) + " " +
+        std::to_string(*shmem_memory_bytes));
+  }
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatInactiveFileKey) + " " +
+      std::to_string(inactive_file_bytes));
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatActiveFileKey) + " " +
+      std::to_string(active_file_bytes));
+  if (swapcached_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(
+        std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatSwapCachedKey) + " " +
+        std::to_string(*swapcached_bytes));
+  }
+
+  return cgroup_path;
+}
+
+std::string MemoryMonitorTestFixture::MockProcMeminfo(
+    int64_t mem_total_kb,
+    int64_t mem_available_kb,
+    std::optional<int64_t> swap_total_kb,
+    std::optional<int64_t> swap_free_kb) {
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_proc_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &proc_dir = mock_proc_dirs_.back()->GetPath();
+
+  std::string meminfo_path = proc_dir + "/meminfo";
+  mock_proc_files_.push_back(std::make_unique<TempFile>(meminfo_path));
+  mock_proc_files_.back()->AppendLine("MemTotal:       " + std::to_string(mem_total_kb) +
+                                      " kB");
+  mock_proc_files_.back()->AppendLine(
+      "MemAvailable:   " + std::to_string(mem_available_kb) + " kB");
+  if (swap_total_kb.has_value()) {
+    mock_proc_files_.back()->AppendLine(
+        "SwapTotal:      " + std::to_string(*swap_total_kb) + " kB");
+  }
+  if (swap_free_kb.has_value()) {
+    mock_proc_files_.back()->AppendLine(
+        "SwapFree:       " + std::to_string(*swap_free_kb) + " kB");
+  }
+
+  return proc_dir;
+}
+
+void MemoryMonitorTestFixture::MockCgroupv2Swap(const std::string &cgroup_path,
+                                                std::optional<int64_t> swap_max_bytes,
+                                                int64_t swap_current_bytes) {
+  const std::string swap_max_str =
+      swap_max_bytes.has_value() ? std::to_string(*swap_max_bytes) : "max";
+  MockCgroupv2Swap(cgroup_path, swap_max_str, swap_current_bytes);
+}
+
+void MemoryMonitorTestFixture::MockCgroupv2Swap(const std::string &cgroup_path,
+                                                const std::string &swap_max_str,
+                                                int64_t swap_current_bytes) {
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapMaxPath));
+  mock_cgroup_files_.back()->AppendLine(swap_max_str);
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapCurrentPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(swap_current_bytes));
+}
+
+void MemoryMonitorTestFixture::MockCgroupv1Memsw(const std::string &cgroup_path,
+                                                 int64_t memsw_limit_bytes,
+                                                 int64_t memsw_usage_bytes) {
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemswMaxPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(memsw_limit_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemswUsagePath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(memsw_usage_bytes));
+}
+
+std::string MemoryMonitorTestFixture::MockCgroupv1MemoryUsage(int64_t total_bytes,
+                                                              int64_t current_bytes,
+                                                              int64_t inactive_file_bytes,
+                                                              int64_t active_file_bytes) {
+  StatusOr<std::unique_ptr<TempDirectory>> temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_cgroup_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &cgroup_path = mock_cgroup_dirs_.back()->GetPath();
+
+  StatusOr<std::unique_ptr<TempDirectory>> memory_dir_or =
+      TempDirectory::Create(cgroup_path + "/memory");
+  RAY_CHECK(memory_dir_or.ok())
+      << "Failed to create temp directory: " << memory_dir_or.status().message();
+  mock_cgroup_dirs_.push_back(std::move(memory_dir_or.value()));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryMaxPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryUsagePath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryStatPath));
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatInactiveFileKey) + " " +
+      std::to_string(inactive_file_bytes));
+  mock_cgroup_files_.back()->AppendLine(
+      std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatActiveFileKey) + " " +
+      std::to_string(active_file_bytes));
+
+  return cgroup_path;
+}
+
+}  // namespace ray

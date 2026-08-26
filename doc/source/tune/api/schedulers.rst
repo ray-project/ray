@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Tune trial schedulers that early-stop or mutate trials: ASHA, HyperBand, Median Stopping, Population Based Training, PB2, and BOHB.
+
 .. _tune-schedulers:
 
 Tune Trial Schedulers (tune.schedulers)

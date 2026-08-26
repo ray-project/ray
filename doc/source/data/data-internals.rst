@@ -1,3 +1,6 @@
+.. meta::
+   :description: Implementation internals of Ray Data — the execution model, blocks, and scheduling — for advanced users and contributors.
+
 .. _datasets_scheduling:
 
 ==================
@@ -99,7 +102,91 @@ Shuffle Algorithms
 In data processing, shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
 called :ref:`blocks <data_key_concepts>`).
 
-Ray Data implements two main shuffle algorithms:
+Ray Data provides several shuffle backends. The newest, :ref:`Shuffle v2 <shuffle-v2>` (currently
+in Alpha), is the intended replacement for the classical :ref:`hash-shuffling <hash-shuffle>` and
+:ref:`range-partitioning <range-partitioning-shuffle>` backends.
+
+.. _shuffle-v2:
+
+Shuffle v2
+~~~~~~~~~~
+
+.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is currently in **Alpha**.
+
+Shuffle v2 is a new shuffle backend intended to replace the other shuffle backends. Today it
+provides an updated hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
+:ref:`hash-shuffling <hash-shuffle>` implementation, shuffle v2 is *driver-driven* and doesn't store intermediate
+shuffle data in long-lived aggregator actors. Instead, that data lives in the object store, which
+means:
+
+- Ray can spill intermediate data to disk under memory pressure, avoiding the out-of-memory risk of
+  holding whole partitions in aggregator memory.
+- Reduce-side memory adapts to observed partition sizes, improving memory accounting on skewed
+  datasets.
+
+Shuffle v2 also coalesces shuffle inputs into larger batches before partitioning.
+
+Shuffle v2 supports the following operations:
+
+- Aggregations (:meth:`Dataset.aggregate <ray.data.Dataset.aggregate>`)
+- Group-bys (:meth:`Dataset.groupby <ray.data.Dataset.groupby>`)
+- Key-based repartitioning (:meth:`Dataset.repartition <ray.data.Dataset.repartition>` with ``keys``)
+- Joins (:meth:`Dataset.join <ray.data.Dataset.join>`)
+
+Shuffle v2 doesn't yet support :meth:`Dataset.sort <ray.data.Dataset.sort>` or
+:meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which use the
+:ref:`range-partitioning shuffle <range-partitioning-shuffle>`.
+
+To enable shuffle v2 for the whole cluster, set the environment variable before starting your
+application:
+
+.. code-block:: bash
+
+    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
+
+To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
+
+.. code-block:: python
+
+    from ray.data.context import DataContext, ShuffleStrategy
+
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+.. _tuning-shuffle-v2:
+
+Tuning shuffle v2
+^^^^^^^^^^^^^^^^^
+
+Shuffle v2 provides the following knobs:
+
+**Input batch size** (``DataContext.shuffle_input_batch_bytes``, environment variable
+``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB). This setting only applies to the
+``SHUFFLE_V2`` strategy.
+
+Shuffle v2 buffers input blocks from the same node until their combined size reaches this
+threshold, then partitions that batch as a unit. This controls the trade-off between shuffle
+parallelism and the number of intermediate shard objects:
+
+- A **higher** threshold produces fewer, larger intermediate shard objects and less object-store
+  overhead, but reduces shuffle parallelism.
+- A **lower** threshold increases shuffle parallelism at the cost of more, smaller intermediate
+  objects. Lower the threshold if CPU utilization is low because the units of work are too
+  coarse-grained.
+- Set the threshold to ``0`` to disable batching and partition each input bundle individually.
+
+**Inline object threshold** (``max_direct_call_object_size``, environment variable
+``RAY_max_direct_call_object_size``, default 100 KB). This is a Ray Core setting rather than a Ray
+Data one.
+
+When shuffle v2 partitions a block across many partitions, an individual partition's shard can be
+smaller than this threshold. Ray transfers objects below the threshold *inline*, storing them in
+the memory of the process that submitted the work (typically the driver on the head node) rather
+than in the object store. For a shuffle that produces many small shards, these inline objects
+accumulate on the head node and can cause an out-of-memory failure there.
+
+Lower this threshold (for example, ``RAY_max_direct_call_object_size=8192`` for 8 KB) so that only
+small metadata stays inline and shard data travels through the object store, which is spillable and
+distributed across the cluster. This reduces the risk of head-node out-of-memory failures.
 
 .. _hash-shuffle:
 
@@ -117,8 +204,11 @@ Hash-shuffling is a classical hash-partitioning based shuffling where:
 Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by
 ensuring that rows with the same key-values are being placed into the same partition.
 
-.. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``.
+.. note:: Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) is the default shuffle strategy for
+    key-based operations: aggregations, group-bys, key-based repartitioning, and joins. To set it
+    explicitly, specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before
+    creating a ``Dataset``.
 
 .. _range-partitioning-shuffle:
 
@@ -133,8 +223,6 @@ the real ranges of the totally ordered (sorted) dataset.
 2. **Partition phase:** every block is sorted and split into partitions based on the *range boundaries* derived in the previous step.
 3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
 
-.. note:: Range-partitioning shuffle is a default shuffling strategy. To set it explicitly specify
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED`` before creating a ``Dataset``.
 
 
 Operators, plans, and planning
@@ -268,21 +356,9 @@ Scheduling
 Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
 * The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
-* Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 * Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50 MB; otherwise, they use the ``DEFAULT`` scheduling strategy.
 * Read operations use the ``SPREAD`` scheduling strategy.
 * All other operations, such as split, sort, and shuffle, use the ``DEFAULT`` scheduling strategy.
-
-.. _datasets_pg:
-
-Ray Data and placement groups
------------------------------
-
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
-:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
-placement group. To use current placement group resources specifically for Ray Data, set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
-
-Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
 .. _datasets_tune:
 

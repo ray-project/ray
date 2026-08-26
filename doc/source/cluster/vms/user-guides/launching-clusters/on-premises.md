@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Set up a Ray cluster on bare metal or a private cloud, either manually with ray start or through the cluster launcher."
+---
+
 (on-prem)=
 
 # Launching an On-Premise Cluster
@@ -36,13 +42,11 @@ Make sure to replace `head-node-address:port` with the value printed by the comm
 
 Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
 
-Ray auto-detects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`.
-See the [Configuration page](configuring-ray) for more information.
+Ray auto-detects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`. See the [Configuration page](configuring-ray) for more information.
 
 ### Troubleshooting
 
-If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`.
-Some possible causes include:
+If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`. Some possible causes include:
 
 - the head node is not actually running;
 - a different version of Ray is running at the specified address;

@@ -6,13 +6,13 @@ myst:
 
 (ray-core-internal-profiling)=
 
-# Profiling for Ray Developers
+# Profiling for Ray developers
 
 This guide helps contributors to the Ray project analyze Ray performance.
 
 ## Getting a stack trace of Ray C++ processes
 
-You can use the following GDB command to view the current stack trace of any running Ray process (e.g., raylet). This can be useful for debugging 100% CPU utilization or infinite loops (simply run the command a few times to see what the process is stuck on).
+You can use the following GDB command to view the current stack trace of any running Ray process (for example, raylet). This can be useful for debugging 100% CPU utilization or infinite loops. Run the command a few times to see what the process is stuck on.
 
 ```shell
 sudo gdb -batch -ex "thread apply all bt" -p <pid>
@@ -22,7 +22,7 @@ Note that you can find the pid of the raylet with `pgrep raylet`.
 
 ## Installation
 
-These instructions are for Ubuntu only. Attempts to get `pprof` to correctly symbolize on Mac OS have failed.
+These instructions are for Ubuntu only. Attempts to get `pprof` to correctly symbolize on macOS have failed.
 
 ```bash
 sudo apt-get install google-perftools libgoogle-perftools-dev
@@ -66,7 +66,7 @@ google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 
 Below is a snapshot of an example SVG output, from the official documentation:
 
-![](http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif)
+![Example pprof SVG call-graph output annotated with hot paths](http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif)
 
 ## Memory profiling
 
@@ -74,11 +74,11 @@ To run memory profiling on Ray core components, use [jemalloc](https://github.co
 
 You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
-Users are supposed to provide 4 env vars for memory profiling.
+You must provide four environment variables for memory profiling.
 
-* `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
+* `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`.
 * `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values. Read [jemalloc docs](http://jemalloc.net/jemalloc.3.html) for more details.
-* `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
+* `RAY_JEMALLOC_PROFILE`: Comma-separated Ray components to run Jemalloc `.so`. For example, ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
 * `RAY_LD_PRELOAD_ON_WORKERS`: Default value is `0`, which means Ray doesn't preload Jemalloc for workers if a library is incompatible with Jemalloc. Set to `1` to instruct Ray to preload Jemalloc for a worker using values configured by `RAY_JEMALLOC_LIB_PATH` and `RAY_JEMALLOC_PROFILE`.
 
 ```bash

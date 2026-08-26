@@ -1,0 +1,7 @@
+Build: 4100500   State: Finished   Success: False   Duration: 38s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 2
+
+Running Sphinx v8.2.3
+Extension error:
+Could not import extension myst_parser (exception: No module named 'markdown_it')

@@ -2,9 +2,12 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError, TaskCancelledError
 from ray.util.state import list_workers
@@ -132,6 +135,49 @@ def test_segfault_report_streaming_generator_output(
     assert (
         "SYSTEM_ERROR" not in worker_exit_types
     ), f"Unexpected crashed worker(s) in {worker_ids}"
+
+
+def test_unconsumed_generator_objects_freed_on_stream_deletion(ray_start_cluster):
+    """Deleting a streaming generator ref while the executor is backpressured
+    must free the objects produced after the deletion, instead of leaking them
+    in plasma for the lifetime of the worker that produced them. No node
+    failure involved: the executor simply keeps yielding after the caller
+    dropped the stream.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=10**8)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    all_produced = SignalActor.remote()
+
+    @ray.remote(
+        num_cpus=1,
+        resources={"node1": 1},
+        _generator_backpressure_num_objects=1,
+    )
+    def gen(all_produced):
+        for i in range(5):
+            yield np.ones(10**7, dtype=np.uint8) * i
+        ray.get(all_produced.send.remote())
+
+    def plasma_bytes_in_use():
+        reply = get_memory_info_reply(get_state_from_address(cluster.address))
+        return reply.store_stats.object_store_bytes_used
+
+    gen_ref = gen.remote(all_produced)
+
+    wait_for_condition(lambda: plasma_bytes_in_use() >= 10**7)
+
+    # Drop the generator without consuming anything. This marks the stream
+    # caller-deleted and signals the backpressured executor, which then
+    # produces the remaining items with no consumer.
+    del gen_ref
+
+    ray.get(all_produced.wait.remote())
+
+    wait_for_condition(lambda: plasma_bytes_in_use() == 0)
 
 
 if __name__ == "__main__":

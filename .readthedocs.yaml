@@ -15,6 +15,14 @@ build:
     # files that affect documentation output. Reduces queue pressure on
     # the shared RTD build slots when several PRs are open at once.
     # Tag/branch builds (master, stable, etc.) always run.
+    # The guard matches doc/ but excludes doc/.claude/ (Claude Code skills
+    # and agent files), which never participate in the Sphinx build, so a
+    # PR that changes only those paths skips the build instead of running one.
+    # Code sources (python/ray/, rllib/) are intentionally not matched, so a
+    # code-only PR skips this PR preview. The RTD PR check is not a required
+    # merge gate, and the post-merge master build and the Buildkite doc_build
+    # still render docstring-driven API-reference changes. This trades a
+    # non-gating premerge preview for less pressure on the shared RTD slots.
     # See https://docs.readthedocs.com/platform/stable/guides/build/skip-build.html
     #
     # Some constructs are avoided deliberately because RTD's job runner
@@ -22,6 +30,9 @@ build:
     # with a backslash-escape format string), avoid backslash escapes
     # in general, and keep shell comments out of this block so that
     # backticks/$() inside comments don't confuse the preprocessor.
+    # The runner also strips the surrounding single quotes from arguments,
+    # so use git's :! exclude shorthand rather than :(exclude): unquoted
+    # parentheses reach /bin/sh (dash) and abort the script with a syntax error.
     post_checkout:
       - |
         if [ "${READTHEDOCS_VERSION_TYPE:-}" != "external" ]; then
@@ -33,30 +44,75 @@ build:
           echo "Could not determine merge-base with origin/master; building docs to be safe."
           exit 0
         fi
-        if git diff --quiet origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml; then
+        if git diff --quiet origin/master...HEAD -- doc/ ':!doc/.claude/' .readthedocs.yaml; then
           echo "No doc-affecting files changed in this PR; skipping Sphinx build."
           echo "Files changed in PR:"
           git diff --name-only origin/master...HEAD
           exit 183
         fi
         echo "Doc-affecting files changed; building docs. Changed doc-relevant paths:"
-        git diff --name-only origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml
-    # Override the html build step. On PR (external) builds, restore the latest
-    # master build cache and build incrementally so only PR-changed files are
-    # rebuilt; fall back to a clean build (rtd-fallback) if the incremental build
-    # fails. On branch/tag builds (master, stable, release tags) always do a full
-    # clean build so the published output is never stale. Targets live in
-    # doc/Makefile (rtd, rtd-fallback, html).
+        git diff --name-only origin/master...HEAD -- doc/ ':!doc/.claude/' .readthedocs.yaml
+    # Override the html build step so every build runs a full clean Sphinx
+    # build via the doc/Makefile html target, for PR (external) previews and
+    # branch/tag builds alike.
+    #
+    # The incremental-from-master-cache path added in #64277 is disabled for
+    # now. On every PR preview Sphinx discards the restored cache because a
+    # config value differs between the environment that produced the cache and
+    # the RTD build environment, so it rebuilds all documents anyway while
+    # still paying the cache download and extract cost, and it risks a second
+    # clean rebuild when the incremental leg trips a warning. A clean build is
+    # faster and lower-variance in practice today. Re-enable the incremental
+    # path only once cache reuse is confirmed (Sphinx logs "N changed" rather
+    # than "NNNN added") and stale-artifact pruning lands for PRs that rename
+    # or delete sources. The rtd and rtd-fallback Makefile targets and
+    # doc/load_doc_cache.py stay in the tree for that re-enable.
+    # Raise pip's retry budget for the dependency install below.
+    # files.pythonhosted.org has been returning intermittent 502s
+    # (https://github.com/pypi/support/issues/11895), and one failed wheel fetch
+    # fails the whole docs build. pip defaults to 5 retries with exponential
+    # backoff, which gives up in about 8 seconds of sleeping.
+    #
+    # Written as a config file rather than PIP_RETRIES because the install step
+    # is python.install below, run by Read the Docs rather than by us, and each
+    # job command runs in its own shell so an export here would not reach it.
+    # pip reads this path on every invocation in the build, including that one.
+    #
+    # Only the retry count is raised. The observed failures are immediate 502
+    # responses rather than hangs, so a larger timeout would only lengthen the
+    # worst case without making a fetch more likely to succeed.
+    pre_install:
+      - mkdir -p ~/.config/pip
+      - |
+        echo "[global]" > ~/.config/pip/pip.conf
+        echo "retries = 10" >> ~/.config/pip/pip.conf
+        cat ~/.config/pip/pip.conf
+    # Build with fewer Sphinx workers than there are CPUs.
+    #
+    # doc/Makefile defaults SPHINX_JOBS to auto, one write worker per CPU.
+    # This builder has 4 CPUs and a 7,130,316,800 byte cgroup memory ceiling
+    # (about 6.64 GiB, the documented Business limit), and each worker holds
+    # its own copy of the build environment. At -j auto the build peaked at
+    # 6,503,370,752 bytes on a run that passed and 6,371,254,272 on one that
+    # was OOM-killed, leaving roughly 600 MB of headroom either way. When the
+    # kernel kills a write worker the parent Sphinx process reports only a
+    # bare EOFError from multiprocessing/connection.py, naming no document,
+    # and the document it dies on moves from build to build.
+    #
+    # At SPHINX_JOBS=2 the same build peaked at 5,566,427,136 bytes with
+    # memory.events oom_kill 0, so headroom goes from about 600 MB to about
+    # 1.5 GiB. The cost is wall clock: a paired run measured 349 seconds at
+    # -j auto against 620 seconds at 2 on one builder, and the 2 arm had a
+    # warm cache, so treat that as a lower bound on the slowdown.
+    #
+    # Only this job sets it. Local builds and the Buildkite doc build keep
+    # -j auto, so nothing off this builder pays for the reduced parallelism.
+    # Raising the RtD memory limit would let the parallelism come back; that
+    # is a separate ask to Read the Docs, not a change in this repo.
     build:
       html:
         - |
-          if [ "${READTHEDOCS_VERSION_TYPE:-}" = "external" ]; then
-            echo "PR build; attempting incremental build from the master doc cache."
-            make -C doc rtd HTMLDIR="$READTHEDOCS_OUTPUT/html" || make -C doc rtd-fallback HTMLDIR="$READTHEDOCS_OUTPUT/html"
-          else
-            echo "Branch/tag build; running a full clean build."
-            make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
-          fi
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

@@ -1,6 +1,7 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -11,15 +12,15 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_bool, env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.datasource.parquet_datasource import (
-    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
-    _check_for_pickle_object_columns,
+    _row_group_uncompressed_size,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -28,7 +29,13 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data._internal.datasource_v2.readers.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
+from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -87,29 +94,24 @@ def _estimate_batch_size_from_metadata(
     if row_group_num_rows == 0:
         return None
 
+    # ``None`` sums every column; a projection narrows it to the matching leaves
+    # (a nested field expands to several, e.g. "a.b.list.element"). Shared with
+    # the footer path so the two cannot drift, and it deliberately avoids
+    # ``total_byte_size``, which can report the *compressed* size for some files
+    # (apache/arrow#48138).
+    projected_leaf_indices: Optional[List[int]] = None
     if columns is not None:
-        projected_columns = tuple(columns)
-        target_column_indices = []
-        for col_idx in range(row_group_meta.num_columns):
-            leaf_path = row_group_meta.column(col_idx).path_in_schema
-            # Account for nested columns
-            if any(
-                leaf_path == col_name or leaf_path.startswith(f"{col_name}.")
-                for col_name in projected_columns
-            ):
-                target_column_indices.append(col_idx)
-        row_group_uncompressed_size = sum(
-            row_group_meta.column(col_idx).total_uncompressed_size
-            for col_idx in target_column_indices
-        )
-    else:
-        # Sum per-column uncompressed sizes instead of using
-        # row_group_meta.total_byte_size, which can return the *compressed* size
-        # for some files (apache/arrow#48138).
-        row_group_uncompressed_size = sum(
-            row_group_meta.column(col_idx).total_uncompressed_size
+        projected_columns = set(columns)
+        projected_leaf_indices = [
+            col_idx
             for col_idx in range(row_group_meta.num_columns)
-        )
+            if _leaf_matches(
+                row_group_meta.column(col_idx).path_in_schema, projected_columns
+            )
+        ]
+    row_group_uncompressed_size = _row_group_uncompressed_size(
+        row_group_meta, projected_leaf_indices
+    )
 
     # Estimate the in-memory size of the row group
     estimated_in_mem_row_group_size = (
@@ -135,7 +137,7 @@ def _estimate_batch_size_from_metadata(
 
 
 @DeveloperAPI
-class ParquetFileReader(FileReader):
+class ParquetFileReader(FileReader, SupportsMetadata):
     """Parquet-specific file reader with adaptive batch sizing.
 
     Extends :class:`FileReader` with:
@@ -148,6 +150,12 @@ class ParquetFileReader(FileReader):
 
     For non-Parquet formats, use :class:`FileReader` directly.
     """
+
+    # Number of files whose footers a single count task reads. Footer reads are
+    # small and network-bound, so batch several per task to amortize overhead.
+    _COUNT_ROWS_BATCH_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_COUNT_ROWS_BATCH_SIZE", 16
+    )
 
     def __init__(
         self,
@@ -205,9 +213,6 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
-        self._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -314,8 +319,11 @@ class ParquetFileReader(FileReader):
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):
-            if not self._allow_pickle_object_columns:
-                _check_for_pickle_object_columns(table)
+            # When you unpickle untrusted data, attackers can execute arbitrary
+            # code. To avoid exposing our users, raise unless the user has
+            # explicitly opted in.
+            raise_on_pickle_object_columns(table)
+
             yield table
 
     def _iter_fragment_tables_without_pickle_check(
@@ -329,9 +337,7 @@ class ParquetFileReader(FileReader):
         """
         import pyarrow.compute as pc
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import (
-            _align_struct_fields,
-        )
+        from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
         from ray.data._internal.datasource.parquet_datasource import (
             _get_safe_batch_size_for_nested_types,
             _needs_nested_type_fallback,
@@ -457,7 +463,7 @@ class ParquetFileReader(FileReader):
         for batch in pf.iter_batches(
             batch_size=fallback_batch_size,
             columns=read_columns,
-            use_threads=False,
+            use_threads=True,
             row_groups=row_groups,
         ):
             table = pa.Table.from_batches([batch])
@@ -514,3 +520,52 @@ class ParquetFileReader(FileReader):
             "fragment_readahead": 1,
         }
         return kwargs
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
+
+        Reads only the Parquet footer (file metadata) for each path -- no data
+        columns -- so ``PushdownCountFiles`` can answer ``count()`` cheaply.
+        Footers are fetched concurrently since each read is network-bound.
+        """
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import call_with_retry
+        from ray.data.context import DataContext
+
+        filesystem = self._filesystem or LocalFileSystem()
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _num_rows(path: str) -> int:
+            # Getting the footer requires network calls, so it may fail with
+            # transient errors; retry them.
+            metadata = call_with_retry(
+                lambda: pq.read_metadata(path, filesystem=filesystem),
+                description=f"read Parquet footer for {path}",
+                match=retried_io_errors,
+            )
+            return metadata.num_rows
+
+        paths = [str(p) for p in file_manifest.paths]
+        with ThreadPoolExecutor() as executor:
+            for num_rows in executor.map(_num_rows, paths):
+                yield BlockMetadata(
+                    num_rows=num_rows,
+                    size_bytes=None,
+                    exec_stats=None,
+                    input_files=None,
+                )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A row-reducing predicate would make the footer's ``num_rows`` an
+        # overcount, so only advertise NUM_ROWS when there's no predicate.
+        # Column projection doesn't affect the row count.
+        if self._predicate is not None:
+            return set()
+        return {MetadataType.NUM_ROWS, MetadataType.NUM_BYTES}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE

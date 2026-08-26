@@ -1,5 +1,3 @@
-import tree
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     ENCODER_OUT,
@@ -117,9 +115,9 @@ class TorchCNNEncoder(TorchModel, Encoder):
 class TorchGRUEncoder(TorchModel, Encoder):
     """A recurrent GRU encoder.
 
-    This encoder has...
-    - Zero or one tokenizers.
-    - One or more GRU layers.
+    On the usage of `torch.utils._pytree`: Unlike `dm_tree`/`tree`, it is traceable by
+    `torch.export`/TorchDynamo (used by the modern `torch.onnx.export(dynamo=True)`
+    path), so we use it for the state (un)mapping inside the recurrent encoders.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -182,7 +180,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
             out = inputs[Columns.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
-        states_in = tree.map_structure(
+        states_in = torch.utils._pytree.tree_map(
             lambda s: s.transpose(0, 1), inputs[Columns.STATE_IN]
         )
 
@@ -191,7 +189,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[Columns.STATE_OUT] = tree.map_structure(
+        outputs[Columns.STATE_OUT] = torch.utils._pytree.tree_map(
             lambda s: s.transpose(0, 1), states_out
         )
         return outputs
@@ -200,9 +198,9 @@ class TorchGRUEncoder(TorchModel, Encoder):
 class TorchLSTMEncoder(TorchModel, Encoder):
     """A recurrent LSTM encoder.
 
-    This encoder has...
-    - Zero or one tokenizers.
-    - One or more LSTM layers.
+    On the usage of `torch.utils._pytree`: Unlike `dm_tree`/`tree`, it is traceable by
+    `torch.export`/TorchDynamo (used by the modern `torch.onnx.export(dynamo=True)`
+    path), so we use it for the state (un)mapping inside the recurrent encoders.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -272,7 +270,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             out = inputs[Columns.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
-        states_in = tree.map_structure(
+        states_in = torch.utils._pytree.tree_map(
             lambda s: s.transpose(0, 1), inputs[Columns.STATE_IN]
         )
 
@@ -281,7 +279,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[Columns.STATE_OUT] = tree.map_structure(
+        outputs[Columns.STATE_OUT] = torch.utils._pytree.tree_map(
             lambda s: s.transpose(0, 1), states_out
         )
         return outputs
