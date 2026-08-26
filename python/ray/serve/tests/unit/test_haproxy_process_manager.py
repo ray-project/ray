@@ -9,6 +9,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import textwrap
 from typing import Optional
 
 import pytest
@@ -168,15 +169,19 @@ def test_import_serve_does_not_require_jinja2():
     haproxy.py must import it lazily; a module-scope import breaks
     `import ray.serve` on installs that don't have jinja2.
     """
-    code = (
-        "import importlib.abc, sys\n"
-        "class BlockJinja(importlib.abc.MetaPathFinder):\n"
-        "    def find_spec(self, fullname, path=None, target=None):\n"
-        "        if fullname == 'jinja2' or fullname.startswith('jinja2.'):\n"
-        "            raise ModuleNotFoundError(\"No module named 'jinja2'\")\n"
-        "sys.meta_path.insert(0, BlockJinja())\n"
-        "import ray.serve\n"
-        "import ray.serve._private.controller\n"
+    code = textwrap.dedent(
+        """
+        import importlib.abc, sys
+
+        class BlockJinja(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "jinja2" or fullname.startswith("jinja2."):
+                    raise ModuleNotFoundError("No module named 'jinja2'")
+
+        sys.meta_path.insert(0, BlockJinja())
+        import ray.serve
+        import ray.serve._private.controller
+        """
     )
     subprocess.check_call([sys.executable, "-c", code])
 
