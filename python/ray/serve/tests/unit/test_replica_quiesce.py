@@ -63,10 +63,11 @@ def _make_shutdown_fake(
     fake._shutting_down = False
     fake._quiescing = False
     fake._user_callable_initialized = initialized
-    fake._ingress = False
-    # Set explicitly: on a MagicMock this property would otherwise be truthy and
-    # silently select the behind-HAProxy drain path.
-    fake._is_direct_ingress = is_direct_ingress
+    # Set explicitly: on a MagicMock this would otherwise be truthy and silently
+    # select the behind-HAProxy drain path. Direct ingress is derived from
+    # `_ingress` + RAY_SERVE_ENABLE_DIRECT_INGRESS, so the tests that want the
+    # direct-ingress path patch that flag on as well.
+    fake._ingress = is_direct_ingress
     fake._deployment_config.graceful_shutdown_timeout_s = grace_period_s
     fake._direct_ingress_http_server = (
         FakeUvicornServer(events) if with_http_server else None
@@ -247,7 +248,9 @@ class TestPerformGracefulShutdown:
         long as requests keep arriving."""
         fake, events = _make_shutdown_fake(is_direct_ingress=True)
 
-        with patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", True):
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", True):
             await Replica.perform_graceful_shutdown(fake)
 
         assert [e[0] for e in events] == [
@@ -262,7 +265,9 @@ class TestPerformGracefulShutdown:
         the whole drain: refusing would surface to the client."""
         fake, events = _make_shutdown_fake(is_direct_ingress=True)
 
-        with patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", False):
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", False):
             await Replica.perform_graceful_shutdown(fake)
 
         assert [e[0] for e in events] == [

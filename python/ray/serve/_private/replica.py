@@ -1226,10 +1226,6 @@ class Replica:
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
-    @property
-    def _is_direct_ingress(self) -> bool:
-        return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
-
     def get_num_ongoing_requests(self) -> int:
         return self._metrics_manager.get_num_ongoing_requests() + len(
             self._reserved_slots
@@ -2182,12 +2178,13 @@ class Replica:
             # In direct ingress mode, hold the replica open at least
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so load balancers can
             # deregister it; the drain also waits for in-flight requests.
+            is_direct_ingress = RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
             min_draining_period_s = (
                 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
-                if self._is_direct_ingress
+                if is_direct_ingress
                 else 0.0
             )
-            if self._is_direct_ingress and RAY_SERVE_ENABLE_HA_PROXY:
+            if is_direct_ingress and RAY_SERVE_ENABLE_HA_PROXY:
                 # HAProxy retries refused connections, so stop accepting once
                 # the deregistration window is over.
                 await self._drain_behind_haproxy(min_draining_period_s)
