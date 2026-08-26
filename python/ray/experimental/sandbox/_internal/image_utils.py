@@ -62,6 +62,36 @@ _DOCKER_HUB_REGISTRIES = (
 )
 
 
+_REGISTRY_MIRROR_ENV = "RAY_SANDBOX_REGISTRY_MIRROR"
+
+
+def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
+    """Route Docker Hub pulls through a configured pull-through mirror.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` names a registry that mirrors Docker Hub
+    as ``host[:port][/repo-prefix]`` — e.g. an ECR pull-through cache
+    (``<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub``), an Artifact
+    Registry remote repository, or an in-cluster ``registry:2`` proxy. It
+    avoids Docker Hub's anonymous rate limits and pulls over the local
+    network instead of the WAN. Only Docker Hub pulls are rewritten; other
+    registries pass through untouched. When set, the mirror is
+    authoritative (no fallback to the upstream), and it is used with the
+    same anonymous token flow as any registry.
+
+    Args:
+        registry: Registry host chosen by ``parse_image_ref``.
+        repo: Repository path chosen by ``parse_image_ref``.
+
+    Returns:
+        The possibly rewritten ``(registry, repo)`` pair.
+    """
+    mirror = os.environ.get(_REGISTRY_MIRROR_ENV, "").strip().strip("/")
+    if not mirror or registry != "registry-1.docker.io":
+        return registry, repo
+    host, _, prefix = mirror.partition("/")
+    return host, f"{prefix}/{repo}" if prefix else repo
+
+
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
@@ -359,6 +389,7 @@ def pull_and_extract_container_image(
                     )
                 try:
                     registry, repo, reference = parse_image_ref(image)
+                    registry, repo = apply_registry_mirror(registry, repo)
                     auth_headers = get_registry_auth_headers(
                         registry,
                         repo,
