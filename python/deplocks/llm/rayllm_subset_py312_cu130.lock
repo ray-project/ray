@@ -419,9 +419,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -c python/deplocks/llm/rayllm_py312_cu130.lock
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.5.0 \
+    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
+    --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via
     #   -c python/deplocks/llm/rayllm_py312_cu130.lock
     #   -r python/requirements.txt

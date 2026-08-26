@@ -9,7 +9,7 @@ COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.27.0"
+ARG VLLM_SCRIPTS_REF="v0.28.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
