@@ -460,6 +460,64 @@ def test_file_ops_while_booting_409(fake_resolver: FakeResolver) -> None:
         runtime.pull_gate.set()
 
 
+class _StalledHandle:
+    """Mimics a handle to a created-but-unscheduled detached actor: every
+    remote call returns an awaitable that never resolves."""
+
+    def __getattr__(self, name: str):
+        class _Method:
+            def remote(self, *args, **kwargs):
+                import asyncio
+
+                return asyncio.get_running_loop().create_future()
+
+        return _Method()
+
+
+def _fast_settings() -> SandboxAPISettings:
+    return SandboxAPISettings(scheduling_grace_seconds=0.2)
+
+
+def test_get_sandbox_reports_pending_while_actor_is_scheduling(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-stalled0001"] = _StalledHandle()
+
+    response = client.get(f"{BASE}/sandboxes/sb-stalled0001")
+
+    assert response.status_code == 200, response.text
+    info = response.json()
+    assert info["status"] == "pending"
+    assert info["sandbox_id"] == "sb-stalled0001"
+
+
+def test_exec_on_scheduling_actor_is_409(fake_resolver: FakeResolver) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-stalled0001"] = _StalledHandle()
+
+    response = client.post(
+        f"{BASE}/sandboxes/sb-stalled0001/execs", json={"command": "echo hi"}
+    )
+
+    assert response.status_code == 409, response.text
+    assert "scheduled" in response.json()["error"]["message"]
+
+
+def test_list_includes_scheduling_sandboxes_as_pending(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    _create_sandbox(client)
+    fake_resolver.handles["sb-stalled0001"] = _StalledHandle()
+
+    response = client.get(f"{BASE}/sandboxes")
+
+    assert response.status_code == 200, response.text
+    statuses = {s["sandbox_id"]: s["status"] for s in response.json()["sandboxes"]}
+    assert statuses["sb-stalled0001"] == "pending"
+
+
 def test_shell_passthrough_to_runtime(fake_resolver: FakeResolver) -> None:
     """The create-level and per-exec shell fields reach the sandbox runtime."""
     client = _client(fake_resolver)
