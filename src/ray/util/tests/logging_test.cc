@@ -14,6 +14,8 @@
 
 #include "ray/util/logging.h"
 
+#include <signal.h>
+
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -378,5 +380,55 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
+
+#ifndef _WIN32
+// Never raised; installed only so its address is observable as a signal disposition.
+void ObservableSignalHandler(int /*signum*/) {}
+
+// One of the signals RayLog installs on, and the only one of those never raised
+// spontaneously by a healthy test process.
+constexpr int kSignalUnderTest = SIGTERM;
+
+struct sigaction GetSignalAction(int signum) {
+  struct sigaction current {};
+  EXPECT_EQ(sigaction(signum, /*act=*/nullptr, &current), 0);
+  return current;
+}
+
+void SetSignalHandler(int signum, void (*handler)(int)) {
+  struct sigaction action {};
+  sigemptyset(&action.sa_mask);
+  action.sa_handler = handler;
+  ASSERT_EQ(sigaction(signum, &action, /*oldact=*/nullptr), 0);
+}
+
+// Ray installs first, so the disposition it has to restore is the default one.
+TEST(PrintLogTest, TestUninstallSignalActionRestoresDefault) {
+  // Earlier tests in this binary may have left a handler installed.
+  ray::RayLog::UninstallSignalAction();
+  SetSignalHandler(kSignalUnderTest, SIG_DFL);
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+  EXPECT_NE(GetSignalAction(kSignalUnderTest).sa_handler, SIG_DFL);
+
+  ray::RayLog::UninstallSignalAction();
+  EXPECT_EQ(GetSignalAction(kSignalUnderTest).sa_handler, SIG_DFL);
+}
+
+// A handler installed before Ray, as an embedded JVM or an application's own crash
+// reporter would be, has to survive Ray's shutdown.
+TEST(PrintLogTest, TestUninstallSignalActionRestoresPreexistingHandler) {
+  ray::RayLog::UninstallSignalAction();
+  SetSignalHandler(kSignalUnderTest, ObservableSignalHandler);
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+  EXPECT_NE(GetSignalAction(kSignalUnderTest).sa_handler, &ObservableSignalHandler);
+
+  ray::RayLog::UninstallSignalAction();
+  EXPECT_EQ(GetSignalAction(kSignalUnderTest).sa_handler, &ObservableSignalHandler);
+
+  SetSignalHandler(kSignalUnderTest, SIG_DFL);
+}
+#endif
 
 }  // namespace ray
