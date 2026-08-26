@@ -558,8 +558,13 @@ def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     assert mounts["/etc/hosts"]["source"] == str(hosts)
     assert "rw" in mounts["/etc/hosts"]["options"]
     assert mounts["/tmp"]["type"] == "tmpfs"
-    # The rootfs /tmp was seeded so runsc keeps it on the rootfs device.
+    # The rootfs /tmp was seeded so runsc keeps it on the rootfs device —
+    # and is world-writable + sticky regardless of how it was extracted.
     assert (tmp_path / "rootfs" / "tmp" / ".ray-sandbox-keep").exists()
+    import stat
+
+    mode = stat.S_IMODE((tmp_path / "rootfs" / "tmp").stat().st_mode)
+    assert mode == 0o1777
 
     spec = mgr.create_oci_spec(
         image="fake:latest",
@@ -593,6 +598,30 @@ def test_prepare_oci_bundle_writes_hosts_file(tmp_path, monkeypatch):
     spec = json.loads((bundle / "config.json").read_text())
     dests = {m["destination"] for m in spec["mounts"]}
     assert "/etc/hosts" in dests
+
+
+def test_extract_tar_layer_applies_directory_modes(tmp_path):
+    """Archived directory modes survive extraction: a 0755 root /tmp breaks
+    every non-root writer (apt-key first among them)."""
+    import io
+    import os
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo("tmp")
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o1777
+        tar.addfile(info)
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert stat.S_IMODE(os.stat(dest / "tmp").st_mode) == 0o1777
 
 
 if __name__ == "__main__":

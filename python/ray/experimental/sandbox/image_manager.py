@@ -386,9 +386,10 @@ class ImageManager(BaseImageManager):
         # /tmp stays writable there.
         tmp_dir = os.path.join(rootfs, "tmp")
         try:
-            if not os.path.isdir(tmp_dir):
-                os.makedirs(tmp_dir, exist_ok=True)
-                os.chmod(tmp_dir, 0o1777)
+            os.makedirs(tmp_dir, exist_ok=True)
+            # Unconditional: /tmp must be world-writable with the sticky bit
+            # whether it came from the image or was just created.
+            os.chmod(tmp_dir, 0o1777)
             with open(
                 os.path.join(tmp_dir, ".ray-sandbox-keep"), "a", encoding="utf-8"
             ):
