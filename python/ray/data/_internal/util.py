@@ -864,7 +864,8 @@ def unify_ref_bundles_schema(
     for bundle in ref_bundles:
         if bundle.schema is None:
             continue
-        if bundle.num_rows() is None or bundle.num_rows() > 0:
+        num_rows = bundle.num_rows()
+        if num_rows is None or num_rows > 0:
             schemas_to_unify.append(bundle.schema)
         else:
             empty_bundle_schemas.append(bundle.schema)

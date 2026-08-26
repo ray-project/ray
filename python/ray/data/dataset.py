@@ -7576,12 +7576,23 @@ class Dataset:
                     # Pandas-backed schema: preserve per-column dtypes when known.
                     types = getattr(base_schema, "types", None)
                     if types is not None and len(types) == len(schema.names):
-                        df = pandas.DataFrame(
-                            {
-                                name: pandas.Series([], dtype=dtype)
-                                for name, dtype in zip(schema.names, types)
-                            }
-                        )
+                        try:
+                            empty_block = pandas.DataFrame(
+                                {
+                                    name: pandas.Series([], dtype=dtype)
+                                    for name, dtype in zip(schema.names, types)
+                                }
+                            )
+                        except (TypeError, ValueError):
+                            # A dtype that can't back an empty Series (e.g. an
+                            # exotic extension type): keep the columns at least.
+                            df = pandas.DataFrame(columns=list(schema.names))
+                        else:
+                            # Route through the same `BlockAccessor.to_pandas()`
+                            # conversion used for non-empty blocks so internal
+                            # extension dtypes (e.g. TensorDtype) are converted
+                            # identically.
+                            df = BlockAccessor.for_block(empty_block).to_pandas()
                     else:
                         df = pandas.DataFrame(columns=list(schema.names))
 
