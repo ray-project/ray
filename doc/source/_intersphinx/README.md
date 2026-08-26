@@ -1,6 +1,6 @@
 # Intersphinx inventory snapshots
 
-This directory holds committed snapshots of the third-party Sphinx inventories (`objects.inv`) that Ray's docs cross-reference (NumPy, PyTorch, pandas, and about two dozen others).
+This directory holds committed snapshots of the third-party Sphinx inventories (`objects.inv`) that Ray's docs cross-reference (NumPy, PyTorch, pandas, and fifteen others).
 
 ## Why these are committed
 
@@ -17,7 +17,7 @@ Generated cross-reference links still point at each project's live docs site. On
 
 Most targets resolve against upstream's *moving* docs: `.../stable/`, `.../latest/`, `.../main/`, or an unversioned root. Their inventory therefore changes when the upstream project *releases*, independently of anything Ray pins in its own requirements. There's no Ray-side event to refresh against.
 
-Four targets are the exception, because they set an explicit inventory URL rather than deriving it from `base_url`: `pandas` and `scipy` read frozen `object-mirror-*` release assets under `ray-project`, `torch` is pinned to `docs/2.7/`, and `tensorflow` reads a third-party GPflow mirror that tracks its own `master`. For the three frozen ones a refresh is a no-op. They change only when someone re-cuts the mirror or repoints the URL, so committing a snapshot of them changes nothing about their staleness.
+Three targets are the exception, because they set an explicit inventory URL rather than deriving it from `base_url`: `pandas` reads a frozen `object-mirror-*` release asset under `ray-project`, `torch` is pinned to `docs/2.9/`, and `tensorflow` reads a third-party GPflow mirror that tracks its own `master`. For the two frozen ones a refresh is a no-op. They change only when someone re-cuts the mirror or repoints the URL, so committing a snapshot of them changes nothing about their staleness.
 
 On `master`, that leaves a clock as the only thing that can bound staleness, and the refresh cadence is what bounds two failure modes:
 
@@ -40,3 +40,9 @@ python doc/source/_intersphinx/refresh.py numpy torch  # refresh a subset
 ```
 
 Then review the diff and re-run the docs build before committing. The script reads the project list and upstream URLs straight from `_intersphinx_targets` in `../conf.py`, so it never drifts from the build configuration. To add or remove a target, edit `_intersphinx_targets` and re-run the script.
+
+## Before you drop a target
+
+Dropping a target that nothing cross-references is usually safe. Third-party type annotations resolve as `py:class` references, and `../conf.py` blanket-ignores that reftype through `nitpick_ignore_regex`, so an unresolved annotation renders as plain text instead of breaking the `-W` build. Check two things first. Confirm the target resolves nothing, by counting the `title="(in <Project> v<X>)"` stamps intersphinx leaves on resolved anchors in a full HTML build. Then confirm no `:external:` role and no explicit `py:obj`, `py:func`, `py:meth`, or `py:mod` reference under `doc/source` targets the namespace, because the blanket ignore doesn't cover those reftypes.
+
+You can't drop `python`. Sphinx's `parse_reftarget` assigns the `obj` reftype rather than `class` to `None` and to every `typing.*` annotation, and nothing ignores `py:obj` generically. Ray's docs carried 2,856 `None` references and 2,676 `typing.*` references when the dead targets were dropped, so removing the `python` target would turn all 5,532 into hard `-W` failures.
