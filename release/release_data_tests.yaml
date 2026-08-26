@@ -33,6 +33,8 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      type: cpu
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
