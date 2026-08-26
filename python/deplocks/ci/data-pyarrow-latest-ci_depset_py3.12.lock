@@ -649,9 +649,9 @@ charset-normalizer==3.4.7 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   requests
     #   snowflake-connector-python
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.4.2 \
+    --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
+    --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   celery
@@ -1348,9 +1348,9 @@ einops==0.8.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   etils
     #   lerobot
-etils==1.13.0 \
-    --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
-    --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
+etils==1.14.0 \
+    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
+    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   array-record
@@ -2093,12 +2093,6 @@ importlib-metadata==6.11.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   diffusers
     #   opentelemetry-api
-importlib-resources==7.1.0 \
-    --hash=sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708 \
-    --hash=sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1
-    # via
-    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-    #   etils
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
     --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12

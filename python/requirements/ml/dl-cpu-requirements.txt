@@ -1,14 +1,24 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
 # For GPU Docker images, you should install dl-gpu-requirements.txt afterwards.
 
-tensorflow==2.20.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+# TensorFlow 2.20 requires protobuf>=5.28. The affected Python 3.10–3.11
+# Serve release job uses the last TensorFlow compatible with protobuf 4.25.8.
+tensorflow==2.19.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
+tensorflow==2.20.0; python_version >= '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
+tensorflow-macos==2.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'
+tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.12'
+tensorboard==2.19.0; python_version < '3.12'
+tensorboard==2.20.0; python_version >= '3.12'
 tensorflow-probability==0.24.0
 tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
-tensorflow-datasets; python_version < '3.12'
+# tensorflow-datasets pulls array-record, which has no CPython 3.10 Windows
+# wheel. This test-only dependency is not available there.
+tensorflow-datasets; python_version < '3.12' and platform_system != 'Windows'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
-tf-keras==2.20.0
+etils==1.14.0; python_version >= '3.12'
+tf-keras==2.19.0; python_version < '3.12'
+tf-keras==2.20.0; python_version >= '3.12'
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
 

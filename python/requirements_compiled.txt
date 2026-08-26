@@ -46,7 +46,7 @@ aiobotocore==2.8.0
     # via
     #   aioboto3
     #   s3fs
-aiofiles==24.1.0
+aiofiles==25.1.0
     # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
@@ -309,7 +309,7 @@ charset-normalizer==3.4.7
     #   snowflake-connector-python
 clang-format==12.0.1
     # via -r python/requirements/lint-requirements.txt
-click==8.3.2
+click==8.4.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -427,7 +427,7 @@ dask==2026.3.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
-databricks-sdk==0.103.0
+databricks-sdk==0.123.0
     # via
     #   mlflow-skinny
     #   mlflow-tracing
@@ -464,6 +464,9 @@ deprecated==1.3.1
     # via
     #   deltalake
     #   numcodecs
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-semantic-conventions
     #   pymoo
 dill==0.4.1
     # via
@@ -738,11 +741,11 @@ grpcio==1.75.0 ; python_version < "3.14"
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.75.0 ; python_version < "3.14"
+grpcio-status==1.62.3 ; python_version < "3.12"
     # via
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
-grpcio-tools==1.75.0 ; python_version < "3.14"
+grpcio-tools==1.62.3 ; python_version < "3.12"
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1135,7 +1138,7 @@ monotonic==1.6
     #   segment-analytics-python
 moocore==0.2.0
     # via pymoo
-more-itertools==11.0.2
+more-itertools==11.1.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
@@ -1249,7 +1252,7 @@ numexpr==2.14.1
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pymars
-numpy==2.2.6
+numpy==2.1.3 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1384,7 +1387,7 @@ openlineage-python==1.46.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.39.0
+opentelemetry-api==1.27.0 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1397,23 +1400,28 @@ opentelemetry-api==1.39.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0
-    # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
+opentelemetry-exporter-otlp-proto-common==1.27.0 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.27.0 ; python_version < "3.12"
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-exporter-prometheus==0.48b0 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-instrumentation==0.60b0
+opentelemetry-instrumentation==0.48b0 ; python_version < "3.12"
     # via
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0
-    # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-asgi==0.48b0 ; python_version < "3.12"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.48b0 ; python_version < "3.12"
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.39.0
+opentelemetry-proto==1.27.0 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1421,7 +1429,7 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.39.0
+opentelemetry-sdk==1.27.0 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1429,15 +1437,15 @@ opentelemetry-sdk==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-semantic-conventions==0.48b0 ; python_version < "3.12"
     # via
     #   -r python/requirements/test-requirements.txt
-    #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0
+opentelemetry-util-http==0.48b0 ; python_version < "3.12"
     # via
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.4.0
@@ -1459,7 +1467,7 @@ ormsgpack==1.12.2
     #   -r python/requirements/ml/rllib-requirements.txt
 overrides==7.7.0
     # via jupyter-server
-packaging==26.1
+packaging==25.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1497,7 +1505,6 @@ packaging==26.1
     #   onnxruntime
     #   onnxscript
     #   openlineage-python
-    #   opentelemetry-instrumentation
     #   optuna
     #   plotly
     #   pytest
@@ -1575,7 +1582,6 @@ pillow==11.3.0 ; platform_system != "Windows"
     #   imageio
     #   matplotlib
     #   moviepy
-    #   tensorboard
     #   torchvision
 pkginfo==1.12.1.2
     # via azure-cli-core
@@ -1628,7 +1634,7 @@ proto-plus==1.27.2
     # via
     #   google-api-core
     #   google-cloud-bigquery-storage
-protobuf==6.33.6 ; python_version >= "3.11"
+protobuf==4.25.8 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1684,7 +1690,7 @@ py-deviceid==0.1.1
     # via azure-cli-core
 py-partiql-parser==0.6.3
     # via moto
-py-spy==0.4.1 ; python_version < "3.12"
+py-spy==0.4.2 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
@@ -2044,7 +2050,7 @@ responses==0.26.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-restrictedpython==8.1
+restrictedpython==8.4
     # via aim
 retry-decorator==1.1.1
     # via
@@ -2156,7 +2162,7 @@ sentry-sdk==2.58.0
     # via
     #   comet-ml
     #   wandb
-serpent==1.42
+serpent==1.43
     # via
     #   hpbandster
     #   pyro4
@@ -2190,6 +2196,7 @@ six==1.17.0
     #   python-dateutil
     #   pyu2f
     #   rfc3339-validator
+    #   tensorboard
     #   tensorflow
     #   tensorflow-probability
     #   triad
@@ -2273,8 +2280,9 @@ tenacity==9.1.4
     # via
     #   -r python/requirements/ml/train-test-requirements.txt
     #   pyiceberg
-tensorboard==2.20.0
+tensorboard==2.19.0 ; python_version < "3.12"
     # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
 tensorboard-data-server==0.7.2
@@ -2287,20 +2295,22 @@ tensorboardx==2.6.5
     #   -r python/requirements/test-requirements.txt
 tensordict==0.8.3 ; sys_platform != "darwin"
     # via -r python/requirements/test-requirements.txt
-tensorflow==2.20.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+tensorflow==2.19.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   tf-keras
-tensorflow-datasets==4.9.3 ; python_version < "3.12"
+tensorflow-datasets==4.9.3 ; python_version < "3.12" and platform_system != "Windows"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-estimator==2.15.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   tensorflow
 tensorflow-metadata==1.17.3
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
@@ -2326,7 +2336,7 @@ testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
 textual==4.0.0
     # via memray
-tf-keras==2.20.0
+tf-keras==2.19.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2531,10 +2541,7 @@ typing-extensions==4.15.0
     #   onnx
     #   onnx-ir
     #   onnxscript
-    #   opentelemetry-api
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
-    #   opentelemetry-semantic-conventions
     #   optree
     #   pydantic
     #   pydantic-core
@@ -2583,6 +2590,7 @@ urllib3==1.26.20
     #   botocore
     #   clickhouse-connect
     #   comet-ml
+    #   databricks-sdk
     #   distributed
     #   docker
     #   dulwich
@@ -2617,7 +2625,7 @@ virtualenv==21.2.4
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
-wandb==0.26.0
+wandb==0.24.2
     # via -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
