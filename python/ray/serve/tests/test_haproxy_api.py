@@ -982,11 +982,7 @@ def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
             },
             config_file_path=config_file_path,
         )
-        with mock.patch(
-            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
-            config_file_path,
-        ):
-            api._generate_config_file_internal()
+        api._generate_config_file_internal()
         with open(config_file_path) as f:
             cfg = f.read()
 
