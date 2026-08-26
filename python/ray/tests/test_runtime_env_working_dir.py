@@ -122,7 +122,9 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
         "failure",
         "working_dir",
         "working_dir_zip",
+        "working_dir_tar_xz",
         "py_modules",
+        "py_modules_tar_xz",
         "working_dir_and_py_modules",
     ],
 )
@@ -153,6 +155,16 @@ def test_lazy_reads(
                     os.path.join(tmp_dir, "test"), "zip", zip_dir
                 )
                 ray.init(address, runtime_env={"working_dir": package})
+        elif option in {"working_dir_tar_xz", "py_modules_tar_xz"}:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                package = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "xztar", tmp_working_dir
+                )
+                if option == "working_dir_tar_xz":
+                    runtime_env = {"working_dir": package}
+                else:
+                    runtime_env = {"py_modules": [Path(package).as_uri()]}
+                ray.init(address, runtime_env=runtime_env)
         elif option == "py_modules":
             ray.init(
                 address,
@@ -217,7 +229,12 @@ def test_lazy_reads(
 
         assert ray.get(test_py_modules_whl.remote())
 
-    if option in {"py_modules", "working_dir_zip"}:
+    if option in {
+        "py_modules",
+        "py_modules_tar_xz",
+        "working_dir_zip",
+        "working_dir_tar_xz",
+    }:
         # These options are not tested beyond this point, so return to save time.
         return
 

@@ -85,10 +85,15 @@ class TestValidateWorkingDir:
             "https://some_domain.com/path/file",
             "s3://bucket/file",
             "gs://bucket/file",
+            "gcs://file.txt",
+            "gcs://file.whl",
         ]:
             with pytest.raises(
                 ValueError,
-                match=r"Only \.zip, \.whl, \.tar\.gz, and \.tgz files supported for remote URIs\.",
+                match=(
+                    r"Only \.zip, \.tar\.gz, \.tgz, \.tar\.xz files are "
+                    r"supported for working_dir URIs"
+                ),
             ):
                 parse_and_validate_working_dir(uri)
 
@@ -100,9 +105,25 @@ class TestValidateWorkingDir:
             "https://some_domain.com/path/file.tar.gz",
             "s3://bucket/file.tar.gz",
             "gs://bucket/file.tgz",
+            "http://some_domain.com/path/file.tar.xz",
+            "https://some_domain.com/path/file.tar.xz",
+            "s3://bucket/file.tar.xz",
+            "gs://bucket/file.tar.xz",
+            "azure://container/file.tar.xz",
+            "abfss://container@account.dfs.core.windows.net/file.tar.xz",
+            "file:///tmp/file.tar.xz",
+            "gcs://file.tar.xz",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
+
+    def test_working_dir_whl_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for working_dir URIs"):
+            RuntimeEnv(working_dir="gcs://package.whl")
+
+    def test_unsupported_gcs_format_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for working_dir URIs"):
+            RuntimeEnv(working_dir="gcs://package.txt")
 
     def test_validate_path_valid_input(self, test_directory):
         test_dir, _, _, _ = test_directory
@@ -133,10 +154,14 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file",
             "s3://bucket/file",
             "gs://bucket/file",
+            "gcs://file.txt",
         ]
         with pytest.raises(
             ValueError,
-            match="Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs.",
+            match=(
+                r"Only \.zip, \.whl, \.tar\.gz, \.tgz, \.tar\.xz files are "
+                r"supported for py_modules URIs"
+            ),
         ):
             parse_and_validate_py_modules(uris)
 
@@ -151,9 +176,22 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file.tar.gz",
             "s3://bucket/file.tar.gz",
             "gs://bucket/file.tgz",
+            "http://some_domain.com/path/file.tar.xz",
+            "https://some_domain.com/path/file.tar.xz",
+            "s3://bucket/file.tar.xz",
+            "gs://bucket/file.tar.xz",
+            "azure://container/file.tar.xz",
+            "abfss://container@account.dfs.core.windows.net/file.tar.xz",
+            "file:///tmp/file.tar.xz",
+            "gcs://file.tar.xz",
+            "gcs://file.whl",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
+
+    def test_unsupported_gcs_format_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for py_modules URIs"):
+            RuntimeEnv(py_modules=["gcs://package.txt"])
 
     def test_validate_path_valid_input(self, test_directory):
         test_dir, _, _, _ = test_directory
@@ -795,7 +833,9 @@ def test_validate_no_local_paths_fails_if_local_working_dir():
 
 def test_validate_no_local_paths_fails_if_local_py_module():
     with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
-        runtime_env = RuntimeEnv(py_modules=[tmp_file.name, "gcs://some_other_file"])
+        runtime_env = RuntimeEnv(
+            py_modules=[tmp_file.name, "gcs://some_other_file.zip"]
+        )
         with pytest.raises(ValueError, match="not a valid URI"):
             _validate_no_local_paths(runtime_env)
 
