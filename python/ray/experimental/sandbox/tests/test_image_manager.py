@@ -540,6 +540,59 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
 
     assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
     assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
+    """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
+    and /tmp stays on the rootfs (readonly sandboxes get an explicit tmpfs
+    so it remains writable)."""
+    mgr = _StubImageManager(tmp_path)
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n")
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        hosts_source=str(hosts),
+        readonly=True,
+    )
+    mounts = {m["destination"]: m for m in spec["mounts"]}
+    assert mounts["/etc/hosts"]["source"] == str(hosts)
+    assert "rw" in mounts["/etc/hosts"]["options"]
+    assert mounts["/tmp"]["type"] == "tmpfs"
+    # The rootfs /tmp was seeded so runsc keeps it on the rootfs device.
+    assert (tmp_path / "rootfs" / "tmp" / ".ray-sandbox-keep").exists()
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=False,
+    )
+    dests = {m["destination"] for m in spec["mounts"]}
+    # Writable rootfs: /tmp is plain rootfs, same device — no tmpfs mount.
+    assert "/tmp" not in dests
+
+
+def test_prepare_oci_bundle_writes_hosts_file(tmp_path, monkeypatch):
+    import ray.experimental.sandbox.image_manager as image_manager_mod
+
+    # The default spec shells out to runsc; substitute a static one so this
+    # runs on hosts without gVisor.
+    monkeypatch.setattr(image_manager_mod, "get_default_oci_spec", _sample_base_spec)
+    mgr = _StubImageManager(tmp_path)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    mgr.prepare_oci_bundle(
+        root_dir=str(bundle),
+        workdir_path=None,
+        container_cwd="/",
+        image="fake:latest",
+    )
+    content = (bundle / "hosts").read_text()
+    assert "127.0.0.1\tlocalhost" in content
+    import json
+
+    spec = json.loads((bundle / "config.json").read_text())
+    dests = {m["destination"] for m in spec["mounts"]}
+    assert "/etc/hosts" in dests
 
 
 if __name__ == "__main__":

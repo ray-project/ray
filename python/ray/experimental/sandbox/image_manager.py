@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 
 _RESOLV_CONF = "/etc/resolv.conf"
+_ETC_HOSTS = "/etc/hosts"
 
 
 def get_default_oci_spec() -> Dict[str, Any]:
@@ -138,6 +139,7 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
+        hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -159,6 +161,9 @@ class BaseImageManager(ABC):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
+            hosts_source: Optional file to bind-mount read-write at
+                /etc/hosts (a per-sandbox copy, like the one container
+                engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -329,6 +334,7 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
+        hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -350,6 +356,9 @@ class ImageManager(BaseImageManager):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
+            hosts_source: Optional file to bind-mount read-write at
+                /etc/hosts (a per-sandbox copy, like the one container
+                engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -368,6 +377,25 @@ class ImageManager(BaseImageManager):
         spec.setdefault("root", {})
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
+
+        # Docker parity: keep /tmp on the rootfs. runsc mounts a private
+        # tmpfs over an *empty* /tmp, which puts /tmp on a different device
+        # from the rootfs and breaks the rename(2)-from-/tmp pattern that
+        # works under Docker (EXDEV). A placeholder keeps it non-empty;
+        # readonly sandboxes get an explicit tmpfs mount below instead so
+        # /tmp stays writable there.
+        tmp_dir = os.path.join(rootfs, "tmp")
+        try:
+            if not os.path.isdir(tmp_dir):
+                os.makedirs(tmp_dir, exist_ok=True)
+                os.chmod(tmp_dir, 0o1777)
+            with open(
+                os.path.join(tmp_dir, ".ray-sandbox-keep"), "a", encoding="utf-8"
+            ):
+                pass
+        except OSError:
+            # Best effort: runsc then falls back to its private tmpfs.
+            pass
 
         spec.setdefault("process", {})
         spec["process"]["args"] = ["sleep", "infinity"]
@@ -454,6 +482,33 @@ class ImageManager(BaseImageManager):
             )
             existing_dests.add(_RESOLV_CONF)
 
+        # Read-write like the file container engines inject: tasks may add
+        # entries. The source is always a per-sandbox copy, never the node's
+        # own file.
+        if hosts_source and _ETC_HOSTS not in existing_dests:
+            mounts.append(
+                {
+                    "destination": _ETC_HOSTS,
+                    "type": "bind",
+                    "source": hosts_source,
+                    "options": ["rbind", "rw"],
+                }
+            )
+            existing_dests.add(_ETC_HOSTS)
+
+        # The rootfs /tmp above is read-only whenever the rootfs is; keep
+        # /tmp always writable, as it effectively is under Docker.
+        if readonly and "/tmp" not in existing_dests:
+            mounts.append(
+                {
+                    "destination": "/tmp",
+                    "type": "tmpfs",
+                    "source": "tmpfs",
+                    "options": ["nosuid", "nodev", "mode=1777"],
+                }
+            )
+            existing_dests.add("/tmp")
+
         spec["mounts"] = mounts
 
         # Configure OCI cgroup resource limits for CPU and memory
@@ -533,6 +588,24 @@ class ImageManager(BaseImageManager):
             elif os.path.exists(_RESOLV_CONF):
                 resolv_conf_source = _RESOLV_CONF
 
+        # Container engines inject a per-container /etc/hosts at run time
+        # (images do not ship a usable one), and without it `localhost` does
+        # not resolve at all. Host networking additionally inherits the
+        # node's entries, mirroring the resolver handling above.
+        hosts_source = os.path.join(root_dir, "hosts")
+        host_entries = ""
+        if network == "host" and os.path.exists(_ETC_HOSTS):
+            try:
+                with open(_ETC_HOSTS, "r", encoding="utf-8") as f:
+                    host_entries = f.read()
+            except OSError:
+                host_entries = ""
+        with open(hosts_source, "w", encoding="utf-8") as f:
+            f.write("127.0.0.1\tlocalhost\n")
+            f.write("::1\tlocalhost ip6-localhost ip6-loopback\n")
+            if host_entries:
+                f.write(host_entries)
+
         spec = self.create_oci_spec(
             image=image,
             container_cwd=container_cwd,
@@ -544,6 +617,7 @@ class ImageManager(BaseImageManager):
             capabilities=capabilities,
             network=network,
             resolv_conf_source=resolv_conf_source,
+            hosts_source=hosts_source,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 
