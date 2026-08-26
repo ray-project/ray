@@ -202,7 +202,7 @@ class HangingExecutionIssueDetector(IssueDetector):
         hanging_op_tasks: HangingOpTasks = defaultdict(dict)
 
         for operator in self._operators:
-            if operator.has_execution_finished():
+            if operator.is_shut_down() or operator.has_execution_finished():
                 continue
 
             op_metrics = operator.metrics
