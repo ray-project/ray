@@ -143,8 +143,12 @@ def _explore(
                 operations[key] = f"* {perturbation_factor}"
             if isinstance(config[key], int):
                 # If this hyperparameter started out as an integer (ex: `batch_size`),
-                # convert the new value back
-                new_config[key] = int(new_config[key])
+                # convert the new value back. Round rather than truncate: int() drops
+                # the fraction toward zero, so with the default factors `* 1.2` was a
+                # no-op for every value below 5 while `* 0.8` always landed lower. An
+                # integer hyperparameter could therefore only ratchet down, and 0
+                # absorbed it because every factor leaves 0 unchanged.
+                new_config[key] = int(round(new_config[key]))
         else:
             raise ValueError(
                 f"Unsupported hyperparameter distribution type: {type(distribution)}"
