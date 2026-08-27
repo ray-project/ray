@@ -745,6 +745,10 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, false)
 
+/// Whether to enforce the CPU and memory resources assigned to each container worker.
+/// This is experimental and currently applies only to image_uri workers.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
 /// Whether to enable worker prestarting on first driver
 /// TODO(clarng): reconcile with enable_worker_prestart
 RAY_CONFIG(bool, prestart_worker_first_driver, true)

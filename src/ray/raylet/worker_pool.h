@@ -101,6 +101,7 @@ struct PopWorkerRequest {
   const std::optional<bool> is_actor_worker_;
   const rpc::RuntimeEnvInfo runtime_env_info_;
   const int runtime_env_hash_;
+  const rpc::WorkerResourceLimits worker_resource_limits_;
   const std::vector<std::string> dynamic_options_;
   std::optional<absl::Duration> worker_startup_keep_alive_duration_;
 
@@ -114,6 +115,7 @@ struct PopWorkerRequest {
                    std::optional<bool> actor_worker,
                    rpc::RuntimeEnvInfo runtime_env_info,
                    int runtime_env_hash,
+                   rpc::WorkerResourceLimits worker_resource_limits,
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
@@ -125,6 +127,7 @@ struct PopWorkerRequest {
         is_actor_worker_(actor_worker),
         runtime_env_info_(std::move(runtime_env_info)),
         runtime_env_hash_(runtime_env_hash),
+        worker_resource_limits_(std::move(worker_resource_limits)),
         dynamic_options_(std::move(options)),
         worker_startup_keep_alive_duration_(worker_startup_keep_alive_duration),
         callback_(std::move(callback)) {}
@@ -176,6 +179,12 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
   virtual void PopWorker(const LeaseSpecification &lease_spec,
+                         const PopWorkerCallback &callback) = 0;
+
+  /// Pop a worker that was started with the same resource limit profile, or start a
+  /// new worker with this profile.
+  virtual void PopWorker(const LeaseSpecification &lease_spec,
+                         const rpc::WorkerResourceLimits &worker_resource_limits,
                          const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///
@@ -487,6 +496,10 @@ class WorkerPool : public WorkerPoolInterface {
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override;
 
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &worker_resource_limits,
+                 const PopWorkerCallback &callback) override;
+
   /// Try to prestart a number of workers suitable the given lease spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
   /// then it means it takes a long time to scale up.
@@ -596,7 +609,9 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      const rpc::WorkerResourceLimits &worker_resource_limits =
+          rpc::WorkerResourceLimits());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -625,6 +640,9 @@ class WorkerPool : public WorkerPoolInterface {
   const std::vector<std::string> &LookupWorkerDynamicOptions(
       const WorkerID &worker_id) const;
 
+  const rpc::WorkerResourceLimits &LookupWorkerResourceLimits(
+      const WorkerID &worker_id) const;
+
   struct IOWorkerState {
     /// The pool of idle I/O workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle_io_workers;
@@ -649,6 +667,8 @@ class WorkerPool : public WorkerPoolInterface {
     SteadyTimePoint start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
+    /// Operating-system resource limits used to start this worker process.
+    rpc::WorkerResourceLimits worker_resource_limits;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
@@ -822,6 +842,12 @@ class WorkerPool : public WorkerPoolInterface {
                              const JobID &job_id,
                              const GetOrCreateRuntimeEnvCallback &callback);
 
+  void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const JobID &job_id,
+                             const rpc::WorkerResourceLimits &worker_resource_limits,
+                             const GetOrCreateRuntimeEnvCallback &callback);
+
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
@@ -833,7 +859,8 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      const rpc::WorkerResourceLimits &worker_resource_limits);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 
