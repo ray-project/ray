@@ -431,9 +431,14 @@ void RayLog::InitLogFormat() {
 
 namespace {
 
-// Signals whose disposition absl::InstallFailureSignalHandler() replaces.
+#ifdef _WIN32
 constexpr std::array<int, 5> kInstalledSignals = {
     SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM};
+#else
+// https://github.com/abseil/abseil-cpp/blob/fb3621f4f897824c0dbe0615fa94543df6192f30/absl/debugging/failure_signal_handler.cc#L94-L104
+constexpr std::array<int, 7> kInstalledSignals = {
+    SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM, SIGBUS, SIGTRAP};
+#endif
 
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
 using SignalDisposition = void (*)(int);

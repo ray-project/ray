@@ -16,6 +16,7 @@
 
 #include <signal.h>
 
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -385,9 +386,7 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
 // Never raised; installed only so its address is observable as a signal disposition.
 void ObservableSignalHandler(int /*signum*/) {}
 
-// One of the signals RayLog installs on, and the only one of those never raised
-// spontaneously by a healthy test process.
-constexpr int kSignalUnderTest = SIGTERM;
+constexpr std::array<int, 3> kSignalsUnderTest = {SIGTERM, SIGBUS, SIGTRAP};
 
 struct sigaction GetSignalAction(int signum) {
   struct sigaction current {};
@@ -404,30 +403,41 @@ void SetSignalHandler(int signum, void (*handler)(int)) {
 
 // Ray installs first, so the disposition it has to restore is the default one.
 TEST(PrintLogTest, TestUninstallSignalActionRestoresDefault) {
-  // Earlier tests in this binary may have left a handler installed.
   ray::RayLog::UninstallSignalAction();
-  SetSignalHandler(kSignalUnderTest, SIG_DFL);
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, SIG_DFL);
+  }
 
   ray::RayLog::InstallFailureSignalHandler(nullptr);
-  EXPECT_NE(GetSignalAction(kSignalUnderTest).sa_handler, SIG_DFL);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_NE(GetSignalAction(signal).sa_handler, SIG_DFL);
+  }
 
   ray::RayLog::UninstallSignalAction();
-  EXPECT_EQ(GetSignalAction(kSignalUnderTest).sa_handler, SIG_DFL);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_EQ(GetSignalAction(signal).sa_handler, SIG_DFL);
+  }
 }
 
-// A handler installed before Ray, as an embedded JVM or an application's own crash
-// reporter would be, has to survive Ray's shutdown.
 TEST(PrintLogTest, TestUninstallSignalActionRestoresPreexistingHandler) {
   ray::RayLog::UninstallSignalAction();
-  SetSignalHandler(kSignalUnderTest, ObservableSignalHandler);
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, ObservableSignalHandler);
+  }
 
   ray::RayLog::InstallFailureSignalHandler(nullptr);
-  EXPECT_NE(GetSignalAction(kSignalUnderTest).sa_handler, &ObservableSignalHandler);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_NE(GetSignalAction(signal).sa_handler, &ObservableSignalHandler);
+  }
 
   ray::RayLog::UninstallSignalAction();
-  EXPECT_EQ(GetSignalAction(kSignalUnderTest).sa_handler, &ObservableSignalHandler);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_EQ(GetSignalAction(signal).sa_handler, &ObservableSignalHandler);
+  }
 
-  SetSignalHandler(kSignalUnderTest, SIG_DFL);
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, SIG_DFL);
+  }
 }
 #endif
 
