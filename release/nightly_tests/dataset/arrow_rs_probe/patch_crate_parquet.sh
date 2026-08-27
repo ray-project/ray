@@ -74,7 +74,7 @@ fi
 
 say "vendoring pristine parquet 59.1.0 from the cargo registry cache"
 ( cd "$CRATE" && cargo fetch )
-SRC="$(ls -d "$HOME"/.cargo/registry/src/*/parquet-59.1.0 2>/dev/null | head -1)"
+SRC="$(find "$HOME"/.cargo/registry/src -maxdepth 2 -type d -name parquet-59.1.0 2>/dev/null | head -1)"
 [ -n "$SRC" ] || { echo "parquet-59.1.0 not in the registry cache even after cargo fetch"; exit 1; }
 rm -rf "$VENDOR"
 mkdir -p "$(dirname "$VENDOR")"
