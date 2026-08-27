@@ -2685,12 +2685,16 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
 
 TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   /*
-   * Two leases that depend on the same object can run concurrently.
+   * Two leases that depend on the same object can run concurrently even if another
+   * granted lease has pushed the total pinned argument bytes over the threshold.
    */
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
+  std::shared_ptr<MockWorker> worker3 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 123456, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
@@ -2713,13 +2717,76 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
-  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 2);
   AssertPinnedLeaseArgumentsPresent(lease);
 
-  // This lease can run because it depends on the same object as the first lease.
-  auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}},
+  // This oversized lease can run to avoid starvation and pushes the total pinned
+  // argument bytes over the threshold.
+  default_arg_size_ = 2000;
+  auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}}, 1);
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // This lease can still run because it depends on the same object as the first lease
+  // and therefore adds no new pinned bytes.
+  default_arg_size_ = 600;
+  auto lease3 = CreateLease({{ray::kCPU_ResourceLabel, 1}},
                             1,
                             lease.GetLeaseSpecification().GetDependencyIds());
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_EQ(leased_workers_.size(), 3);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  for (auto &cur_worker : leased_workers_) {
+    local_lease_manager_->CleanupLease(cur_worker.second);
+  }
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterLeaseManagerTest, LargeArgsNoStarvationTest) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
+
+  default_arg_size_ = 2000;
+  auto lease = CreateLease({{ray::kCPU_ResourceLabel, 1}}, 1);
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  AssertPinnedLeaseArgumentsPresent(lease);
+
+  // A lease with no dependencies can still run while the oversized lease keeps the
+  // node over the pinned argument threshold because it adds no pinned bytes.
+  auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   lease_manager_.QueueAndScheduleLease(
       lease2,
       false,
@@ -2733,36 +2800,6 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   for (auto &cur_worker : leased_workers_) {
     local_lease_manager_->CleanupLease(cur_worker.second);
   }
-  AssertNoLeaks();
-}
-
-TEST_F(ClusterLeaseManagerTest, LargeArgsNoStarvationTest) {
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-
-  rpc::RequestWorkerLeaseReply reply;
-  int num_callbacks = 0;
-  int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](
-                      Status, std::function<void()>, std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
-
-  default_arg_size_ = 2000;
-  auto lease = CreateLease({{ray::kCPU_ResourceLabel, 1}}, 1);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-  lease_manager_.QueueAndScheduleLease(
-      lease,
-      false,
-      false,
-      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
-  pool_.TriggerCallbacks();
-  ASSERT_EQ(num_callbacks, 1);
-  ASSERT_EQ(leased_workers_.size(), 1);
-  AssertPinnedLeaseArgumentsPresent(lease);
-
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   AssertNoLeaks();
 }
 
