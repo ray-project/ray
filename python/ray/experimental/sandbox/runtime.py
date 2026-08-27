@@ -228,7 +228,11 @@ class SandboxRuntime:
             f.write(content)
 
     def write_file(
-        self, instance_id: str, path: str, content: Union[str, bytes]
+        self,
+        instance_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
         """Write string or binary content directly to a file inside the sandbox.
 
@@ -236,8 +240,9 @@ class SandboxRuntime:
             instance_id: Unique identifier of the sandbox instance.
             path: Destination file path inside the sandbox.
             content: String or binary content to write into the file.
+            append: Append to the file instead of truncating it.
         """
-        self._backend.write_file(instance_id, path, content)
+        self._backend.write_file(instance_id, path, content, append=append)
 
     def read_file(self, instance_id: str, path: str) -> bytes:
         """Read binary content from a file inside the sandbox.

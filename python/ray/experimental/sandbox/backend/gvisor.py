@@ -278,9 +278,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
 
     def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
+        self,
+        sandbox_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
-        """Write content to a file inside the local gVisor sandbox directory."""
+        """Write (or append) content to a file inside the sandbox."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
 
@@ -294,7 +298,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p "$(dirname "$1")" && cat > "$1"',
+                'mkdir -p "$(dirname "$1")" && cat >> "$1"'
+                if append
+                else 'mkdir -p "$(dirname "$1")" && cat > "$1"',
                 "--",
                 path,
             ]
