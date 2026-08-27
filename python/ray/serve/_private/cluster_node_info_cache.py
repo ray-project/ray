@@ -1,15 +1,15 @@
 import logging
-import time
 from abc import ABC, abstractmethod
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 import ray
 from ray._common.utils import binary_to_hex
-from ray._private.ray_constants import RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S, SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_DRAINING_NODE_NO_DEADLINE = 2**63 - 1
 
 
 class ClusterNodeInfoCache(ABC):
@@ -90,17 +90,13 @@ class ClusterNodeInfoCache(ABC):
             }
             return
 
-        default_deadline_ms = int(
-            (time.time() + RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S) * 1000
-        )
         self._cached_draining_nodes = {
             node_id: (
                 deadline
                 if deadline != 0
-                # GCS uses 0 for no deadline, but Serve requires a finite
-                # deadline for migration. Therefore use default draining timeout.
-                # Prevent pushing the deadline back using already recorded deadline.
-                else self._cached_draining_nodes.get(node_id, default_deadline_ms)
+                # GCS uses 0 for no deadline. Use the maximum int64 timestamp
+                # so deadline-based migration never stops replicas early.
+                else _DRAINING_NODE_NO_DEADLINE
             )
             for node_id, deadline in draining_nodes.items()
             if node_id in self._alive_node_id_set

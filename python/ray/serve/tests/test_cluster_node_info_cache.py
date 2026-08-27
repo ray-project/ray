@@ -1,11 +1,9 @@
-import time
 from typing import cast
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.ray_constants import RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, gcs_pb2, gcs_service_pb2
 from ray.serve._private.default_impl import create_cluster_node_info_cache
@@ -110,30 +108,17 @@ def test_get_draining_nodes(ray_start_cluster):
 
     wait_for_condition(lambda: gcs_client.get_draining_nodes().get(worker_node_id) == 0)
 
-    earliest_default_deadline_ms = int(
-        (time.time() + RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S) * 1000
-    )
-
     def cache_has_draining_worker():
         cluster_node_info_cache.update()
         return worker_node_id in cluster_node_info_cache.get_draining_nodes()
 
     wait_for_condition(cache_has_draining_worker)
     draining_deadline_ms = cluster_node_info_cache.get_draining_nodes()[worker_node_id]
-    latest_default_deadline_ms = int(
-        (time.time() + RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S) * 1000
-    )
-    assert (
-        earliest_default_deadline_ms
-        <= draining_deadline_ms
-        <= latest_default_deadline_ms
-    )
+    assert draining_deadline_ms == 2**63 - 1
     assert cluster_node_info_cache.get_active_node_ids() == {head_node_id}
 
-    # A deadline synthesized for a node without one must not slide forward on
-    # every controller update.
+    # The no-deadline sentinel must remain stable across controller updates.
     for _ in range(3):
-        time.sleep(0.01)
         cluster_node_info_cache.update()
         assert cluster_node_info_cache.get_draining_nodes() == {
             worker_node_id: draining_deadline_ms
