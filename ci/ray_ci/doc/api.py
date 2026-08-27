@@ -11,6 +11,32 @@ _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
 # example ~module.api_name will render only api_name
 _SPHINX_AUTODOC_SHORTNAME = "~"
 
+# Attribute set by RLlib's @OverrideToImplementCustomLogic decorators to tag a
+# method as a template-method override hook. Its presence marks an intentional
+# public extension point, so an underscore-named object carrying it is exempt
+# from the private-name rule.
+_OVERRIDE_HOOK_MARKER = "__is_overridden__"
+
+
+def _is_directly_annotated(obj: object) -> bool:
+    """Whether an object owns an API annotation rather than inheriting one.
+
+    The @PublicAPI / @DeveloperAPI / @Deprecated decorators stamp ``_annotated``
+    with the decorated object's own ``__name__``, so a plain ``hasattr`` reads
+    true for every undecorated subclass of an annotated base as well. Comparing
+    the stored name against the object's own name is what distinguishes the two.
+
+    Deliberately identical to ``ray.util.annotations._is_annotated``, which is
+    the definition Ray itself uses. Keep it that way: a checker that disagrees
+    with the runtime about what counts as annotated is worse than one that
+    shares the runtime's edge cases (a subclass that reuses its base's name
+    reads as annotated in both).
+    """
+    annotation_owner = getattr(obj, "_annotated", None)
+    return annotation_owner is not None and annotation_owner == getattr(
+        obj, "__name__", None
+    )
+
 
 class AnnotationType(Enum):
     PUBLIC_API = "PublicAPI"
@@ -179,7 +205,16 @@ class API:
         ``_annotated_type`` attribute the @PublicAPI/@Deprecated decorators set.
         Objects that carry no annotation (for example methods of an annotated
         class) resolve to UNKNOWN.
+
+        Only an annotation the object *owns* counts. ``_annotated_type`` is a
+        plain class attribute, so an undecorated subclass reads its base's value
+        -- which would classify a subclass of a @Deprecated class as deprecated
+        and fail the resolve check on a documented name nobody deprecated.
+        Inheriting the marker resolves to UNKNOWN, the same accepted case as a
+        documented method of an annotated class.
         """
+        if not _is_directly_annotated(obj):
+            return AnnotationType.UNKNOWN
         annotated_type = getattr(obj, "_annotated_type", None)
         if annotated_type is None:
             return AnnotationType.UNKNOWN
@@ -215,6 +250,76 @@ class API:
         is_internal = "._internal." in self.name
 
         return name_has_underscore or is_internal
+
+    @staticmethod
+    def _is_public_reexport(documented_name: str, canonical_name: str) -> bool:
+        """
+        Whether a documented name is a public re-export of an implementation
+        that lives in a private module.
+
+        A library routinely declares its public surface in a package's
+        ``__all__`` while keeping the implementation private:
+        ``ray.data.ActorPoolStrategy`` is exported from ``ray.data.__all__``
+        though the class is defined in ``ray.data._internal.compute``. The
+        export is the public contract and the implementation's location is not
+        part of it, so a ``._internal.`` segment in the canonical name must not
+        read as private for such a name.
+
+        Only an explicit ``__all__`` entry on a public module counts, which is
+        what keeps this from laundering genuinely private symbols:
+
+        - A private module can't confer public-ness. Its own ``__all__`` is not
+          a public contract, so a name documented through a private path
+          (``ray.data._internal.foo.Bar``) stays flagged.
+        - An underscore leaf stays private on either side of the re-export. A
+          name that begins with an underscore is non-public by convention no
+          matter what re-exports it.
+        - A symbol merely reachable as a module attribute isn't enough. Absent
+          an ``__all__`` entry, the check's verdict is unchanged.
+        """
+        module_name, _, leaf = documented_name.rpartition(".")
+        if not module_name or not leaf:
+            return False
+        if leaf.startswith("_") or canonical_name.split(".")[-1].startswith("_"):
+            return False
+        if any(token.startswith("_") for token in module_name.split(".")):
+            return False
+        try:
+            module = importlib.import_module(module_name)
+        except (ImportError, ValueError):
+            # The documented name's parent is a class rather than a module
+            # (``Dataset.map_batches``), or it doesn't import. Either way there
+            # is no module ``__all__`` to read. Only the import-machinery errors
+            # are caught, matching resolve(): this runs on a name that already
+            # resolved, so every prefix of it has imported once already.
+            return False
+        exports = getattr(module, "__all__", None)
+        if not isinstance(exports, (list, tuple, set, frozenset)):
+            # __all__ is conventionally a list or a tuple of names, and Ray uses
+            # both. Anything else is not a declaration to read: absent or None
+            # confers nothing, and a bare string would make the membership test
+            # below match a substring rather than a name.
+            return False
+        return leaf in exports
+
+    @staticmethod
+    def _is_override_hook(obj: object) -> bool:
+        """
+        A leading underscore carries two meanings in Python. PEP 8 uses it for
+        "non-public"; but with no ``protected`` keyword the same underscore also
+        marks a template-method override hook -- a public, non-overridable
+        wrapper delegates to a protected, user-overridable method (for example
+        ``RLModule.forward_train`` delegating to the documented, subclassable
+        ``_forward_train``). An override hook is a declared public extension
+        point, not a private leak, so its underscore should not read as private.
+
+        The ``@OverrideToImplementCustomLogic`` decorators tag such methods by
+        setting ``__is_overridden__``; the *presence* of the attribute is the
+        intent signal (its boolean value tracks a separate runtime concern).
+        Read the attribute generically so the shared check needs no per-team
+        import.
+        """
+        return hasattr(obj, _OVERRIDE_HOOK_MARKER)
 
     def is_public(self) -> bool:
         """
@@ -274,7 +379,9 @@ class API:
           This is the breakage that today only the Sphinx render catches.
         - ``non_public``: documented names that resolve, but whose *live*
           annotation is non-public (``@Deprecated``) or whose canonical name is
-          private (``_foo`` / ``._internal.``).
+          private (``_foo`` / ``._internal.``). A private canonical name that a
+          public module re-exports through its ``__all__`` is public; see
+          _is_public_reexport().
 
         Objects that resolve but carry no annotation are accepted -- the Sphinx
         autosummary import check only warns on import failure, and documented
@@ -310,7 +417,18 @@ class API:
                 annotation_type=annotation_type,
                 code_type=api.code_type,
             )
-            if resolved_api.is_deprecated() or resolved_api._is_private_name():
+            # Override hooks are public extension points despite their leading
+            # underscore, so the private-name rule does not apply to them; a
+            # deprecated annotation still does.
+            is_private = resolved_api._is_private_name() and not API._is_override_hook(
+                obj
+            )
+            # A name exported from a public module's __all__ is public
+            # regardless of where its implementation lives, so the private
+            # canonical path of a re-exported symbol is not a doc bug.
+            if is_private and API._is_public_reexport(api.name, canonical_name):
+                is_private = False
+            if resolved_api.is_deprecated() or is_private:
                 non_public.append(canonical_name)
 
         return unresolved, non_public

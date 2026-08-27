@@ -1,3 +1,4 @@
+import gc
 import sys
 
 import pytest
@@ -5,7 +6,11 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_for_ref
+from ray.experimental import (
+    set_target_device_for_ref,
+    set_target_for_ref,
+    wait_tensor_freed,
+)
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -206,6 +211,39 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_put_nixl(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    actor = GPUTestActor.remote()
+    assert ray.get(actor.sum.remote(ref, "cuda")) == 6
+    assert ray.get(actor.borrow_and_sum.remote([ref])) == 6
+    assert torch.equal(ray.get(ref), tensor)
+
+    del ref
+    gc.collect()
+
+    wait_tensor_freed(tensor, timeout=10)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_owned_rdt_rejects_object_store_fallback(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    with pytest.raises(ValueError, match="_use_object_store=True"):
+        ray.get(ref, _use_object_store=True)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_rejects_two_sided_transport(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+
+    with pytest.raises(ValueError, match="one-sided transport"):
+        ray.put(tensor, _tensor_transport="nccl")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -573,6 +611,139 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
     assert ray.get(result)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_cross_device_fetch(ray_start_regular):
+    """NIXL can fetch tensors onto a device that differs from the source device."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def put_cpu(self):
+            tensors = [
+                torch.tensor([1, 2, 3]),
+                torch.tensor([4, 5, 6]),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_on_device(self, refs, target_device):
+            set_target_device_for_ref(refs[0], target_device)
+            tensors = ray.get(refs[0])
+            expected_type = torch.device(target_device).type
+            for t in tensors:
+                assert t.device.type == expected_type
+            # Move to CPU so the driver can compare the values regardless of device.
+            return [t.cpu() for t in tensors]
+
+        def fetch_into_cross_device_buffers(self, refs):
+            # Source tensors are on CUDA; receive into caller-provided CPU
+            # buffers (cross-device fetch via target_buffer).
+            cpu_buffers = [
+                torch.empty(3, dtype=torch.int64),
+                torch.empty(3, dtype=torch.int64),
+            ]
+            set_target_for_ref(refs[0], cpu_buffers)
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cpu_buffers):
+                assert new_tensor.device.type == "cpu"
+                # Make sure we ray.get-ted into the provided buffers.
+                assert id(new_tensor) == id(buffer)
+            return [t.clone() for t in tensors]
+
+        def target_device_overrides_target_buffer(self, refs):
+            # Setting a target device after a target buffer should overwrite the
+            # target buffer so the two options stay mutually exclusive.
+            cuda_buffers = [
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+            ]
+            set_target_for_ref(refs[0], cuda_buffers)
+            set_target_device_for_ref(refs[0], "cpu")
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cuda_buffers):
+                # The stale target buffer must not be used.
+                assert new_tensor.device.type == "cpu"
+                assert id(new_tensor) != id(buffer)
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    # CUDA source -> CPU fetch.
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    cpu_tensors = ray.get(actors[1].fetch_on_device.remote([cuda_ref], "cpu"))
+    assert torch.equal(cpu_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cpu_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CPU source -> CUDA fetch.
+    cpu_ref = ray.get(actors[0].put_cpu.remote())
+    cuda_tensors = ray.get(actors[1].fetch_on_device.remote([cpu_ref], "cuda"))
+    assert torch.equal(cuda_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cuda_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CUDA source -> receive into caller-provided CPU buffers (cross-device).
+    cuda_ref_buffers = ray.get(actors[0].put_cuda.remote())
+    buffer_tensors = ray.get(
+        actors[1].fetch_into_cross_device_buffers.remote([cuda_ref_buffers])
+    )
+    assert torch.equal(buffer_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(buffer_tensors[1], torch.tensor([4, 5, 6]))
+
+    # A later set_target_device_for_ref call overwrites an earlier
+    # set_target_for_ref call so target buffer and target device stay mutually
+    # exclusive across repeated calls on the same ref.
+    cuda_ref2 = ray.get(actors[0].put_cuda.remote())
+    override_tensors = ray.get(
+        actors[1].target_device_overrides_target_buffer.remote([cuda_ref2])
+    )
+    assert torch.equal(override_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(override_tensors[1], torch.tensor([4, 5, 6]))
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_target_device_not_leaked_to_borrower(ray_start_regular):
+    """A target device set for one consumer must not leak to a borrowing process.
+
+    The target device is a per-consumer receive target, so it should be stripped
+    when an RDT ObjectRef is serialized in-band for borrowing (like target
+    buffers). Otherwise a process that set a target device for its own ray.get
+    would force a different process's fetch onto that device.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_default(self, refs):
+            # No target device/buffer is set on this actor. The fetch should
+            # land on the source device (cuda), not the device the driver set
+            # for its own consumption.
+            tensors = ray.get(refs[0])
+            for t in tensors:
+                assert t.device.type == "cuda"
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    # The driver sets a target device for its own consumption of the ref.
+    set_target_device_for_ref(cuda_ref, "cpu")
+    # Borrow the ref in another actor by passing it in-band. The borrower must
+    # not inherit the driver's target device.
+    result = ray.get(actors[1].fetch_default.remote([cuda_ref]))
+    assert torch.equal(result[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(result[1], torch.tensor([4, 5, 6]))
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_register_deregister_nixl_memory(ray_start_regular):
     """
@@ -662,6 +833,53 @@ def test_nixl_memory_pool(ray_start_regular, device):
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_cpu_pool_gpu_tensor(ray_start_regular):
+    """
+    Test that a CPU-based memory pool can serve GPU source tensors, and that
+    the tensor still lands on the GPU on the receiver.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+
+        @ray.method(tensor_transport="nixl")
+        def echo(self, data):
+            # Guard against the argument silently landing on CPU.
+            assert data.device.type == "cuda"
+            return data
+
+        def pool_device_type(self):
+            return (
+                get_tensor_transport_manager("NIXL")
+                ._memory_pool.get_pool_tensor()
+                .device.type
+            )
+
+    # Pool holds exactly one small tensor (24 bytes).
+    src_actor = PoolActor.remote("cpu", 24)
+    dst_actor = GPUTestActor.remote()
+    assert ray.get(src_actor.pool_device_type.remote()) == "cpu"
+
+    # Transfer the first small tensor (using memory pool internally).
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"))
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Second transfer: pool is full (ref1 still alive). The allocation raises
+    # NixlOutOfMemoryError, which surfaces as a RayTaskError, proving the
+    # pool (not direct registration) served ref1.
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"))
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.sum.remote(ref2, "cuda"))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     """
@@ -715,6 +933,85 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     # All refs gone, pool block freed
     assert ptr not in transport._tensor_desc_cache
     assert not pool.has_block(base)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream(ray_start_regular):
+    """set_nixl_cuda_stream restricts the pre-registration sync to the given
+    stream, and the transferred data is still valid."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class StreamActor:
+        @ray.method(tensor_transport="nixl")
+        def echo_on_stream(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            stream = torch.cuda.Stream()
+            with torch.cuda.stream(stream):
+                out = data.to("cuda") * 2
+            # Only block on `stream` instead of every stream on the device.
+            set_nixl_cuda_stream(stream)
+            return out
+
+        @ray.method(tensor_transport="nixl")
+        def echo_default(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            # Reset to the default full-device synchronization.
+            set_nixl_cuda_stream(None)
+            return data.to("cuda") * 2
+
+    src_actor = StreamActor.remote()
+    dst_actor = GPUTestActor.remote()
+
+    ref = src_actor.echo_on_stream.remote(torch.tensor([1, 2, 3]))
+    assert ray.get(dst_actor.sum.remote(ref, "cuda")) == 12
+
+    # After resetting to None, transfers still succeed.
+    ref2 = src_actor.echo_default.remote(torch.tensor([4, 5, 6]))
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 30
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_set_nixl_cuda_stream_overwrite(ray_start_regular):
+    """Setting a stream overwrites any previous stream, and passing None
+    clears it."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    assert transport._cuda_stream is None
+
+    stream1 = torch.cuda.Stream()
+    stream2 = torch.cuda.Stream()
+    transport.set_cuda_stream(stream1)
+    assert transport._cuda_stream is stream1
+
+    # Setting again overwrites the previous stream.
+    transport.set_cuda_stream(stream2)
+    assert transport._cuda_stream is stream2
+
+    # None clears the recorded stream.
+    transport.set_cuda_stream(None)
+    assert transport._cuda_stream is None
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream_uncovered_device(ray_start_regular):
+    """A device used by the RDT object with no matching stream errors."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    # Provide a stream only for cuda:1, but create the tensor on cuda:0.
+    stream = torch.cuda.Stream(device=torch.device("cuda:1"))
+    transport.set_cuda_stream(stream)
+
+    tensor = torch.tensor([1, 2, 3]).to("cuda:0")
+    with pytest.raises(ValueError, match="Device mismatch between the CUDA stream"):
+        transport.extract_tensor_transport_metadata("uncovered_obj", [tensor])
 
 
 if __name__ == "__main__":

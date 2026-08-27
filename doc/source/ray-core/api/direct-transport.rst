@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for Ray Direct Transport (RDT): usage with the core APIs, collective tensor transports, and advanced APIs.
+
 Ray Direct Transport (RDT) API
 ==============================
 
@@ -37,7 +40,9 @@ Advanced APIs
     ray.experimental.register_nixl_memory
     ray.experimental.deregister_nixl_memory
     ray.experimental.register_nixl_memory_pool
+    ray.experimental.set_nixl_cuda_stream
     ray.experimental.set_target_for_ref
+    ray.experimental.set_target_device_for_ref
     ray.experimental.wait_tensor_freed
     ray.experimental.register_tensor_transport
     ray.experimental.TensorTransportManager

@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -57,6 +58,7 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
@@ -245,7 +247,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_backpressure_guard = OutputBackpressureGuard(
             self._topology, self._resource_manager
         )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -268,6 +269,10 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
+        )
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            self._data_context.execution_no_progress_timeout_s,
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
@@ -306,9 +311,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            status_detail = (
-                f"failed with {exception}" if exception else "completed successfully"
-            )
+            if exception is None:
+                status_detail = "completed successfully"
+            elif isinstance(exception, UserCodeException):
+                # For a user-code error, str(exception) is the (already-logged)
+                # user traceback, so interpolating it here just re-dumps the stack
+                # a third time. Log only the exception type. Genuine internal /
+                # system errors keep the full exception below for diagnostics.
+                status_detail = f"failed with {type(exception).__name__}"
+            else:
+                status_detail = f"failed with {exception}"
 
             logger.debug(
                 f"Shutting down executor for dataset {self._dataset_id} "
@@ -358,9 +370,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
-            # Queues have been drained; any remaining Ray Core callbacks that fire
-            # after this point should be no-ops.
-            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -575,8 +584,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        # Check until all oprators have completed.
+        should_continue = not all(op.has_completed() for op in topology)
+        self._no_progress_guard.check()
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.

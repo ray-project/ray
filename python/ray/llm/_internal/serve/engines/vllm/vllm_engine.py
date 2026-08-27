@@ -2,6 +2,7 @@ import argparse
 import dataclasses
 import inspect
 import json
+import types
 import typing
 from typing import (
     TYPE_CHECKING,
@@ -15,16 +16,22 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.entrypoints.serve.utils.server_utils import vllm_error_handler
+from vllm.exceptions import VLLMClientError, VLLMError
+from vllm.v1.engine.exceptions import EngineGenerateError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.constants import (
+    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -49,23 +56,28 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
-from ray.llm._internal.serve.engines.vllm.vllm_models import (
-    VLLMEngineConfig,
-)
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware import (
+    token_channel,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
+    enable_native_kv_offload_events,
     get_kv_event_routing_stats,
+    get_prompt_token_routing_stats,
+    get_token_channel_endpoints,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
+    install_prompt_token_forwarding,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
 )
-from ray.llm._internal.serve.utils.node_initialization_utils import (
-    initialize_node,
-)
+from ray.llm._internal.serve.utils.node_initialization_utils import initialize_node
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -84,6 +96,19 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+# TODO(jeffreywang): Remove this in vLLM 0.28.0 (#52394).
+def _unwrap_client_error(exc: BaseException) -> BaseException:
+    if isinstance(exc, EngineGenerateError) and isinstance(
+        exc.__cause__, (ValueError, VLLMClientError)
+    ):
+        return exc.__cause__
+    return exc
+
+
+async def _unwrapping_vllm_error_handler(request: Request, exc: Exception):
+    return await vllm_error_handler(request, _unwrap_client_error(exc))
 
 
 def _canonicalize_request_id_header(
@@ -114,59 +139,52 @@ def _canonicalize_request_id_header(
     return dataclasses.replace(raw_request_info, headers=headers)
 
 
-def _convert_config_dicts(merged: dict) -> dict:
-    """Convert dict values to their proper vLLM config classes based on type hints.
+def _get_vllm_config_type(annotation: Any) -> Optional[type]:
+    """Return the config dataclass contained in a vLLM field annotation."""
+    if isinstance(annotation, type) and dataclasses.is_dataclass(annotation):
+        return annotation
 
-    vLLM's AsyncEngineArgs has fields like structured_outputs_config,
-    compilation_config, etc. that expect dataclass instances. When users pass
-    dicts for these fields, we need to convert them to the proper config classes
-    so that default values are populated correctly.
+    origin = typing.get_origin(annotation)
+    annotation_args = typing.get_args(annotation)
+    if origin is typing.Annotated:
+        return _get_vllm_config_type(annotation_args[0])
+    # Only unwrap type modifiers. Recursing through arbitrary generic types
+    # could mistake a mapping of dataclasses for a config dataclass itself.
+    if origin in (Union, types.UnionType):
+        for annotation_arg in annotation_args:
+            if config_type := _get_vllm_config_type(annotation_arg):
+                return config_type
+    return None
 
-    Without this conversion, dicts get converted to argparse.Namespace objects
-    which lack the default field values, causing AttributeError when vLLM code
-    tries to access those fields.
-    """
-    fields_by_name = {f.name: f for f in dataclasses.fields(AsyncEngineArgs)}
 
-    for key, value in list(merged.items()):
-        if not isinstance(value, dict) or key not in fields_by_name:
+def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize structured config dictionaries as vLLM's CLI parser does."""
+    fields_by_name = {
+        field.name: field for field in dataclasses.fields(AsyncEngineArgs)
+    }
+    normalized_kwargs = engine_kwargs.copy()
+
+    for key, value in engine_kwargs.items():
+        field = fields_by_name.get(key)
+        if field is None or not isinstance(value, dict):
             continue
 
-        hint = fields_by_name[key].type
-        if isinstance(hint, str):
+        config_type = _get_vllm_config_type(field.type)
+        if config_type is None:
             continue
 
-        # Handle Optional[X] (Union[X, None]) -> X
-        origin = typing.get_origin(hint)
-        if origin is Union:
-            args = typing.get_args(hint)
-            hint = next((a for a in args if a is not type(None)), hint)
+        try:
+            normalized_kwargs[key] = TypeAdapter(config_type).validate_python(value)
+        except ValidationError as e:
+            raise ValueError(f"Invalid vLLM config for {key!r}: {e}") from e
 
-        # Convert dict to dataclass if the field expects a dataclass type
-        if isinstance(hint, type) and dataclasses.is_dataclass(hint):
-            try:
-                merged[key] = hint(**value)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to convert {key} dict to {hint.__name__}: {e}. "
-                    "Using dict as-is."
-                )
-
-    return merged
-
-
-def _dict_to_namespace(obj: Any) -> Any:
-    """Recursively converts dictionaries to argparse.Namespace."""
-    if isinstance(obj, dict):
-        return argparse.Namespace(**{k: _dict_to_namespace(v) for k, v in obj.items()})
-    elif isinstance(obj, list):
-        return [_dict_to_namespace(item) for item in obj]
-    else:
-        return obj
+    return normalized_kwargs
 
 
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
+    *,
+    device_type: Optional[str] = None,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
 
@@ -185,9 +203,15 @@ def _get_vllm_engine_config(
     from vllm.usage.usage_lib import UsageContext
 
     try:
-        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(
-            **engine_config.get_initialization_kwargs()
+        if device_type is not None:
+            from vllm.platforms import current_platform
+
+            current_platform.device_type = device_type
+
+        engine_kwargs = _normalize_vllm_engine_kwargs(
+            engine_config.get_initialization_kwargs()
         )
+        async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_kwargs)
         vllm_engine_config = async_engine_args.create_engine_config(
             usage_context=UsageContext.OPENAI_API_SERVER
         )
@@ -303,8 +327,20 @@ class VLLMEngine(LLMEngine):
 
         self._running = False
         # Routing stats advertised to Serve's request router; populated in
-        # start() once the engine's KV-events endpoint is bound.
+        # start() once the engine's KV-events and prompt-token endpoints are bound.
         self._routing_stats: Dict[str, Any] = {}
+        self._prompt_token_store = token_channel.TokenStore()
+        prompt_token_endpoints = get_token_channel_endpoints(self.llm_config)
+        if prompt_token_endpoints is None:
+            self._token_receiver = None
+            self._prompt_token_zmq_advertised_endpoint = None
+        else:
+            bind_endpoint, advertised_endpoint = prompt_token_endpoints
+            self._token_receiver = token_channel.TokenReceiver(
+                bind_endpoint=bind_endpoint,
+                store=self._prompt_token_store,
+            )
+            self._prompt_token_zmq_advertised_endpoint = advertised_endpoint
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -337,6 +373,22 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
+        app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
+        # Apply Ray's replacement handler when FastAPI builds the ASGI stack.
+        # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
+        app.middleware_stack = None
+        # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
+        # its own launcher sets -- and flips should_exit on it, which is what makes
+        # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
+        # observe that flag (Serve restarts the replica via check_health), but the
+        # read must still succeed: otherwise it raises AttributeError, and that
+        # replaces the engine error in the response.
+        app.state.server = types.SimpleNamespace()
+        if self._token_receiver is not None:
+            install_prompt_token_forwarding(
+                app.state,
+                self._prompt_token_store,
+            )
         return app
 
     async def start(self) -> None:
@@ -371,6 +423,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config.apply_checkpoint_info(
             vllm_engine_config.model_config.model,
             trust_remote_code=config.trust_remote_code,
+            hf_config=vllm_engine_config.model_config.hf_config,
         )
 
         self._engine_client = self._start_async_llm_engine(
@@ -380,14 +433,9 @@ class VLLMEngine(LLMEngine):
         )
 
         state = State()
-        # TODO (Kourosh): There might be some variables that needs protection?
-        merged = vllm_frontend_args.__dict__ | vllm_engine_args.__dict__
-
-        # Convert dict values to proper vLLM config classes (e.g., StructuredOutputsConfig)
-        # so that default field values are populated correctly.
-        merged = _convert_config_dicts(merged)
-
-        args = _dict_to_namespace(merged)
+        # vLLM's parser produces a flat Namespace. Its values have already been
+        # parsed into their declared types; nested dictionaries stay dictionaries.
+        args = argparse.Namespace(**(vars(vllm_frontend_args) | vars(vllm_engine_args)))
         self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
@@ -421,18 +469,31 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
+        prompt_token_stats: Dict[str, Any] = {}
+        if self._token_receiver is not None:
+            if await self._token_receiver.start():
+                prompt_token_stats = get_prompt_token_routing_stats(
+                    self._prompt_token_zmq_advertised_endpoint
+                )
+
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
             vllm_engine_config.cache_config.block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
+        self._routing_stats.update(prompt_token_stats)
 
         self._running = True
 
         logger.info("Started vLLM engine.")
 
+    async def shutdown(self) -> None:
+        """Release the prompt-token channel's ZMQ socket and receive task."""
+        if self._token_receiver is not None:
+            await self._token_receiver.close()
+
     def routing_stats(self) -> Dict[str, Any]:
-        """Returns KV event and replay endpoints for KV-aware routing."""
+        """Returns KV event and prompt-token endpoints for KV-aware routing."""
         return self._routing_stats
 
     def _validate_openai_serving_models(self):
@@ -556,6 +617,8 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_engine_config.parallel_config.placement_group = placement_group
+        if is_kv_aware(self.llm_config):
+            enable_native_kv_offload_events(vllm_engine_config)
 
         _clear_current_platform_cache()
 
@@ -575,7 +638,10 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(AsyncLLM)
+            engine_cls = enable_token_tracking(
+                AsyncLLM,
+                report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+            )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
@@ -613,6 +679,11 @@ class VLLMEngine(LLMEngine):
         """Convert an exception to an ErrorResponse and map exception types to
         the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
         """
+        # Genuine engine failures keep propagating so Serve still reports a 500.
+        exc = _unwrap_client_error(exc)
+        if isinstance(exc, EngineGenerateError):
+            raise exc
+
         try:
             vllm_error = serving.create_error_response(exc)
             return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
@@ -637,7 +708,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -672,7 +743,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -709,7 +780,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -739,7 +810,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -777,7 +848,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -802,7 +873,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -831,7 +902,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable TLS on Ray's gRPC channels so traffic between client, head, and worker processes is authenticated and encrypted."
+---
+
 (kuberay-tls)=
 
 # TLS Authentication
@@ -43,10 +49,10 @@ kubectl apply -f ray-cluster.tls.yaml
 `ray-cluster.tls.yaml` will create:
 
 * A Kubernetes Secret containing the CA's private key (`ca.key`) and self-signed certificate (`ca.crt`) (**Step 1**)
-* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow Ray Pods to generate private keys (`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
+* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow the head and worker Pods to generate private keys (`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
 * A RayCluster with proper TLS environment variables configurations (**Step 3**)
 
-The certificate (`tls.crt`) for a Ray Pod is encrypted using the CA's private key (`ca.key`). Additionally, all Ray Pods have the CA's public key included in `ca.crt`, which allows them to decrypt certificates from other Ray Pods.
+The certificate (`tls.crt`) for a Pod is encrypted using the CA's private key (`ca.key`). Additionally, all Pods have the CA's public key included in `ca.crt`, which allows them to decrypt certificates from other Pods.
 
 # Step 1: Generate a private key and self-signed certificate for CA
 
@@ -78,9 +84,9 @@ kubectl create secret generic ca-tls --from-file=ca.key --from-file=ca.crt
 
 This step is optional because the `ca.key` and `ca.crt` files have already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml).
 
-# Step 2: Create separate private key and self-signed certificate for Ray Pods
+# Step 2: Create separate private key and self-signed certificate for the head and worker Pods
 
-In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Ray Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
+In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
 
 In the YAML file, you'll find a ConfigMap named `tls` that contains two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts are used to generate the private key and self-signed certificate files (`tls.key` and `tls.crt`) for the Ray head and worker Pods. An alternative approach for users is to prebake the shell scripts directly into the docker image that's utilized by the init containers, rather than relying on a ConfigMap.
 
@@ -106,7 +112,7 @@ IP.1 = 127.0.0.1
 IP.2 = $POD_IP
 ```
 
-In [Kubernetes networking model](https://github.com/kubernetes/design-proposals-archive/blob/main/network/networking.md#pod-to-pod), the IP that a Pod sees itself as is the same IP that others see it as. That's why Ray Pods can self-register for the certificates.
+In [Kubernetes networking model](https://github.com/kubernetes/design-proposals-archive/blob/main/network/networking.md#pod-to-pod), the IP that a Pod sees itself as is the same IP that others see it as. That's why Pods can self-register for the certificates.
 
 # Step 3: Configure environment variables for Ray TLS authentication
 
@@ -125,19 +131,19 @@ For more information on how to configure Ray with TLS authentication, please ref
 # Log in to the worker Pod
 kubectl exec -it ${WORKER_POD} -- bash
 
-# Since the head Pod has the certificate of $FQ_RAY_IP, the connection to the worker Pods
-# will be established successfully, and the exit code of the ray health-check command
-# should be 0.
+# The worker connects to the head through the head Service address.
+# The head certificate includes $FQ_RAY_IP in its SAN entries, so TLS verification succeeds.
+# The exit code of the ray health-check command should be 0.
 ray health-check --address $FQ_RAY_IP:6379
 echo $? # 0
 
-# Since the head Pod has the certificate of $RAY_IP, the connection will fail and an error
-# message similar to the following will be displayed: "Peer name raycluster-tls-head-svc is
-# not in peer certificate".
+# The head certificate doesn't include $RAY_IP in its SAN entries, so TLS verification fails.
+# You should see a TLS verification error.
+# The error will indicate that the pod IP ($RAY_IP) is not in the certificate.
 ray health-check --address $RAY_IP:6379
 
 # If you add `DNS.3 = $RAY_IP` to the [alt_names] section in `gencert_head.sh`,
-# the head Pod will generate the certificate of $RAY_IP.
+# the generated head certificate will include a SAN entry for $RAY_IP.
 #
 # For KubeRay versions prior to 0.5.0, this step is necessary because Ray workers in earlier
 # versions use $RAY_IP to connect with Ray head.

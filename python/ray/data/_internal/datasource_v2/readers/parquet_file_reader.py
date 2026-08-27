@@ -12,15 +12,15 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
-from ray._common.utils import env_bool, env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.datasource.parquet_datasource import (
-    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
-    _check_for_pickle_object_columns,
+    _row_group_uncompressed_size,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -33,6 +33,7 @@ from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
@@ -93,29 +94,24 @@ def _estimate_batch_size_from_metadata(
     if row_group_num_rows == 0:
         return None
 
+    # ``None`` sums every column; a projection narrows it to the matching leaves
+    # (a nested field expands to several, e.g. "a.b.list.element"). Shared with
+    # the footer path so the two cannot drift, and it deliberately avoids
+    # ``total_byte_size``, which can report the *compressed* size for some files
+    # (apache/arrow#48138).
+    projected_leaf_indices: Optional[List[int]] = None
     if columns is not None:
-        projected_columns = tuple(columns)
-        target_column_indices = []
-        for col_idx in range(row_group_meta.num_columns):
-            leaf_path = row_group_meta.column(col_idx).path_in_schema
-            # Account for nested columns
-            if any(
-                leaf_path == col_name or leaf_path.startswith(f"{col_name}.")
-                for col_name in projected_columns
-            ):
-                target_column_indices.append(col_idx)
-        row_group_uncompressed_size = sum(
-            row_group_meta.column(col_idx).total_uncompressed_size
-            for col_idx in target_column_indices
-        )
-    else:
-        # Sum per-column uncompressed sizes instead of using
-        # row_group_meta.total_byte_size, which can return the *compressed* size
-        # for some files (apache/arrow#48138).
-        row_group_uncompressed_size = sum(
-            row_group_meta.column(col_idx).total_uncompressed_size
+        projected_columns = set(columns)
+        projected_leaf_indices = [
+            col_idx
             for col_idx in range(row_group_meta.num_columns)
-        )
+            if _leaf_matches(
+                row_group_meta.column(col_idx).path_in_schema, projected_columns
+            )
+        ]
+    row_group_uncompressed_size = _row_group_uncompressed_size(
+        row_group_meta, projected_leaf_indices
+    )
 
     # Estimate the in-memory size of the row group
     estimated_in_mem_row_group_size = (
@@ -217,9 +213,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
-        self._allow_pickle_object_columns = env_bool(
-            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
-        )
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -326,8 +319,11 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):
-            if not self._allow_pickle_object_columns:
-                _check_for_pickle_object_columns(table)
+            # When you unpickle untrusted data, attackers can execute arbitrary
+            # code. To avoid exposing our users, raise unless the user has
+            # explicitly opted in.
+            raise_on_pickle_object_columns(table)
+
             yield table
 
     def _iter_fragment_tables_without_pickle_check(
@@ -341,9 +337,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         import pyarrow.compute as pc
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import (
-            _align_struct_fields,
-        )
+        from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
         from ray.data._internal.datasource.parquet_datasource import (
             _get_safe_batch_size_for_nested_types,
             _needs_nested_type_fallback,

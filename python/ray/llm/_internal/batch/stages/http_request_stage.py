@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type
 
 import aiohttp
 import aiohttp.web_exceptions
@@ -28,6 +28,8 @@ class NumpyEncoder(json.JSONEncoder):
 
 class HttpRequestUDF(StatefulStageUDF):
     RETRYABLE_STATUS_CODES = [429, 408, 504, 502, 503]
+
+    JSON_CONTENT_TYPE = "application/json"
 
     def __init__(
         self,
@@ -61,6 +63,64 @@ class HttpRequestUDF(StatefulStageUDF):
         self.base_retry_wait_time_in_s = base_retry_wait_time_in_s
         self.session_factory = session_factory or aiohttp.ClientSession
 
+        self.json_headers = {
+            "Content-Type": self.JSON_CONTENT_TYPE,
+            **self.additional_header,
+        }
+        # Drop user Content-Type so aiohttp creates a matching multipart boundary
+        # when it serializes FormData.
+        self.multipart_headers = {
+            k: v
+            for k, v in self.additional_header.items()
+            if k.lower() != "content-type"
+        }
+
+    @staticmethod
+    def _is_multipart_payload(payload: Any) -> bool:
+        """Return whether a payload should use multipart encoding.
+
+        A dict is multipart when it contains bytes or a mapping with ``content``.
+        """
+        if not isinstance(payload, dict):
+            return False
+        return any(
+            isinstance(value, (bytes, bytearray))
+            or (isinstance(value, dict) and "content" in value)
+            for value in payload.values()
+        )
+
+    @staticmethod
+    def _build_form_data(payload: Dict[str, Any]) -> "aiohttp.FormData":
+        """Build multipart form data from a payload.
+
+        Bytes and ``content`` mappings become file fields; other values are form fields.
+        """
+        form = aiohttp.FormData()
+        for key, value in payload.items():
+            if isinstance(value, dict) and "content" in value:
+                form.add_field(
+                    key,
+                    value["content"],
+                    filename=value.get("filename", key),
+                    content_type=value.get("content_type"),
+                )
+            elif isinstance(value, (bytes, bytearray)):
+                form.add_field(key, value, filename=key)
+            elif isinstance(value, str):
+                form.add_field(key, value)
+            else:
+                form.add_field(key, json.dumps(value, cls=NumpyEncoder))
+        return form
+
+    def _build_request(self, payload: Any) -> Tuple[Any, Dict[str, Any]]:
+        """Build a fresh request body and matching headers.
+
+        FormData is consumed by a request, so retries need a fresh body.
+        """
+        if self._is_multipart_payload(payload):
+            return self._build_form_data(payload), self.multipart_headers
+        return json.dumps(payload, cls=NumpyEncoder), self.json_headers
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Send HTTP requests to the given URL.
@@ -71,22 +131,15 @@ class HttpRequestUDF(StatefulStageUDF):
         Yields:
             Dict[str, Any]: A generator of rows of the response of the HTTP request.
         """
-        # preprocess to get request body for the given batch
-        request_bodies = [None] * len(batch)
+        # Use original batch indexes because error rows are excluded before this UDF.
+        payloads = {}
         for row in batch:
-            # Normalize the row to a JSON body.
-            request_bodies[row[self.IDX_IN_BATCH_COLUMN]] = json.dumps(
-                row["payload"], cls=NumpyEncoder
-            )
+            payloads[row[self.IDX_IN_BATCH_COLUMN]] = row["payload"]
 
         async with self.session_factory() as session:
             start_time = time.time()
             request_count = 0
             pending_requests = []
-            headers = {
-                "Content-Type": "application/json",
-                **self.additional_header,
-            }
 
             # First send all requests based on QPS
             for row in batch:
@@ -99,12 +152,14 @@ class HttpRequestUDF(StatefulStageUDF):
                         await asyncio.sleep(expected_time - elapsed)
 
                 # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
-                json_body = request_bodies[row[self.IDX_IN_BATCH_COLUMN]]
+                body, headers = self._build_request(
+                    payloads[row[self.IDX_IN_BATCH_COLUMN]]
+                )
                 # Create request but don't await it yet
                 request = session.post(
                     self.url,
                     headers=headers,
-                    data=json_body,
+                    data=body,
                 )
                 pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
 
@@ -115,11 +170,13 @@ class HttpRequestUDF(StatefulStageUDF):
                 last_exception_traceback = None
                 for retry_count in range(self.max_retries + 1):
                     if retry_count > 0:
-                        json_body = request_bodies[idx_in_batch_column]
+                        body, headers = self._build_request(
+                            payloads[idx_in_batch_column]
+                        )
                         request = session.post(
                             self.url,
                             headers=headers,
-                            data=json_body,
+                            data=body,
                         )
                     try:
                         async with await request as response:
@@ -154,7 +211,7 @@ class HttpRequestUDF(StatefulStageUDF):
                         continue
                 if not resp_json:
                     raise RuntimeError(
-                        f"Reached maximum retries of {self.max_retries} for input row {batch[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
+                        f"Reached maximum retries of {self.max_retries} for input row {payloads[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
                     )
                 yield {
                     self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,

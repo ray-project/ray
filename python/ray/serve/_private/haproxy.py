@@ -62,6 +62,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT,
+    RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED,
     RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
@@ -78,6 +80,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
@@ -138,13 +141,15 @@ def _load_lua_template() -> string.Template:
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
+    local_host: "Optional[str]" = None,
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router pool and replica map, restricted to backends with both.
 
-    Pick deterministically within each router pool to avoid the first-response
-    latency regression from cycling routers across requests.
+    Prefers routers co-located with this HAProxy so the /internal/route hop
+    stays on-node. Falls back to the lexicographically smallest router when none
+    is co-located.
     """
-    routers: Dict[str, ServerConfig] = {}
+    routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
@@ -154,21 +159,29 @@ def _routers_and_targets_by_backend(
         ]
         if not entries:
             continue
-        # Host-first so co-located routers sort adjacent in debug output.
-        routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
-        )
+        candidates = backend.ingress_request_router_servers
+        colocated = [s for s in candidates if s.host == local_host]
+        if colocated:
+            pool = sorted(colocated, key=lambda s: (s.host, s.port))
+        else:
+            pool = [min(candidates, key=lambda s: (s.host, s.port))]
+        routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
 
 
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
+def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
+    """Render {backend_name: [ServerConfig, ...]} as a Lua table literal."""
+
+    def _server_lua(s: "ServerConfig") -> str:
+        return (
+            f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+            f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        )
+
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
+        f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
+        for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
 
@@ -601,6 +614,7 @@ class BackendConfig:
         # Precompute the request bytes and the expected response marker so the
         # template just emits them.
         if self.protocol == RequestProtocol.GRPC:
+            assert health_path is not None
             result["grpc_healthcheck_request_hex"] = build_grpc_healthcheck_request_hex(
                 health_path
             )
@@ -640,10 +654,15 @@ class HAProxyConfig:
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
     # See RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S.
     close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
+    # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
+    observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
+    observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
     reload_id: Optional[str] = None  # Unique ID for each reload
+    # Path to the shared 500 error page, written during initialization.
+    error_file_path: Optional[str] = None
     tcp_nodelay: bool = RAY_SERVE_HAPROXY_TCP_NODELAY
     enable_so_reuseport: bool = (
         os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "0") == "1"
@@ -843,7 +862,7 @@ class HAProxyApi(ProxyApi):
     def __init__(
         self,
         cfg: HAProxyConfig,
-        backend_configs: Dict[str, BackendConfig] = None,
+        backend_configs: Optional[Dict[str, BackendConfig]] = None,
         config_file_path: str = RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     ):
         self.cfg = cfg
@@ -855,7 +874,7 @@ class HAProxyApi(ProxyApi):
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
-        self._proc = None
+        self._proc: Optional[asyncio.subprocess.Process] = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
         # Per-spawn counter for stdout/stderr file names.
@@ -1066,7 +1085,7 @@ class HAProxyApi(ProxyApi):
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
         for procs that have exited — their fds must be closed."""
-        self._retired_logs.append((proc._stdout_path, proc._stderr_path))
+        self._retired_logs.append((proc._stdout_path, proc._stderr_path))  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         while len(self._retired_logs) > self._max_retained_logs:
             for path in self._retired_logs.popleft():
                 try:
@@ -1106,8 +1125,10 @@ class HAProxyApi(ProxyApi):
                 stdout=stdout_file,
                 stderr=stderr_file,
             )
-        proc._stdout_path = stdout_path
-        proc._stderr_path = stderr_path
+        # stdout/stderr paths are stashed on the proc so they travel with it to
+        # _retire_log_files; asyncio's Process does not declare them.
+        proc._stdout_path = stdout_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        proc._stderr_path = stderr_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         logger.info(
             f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
             f"stdout={stdout_path}, stderr={stderr_path}); args={args}"
@@ -1137,6 +1158,9 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
+            # _graceful_reload only runs with a live proc; None would already
+            # crash below, so assert to narrow rather than change behavior.
+            assert old_proc is not None
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
@@ -1189,8 +1213,8 @@ class HAProxyApi(ProxyApi):
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 # Both streams were redirected to files at spawn; tail them.
-                stderr_text = _tail_file(proc._stderr_path)
-                stdout_text = _tail_file(proc._stdout_path)
+                stderr_text = _tail_file(proc._stderr_path)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                stdout_text = _tail_file(proc._stdout_path)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
                 output = stderr_text or stdout_text
 
                 raise RuntimeError(
@@ -1208,7 +1232,7 @@ class HAProxyApi(ProxyApi):
 
         raise RuntimeError(
             f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
-            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"
+            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         )
 
     def _write_ingress_request_router_lua(
@@ -1220,7 +1244,9 @@ class HAProxyApi(ProxyApi):
         Returns the script path, or None if no backend has both ingress
         request routers AND replicas with replica IDs.
         """
-        routers, targets = _routers_and_targets_by_backend(backends)
+        routers, targets = _routers_and_targets_by_backend(
+            backends, local_host=get_localhost_ip()
+        )
         if not routers:
             return None
 
@@ -1265,7 +1291,7 @@ class HAProxyApi(ProxyApi):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
-    def _generate_config_file_internal(self) -> bool:
+    def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
@@ -1374,6 +1400,9 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_forward_body": (
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+                    ),
+                    "ingress_request_router_header_prefix": (
+                        SERVE_INGRESS_ROUTER_HEADER_PREFIX
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_enabled": self.cfg.metrics_enabled,
@@ -1683,6 +1712,7 @@ class HAProxyManager(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config=None,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
@@ -1972,6 +2002,8 @@ class HAProxyManager(ProxyActorInterface):
         """
         if not self._is_draining():
             return False
+        # _is_draining() is True here, so _draining_start_time is set.
+        assert self._draining_start_time is not None
         if (time.time() - self._draining_start_time) <= PROXY_MIN_DRAINING_PERIOD_S:
             return False
         if self._haproxy.has_alive_old_procs():
@@ -1988,7 +2020,7 @@ class HAProxyManager(ProxyActorInterface):
         return await self._haproxy.is_running()
 
     def pong(self) -> str:
-        pass
+        return "pong"
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         raise NotImplementedError("Receive is handled by the ingress replicas.")
@@ -2005,7 +2037,9 @@ class HAProxyManager(ProxyActorInterface):
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.MemoryHandler):
+            if isinstance(handler, logging.handlers.MemoryHandler) and isinstance(
+                handler.target, logging.FileHandler
+            ):
                 log_file_path = handler.target.baseFilename
 
         return log_file_path

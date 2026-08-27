@@ -12,6 +12,9 @@ import pytest
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.platform_event_pb2 import Source
 from ray.dashboard.modules.platform_events.providers.k8s_provider import (
+    KUBERAY_LABEL_KEY_CLUSTER,
+    MAX_NON_CLUSTER_POD_CACHE,
+    ApiException,
     KubernetesEventProvider,
 )
 
@@ -27,7 +30,10 @@ def _make_k8s_event(
     count: int = 1,
     last_timestamp: datetime = None,
     first_timestamp: datetime = None,
+    event_timestamp: datetime = None,
     component: str = "kubelet",
+    reporting_component: str = "",
+    with_source: bool = True,
 ) -> MagicMock:
     evt = MagicMock()
     evt.metadata.uid = uid
@@ -41,7 +47,12 @@ def _make_k8s_event(
     evt.count = count
     evt.last_timestamp = last_timestamp
     evt.first_timestamp = first_timestamp
-    evt.source.component = component
+    evt.event_time = event_timestamp
+    evt.reporting_component = reporting_component
+    if with_source:
+        evt.source.component = component
+    else:
+        evt.source = None
     return evt
 
 
@@ -99,6 +110,45 @@ def test_platform_source_is_kubernetes():
     assert source.component == "kubelet"
     assert source.metadata["namespace"] == "my-namespace"
     assert source.metadata["ray_cluster_name"] == "prod-cluster"
+
+
+@pytest.mark.parametrize(
+    "component, reporting_component, with_source, expected",
+    [
+        # Legacy core/v1 recorders populate `source`.
+        ("kubelet", "", True, "kubelet"),
+        # `source` wins when both are set
+        ("kubelet", "default-scheduler", True, "kubelet"),
+        # events.k8s.io/v1 emitters leave `source.component` empty or unset.
+        (None, "default-scheduler", True, "default-scheduler"),
+        ("", "default-scheduler", True, "default-scheduler"),
+        (None, "default-scheduler", False, "default-scheduler"),
+        # Neither field set, must not pass None to the proto string field.
+        (None, None, True, ""),
+        (None, None, False, ""),
+    ],
+)
+def test_component_falls_back_to_reporting_component(
+    component, reporting_component, with_source, expected
+):
+    delivered_event = None
+
+    def callback(event: RayEvent):
+        nonlocal delivered_event
+        delivered_event = event
+
+    provider = KubernetesEventProvider(callback)
+    provider._cluster_name = "my-cluster"
+
+    evt = _make_k8s_event(
+        component=component,
+        reporting_component=reporting_component,
+        with_source=with_source,
+    )
+    provider._process_k8s_event(evt)
+
+    assert delivered_event is not None
+    assert delivered_event.platform_event.source.component == expected
 
 
 def test_platform_event_object_fields():
@@ -183,6 +233,185 @@ def test_timestamp_falls_back_to_first_timestamp():
 
     assert delivered_event is not None
     assert delivered_event.timestamp.seconds == int(ts.timestamp())
+
+
+@pytest.mark.parametrize(
+    "event_type,expected_present",
+    [
+        ("ADDED", True),
+        ("MODIFIED", True),
+        ("DELETED", False),
+    ],
+)
+def test_update_pod_membership(event_type, expected_present):
+    provider = KubernetesEventProvider(lambda e: None)
+    # Seed so DELETED has something to remove.
+    provider._cluster_pod_names.add("ray-worker-0")
+
+    provider._update_pod_membership(event_type, "ray-worker-0")
+
+    assert ("ray-worker-0" in provider._cluster_pod_names) is expected_present
+
+
+def test_update_pod_membership_delete_unknown_is_noop():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._update_pod_membership("DELETED", "never-added")
+    assert "never-added" not in provider._cluster_pod_names
+
+
+def test_relist_pod_membership_replaces_cache():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._namespace = "ns"
+
+    provider._cluster_pod_names = {"stale-pod", "ray-worker-0"}
+
+    live = MagicMock()
+    live.metadata.resource_version = "999"
+    live.items = [MagicMock(), MagicMock()]
+    live.items[0].metadata.name = "ray-worker-0"
+    live.items[1].metadata.name = "ray-worker-1"
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.list_namespaced_pod.return_value = live
+
+    rv = provider._relist_pod_membership(f"{KUBERAY_LABEL_KEY_CLUSTER}=foo")
+
+    assert rv == "999"
+    assert provider._cluster_pod_names == {"ray-worker-0", "ray-worker-1"}
+    assert "stale-pod" not in provider._cluster_pod_names
+
+
+def test_pod_event_dispatched_only_for_cluster_pods():
+    delivered = []
+
+    def callback(event: RayEvent):
+        delivered.append(event)
+
+    provider = KubernetesEventProvider(callback)
+    provider._cluster_name = "my-cluster"
+    provider._update_pod_membership("ADDED", "ray-worker-0")
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.read_namespaced_pod.return_value = _make_pod(
+        "some-other-pod", "other-cluster"
+    )
+
+    # Event for a pod in this cluster — should be delivered.
+    in_cluster_evt = _make_k8s_event(
+        uid="uid-1", kind="Pod", name="ray-worker-0", reason="Scheduled"
+    )
+    if provider._resolve_cluster_pod(in_cluster_evt.involved_object.name):
+        provider._process_k8s_event(in_cluster_evt)
+
+    # Event for a pod outside this cluster — should be filtered out.
+    other_evt = _make_k8s_event(
+        uid="uid-2", kind="Pod", name="some-other-pod", reason="Scheduled"
+    )
+    if provider._resolve_cluster_pod(other_evt.involved_object.name):
+        provider._process_k8s_event(other_evt)
+
+    assert len(delivered) == 1
+    assert delivered[0].event_id == b"uid-1"
+    assert delivered[0].platform_event.object_kind == "Pod"
+    assert delivered[0].platform_event.object_name == "ray-worker-0"
+
+
+def _make_pod(name: str, cluster_label: str) -> MagicMock:
+    pod = MagicMock()
+    pod.metadata.name = name
+    pod.metadata.labels = (
+        {KUBERAY_LABEL_KEY_CLUSTER: cluster_label} if cluster_label is not None else {}
+    )
+    return pod
+
+
+def test_resolve_cluster_pod_positive_cache_hit_skips_get():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._k8s_v1_api = MagicMock()
+    provider._cluster_pod_names.add("ray-worker-0")
+
+    assert provider._resolve_cluster_pod("ray-worker-0") is True
+    provider._k8s_v1_api.read_namespaced_pod.assert_not_called()
+
+
+def test_resolve_cluster_pod_negative_cache_hit_skips_get():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._k8s_v1_api = MagicMock()
+    provider._non_cluster_pod_names["other-pod"] = None
+
+    assert provider._resolve_cluster_pod("other-pod") is False
+    provider._k8s_v1_api.read_namespaced_pod.assert_not_called()
+
+
+def test_resolve_cluster_pod_cold_miss_matching_label_caches_positive():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._cluster_name = "my-cluster"
+    provider._namespace = "ns"
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.read_namespaced_pod.return_value = _make_pod(
+        "ray-worker-1", "my-cluster"
+    )
+
+    assert provider._resolve_cluster_pod("ray-worker-1") is True
+    assert "ray-worker-1" in provider._cluster_pod_names
+    # A second resolution is served from cache without re-issuing the GET.
+    provider._resolve_cluster_pod("ray-worker-1")
+    provider._k8s_v1_api.read_namespaced_pod.assert_called_once()
+
+
+def test_resolve_cluster_pod_cold_miss_not_matching_label_caches_negative():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._cluster_name = "my-cluster"
+    provider._namespace = "ns"
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.read_namespaced_pod.return_value = _make_pod(
+        "other-pod", "other-cluster"
+    )
+    assert provider._resolve_cluster_pod("other-pod") is False
+    assert "other-pod" in provider._non_cluster_pod_names
+    provider._resolve_cluster_pod("other-pod")
+    provider._k8s_v1_api.read_namespaced_pod.assert_called_once()
+
+
+def test_resolve_cluster_pod_deleted_pod_counts_as_not_member():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._cluster_name = "my-cluster"
+    provider._namespace = "ns"
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.read_namespaced_pod.side_effect = ApiException(
+        status=404, reason="Not Found"
+    )
+    assert provider._resolve_cluster_pod("gone-pod") is False
+    assert "gone-pod" in provider._non_cluster_pod_names
+
+
+def test_resolve_cluster_pod_negative_cache_is_bounded():
+    provider = KubernetesEventProvider(lambda e: None)
+    provider._cluster_name = "my-cluster"
+    provider._namespace = "ns"
+    provider._k8s_v1_api = MagicMock()
+    provider._k8s_v1_api.read_namespaced_pod.side_effect = (
+        lambda name, namespace, _request_timeout: _make_pod(name, "other-cluster")
+    )
+
+    for i in range(MAX_NON_CLUSTER_POD_CACHE + 5):
+        provider._resolve_cluster_pod(f"other-pod-{i}")
+
+    assert len(provider._non_cluster_pod_names) <= MAX_NON_CLUSTER_POD_CACHE
+    assert "other-pod-0" not in provider._non_cluster_pod_names
+    assert (
+        f"other-pod-{MAX_NON_CLUSTER_POD_CACHE + 4}" in provider._non_cluster_pod_names
+    )
+
+
+def test_membership_add_or_delete_purges_negative_cache_entry():
+    provider = KubernetesEventProvider(lambda e: None)
+
+    provider._non_cluster_pod_names["ray-worker-2"] = None
+    provider._update_pod_membership("ADDED", "ray-worker-2")
+    assert "ray-worker-2" not in provider._non_cluster_pod_names
+
+    provider._non_cluster_pod_names["ray-worker-3"] = None
+    provider._update_pod_membership("DELETED", "ray-worker-3")
+    assert "ray-worker-3" not in provider._non_cluster_pod_names
 
 
 if __name__ == "__main__":
