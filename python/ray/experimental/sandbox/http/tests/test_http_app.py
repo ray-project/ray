@@ -576,5 +576,25 @@ def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
     assert response.status_code == 422
 
 
+def test_chunked_file_upload_via_append(fake_resolver: FakeResolver) -> None:
+    """PUT ?append=true extends the file, so clients can chunk large uploads
+    under proxy body-size limits."""
+    client = _client(fake_resolver)
+    info = _create_sandbox(client)
+    _wait_running(client, info["sandbox_id"])
+    base = f"{BASE}/sandboxes/{info['sandbox_id']}/files"
+
+    assert client.put(base, params={"path": "/big"}, content=b"aaa").status_code == 204
+    assert (
+        client.put(
+            base, params={"path": "/big", "append": "true"}, content=b"bbb"
+        ).status_code
+        == 204
+    )
+
+    runtime = fake_resolver.runtimes[0]
+    assert runtime.written_files["/big"] == b"aaabbb"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -495,7 +495,16 @@ def create_app(
 
     @v1.put("/sandboxes/{sandbox_id}/files", status_code=204)
     async def put_file(
-        sandbox_id: str, request: Request, path: str = Query(min_length=1)
+        sandbox_id: str,
+        request: Request,
+        path: str = Query(min_length=1),
+        append: bool = Query(
+            default=False,
+            description=(
+                "Append to the file instead of truncating it. Lets clients "
+                "chunk large uploads under proxy body-size limits."
+            ),
+        ),
     ) -> Response:
         _validate_file_path(path)
         body = await request.body()
@@ -508,7 +517,9 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is None:
             raise _sandbox_not_found(sandbox_id)
-        result = await _bounded_call(sandbox_id, handle.write_file.remote(path, body))
+        result = await _bounded_call(
+            sandbox_id, handle.write_file.remote(path, body, append=append)
+        )
         if result.get("error_code") == "conflict":
             raise _ApiError(409, "conflict", result["message"])
         return Response(status_code=204)
