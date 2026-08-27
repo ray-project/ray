@@ -29,6 +29,10 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import _map_task
@@ -47,7 +51,9 @@ from ray.data._internal.stats import (
     StatsSummary,
     Timer,
     TimeSpan,
+    _create_prometheus_metric,
     _maybe_time,
+    _record_prometheus_metric,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -2005,6 +2011,50 @@ def test_stats_actor_iter_metrics():
     assert final_stats == ds_stats
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
     assert update_fn.call_args_list[-1].args[2] is None
+
+
+def test_create_distribution_prometheus_metric():
+    class FakeGauge:
+        def __init__(self, name, description, tag_keys):
+            self.name = name
+            self.description = description
+            self.tag_keys = tag_keys
+
+    metric = next(
+        metric
+        for metric in OpRuntimeMetrics.get_metrics()
+        if metric.name == "max_uss_bytes"
+    )
+
+    with patch("ray.data._internal.stats.Gauge", FakeGauge):
+        prom_metric = _create_prometheus_metric(metric, ("dataset", "operator"))
+
+    assert isinstance(prom_metric, dict)
+    assert {name: gauge.name for name, gauge in prom_metric.items()} == {
+        "mean": "data_max_uss_bytes_mean",
+        "max": "data_max_uss_bytes_max",
+    }
+    assert all(
+        gauge.tag_keys == ("dataset", "operator") for gauge in prom_metric.values()
+    )
+
+
+def test_record_distribution_prometheus_metric():
+    prom_metric = {"mean": MagicMock(), "max": MagicMock()}
+    distribution = DistributionTracker()
+    tags = {"dataset": "dataset_0", "operator": "MapBatches(foo)"}
+
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_not_called()
+    prom_metric["max"].set.assert_not_called()
+
+    distribution.add_sample(100)
+    distribution.add_sample(300)
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_called_once_with(200, tags)
+    prom_metric["max"].set.assert_called_once_with(300, tags)
 
 
 @pytest.mark.parametrize(
