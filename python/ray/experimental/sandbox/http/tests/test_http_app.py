@@ -460,6 +460,33 @@ def test_file_ops_while_booting_409(fake_resolver: FakeResolver) -> None:
         runtime.pull_gate.set()
 
 
+class _UnschedulableHandle:
+    """Mimics a handle whose actor Ray reports as permanently unschedulable."""
+
+    def __getattr__(self, name: str):
+        class _Method:
+            def remote(self, *args, **kwargs):
+                import asyncio
+
+                async def _raise():
+                    exc_type = type("ActorUnschedulableError", (Exception,), {})
+                    raise exc_type("resource shapes cannot fit the cluster")
+
+                return asyncio.get_running_loop().create_task(_raise())
+
+        return _Method()
+
+
+def test_unschedulable_actor_maps_to_409(fake_resolver: FakeResolver) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-unsched0001"] = _UnschedulableHandle()
+
+    response = client.get(f"{BASE}/sandboxes/sb-unsched0001")
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "unschedulable"
+
+
 class _StalledHandle:
     """Mimics a handle to a created-but-unscheduled detached actor: every
     remote call returns an awaitable that never resolves."""
