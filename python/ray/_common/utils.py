@@ -618,8 +618,8 @@ def try_to_create_directory(directory_path):
     try_make_directory_shared(directory_path)
 
 
-def is_path_within(path: str, directory: str) -> bool:
-    """Return whether `path` is `directory` itself or is nested inside it.
+def is_path_within_lexically(path: str, directory: str) -> bool:
+    """Return whether `path` is lexically nested inside `directory`.
 
     The comparison is lexical: neither argument is resolved through symlinks,
     so a path that only reaches `directory` by following one is not considered

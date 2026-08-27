@@ -19,7 +19,7 @@ from ray._common.utils import (
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
     get_system_memory,
-    is_path_within,
+    is_path_within_lexically,
     load_class,
     run_background_task,
     try_to_create_directory,
@@ -169,8 +169,8 @@ class TestTryToCreateDirectory:
                 os.path.expanduser = original_expanduser
 
 
-class TestIsPathWithin:
-    """Tests for the is_path_within utility function."""
+class TestIsPathWithinLexically:
+    """Tests for the is_path_within_lexically utility function."""
 
     @pytest.mark.parametrize(
         "path,directory,expected",
@@ -188,11 +188,11 @@ class TestIsPathWithin:
     )
     def test_containment(self, path, directory, expected):
         """Test whether a path is reported as nested inside a directory."""
-        assert is_path_within(path, directory) is expected
+        assert is_path_within_lexically(path, directory) is expected
 
     def test_incomparable_paths(self):
         """Test that paths which cannot be compared are not within."""
-        assert is_path_within("C:/logs", "D:/ray") is False
+        assert is_path_within_lexically("C:/logs", "D:/ray") is False
 
 
 class TestLoadClass:

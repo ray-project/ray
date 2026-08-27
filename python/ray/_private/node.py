@@ -26,7 +26,7 @@ from ray._common.network_utils import (
     parse_address,
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._common.utils import is_path_within, try_to_create_directory
+from ray._common.utils import is_path_within_lexically, try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -77,7 +77,9 @@ def _is_path_within_resolved(path: str, directory: str) -> bool:
         except (OSError, ValueError):
             # Fall back for filesystems where samefile is unavailable. normcase
             # handles case-insensitive path comparison on Windows.
-            return is_path_within(os.path.normcase(path), os.path.normcase(directory))
+            return is_path_within_lexically(
+                os.path.normcase(path), os.path.normcase(directory)
+            )
 
         parent = os.path.dirname(path)
         if parent == path:
