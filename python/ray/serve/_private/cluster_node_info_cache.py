@@ -1,9 +1,11 @@
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 import ray
 from ray._common.utils import binary_to_hex
+from ray._private.ray_constants import RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S, SERVE_LOGGER_NAME
 
@@ -19,6 +21,7 @@ class ClusterNodeInfoCache(ABC):
         self._cached_node_labels: Dict[str, Dict[str, str]] = dict()
         self._cached_total_resources_per_node: Dict[str, Dict] = dict()
         self._cached_available_resources_per_node: Dict[str, Dict[str, float]] = dict()
+        self._cached_draining_nodes: Dict[str, int] = dict()
         # Track alive node IDs to detect cluster membership changes and skip
         # rebuilding labels / total resources when nothing changed.
         self._alive_node_id_set: FrozenSet[str] = frozenset()
@@ -69,6 +72,40 @@ class ClusterNodeInfoCache(ABC):
             self._fetch_available_resources_per_node()
         )
 
+        try:
+            draining_nodes = self._gcs_client.get_draining_nodes(
+                timeout=RAY_GCS_RPC_TIMEOUT_S
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch draining nodes from GCS. "
+                "Draining nodes cache will be stale.",
+                exc_info=True,
+            )
+            # Don't retain stale state for a node that is no longer alive.
+            self._cached_draining_nodes = {
+                node_id: deadline
+                for node_id, deadline in self._cached_draining_nodes.items()
+                if node_id in self._alive_node_id_set
+            }
+            return
+
+        default_deadline_ms = int(
+            (time.time() + RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S) * 1000
+        )
+        self._cached_draining_nodes = {
+            node_id: (
+                deadline
+                if deadline != 0
+                # GCS uses 0 for no deadline, but Serve requires a finite
+                # deadline for migration. Therefore use default draining timeout.
+                # Prevent pushing the deadline back using already recorded deadline.
+                else self._cached_draining_nodes.get(node_id, default_deadline_ms)
+            )
+            for node_id, deadline in draining_nodes.items()
+            if node_id in self._alive_node_id_set
+        }
+
     def _fetch_available_resources_per_node(self) -> Dict[str, Dict[str, float]]:
         """Fetch available resources per alive node via get_all_resource_usage()."""
         try:
@@ -106,10 +143,9 @@ class ClusterNodeInfoCache(ABC):
         """Get IDs of all live nodes in the cluster."""
         return {node_id for node_id, _, _ in self.get_alive_nodes()}
 
-    @abstractmethod
     def get_draining_nodes(self) -> Dict[str, int]:
         """Get draining nodes in the cluster and their deadlines."""
-        raise NotImplementedError
+        return dict(self._cached_draining_nodes)
 
     @abstractmethod
     def get_node_az(self, node_id: str) -> Optional[str]:
@@ -137,40 +173,6 @@ class ClusterNodeInfoCache(ABC):
 
 
 class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
-    def __init__(self, gcs_client: GcsClient):
-        super().__init__(gcs_client)
-        self._cached_draining_nodes: Dict[str, int] = dict()
-
-    def update(self):
-        super().update()
-
-        try:
-            draining_nodes = self._gcs_client.get_draining_nodes(
-                timeout=RAY_GCS_RPC_TIMEOUT_S
-            )
-        except Exception:
-            logger.warning(
-                "Failed to fetch draining nodes from GCS. "
-                "Draining nodes cache will be stale.",
-                exc_info=True,
-            )
-            # Don't retain stale state for a node that is no longer alive.
-            self._cached_draining_nodes = {
-                node_id: deadline
-                for node_id, deadline in self._cached_draining_nodes.items()
-                if node_id in self._alive_node_id_set
-            }
-            return
-
-        self._cached_draining_nodes = {
-            node_id: deadline
-            for node_id, deadline in draining_nodes.items()
-            if node_id in self._alive_node_id_set
-        }
-
-    def get_draining_nodes(self) -> Dict[str, int]:
-        return dict(self._cached_draining_nodes)
-
     def get_node_az(self, node_id: str) -> Optional[str]:
         """Get availability zone of a node."""
         return None
