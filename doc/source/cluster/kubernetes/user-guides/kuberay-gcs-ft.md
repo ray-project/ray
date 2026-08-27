@@ -263,7 +263,7 @@ By default, cleanup deletes each namespace key with `DEL`. Redis reclaims memory
 To use `UNLINK`, set `RAY_redis_namespace_cleanup_use_unlink=1`. This option is useful when the Redis instance is shared with live clusters. `UNLINK` requires Redis 4.0 or later. The Redis user must have permission to run `UNLINK`.
 
 :::{caution}
-Ray doesn't check whether Redis supports `UNLINK`. Ray also doesn't fall back to `DEL`. If Redis rejects `UNLINK`, Ray retries the request. The cleanup process fails after the retries are exhausted.
+Ray doesn't check whether Redis supports `UNLINK`. Ray also doesn't fall back to `DEL`. If Redis rejects `UNLINK`, Ray retries the request. Ray terminates the cleanup process with a fatal error after the retries are exhausted.
 :::
 
 `UNLINK` removes keys from the keyspace immediately. It reclaims their memory on a background thread. This avoids blocking the Redis main thread while it reclaims memory for a large namespace.
