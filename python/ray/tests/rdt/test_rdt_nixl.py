@@ -1,3 +1,4 @@
+import gc
 import sys
 
 import pytest
@@ -5,7 +6,11 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_device_for_ref, set_target_for_ref
+from ray.experimental import (
+    set_target_device_for_ref,
+    set_target_for_ref,
+    wait_tensor_freed,
+)
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -206,6 +211,39 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_put_nixl(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    actor = GPUTestActor.remote()
+    assert ray.get(actor.sum.remote(ref, "cuda")) == 6
+    assert ray.get(actor.borrow_and_sum.remote([ref])) == 6
+    assert torch.equal(ray.get(ref), tensor)
+
+    del ref
+    gc.collect()
+
+    wait_tensor_freed(tensor, timeout=10)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_owned_rdt_rejects_object_store_fallback(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    with pytest.raises(ValueError, match="_use_object_store=True"):
+        ray.get(ref, _use_object_store=True)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_rejects_two_sided_transport(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+
+    with pytest.raises(ValueError, match="one-sided transport"):
+        ray.put(tensor, _tensor_transport="nccl")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -793,6 +831,53 @@ def test_nixl_memory_pool(ray_start_regular, device):
     # Transfer the fourth tensor (after GC, using memory pool internally).
     ref4 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_cpu_pool_gpu_tensor(ray_start_regular):
+    """
+    Test that a CPU-based memory pool can serve GPU source tensors, and that
+    the tensor still lands on the GPU on the receiver.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+
+        @ray.method(tensor_transport="nixl")
+        def echo(self, data):
+            # Guard against the argument silently landing on CPU.
+            assert data.device.type == "cuda"
+            return data
+
+        def pool_device_type(self):
+            return (
+                get_tensor_transport_manager("NIXL")
+                ._memory_pool.get_pool_tensor()
+                .device.type
+            )
+
+    # Pool holds exactly one small tensor (24 bytes).
+    src_actor = PoolActor.remote("cpu", 24)
+    dst_actor = GPUTestActor.remote()
+    assert ray.get(src_actor.pool_device_type.remote()) == "cpu"
+
+    # Transfer the first small tensor (using memory pool internally).
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"))
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Second transfer: pool is full (ref1 still alive). The allocation raises
+    # NixlOutOfMemoryError, which surfaces as a RayTaskError, proving the
+    # pool (not direct registration) served ref1.
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"))
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.sum.remote(ref2, "cuda"))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
@@ -1542,6 +1543,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
+  /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
+  /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
+  /// it.
+  /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
+  void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 
@@ -2029,13 +2036,30 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Guards free_pending_ / free_in_flight_: FreeObjectOnNodesAsync runs on
+  /// arbitrary ReferenceCounter threads while the reply callback runs on
+  /// io_service_. Lock order is ReferenceCounter::mutex_ -> free_batch_mu_ (the
+  /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
+  /// never call back into ReferenceCounter while holding it.
+  absl::Mutex free_batch_mu_;
+  /// node id -> FIFO queue of object ids waiting to be freed on that node.
+  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
+      ABSL_GUARDED_BY(free_batch_mu_);
+  /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
+  absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
+
   /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
   /// actors this will contain at most one task ID.
   ///
   /// We have to track this separately because cancellation requests come from submitter
   /// thread than the thread executing the task, so we cannot get the cancellation status
   /// from the thread-local WorkerThreadContext.
-  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
+  ///
+  /// This has its own mutex because IsTaskCanceled() is called from check_signals
+  /// while the process-level core_worker_ lock is held, and taking mutex_ there
+  /// closes a lock-order cycle.
+  mutable absl::Mutex canceled_tasks_mutex_ ABSL_ACQUIRED_AFTER(mutex_);
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(canceled_tasks_mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
@@ -2189,6 +2213,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Max object ids per coalesced FreeLocalObjects RPC, read once at
+  /// construction (validated > 0 there; used by
+  /// SendFreeLocalObjectsBatchIfNeeded). Mirrors
+  /// OwnershipBasedObjectDirectory::kMaxObjectReportBatchSize.
+  const size_t max_free_local_objects_batch_size_;
 
   /// Clock used for timestamping events, retries, and timeouts.
   ClockInterface &clock_;
