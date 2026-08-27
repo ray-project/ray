@@ -1,3 +1,6 @@
+.. meta::
+   :description: Turn Python classes into stateful Ray actors: declare resources, call methods, pass handles around, use generators, and cancel actor tasks.
+
 .. _ray-remote-classes:
 .. _actor-guide:
 

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run an offline batch inference workload on Kubernetes with RayJob, from GKE cluster creation through job submission."
+---
+
 (kuberay-batch-inference-example)=
 
 # RayJob Batch Inference Example
