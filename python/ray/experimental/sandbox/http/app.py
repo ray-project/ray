@@ -79,6 +79,15 @@ class _SchedulingTimeout(_ApiError):
         )
 
 
+def _is_unschedulable(exc: BaseException) -> bool:
+    """True when Ray reports the actor can never fit the cluster's resources.
+
+    Matched by class name for the same reason as ``_is_actor_gone``.
+    """
+    names = {type(exc).__name__, *(base.__name__ for base in type(exc).__mro__)}
+    return any("ActorUnschedulableError" in name for name in names)
+
+
 def _is_actor_gone(exc: BaseException) -> bool:
     """True when a remote call failed because the actor no longer exists.
 
@@ -102,6 +111,14 @@ async def _actor_call(sandbox_id: str, awaitable: Awaitable[Any]) -> Any:
     except Exception as exc:
         if _is_actor_gone(exc):
             raise _sandbox_not_found(sandbox_id) from exc
+        if _is_unschedulable(exc):
+            # The requested cpu/memory shape cannot fit any node the cluster
+            # can offer: a permanent condition, not a scheduling wait.
+            raise _ApiError(
+                409,
+                "unschedulable",
+                f"sandbox {sandbox_id} cannot be scheduled: {str(exc)[:300]}",
+            ) from exc
         raise
 
 
