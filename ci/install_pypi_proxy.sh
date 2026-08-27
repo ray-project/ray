@@ -44,7 +44,13 @@ deps=("niquests==3.21.0" "starlette==1.6.0" "uvicorn==0.52.3")
 if "$PROXY_PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
   deps+=("asgi-cross-origin-protection==0.1.1")
 fi
-"$PREFIX"/bin/pip install --no-cache-dir "${deps[@]}"
+# venv puts its executables in bin/ everywhere except Windows, which uses Scripts/.
+# The Windows CI image runs these scripts under msys bash, so the rest of the path
+# handling is identical and only this directory name differs.
+VENV_BIN="$PREFIX/bin"
+[[ -d "$VENV_BIN" ]] || VENV_BIN="$PREFIX/Scripts"
+
+"$VENV_BIN"/pip install --no-cache-dir "${deps[@]}"
 
 cp pypi_index_proxy.py "$PREFIX"/pypi_index_proxy.py
 # The bazel downloader helper travels with the proxy, because the profile.d hook that
