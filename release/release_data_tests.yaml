@@ -829,6 +829,31 @@
       run:
         script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
 
+# Tests memory management on a cluster with mixed node types:
+# CPU nodes (small memory) produce data faster than GPU nodes (large memory)
+# can consume it. The global object store threshold is the sum of all nodes,
+# so CPU stages may not trigger backpressure even when CPU nodes are full.
+- name: backpressure_heterogeneous_memory_nodes
+  python: "3.10"
+  frequency: nightly
+  group: data-backpressure
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+    cluster_compute: heterogeneous_memory_compute.yaml
+
+  run:
+    timeout: 3600
+    # This release test uses large batch sizes. Since Ray Data requires memory hints
+    # for high-memory operations, we need to manually specify the memory.
+    script: python heterogeneous_memory_batch_inference.py --set-memory
+
 
 ########################
 # Sort and shuffle tests
@@ -870,31 +895,6 @@
 #######################
 # Batch inference tests
 #######################
-
-# Tests memory management on a cluster with mixed node types:
-# CPU nodes (small memory) produce data faster than GPU nodes (large memory)
-# can consume it. The global object store threshold is the sum of all nodes,
-# so CPU stages may not trigger backpressure even when CPU nodes are full.
-- name: backpressure_heterogeneous_memory_nodes
-  python: "3.10"
-  frequency: nightly
-  group: data-backpressure
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-    cluster_compute: heterogeneous_memory_compute.yaml
-
-  run:
-    timeout: 3600
-    # This release test uses large batch sizes. Since Ray Data requires memory hints
-    # for high-memory operations, we need to manually specify the memory.
-    script: python heterogeneous_memory_batch_inference.py --set-memory
 
 # Multitenancy variant: runs two copies of the heterogeneous_memory pipeline
 # concurrently on a single cluster, each pinned to its own subcluster via
