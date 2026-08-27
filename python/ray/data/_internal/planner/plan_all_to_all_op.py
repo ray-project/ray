@@ -308,7 +308,7 @@ def plan_all_to_all_op(
                 return _plan_gpu_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
-            elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+            elif data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
                 return _plan_hash_shuffle_repartition_v2(
                     data_context, op, input_physical_dag
                 )
@@ -320,7 +320,7 @@ def plan_all_to_all_op(
                 raise ValueError(
                     "Key-based repartitioning only supported for "
                     f"`DataContext.shuffle_strategy=HASH_SHUFFLE`, "
-                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE_V2` or "
+                    f"`DataContext.shuffle_strategy=SHUFFLE_V2` or "
                     f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
@@ -352,7 +352,7 @@ def plan_all_to_all_op(
     elif isinstance(op, Aggregate):
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
-        elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+        elif data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
             return _plan_hash_shuffle_aggregate_v2(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
