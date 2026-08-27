@@ -569,9 +569,30 @@ def test_require_custom_byod_image():
     assert _stub_test(
         {"cluster": {"byod": {"python_depset": "deps.lock"}}}
     ).require_custom_byod_image()
-    # runtime_env triggers custom build
+    # Legacy runtime_env triggers custom build.
     assert _stub_test(
         {"cluster": {"byod": {"runtime_env": ["FOO=bar"]}}}
+    ).require_custom_byod_image()
+    # New Anyscale SDK tests pass runtime_env through the job configuration.
+    assert not _stub_test(
+        {
+            "cluster": {
+                "anyscale_sdk_2026": True,
+                "byod": {"runtime_env": ["FOO=bar"]},
+            }
+        }
+    ).require_custom_byod_image()
+    # Image-level dependencies still trigger a custom build with the new SDK.
+    assert _stub_test(
+        {
+            "cluster": {
+                "anyscale_sdk_2026": True,
+                "byod": {
+                    "post_build_script": "foo.sh",
+                    "runtime_env": ["FOO=bar"],
+                },
+            }
+        }
     ).require_custom_byod_image()
     # empty runtime_env does not trigger custom build
     assert not _stub_test(
@@ -581,7 +602,7 @@ def test_require_custom_byod_image():
 
 @patch("ray_release.test.Test.get_byod_base_image_tag")
 def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
-    """Tests with only runtime_env get a custom image tag including env hash."""
+    """Legacy tests with only runtime_env include it in a custom image tag."""
     test = _stub_test(
         {
             "name": "linux://test",
@@ -617,6 +638,23 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
         }
     )
     assert test2.get_byod_image_tag() == f"test-image-{hash_value}"
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_runtime_env_only_new_sdk(mock_get_byod_base_image_tag):
+    """New SDK tests with only runtime_env reuse the base image tag."""
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "anyscale_sdk_2026": True,
+                "byod": {"runtime_env": ["MY_VAR=123"]},
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+
+    assert test.get_byod_image_tag() == "test-image"
 
 
 @patch("ray_release.test.Test.get_byod_base_image_tag")

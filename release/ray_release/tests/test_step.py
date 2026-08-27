@@ -46,6 +46,22 @@ def test_get_step(mock):
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_new_sdk_runtime_env_skips_custom_image(mock):
+    test = _stub_test(
+        {
+            "cluster": {
+                "anyscale_sdk_2026": True,
+                "byod": {"type": "cpu", "runtime_env": ["FOO=bar"]},
+            }
+        }
+    )
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(test, run_id=0)
+
+    assert step["depends_on"] == "anyscalecpubuild--python310"
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
 def test_get_step_for_test_group(mock):
     grouped_tests = {
         "group1": [

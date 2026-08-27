@@ -621,11 +621,19 @@ class Test(dict):
     def require_custom_byod_image(self) -> bool:
         """
         Returns whether this test requires a custom byod image.
+
+        Tests using the new Anyscale SDK receive runtime environment variables
+        through the job's ``runtime_env``. Baking those variables into another
+        Docker image is redundant. Legacy tests still rely on the image-level
+        environment, so retain the custom image for them.
         """
+        requires_image_runtime_env = (
+            bool(self.get_byod_runtime_env()) and not self.uses_anyscale_sdk_2026()
+        )
         return (
             self.get_byod_post_build_script() is not None
             or self.get_byod_python_depset() is not None
-            or bool(self.get_byod_runtime_env())
+            or requires_image_runtime_env
         )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
