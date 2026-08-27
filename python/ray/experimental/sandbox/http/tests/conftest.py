@@ -126,11 +126,18 @@ class FakeSandboxRuntime:
         )
 
     def write_file(
-        self, instance_id: str, path: str, content: Union[str, bytes]
+        self,
+        instance_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
         if isinstance(content, str):
             content = content.encode("utf-8")
-        self.written_files[path] = content
+        if append and path in self.written_files:
+            self.written_files[path] += content
+        else:
+            self.written_files[path] = content
 
     def read_file(self, instance_id: str, path: str) -> bytes:
         if path not in self.readable_files:

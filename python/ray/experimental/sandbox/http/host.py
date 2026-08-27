@@ -470,7 +470,9 @@ class SandboxHost:
     # Files
     # ------------------------------------------------------------------
 
-    async def write_file(self, path: str, content: bytes) -> Dict[str, Any]:
+    async def write_file(
+        self, path: str, content: bytes, append: bool = False
+    ) -> Dict[str, Any]:
         if self._status != "running":
             return {
                 "error_code": "conflict",
@@ -479,7 +481,11 @@ class SandboxHost:
                 ),
             }
         await asyncio.to_thread(
-            self._runtime.write_file, self._instance_id, path, content
+            self._runtime.write_file,
+            self._instance_id,
+            path,
+            content,
+            append,
         )
         return {"ok": True}
 
