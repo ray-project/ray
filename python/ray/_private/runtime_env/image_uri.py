@@ -4,7 +4,7 @@ import os
 import tempfile
 from typing import List, Optional
 
-from ray._common.utils import is_path_within
+from ray._common.utils import is_path_within_lexically
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -97,9 +97,9 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    # A logs directory outside the Ray temp dir is not covered by the mount
-    # above, so the worker in the container would have nowhere to write.
-    if logs_dir is not None and not is_path_within(logs_dir, ray_tmp_dir):
+    # Bind mounts expose the destination path verbatim inside the container, so
+    # this check is intentionally lexical rather than based on host symlinks.
+    if logs_dir is not None and not is_path_within_lexically(logs_dir, ray_tmp_dir):
         container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
 
     # Environment variables to set in container

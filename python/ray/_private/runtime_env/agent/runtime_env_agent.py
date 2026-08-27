@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
-from ray._common.utils import get_or_create_event_loop, is_path_within
+from ray._common.utils import get_or_create_event_loop, is_path_within_lexically
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
@@ -73,7 +73,7 @@ def _create_image_uri_plugin(
     if accepts_logs_dir:
         return plugin_cls(temp_dir, logs_dir=logs_dir)
 
-    if not is_path_within(logs_dir, temp_dir):
+    if not is_path_within_lexically(logs_dir, temp_dir):
         logger.warning(
             "Image URI plugin %s does not accept the logs_dir keyword. The "
             "configured logs directory %s is outside the Ray temp directory "
