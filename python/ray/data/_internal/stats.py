@@ -482,14 +482,6 @@ class _StatsActor:
             )
         )
 
-        # Miscellaneous metrics
-        self.execution_metrics_misc = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.MISC,
-                tag_keys=op_tags_keys,
-            )
-        )
-
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
@@ -774,9 +766,6 @@ class _StatsActor:
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_actors.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_misc.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
