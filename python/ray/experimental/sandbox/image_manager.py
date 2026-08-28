@@ -597,7 +597,7 @@ class ImageManager(BaseImageManager):
         host_entries = ""
         if network == "host" and os.path.exists(_ETC_HOSTS):
             try:
-                with open(_ETC_HOSTS, "r", encoding="utf-8") as f:
+                with open(_ETC_HOSTS, "r", encoding="utf-8", errors="replace") as f:
                     host_entries = f.read()
             except OSError:
                 host_entries = ""
