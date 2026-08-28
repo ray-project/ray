@@ -65,6 +65,23 @@ _DOCKER_HUB_REGISTRIES = (
 _REGISTRY_MIRROR_ENV = "RAY_SANDBOX_REGISTRY_MIRROR"
 
 
+def registry_base_url(registry: str) -> str:
+    """Return the registry as a base URL.
+
+    Bare hosts default to https. An explicit ``http://`` scheme is honored,
+    which in-cluster pull-through proxies (a plain ``registry:2``) need.
+
+    Args:
+        registry: Registry host, optionally carrying an explicit scheme.
+
+    Returns:
+        The registry with a scheme, without a trailing slash.
+    """
+    if registry.startswith(("http://", "https://")):
+        return registry
+    return f"https://{registry}"
+
+
 def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
     """Route Docker Hub pulls through a configured pull-through mirror.
 
@@ -88,7 +105,14 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
     mirror = os.environ.get(_REGISTRY_MIRROR_ENV, "").strip().strip("/")
     if not mirror or registry != "registry-1.docker.io":
         return registry, repo
+    scheme = ""
+    for candidate in ("http://", "https://"):
+        if mirror.startswith(candidate):
+            scheme, mirror = candidate, mirror[len(candidate) :]
+            break
     host, _, prefix = mirror.partition("/")
+    if scheme:
+        host = scheme + host
     return host, f"{prefix}/{repo}" if prefix else repo
 
 
@@ -150,7 +174,7 @@ def get_registry_auth_headers(
     timeout: float = 30.0,
 ) -> Dict[str, str]:
     """Retrieve bearer authentication token headers for registry repository."""
-    url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+    url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         urllib.request.urlopen(req, timeout=timeout)
@@ -407,7 +431,9 @@ def pull_and_extract_container_image(
                     }
                     auth_header = auth_headers.get("Authorization")
 
-                    manifest_url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+                    manifest_url = (
+                        f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+                    )
                     req = _registry_request(manifest_url, headers, auth_header)
                     with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                         manifest_data = json.loads(resp.read().decode("utf-8"))
@@ -428,7 +454,7 @@ def pull_and_extract_container_image(
                             chosen_digest = manifest_data["manifests"][0]["digest"]
 
                         sub_req = _registry_request(
-                            f"https://{registry}/v2/{repo}/manifests/{chosen_digest}",
+                            f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
                             headers,
                             auth_header,
                         )
@@ -441,9 +467,7 @@ def pull_and_extract_container_image(
                     config_desc = manifest_data.get("config")
                     if config_desc and "digest" in config_desc:
                         config_digest = config_desc["digest"]
-                        config_url = (
-                            f"https://{registry}/v2/{repo}/blobs/{config_digest}"
-                        )
+                        config_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
                         config_req = _registry_request(config_url, headers, auth_header)
                         try:
                             with urllib.request.urlopen(
@@ -466,7 +490,9 @@ def pull_and_extract_container_image(
 
                     for layer in layers:
                         digest = layer["digest"]
-                        blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
+                        blob_url = (
+                            f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
+                        )
                         blob_req = _registry_request(blob_url, headers, auth_header)
                         with urllib.request.urlopen(
                             blob_req, timeout=timeout_seconds

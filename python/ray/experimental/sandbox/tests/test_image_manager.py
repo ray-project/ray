@@ -541,6 +541,20 @@ def test_registry_mirror_rewrites_docker_hub_only(monkeypatch):
     # Non-Docker-Hub registries are never rewritten.
     assert apply_registry_mirror("ghcr.io", "org/repo") == ("ghcr.io", "org/repo")
 
+    # An explicit scheme is honored (plain-HTTP in-cluster proxies) and
+    # flows through URL construction; https is stripped to the default.
+    from ray.experimental.sandbox._internal.image_utils import registry_base_url
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "http://mirror.local:5000")
+    registry, _ = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert registry == "http://mirror.local:5000"
+    assert registry_base_url(registry) == "http://mirror.local:5000"
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "https://mirror.local/dockerhub")
+    registry, repo = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert (registry, repo) == ("https://mirror.local", "dockerhub/library/python")
+    assert registry_base_url("plain.host") == "https://plain.host"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
