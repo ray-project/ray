@@ -298,6 +298,23 @@ def test_read_hdf5_rejects_external_storage(ray_start_regular_shared, tmp_path):
         ray.data.read_hdf5(path, dataset="observations")
 
 
+def test_read_hdf5_rejects_external_link(ray_start_regular_shared, tmp_path):
+    import h5py
+
+    target_path = tmp_path / "target.h5"
+    with h5py.File(target_path, "w") as file:
+        file["observations"] = np.arange(4)
+
+    path = tmp_path / "external-link.h5"
+    with h5py.File(path, "w") as file:
+        file["observations"] = h5py.ExternalLink(str(target_path), "/observations")
+
+    with pytest.raises(
+        ValueError, match="observations.*external-link.h5.*external link.*not supported"
+    ):
+        ray.data.read_hdf5(path, dataset="observations")
+
+
 def test_read_hdf5_rejects_virtual_dataset_with_external_source(
     ray_start_regular_shared, tmp_path
 ):
@@ -782,6 +799,44 @@ def test_hdf5_segment_read_retries_transient_io(
     assert read_segment.call_count == 1
 
 
+def test_hdf5_segment_retry_does_not_duplicate_completed_segments(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    import h5py
+
+    from ray.data._internal.datasource import hdf5_datasource
+
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    paths = [tmp_path / "a.h5", tmp_path / "b.h5"]
+    for index, path in enumerate(paths):
+        with h5py.File(path, "w") as file:
+            file["observations"] = np.array([index])
+
+    datasource = hdf5_datasource.HDF5Datasource(paths, dataset="observations")
+    data_context = ray.data.DataContext.get_current()
+    monkeypatch.setattr(data_context, "retried_io_errors", ["Connection reset"])
+    original_read_segment = hdf5_datasource._read_segment
+    calls = []
+
+    def read_segment(dataset, segment):
+        filename = segment.metadata.path.rsplit("/", 1)[-1]
+        calls.append(filename)
+        if filename == "b.h5" and calls.count("b.h5") == 1:
+            raise OSError("Connection reset by peer")
+        return original_read_segment(dataset, segment)
+
+    with patch.object(hdf5_datasource, "_read_segment", side_effect=read_segment):
+        blocks = list(datasource.get_read_tasks(1, data_context=data_context)[0]())
+
+    actual = [
+        int(value)
+        for block in blocks
+        for value in BlockAccessor.for_block(block).to_pandas()["data"]
+    ]
+    assert actual == [0, 1]
+    assert calls == ["a.h5", "b.h5", "a.h5", "b.h5"]
+
+
 def test_hdf5_metadata_inspection_is_batched_for_many_files(
     ray_start_regular_shared, tmp_path
 ):
@@ -809,3 +864,9 @@ def test_hdf5_metadata_inspection_is_batched_for_many_files(
 
     assert len(datasource._hdf5_metadata) == 17
     assert batches == [(list(datasource._paths()), 16)]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
