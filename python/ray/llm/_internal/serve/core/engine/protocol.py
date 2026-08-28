@@ -195,11 +195,10 @@ class LLMEngine(abc.ABC):
             raw_request_info: Optional RawRequestInfo carrying data from the
                 original HTTP request.
 
-        Yields:
-            Union[str, ResponsesResponse, ErrorResponse]
-
         Returns:
-            None when the generator is done.
+            An async generator that yields SSE strings when streaming, a single
+            ResponsesResponse when not, or an ErrorResponse on failure, and
+            returns None when the generator is done.
         """
         pass
 
