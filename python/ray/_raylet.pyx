@@ -5505,28 +5505,44 @@ cdef void wait_async_callback_impl(CRayStatus status,
                                    void *user_callback_ptr) with gil:
     user_callback = <object>user_callback_ptr
     try:
-        if not status.ok():
-            # Mirror check_status exception types without calling check_status
-            # (nogil raises across this C++ callback boundary are unsafe).
-            # Notably Status::Invalid falls through to RaySystemError there,
-            # not ValueError — keep the same here.
-            message = status.message().decode()
-            if (status.IsInvalidArgument() or status.IsNotFound() or
-                    status.IsObjectNotFound() or status.IsObjectUnknownOwner()):
-                exc = ValueError(message)
-            elif status.IsTimedOut():
-                exc = GetTimeoutError(message)
-            elif status.IsObjectRefEndOfStream():
-                exc = ObjectRefStreamEndOfStreamError(message)
-            elif status.IsIOError():
-                exc = IOError(message)
+        exc = None
+        ready_bits = None
+        # Translating the result must never cost us the callback invocation:
+        # the waiter in _wait_async only ever unblocks from this call, so
+        # bailing out here would hang it forever. Report the failure through
+        # the callback instead of letting it escape.
+        try:
+            if not status.ok():
+                # Mirror check_status exception types without calling
+                # check_status (nogil raises across this C++ callback boundary
+                # are unsafe). Notably Status::Invalid falls through to
+                # RaySystemError there, not ValueError — keep the same here.
+                # Decode leniently; a malformed status message must not cost
+                # us the invocation either.
+                message = status.message().decode("utf-8", "replace")
+                if (status.IsInvalidArgument() or status.IsNotFound() or
+                        status.IsObjectNotFound() or
+                        status.IsObjectUnknownOwner()):
+                    exc = ValueError(message)
+                elif status.IsTimedOut():
+                    exc = GetTimeoutError(message)
+                elif status.IsObjectRefEndOfStream():
+                    exc = ObjectRefStreamEndOfStreamError(message)
+                elif status.IsIOError():
+                    exc = IOError(message)
+                else:
+                    # Includes Status::Invalid (duplicate ids, bad
+                    # num_objects) and Status::UnknownError (shutdown).
+                    exc = RaySystemError(message)
             else:
-                # Includes Status::Invalid (duplicate ids, bad num_objects).
-                exc = RaySystemError(message)
-            user_callback(exc, None)
-            return
-        ready_bits = [ready[i] != 0 for i in range(n)]
-        user_callback(None, ready_bits)
+                ready_bits = [ready[i] != 0 for i in range(n)]
+        except BaseException as translate_error:
+            logger.exception("failed to translate wait_async result")
+            exc = RaySystemError(
+                "failed to translate wait_async result: "
+                f"{translate_error!r}")
+            ready_bits = None
+        user_callback(exc, ready_bits)
     except BaseException:
         # Must not skip DECREF or leave the awaiting future hung.
         logger.exception("failed to run wait_async callback (user func)")

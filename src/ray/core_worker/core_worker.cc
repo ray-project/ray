@@ -609,13 +609,23 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
-  // Drop in-flight WaitAsync state before io_context teardown. Cancel timers and
-  // clear callbacks without invoking them (worker is shutting down).
+  // Drop any still-registered WaitAsync state WITHOUT invoking callbacks.
+  //
+  // Do not call CancelAllWaitAsync() here. That is deliberate and load-bearing:
+  // this destructor can run from the std::atexit handler registered in
+  // core_worker_process.cc, which the C runtime runs after main() returns —
+  // i.e. after Py_Finalize(). The callback is a Python trampoline that does
+  // PyGILState_Ensure(), which is a fatal abort on a finalized interpreter.
+  // Graceful shutdown already ran CancelAllWaitAsync() while the interpreter
+  // was alive, so anything reaching here is a path Python can no longer
+  // observe; leaking the callback's Py_INCREF as the process exits is fine.
   {
     absl::MutexLock lock(&wait_async_mu_);
     for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
          wait_async_requests_) {
       absl::MutexLock state_lock(&entry.second->mu);
+      // Setting done stops in-flight GetAsync / plasma callbacks from touching
+      // `this` after the worker is gone.
       entry.second->done = true;
       if (entry.second->timer) {
         boost::system::error_code ec;
@@ -1787,6 +1797,15 @@ void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status
     if (state->timer) {
       boost::system::error_code ec;
       state->timer->cancel(ec);
+      // Eager release. Not required -- the state -> timer -> handler -> state
+      // cycle already breaks when asio destroys the aborted handler -- but it
+      // frees the timer one hop sooner.
+      //
+      // This cannot drop the last reference to `state` (which would destroy
+      // the mutex we hold): a pending handler owns `timer`, so the timer
+      // survives; an already-destroyed handler released its `state` reference
+      // then. Either way no handler is destroyed here.
+      state->timer.reset();
     }
     callback = state->callback;
     user = state->user;
@@ -1841,6 +1860,9 @@ void MarkWaitAsyncReady(const std::shared_ptr<WaitAsyncState> &state, size_t ind
     if (state->timer) {
       boost::system::error_code ec;
       state->timer->cancel(ec);
+      // Eager release; see FinishWaitAsync for why this cannot drop the last
+      // reference to `state` while state->mu is held.
+      state->timer.reset();
     }
     callback = state->callback;
     user = state->user;
@@ -2010,8 +2032,22 @@ uint64_t CoreWorker::WaitAsync(
       }
     }
     const ObjectID object_id = ids[i];
+    // Capture the state WEAKLY, and keep it that way. memory_store_ cannot
+    // unregister a GetAsync callback, so a strong capture pins this request
+    // until the object arrives -- forever for one that never does -- long
+    // after the wait timed out or was cancelled. wait_async_requests_ holds
+    // the owning reference: once FinishWaitAsync erases it (and any timer
+    // handler is gone) the state dies and these callbacks become no-ops.
+    // WaitAsyncState is opaque outside this file, so no test guards this.
     memory_store_->GetAsync(
-        object_id, [this, state, i, object_id](std::shared_ptr<RayObject> ray_object) {
+        object_id,
+        [this, weak_state = std::weak_ptr<WaitAsyncState>(state), i, object_id](
+            std::shared_ptr<RayObject> ray_object) {
+          std::shared_ptr<WaitAsyncState> state = weak_state.lock();
+          if (state == nullptr) {
+            // The wait timed out or was cancelled before this object arrived.
+            return;
+          }
           {
             absl::MutexLock lock(&state->mu);
             if (state->done) {
@@ -2042,8 +2078,15 @@ uint64_t CoreWorker::WaitAsync(
           }
           {
             absl::MutexLock lock(&plasma_mutex_);
-            async_plasma_callbacks_[object_id].emplace_back(
-                [state, i]() { MarkWaitAsyncReady(state, i); });
+            // Weak for the same reason as the GetAsync capture above: nothing
+            // removes this entry if the wait ends first. The entry itself is
+            // still left behind until the object becomes local (or never), but
+            // it then holds only an expired weak_ptr rather than the request.
+            async_plasma_callbacks_[object_id].emplace_back([weak_state, i]() {
+              if (std::shared_ptr<WaitAsyncState> state = weak_state.lock()) {
+                MarkWaitAsyncReady(state, i);
+              }
+            });
           }
           rpc::Address owner_address = GetOwnerAddressOrDie(object_id);
           raylet_ipc_client_->SubscribePlasmaReady(object_id, owner_address);
@@ -2081,6 +2124,24 @@ void CoreWorker::CancelWaitAsync(uint64_t handle) {
     state = it->second;
   }
   FinishWaitAsync(state, Status::OK());
+}
+
+void CoreWorker::CancelAllWaitAsync() {
+  // Steal the map under the lock, then finish outside it. FinishWaitAsync
+  // takes wait_async_mu_ via unregister; holding it here would deadlock.
+  std::vector<std::shared_ptr<WaitAsyncState>> pending;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    pending.reserve(wait_async_requests_.size());
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      pending.push_back(entry.second);
+    }
+    wait_async_requests_.clear();
+  }
+  for (const std::shared_ptr<WaitAsyncState> &state : pending) {
+    FinishWaitAsync(state, Status::UnknownError("Core worker is shutting down."));
+  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -5125,8 +5186,16 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
   std::vector<std::function<void(void)>> callbacks;
   {
     absl::MutexLock lock(&plasma_mutex_);
-    auto it = async_plasma_callbacks_.extract(ObjectID::FromBinary(request.object_id()));
-    callbacks = it.mapped();
+    // A notification can arrive with no listener registered, so this lookup
+    // must tolerate a missing key: the raylet fires PlasmaObjectReady
+    // immediately for an already-local object, so two subscriptions for one
+    // object yield two notifications while the first drains every callback.
+    const ObjectID object_id = ObjectID::FromBinary(request.object_id());
+    auto it = async_plasma_callbacks_.find(object_id);
+    if (it != async_plasma_callbacks_.end()) {
+      callbacks = std::move(it->second);
+      async_plasma_callbacks_.erase(it);
+    }
   }
   for (const auto &callback : callbacks) {
     // This callback needs to be asynchronous because it runs on the io_service_, so no

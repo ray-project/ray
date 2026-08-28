@@ -162,11 +162,15 @@ class ActorReplicaResult(ReplicaResult):
             self._obj_ref = obj_ref_or_gen
 
         # Peek generator refs without consuming so to_object_ref* can return
-        # immediately. Advance the stream (backpressure) only after the peeked
-        # refs are ready, via wait_async(fetch_local=False) so we do not pull
-        # or deserialize payloads just to move the cursor. For rejection+unary
-        # we wait for both refs then consume 2 once — independent per-ref
-        # consumes can race if reports are unordered.
+        # immediately. For unary, advance the stream (backpressure) only after
+        # the peeked refs are ready, via wait_async(fetch_local=False) so we
+        # do not pull or deserialize payloads just to move the cursor. For
+        # rejection+unary we wait for both refs then consume 2 once —
+        # independent per-ref consumes can race if reports are unordered.
+        # Streaming+rejection does not use wait_async: the router always
+        # awaits get_rejection_response() before iteration, and that method
+        # consumes index 0 after the peeked ref is ready. A background
+        # consume would race with __anext__ / to_object_ref_gen.
         if self._is_streaming:
             if self._obj_ref_gen is None:
                 raise ValueError(
@@ -174,12 +178,7 @@ class ActorReplicaResult(ReplicaResult):
                 )
 
             if self._with_rejection:
-                obj_ref_gen = self._obj_ref_gen
-                [rejection_ref] = obj_ref_gen._get_next_ref_n(1)
-                self._rejection_response_ref = rejection_ref
-                self._consume_wait_handle = _consume_generator_refs_when_ready(
-                    obj_ref_gen, [rejection_ref], 1
-                )
+                [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
         elif self._obj_ref_gen is not None:
             obj_ref_gen = self._obj_ref_gen
             if self._with_rejection:
@@ -245,7 +244,13 @@ class ActorReplicaResult(ReplicaResult):
                         "Rejection-enabled ActorReplicaResult has no rejection ref."
                     )
                 response = await self._rejection_response_ref
-                self._rejection_response = pickle.loads(response)
+                # Unpickle into a local, consume, then publish. If loads
+                # fails, a retry must still see index 0. If consume fails,
+                # _rejection_response stays unset so a retry still consumes.
+                rejection_response = pickle.loads(response)
+                if self._is_streaming:
+                    self._obj_ref_gen._consume_next_ref_n(1)
+                self._rejection_response = rejection_response
 
             return self._rejection_response
         except asyncio.CancelledError as e:
@@ -289,9 +294,8 @@ class ActorReplicaResult(ReplicaResult):
 
         # Streaming invariant (asserted in the constructor).
         assert self._obj_ref_gen is not None
-        # With rejection, callers must await get_rejection_response() first so
-        # index 0 is consumed before user iteration (same invariant as
-        # to_object_ref_gen). The router does this before returning the result.
+        # With rejection, get_rejection_response() consumes index 0 before
+        # returning. The router awaits that before returning the result.
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
@@ -303,7 +307,7 @@ class ActorReplicaResult(ReplicaResult):
 
         # Streaming invariant (asserted in the constructor).
         assert self._obj_ref_gen is not None
-        # See __next__: rejection responses must be consumed before iterating.
+        # See __next__: get_rejection_response() consumes the rejection ref.
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
@@ -359,9 +363,9 @@ class ActorReplicaResult(ReplicaResult):
             raise RuntimeError(
                 "Streaming ActorReplicaResult has no ObjectRefGenerator."
             )
-        # With rejection, index 0 is the system rejection payload. Callers must
-        # await get_rejection_response() first so that ref is consumed before
-        # user iteration; otherwise stream item 0 is the rejection message.
+        # With rejection, index 0 is the system rejection payload.
+        # get_rejection_response() consumes it; iterating before that
+        # returns the rejection message as stream item 0.
         if self._with_rejection and self._rejection_response is None:
             raise RuntimeError(
                 "get_rejection_response() must be awaited before "

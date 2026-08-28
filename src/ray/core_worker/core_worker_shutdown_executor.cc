@@ -88,6 +88,10 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->event_loops_running_ = false;
   }
+  // Unblock WaitAsync callers and drop Python callback refs before the io
+  // thread is joined. This is the only place that may invoke those callbacks:
+  // the interpreter is still alive here, unlike in ~CoreWorker.
+  core_worker->CancelAllWaitAsync();
   core_worker->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";

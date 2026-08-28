@@ -2061,6 +2061,46 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   ASSERT_EQ(result2.ready[0], 1);
 }
 
+TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/-1,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsUnknownError());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 0);
+
+  // Second shutdown is a no-op (callback already ran; map is empty).
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+
+  // A later wait on the same ref can still complete.
+  WaitAsyncCallbackResult result2;
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  uint64_t handle2 = core_worker_->WaitAsync({object_id},
+                                             /*num_objects=*/1,
+                                             /*timeout_ms=*/0,
+                                             /*fetch_local=*/false,
+                                             OnWaitAsyncDone,
+                                             &result2);
+  ASSERT_EQ(handle2, 0u);
+  ASSERT_EQ(result2.calls, 1);
+  ASSERT_EQ(result2.ready[0], 1);
+}
+
 TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
@@ -2084,6 +2124,27 @@ TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
   while (io_service_.poll_one() > 0) {
   }
   ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, HandlePlasmaObjectReadyIgnoresDuplicateNotifications) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  rpc::PlasmaObjectReadyRequest request;
+  request.set_object_id(object_id.Binary());
+  rpc::PlasmaObjectReadyReply reply;
+  int reply_count = 0;
+  auto send_reply = [&reply_count](
+                        Status status, std::function<void()>, std::function<void()>) {
+    ASSERT_TRUE(status.ok());
+    ++reply_count;
+  };
+
+  // The raylet may emit a duplicate notification if an object becomes local
+  // between the core worker's Contains() and SubscribePlasmaReady(). Both
+  // notifications must be harmless when there are no remaining listeners.
+  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
+  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
+
+  ASSERT_EQ(reply_count, 2);
 }
 
 TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {

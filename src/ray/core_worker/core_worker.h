@@ -849,6 +849,22 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    */
   void CancelWaitAsync(uint64_t handle);
 
+  /**
+   * Complete every in-flight ``WaitAsync`` with a shutdown error.
+   *
+   * Invokes each pending callback once so Python can ``Py_DECREF`` the
+   * user callback and awaiting ``_wait_async`` futures can unblock.
+   * Safe to call more than once (later calls are no-ops).
+   *
+   * Call this ONLY while the embedding runtime is still alive — the callback
+   * re-enters Python. Graceful shutdown calls it before ``io_service_`` is
+   * stopped. ``~CoreWorker`` deliberately does NOT: it can run from a
+   * ``std::atexit`` handler, after ``Py_Finalize()``, where re-entering
+   * Python is a fatal abort. The destructor drops the same state without
+   * invoking callbacks instead.
+   */
+  void CancelAllWaitAsync();
+
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
   /// method.

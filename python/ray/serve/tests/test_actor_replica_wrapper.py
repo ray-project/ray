@@ -290,6 +290,36 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
+async def test_streaming_rejection_consumes_before_iteration(setup_fake_replica):
+    """Streaming+rejection must not register a constructor wait_async consume.
+
+    A background consume races with get_rejection_response() and can either
+    leak the rejection payload as item 0 or skip the first user chunk.
+    """
+    actor_handle = setup_fake_replica.get_actor_handle()
+    replica = RunningReplica(setup_fake_replica)
+    ray.get(
+        actor_handle.set_replica_queue_length_info.remote(
+            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=10),
+        )
+    )
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={"is_streaming": True},
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+            is_streaming=True,
+        ),
+    )
+    replica_result = replica.try_send_request(pr, with_rejection=True)
+    assert replica_result._consume_wait_handle == 0
+    info = await replica_result.get_rejection_response()
+    assert info.accepted
+    assert await replica_result.__anext__() == "Hello-0"
+
+
+@pytest.mark.asyncio
 async def test_send_request_with_rejection_cancellation(setup_fake_replica):
     """
     Verify that the downstream actor method call is cancelled if the call to send the

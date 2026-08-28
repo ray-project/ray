@@ -9,7 +9,11 @@ import weakref
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
@@ -660,6 +664,101 @@ async def test_wait_async_fetch_local_true_local_plasma_object(
     ready, remaining = await _wait_async([ref], timeout=5.0, fetch_local=True)
     assert ready == [ref]
     assert remaining == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "timeout,expected_ms",
+    [
+        (None, -1),
+        (0, 0),
+        (0.0005, 1),
+        (0.0009, 1),
+        (0.001, 1),
+        (0.1, 100),
+        (5.0, 5000),
+    ],
+)
+async def test_wait_async_timeout_conversion(
+    ray_start_regular_shared, monkeypatch, timeout, expected_ms
+):
+    """A positive sub-millisecond timeout must not truncate to 0.
+
+    timeout_ms == 0 is a different operation in C++ (in-process memory store
+    only, no plasma pull), not merely a shorter wait, so only an explicit
+    timeout=0 may select it.
+    """
+    recorded = []
+
+    class _FakeCoreWorker:
+        def wait_async(self, refs, num_returns, timeout_ms, fetch_local, callback):
+            recorded.append(timeout_ms)
+            callback(None, [True] * len(refs))
+            return 0
+
+        def cancel_wait_async(self, handle):
+            pass
+
+    monkeypatch.setattr(
+        "ray._private.worker.get_core_worker", lambda: _FakeCoreWorker()
+    )
+
+    ref = ray.put(1)
+    await _wait_async([ref], timeout=timeout, fetch_local=False)
+    assert recorded == [expected_ms]
+
+
+_SHUTDOWN_UNBLOCKS_DRIVER = """
+import asyncio
+
+import ray
+from ray._common.test_utils import SignalActor
+from ray._private.worker import _wait_async
+
+
+async def main():
+    ray.init()
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    ref = blocked.remote()
+    wait_task = asyncio.create_task(_wait_async([ref], fetch_local=False))
+    await asyncio.sleep(0.5)
+    assert not wait_task.done(), "wait should still be pending"
+
+    # Graceful shutdown must complete the pending wait so the Cython
+    # Py_INCREF is released and this await unblocks instead of hanging.
+    ray.shutdown()
+
+    try:
+        await asyncio.wait_for(wait_task, timeout=10)
+    except ray.exceptions.RaySystemError as e:
+        assert "shutting down" in str(e), str(e)
+        print("DRIVER_OK")
+        return
+    raise AssertionError("wait_async did not raise after ray.shutdown()")
+
+
+asyncio.run(main())
+"""
+
+
+def test_wait_async_shutdown_unblocks():
+    """ray.shutdown() must complete pending wait_async callbacks.
+
+    Otherwise the Cython Py_INCREF is leaked and the await hangs forever.
+
+    Runs as a separate driver: the test needs its own ray.init()/ray.shutdown()
+    lifecycle, which conflicts with this module's module-scoped
+    ``ray_start_regular_shared`` fixture. A regression surfaces as a driver
+    timeout (hang) rather than a hung pytest worker.
+    """
+    out = run_string_as_driver(_SHUTDOWN_UNBLOCKS_DRIVER, timeout=120)
+    assert "DRIVER_OK" in out, out
 
 
 if __name__ == "__main__":

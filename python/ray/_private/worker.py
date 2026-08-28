@@ -3296,9 +3296,11 @@ async def _wait_async(
         num_returns: Number of waitables that should become ready before
             returning.
         timeout: Max seconds to wait, or ``None`` to wait indefinitely.
-            ``timeout=0`` reports waitables already present in the in-process
-            memory store and does not start plasma pulls (unlike
-            :func:`ray.wait`, which may begin fetches on a zero timeout).
+            Exactly ``timeout=0`` reports waitables already present in the
+            in-process memory store and does not start plasma pulls (unlike
+            :func:`ray.wait`, which may begin fetches on a zero timeout). A
+            positive timeout below 1ms is rounded up to 1ms so it stays a
+            real wait rather than becoming that in-process-only check.
         fetch_local: If True, wait until objects are present on the local
             node. If False, return as soon as each object exists anywhere in
             the cluster (no local pull).
@@ -3357,7 +3359,17 @@ async def _wait_async(
         )
 
     # timeout=None -> wait forever (-1). Explicit timeout uses milliseconds.
-    timeout_milliseconds = -1 if timeout is None else int(timeout * 1000)
+    if timeout is None:
+        timeout_milliseconds = -1
+    elif timeout == 0:
+        timeout_milliseconds = 0
+    else:
+        # Round a positive sub-millisecond timeout up to 1ms rather than
+        # truncating it to 0. In C++, timeout_ms == 0 is not "a very short
+        # wait" but a different operation: it reports only in-process memory
+        # store hits and never starts a plasma pull. Only an explicit
+        # timeout=0 should select that.
+        timeout_milliseconds = max(1, int(timeout * 1000))
 
     loop = asyncio.get_running_loop()
     fut: asyncio.Future = loop.create_future()
