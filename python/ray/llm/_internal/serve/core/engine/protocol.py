@@ -18,6 +18,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        ResponsesRequest,
+        ResponsesResponse,
         TokenizeRequest,
         TokenizeResponse,
         TranscriptionRequest,
@@ -167,6 +169,34 @@ class LLMEngine(abc.ABC):
             Union[str, TranscriptionResponse, ErrorResponse]: A string
             representing a chunk of the response, a TranscriptionResponse object,
             or an ErrorResponse object.
+
+        Returns:
+            None when the generator is done.
+        """
+        pass
+
+    @abc.abstractmethod
+    async def responses(
+        self,
+        request: "ResponsesRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, "ResponsesResponse", "ErrorResponse"], None]:
+        """Run a Responses API request with the engine.
+
+        Follows the same convention as chat and completions:
+
+        * Streaming yields strings already in SSE form, so the ingress can
+          forward them untouched.
+        * Non-streaming yields a single ResponsesResponse.
+        * Errors yield a single ErrorResponse.
+
+        Args:
+            request: The Responses request.
+            raw_request_info: Optional RawRequestInfo carrying data from the
+                original HTTP request.
+
+        Yields:
+            Union[str, ResponsesResponse, ErrorResponse]
 
         Returns:
             None when the generator is done.
