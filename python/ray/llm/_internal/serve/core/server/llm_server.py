@@ -59,6 +59,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        ResponsesRequest,
+        ResponsesResponse,
         ScoreRequest,
         ScoreResponse,
         TokenizeRequest,
@@ -340,6 +342,7 @@ class LLMServer(LLMServerProtocol):
             "CompletionRequest",
             "EmbeddingRequest",
             "TranscriptionRequest",
+            "ResponsesRequest",
             "ScoreRequest",
         ],
         *,
@@ -474,6 +477,32 @@ class LLMServer(LLMServerProtocol):
         return await self._run_request(
             request,
             engine_method="transcriptions",
+            batch_output_stream=True,
+            raw_request_info=raw_request_info,
+        )
+
+    async def responses(
+        self,
+        request: "ResponsesRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[
+        Union[List[Union[str, "ErrorResponse"]], "ResponsesResponse"], None
+    ]:
+        """Runs a Responses request to the engine and returns the response.
+
+        Returns an AsyncGenerator over the ResponsesResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
+
+        Args:
+            request: A ResponsesRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator over the ResponsesResponse object.
+        """
+        return await self._run_request(
+            request,
+            engine_method="responses",
             batch_output_stream=True,
             raw_request_info=raw_request_info,
         )

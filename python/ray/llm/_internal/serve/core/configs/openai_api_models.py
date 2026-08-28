@@ -273,6 +273,10 @@ LLMTranscriptionResponse = Union[
     ],
 ]
 
+LLMResponsesResponse = Union[
+    AsyncGenerator[Union[str, ResponsesResponse, ErrorResponse], None],
+]
+
 
 # TODO: remove this class
 class OpenAIHTTPException(Exception):
