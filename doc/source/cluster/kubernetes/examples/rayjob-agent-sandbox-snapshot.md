@@ -141,7 +141,7 @@ And grant the GKE Pod Snapshot controller access to the bucket:
 gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
     --member="serviceAccount:service-<PROJECT_NUMBER>@container-engine-robot.iam.gserviceaccount.com" \
     --role="roles/storage.objectUser" \
-    --condition="expression=resource.name.startsWith(\"projects/_/buckets/<BUCKET_NAME>\"),title=restrict_to_bucket"
+    --condition='expression=resource.name.startsWith("projects/_/buckets/<BUCKET_NAME>"),title=restrict_to_bucket'
 ```
 
 ### Step 5: Apply RBAC for the Ray workers
