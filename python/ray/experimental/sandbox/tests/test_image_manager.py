@@ -510,5 +510,37 @@ def test_prepare_oci_bundle_no_resolv_without_host_side_networking(tmp_path):
         assert _prepare(mgr, tmp_path, network=network) is None
 
 
+def test_extract_tar_layer_preserves_mtimes(tmp_path):
+    """Archived mtimes survive extraction: apt inside the sandbox validates
+    its package lists with If-Modified-Since from the file mtime, so a
+    reset-to-extraction-time mtime makes mirrors answer 304 for stale
+    image-baked lists."""
+    import io
+    import os
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    archived_mtime = 1_600_000_000  # 2020-09-13, clearly not "now"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        dir_info = tarfile.TarInfo("etc")
+        dir_info.type = tarfile.DIRTYPE
+        dir_info.mtime = archived_mtime
+        tar.addfile(dir_info)
+        file_info = tarfile.TarInfo("etc/os-release")
+        data = b"ID=debian\n"
+        file_info.size = len(data)
+        file_info.mtime = archived_mtime
+        tar.addfile(file_info, io.BytesIO(data))
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
+    assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
