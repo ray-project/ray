@@ -207,8 +207,9 @@ def test_pull_and_extract_local_tar(tmp_path):
     )
 
 
-def test_pull_and_extract_remote_image(tmp_path):
+def test_pull_and_extract_remote_image(tmp_path, monkeypatch):
     images_dir = tmp_path / "images"
+    monkeypatch.delenv("RAY_SANDBOX_KEEP_IMAGE_TARBALL", raising=False)
     extracted_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(images_dir)
     )
@@ -217,6 +218,15 @@ def test_pull_and_extract_remote_image(tmp_path):
     assert os.path.exists(
         os.path.join(extracted_dir, "rootfs", "bin", "sh")
     ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
+    # The uncompressed tarball is opt-in: it doubled every image's cache
+    # footprint (see RAY_SANDBOX_KEEP_IMAGE_TARBALL).
+    assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
+
+
+def test_pull_keeps_tarball_when_opted_in(tmp_path, monkeypatch):
+    images_dir = tmp_path / "images"
+    monkeypatch.setenv("RAY_SANDBOX_KEEP_IMAGE_TARBALL", "1")
+    pull_and_extract_container_image("busybox:latest", images_dir=str(images_dir))
     assert os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 

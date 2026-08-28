@@ -587,6 +587,8 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
 
     assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
     assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+
+
 def test_image_cache_eviction(tmp_path):
     """LRU eviction under a size cap skips in-use and unextracted images."""
     import os
