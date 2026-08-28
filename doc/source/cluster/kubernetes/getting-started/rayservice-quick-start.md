@@ -9,7 +9,7 @@ myst:
 
 ## Prerequisites
 
-This guide mainly focuses on the behavior of KubeRay v1.6.0 and Ray 2.46.0.
+This guide mainly focuses on the behavior of KubeRay v1.7.0 and Ray 2.46.0.
 
 ## What's a RayService?
 
@@ -40,7 +40,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -60,7 +60,7 @@ kubectl get raycluster
 # NAME                      DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
 # rayservice-sample-cxm7t   1                 1                   2500m   4Gi      0      ready    79s
 
-# Step 4.3: List all Ray Pods in the `default` namespace.
+# Step 4.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -132,7 +132,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 ```sh
 # Delete the RayService.
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 
 # Uninstall the KubeRay operator.
 helm uninstall kuberay-operator

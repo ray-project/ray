@@ -8,6 +8,22 @@ ARG PYTHON_VERSION=3.10
 ARG IMAGE_TYPE="ray"
 ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building this image outside CI, and then this is exactly the index
+# pip would have used anyway. This one carries the release tests' extra dependencies,
+# so a failed fetch here costs a nightly rather than one job.
+#
+# ARG rather than ENV on purpose: this image runs on Anyscale clusters outside the
+# CI VPCs, where a persisted CI index URL can never resolve, so the value must not
+# outlive the build.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ARG PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ARG UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
 RUN <<EOF

@@ -339,6 +339,10 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+  periodical_runner_->RunFnPeriodically(
+      [this]() { GCCancelledLeaseTombstones(); },
+      RayConfig::instance().cancelled_lease_tombstone_ttl_ms(),
+      "NodeManager.GCCancelledLeaseTombstones");
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
@@ -1057,6 +1061,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
     ids.insert(id);
   }
+  RAY_LOG(DEBUG) << "Freeing local objects on worker failure. Objects to be freed: "
+                 << debug_string(ids);
   FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
@@ -1915,6 +1921,16 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
+  // Reject leases that were already cancelled (e.g. CancelWorkerLease arrived
+  // before this RequestWorkerLease due to message reordering).
+  if (cancelled_lease_tombstones_.contains(lease_id)) {
+    reply->set_canceled(true);
+    reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+    reply->set_scheduling_failure_message(
+        "Cancelled leasing because the lease was already cancelled.");
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   RayLease lease{std::move(*request.mutable_lease_spec())};
   const auto caller_worker =
       WorkerID::FromBinary(lease.GetLeaseSpecification().CallerAddress().worker_id());
@@ -2363,12 +2379,10 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  bool canceled = cluster_lease_manager_.CancelLease(lease_id);
-  // The lease cancellation failed if we did not have the lease queued, since
-  // this means that we may not have received the lease request yet. It is
-  // successful if we did have the lease queued, since we have now replied to
-  // the client that requested the lease.
-  reply->set_success(canceled);
+  // The tombstone makes the cancellation stick even if the lease request has not
+  // reached us yet, so the caller never has to retry.
+  AddCancelledLeaseTombstone(lease_id);
+  cluster_lease_manager_.CancelLease(lease_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3169,7 +3183,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           MemoryUsageSnapshot memory_usage_snapshot =
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath);
+                  MemoryMonitorInterface::kDefaultCgroupPath,
+                  /*include_swap=*/true);
           if (initial_config_.enable_resource_isolation) {
             StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
                         StatusT::NotFound>
@@ -3376,8 +3391,11 @@ std::string NodeManager::CreateOomKillMessageDetails(
     }
   }
 
+  // Note: with count_swap_in_memory_monitor=true the second figure is the
+  // memory limit the OOM killer enforces (RAM + cgroup swap.max), not
+  // physical RAM. With the flag off it equals physical RAM.
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f)\n"
+      "Memory on the node (IP: %s, ID: %s) was %sGB used / %sGB limit (%f)\n"
       "OOM kill reason: %s\n"
       "Object store memory usage: [%s]\n"
       "Ray killed %d worker(s) based on the killing policy\n"
@@ -3488,6 +3506,36 @@ void NodeManager::GCWorkerFailureReason() {
           << "Removing worker failure reason since it expired";
       worker_failure_reasons_.erase(entry.first);
     }
+  }
+}
+
+void NodeManager::AddCancelledLeaseTombstone(const LeaseID &lease_id) {
+  if (!cancelled_lease_tombstones_.insert(lease_id).second) {
+    return;
+  }
+  cancelled_lease_tombstone_queue_.emplace_back(lease_id, clock_.SteadyNow());
+  const auto max_tombstones = RayConfig::instance().max_cancelled_lease_tombstones();
+  if (cancelled_lease_tombstones_.size() > max_tombstones) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
+  }
+}
+
+void NodeManager::GCCancelledLeaseTombstones() {
+  const auto ttl_ms =
+      static_cast<int64_t>(RayConfig::instance().cancelled_lease_tombstone_ttl_ms());
+  const auto now = clock_.SteadyNow();
+  while (!cancelled_lease_tombstone_queue_.empty()) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    auto age_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - oldest.second)
+            .count();
+    if (age_ms <= ttl_ms) {
+      break;
+    }
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
   }
 }
 
@@ -3776,6 +3824,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       });
 }
 
+// Idempotent because ObjectIDs are never reused: re-freeing an id is a no-op.
 void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
                                          rpc::FreeLocalObjectsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
