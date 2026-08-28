@@ -54,7 +54,7 @@ describe("ProgressBar", () => {
     await screen.findByText("Unaccounted: 1");
     expect(
       screen.getByLabelText(
-        "Unaccounted tasks are excluded from the current view, such as finished tasks when Hide finished is selected.",
+        "Unaccounted tasks are excluded from the current view, such as finished tasks when 'Hide finished' is selected.",
       ),
     ).toBeInTheDocument();
   });

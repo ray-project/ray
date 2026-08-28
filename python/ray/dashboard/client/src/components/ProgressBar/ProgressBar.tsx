@@ -93,7 +93,7 @@ export const ProgressBar = ({
           {
             value: finalTotal - segmentTotal,
             label: unaccountedLabel ?? "Unaccounted",
-            hint: "Unaccounted tasks are excluded from the current view, such as finished tasks when Hide finished is selected.",
+            hint: "Unaccounted tasks are excluded from the current view, such as finished tasks when 'Hide finished' is selected.",
             color:
               theme.palette.mode === "dark"
                 ? theme.palette.grey[700]
