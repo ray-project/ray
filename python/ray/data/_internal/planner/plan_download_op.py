@@ -143,7 +143,9 @@ def plan_download_op(
             {},
             compute=metadata_compute,
         )
-        block_fn = _generate_transform_fn_for_map_batches(fn)
+        block_fn = _generate_transform_fn_for_map_batches(
+            fn, use_actor_pool_event_loop=True
+        )
 
         metadata_transform_fns = [
             BlockMapTransformFn(
@@ -195,7 +197,9 @@ def plan_download_op(
         None,
     )
 
-    download_transform_fn = _generate_transform_fn_for_map_batches(fn)
+    download_transform_fn = _generate_transform_fn_for_map_batches(
+        fn, use_actor_pool_event_loop=False
+    )
     transform_fns = [
         BlockMapTransformFn(
             download_transform_fn,
