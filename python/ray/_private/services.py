@@ -1658,6 +1658,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    enable_gpu_metrics_collection: bool = True,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1741,6 +1742,8 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
+        enable_gpu_metrics_collection: Whether the dashboard agent should collect
+            GPU metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1914,6 +1917,9 @@ def start_raylet(
 
     if is_head_node:
         dashboard_agent_command.append("--head")
+
+    if not enable_gpu_metrics_collection:
+        dashboard_agent_command.append("--disable-gpu-metrics")
 
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
