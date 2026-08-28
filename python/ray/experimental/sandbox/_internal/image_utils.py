@@ -266,11 +266,18 @@ def extract_tar_layer(
                 # on it (apt revalidates its package lists with
                 # If-Modified-Since from the file mtime, and a reset-to-now
                 # mtime makes mirrors answer 304 for stale baked lists).
-                os.utime(target_path, (member.mtime, member.mtime))
+                # Best-effort, like the directory pass below.
+                try:
+                    os.utime(target_path, (member.mtime, member.mtime))
+                except OSError:
+                    pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
                 # Applied after the loop: extracting children would bump it.
-                dir_mtimes.append((target_path, member.mtime))
+                # Skip preserved symlinks (UsrMerge /bin -> usr/bin): utime
+                # would follow them and stamp the target with the wrong time.
+                if not os.path.islink(target_path):
+                    dir_mtimes.append((target_path, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
