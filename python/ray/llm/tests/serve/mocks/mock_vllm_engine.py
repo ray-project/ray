@@ -1,6 +1,8 @@
 import asyncio
 import json
 import random
+import time
+import uuid
 from random import randint
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
@@ -22,6 +24,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+    ResponsesRequest,
+    ResponsesResponse,
     ScoreRequest,
     ScoreResponse,
     TokenizeRequest,
@@ -39,6 +43,19 @@ from ray.serve.context import (
     _get_internal_replica_context,
     _get_serve_request_context,
 )
+
+try:
+    from openai.types.responses import ResponseTextDeltaEvent
+    from vllm.entrypoints.openai.responses.protocol import (
+        ResponseCompletedEvent,
+        ResponseCreatedEvent,
+    )
+except ImportError:
+    # vLLM and its OpenAI event types are absent in sglang-only setups, where
+    # the Responses path is unsupported anyway (same as ResponsesResponse).
+    ResponseCompletedEvent = None
+    ResponseCreatedEvent = None
+    ResponseTextDeltaEvent = None
 
 
 class MockVLLMEngine(LLMEngine):
@@ -331,6 +348,85 @@ class MockVLLMEngine(LLMEngine):
             request=request, language=language, temperature=temperature
         ):
             yield response
+
+    async def responses(
+        self,
+        request: ResponsesRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, ResponsesResponse, ErrorResponse], None]:
+        """Mock Responses API generation."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        text = "mock response"
+        response_id = f"resp_{uuid.uuid4().hex[:12]}"
+        message_id = f"msg_{uuid.uuid4().hex[:12]}"
+        created_at = int(time.time())
+        model = request.model or self.llm_config.model_id
+        prompt_tokens = len(str(request.input).split())
+        completion_tokens = len(text.split())
+        output = [
+            {
+                "type": "message",
+                "id": message_id,
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": text, "annotations": []}],
+            }
+        ]
+
+        response = ResponsesResponse(
+            id=response_id,
+            created_at=created_at,
+            model=model,
+            output=output,
+            status="completed",
+            usage={
+                "input_tokens": prompt_tokens,
+                "input_tokens_details": {"cached_tokens": 0},
+                "output_tokens": completion_tokens,
+                "output_tokens_details": {},
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+            parallel_tool_calls=False,
+            temperature=1.0,
+            tool_choice="auto",
+            tools=[],
+            top_p=1.0,
+            background=False,
+            max_output_tokens=16,
+            service_tier="auto",
+            truncation="disabled",
+        )
+
+        if request.stream:
+            # Serialize real vLLM/OpenAI event objects exactly as
+            # VLLMEngine.responses does, so ingress tests see production SSE.
+            events = [
+                ResponseCreatedEvent(
+                    response=response, sequence_number=0, type="response.created"
+                ),
+                ResponseTextDeltaEvent(
+                    content_index=0,
+                    delta=text,
+                    item_id=message_id,
+                    logprobs=[],
+                    output_index=0,
+                    sequence_number=1,
+                    type="response.output_text.delta",
+                ),
+                ResponseCompletedEvent(
+                    response=response, sequence_number=2, type="response.completed"
+                ),
+            ]
+            for event in events:
+                yield (
+                    f"event: {event.type}\ndata: "
+                    f"{event.model_dump_json(indent=None, by_alias=True)}\n\n"
+                )
+            return
+
+        yield response
 
     async def score(
         self,
