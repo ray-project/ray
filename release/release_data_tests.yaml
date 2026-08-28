@@ -816,12 +816,8 @@
 
   run:
     timeout: 3600
-    # 100,000 x 1 KiB outputs keep the payload near 100 MiB, so object count
-    # rather than data volume is the source of pressure.
     script: >
       python backpressure_benchmark.py --case many-tiny-objects
-      --num-input-blocks 100000 --output-batch-nbytes 1024
-      --consumer-sleep-s 0.01
 
 - name: backpressure_training_prefetch
   python: "3.10"
@@ -841,7 +837,7 @@
       cluster:
         cluster_compute: fixed_size_1_cpu_compute.yaml
       run:
-        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
+        script: python backpressure_benchmark.py --case training-prefetch-single-node
 
 
 ########################

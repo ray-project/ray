@@ -17,22 +17,9 @@ def parse_args() -> argparse.Namespace:
             "fast-producer-slow-consumer",
             "many-tiny-objects",
             "training-prefetch",
+            "training-prefetch-single-node",
         ],
         required=True,
-    )
-    parser.add_argument("--num-input-blocks", type=int, default=128)
-    parser.add_argument("--output-batches-per-input-batch", type=int, default=8)
-    parser.add_argument("--output-batch-rows", type=int, default=128)
-    parser.add_argument("--output-row-bytes", type=int, default=1024**2)
-    parser.add_argument("--output-batch-nbytes", type=int, default=1024)
-    parser.add_argument("--consumer-sleep-s", type=float, default=1.0)
-    parser.add_argument("--num-trainers", type=int, default=8)
-    parser.add_argument("--prefetch-batches", type=int, default=8)
-    parser.add_argument(
-        "--disable-locality-hints",
-        action="store_true",
-        default=False,
-        help="Disable locality hints for streaming_split",
     )
     return parser.parse_args()
 
@@ -61,101 +48,123 @@ def consume_slow(batch, *, sleep_s: float):
     return {"status": ["ok"]}
 
 
-def produce_tiny_object(_, *, output_batch_nbytes: int):
-    return {"data": np.zeros((1, output_batch_nbytes), dtype=np.uint8)}
+def run_fast_producer_slow_consumer():
+    """Benchmark backpressure from a fast producer and a slow consumer.
 
+    Produces 1,024 batches of 128 MiB each, for 128 GiB of logical output
+    data. A single consumer sleeps for 1 second per batch, creating sustained
+    backpressure on the producer.
+    """
+    num_input_blocks = 128
+    output_batches_per_input_batch = 8
+    output_batch_rows = 128
+    output_row_bytes = 1024**2
+    consumer_sleep_s = 1.0
 
-def run_slow_consumer_pipeline(args: argparse.Namespace, producer):
-    consumer = functools.partial(consume_slow, sleep_s=args.consumer_sleep_s)
+    producer = functools.partial(
+        produce,
+        output_batches_per_input_batch=output_batches_per_input_batch,
+        output_batch_rows=output_batch_rows,
+        output_row_bytes=output_row_bytes,
+    )
+    consumer = functools.partial(consume_slow, sleep_s=consumer_sleep_s)
 
     ds = (
-        ray.data.from_blocks(make_inputs(args.num_input_blocks))
+        ray.data.from_blocks(make_inputs(num_input_blocks))
         .map_batches(producer)
         .map_batches(consumer, compute=ray.data.TaskPoolStrategy(size=1))
     )
     for _ in ds.iter_internal_ref_bundles():
         pass
 
+    return None
 
-def run_fast_producer_slow_consumer(args: argparse.Namespace):
+
+def run_many_tiny_objects():
+    """Benchmark backpressure from many small task outputs.
+
+    Produces 100,000 outputs of about 99 KiB each, or about 9.4 GiB of logical
+    output data. The payload size targets Ray's small-object direct-call path,
+    while a single consumer sleeps for 10 ms per batch, creating pressure from
+    many queued outputs.
+    """
+    num_input_blocks = 100_000
+    output_batches_per_input_batch = 1
+    output_batch_rows = 1
+    # Stay below Ray's 100 KiB direct-call limit so outputs are sent inline.
+    output_row_bytes = 99 * 1024
+    consumer_sleep_s = 0.01
+
     producer = functools.partial(
         produce,
-        output_batches_per_input_batch=args.output_batches_per_input_batch,
-        output_batch_rows=args.output_batch_rows,
-        output_row_bytes=args.output_row_bytes,
+        output_batches_per_input_batch=output_batches_per_input_batch,
+        output_batch_rows=output_batch_rows,
+        output_row_bytes=output_row_bytes,
     )
-    run_slow_consumer_pipeline(args, producer)
+    consumer = functools.partial(consume_slow, sleep_s=consumer_sleep_s)
 
-    return {
-        "num_input_blocks": args.num_input_blocks,
-        "output_batches_per_input_batch": args.output_batches_per_input_batch,
-        "output_batch_rows": args.output_batch_rows,
-        "output_row_bytes": args.output_row_bytes,
-        "consumer_sleep_s": args.consumer_sleep_s,
-    }
-
-
-def run_many_tiny_objects(args: argparse.Namespace):
-    producer = functools.partial(
-        produce_tiny_object,
-        output_batch_nbytes=args.output_batch_nbytes,
+    ds = (
+        ray.data.from_blocks(make_inputs(num_input_blocks))
+        .map_batches(producer)
+        .map_batches(consumer, compute=ray.data.TaskPoolStrategy(size=1))
     )
-    run_slow_consumer_pipeline(args, producer)
+    for _ in ds.iter_internal_ref_bundles():
+        pass
 
-    return {
-        "num_input_blocks": args.num_input_blocks,
-        "output_batch_nbytes": args.output_batch_nbytes,
-        "consumer_sleep_s": args.consumer_sleep_s,
-    }
+    return None
 
 
-def run_training_prefetch(args: argparse.Namespace):
+def run_training_prefetch(*, num_trainers: int):
+    """Benchmark backpressure from training consumers that prefetch data.
+
+    Produces 1,024 batches of 128 MiB each, for 128 GiB of logical output data,
+    then splits them evenly across ``num_trainers`` trainers.
+
+    Each trainer prefetches 8 batches, corresponding to about 1 GiB of data
+    per trainer, and sleeps for 1 second after consuming each batch.
+    """
+    num_input_blocks = 128
+    output_batches_per_input_batch = 8
+    output_batch_rows = 128
+    output_row_bytes = 1024**2
+    consumer_sleep_s = 1.0
+    prefetch_batches = 8
+
     producer = functools.partial(
         produce,
-        output_batches_per_input_batch=args.output_batches_per_input_batch,
-        output_batch_rows=args.output_batch_rows,
-        output_row_bytes=args.output_row_bytes,
+        output_batches_per_input_batch=output_batches_per_input_batch,
+        output_batch_rows=output_batch_rows,
+        output_row_bytes=output_row_bytes,
     )
 
     trainers = [
         Trainer.options(scheduling_strategy="SPREAD").remote(
-            consumer_sleep_s=args.consumer_sleep_s,
-            prefetch_batches=args.prefetch_batches,
+            consumer_sleep_s=consumer_sleep_s,
+            prefetch_batches=prefetch_batches,
         )
-        for _ in range(args.num_trainers)
+        for _ in range(num_trainers)
     ]
 
     trainer_node_ids = ray.get([trainer.get_node_id.remote() for trainer in trainers])
 
     iterators = (
-        ray.data.from_blocks(make_inputs(args.num_input_blocks))
+        ray.data.from_blocks(make_inputs(num_input_blocks))
         .map_batches(producer)
         .streaming_split(
-            args.num_trainers,
+            num_trainers,
             equal=True,
-            locality_hints=trainer_node_ids
-            if not args.disable_locality_hints
-            else None,
+            locality_hints=trainer_node_ids,
         )
     )
 
     ray.get(
         [
-            trainers[i].train.remote(iterators[i], batch_size=args.output_batch_rows)
-            for i in range(args.num_trainers)
+            trainers[i].train.remote(iterators[i], batch_size=output_batch_rows)
+            for i in range(num_trainers)
         ]
     )
 
-    return {
-        "num_input_blocks": args.num_input_blocks,
-        "output_batches_per_input_batch": args.output_batches_per_input_batch,
-        "output_batch_rows": args.output_batch_rows,
-        "output_row_bytes": args.output_row_bytes,
-        "consumer_sleep_s": args.consumer_sleep_s,
-        "num_trainers": args.num_trainers,
-        "prefetch_batches": args.prefetch_batches,
-        "disable_locality_hints": args.disable_locality_hints,
-    }
+    return None
 
 
 @ray.remote(num_cpus=1)
@@ -179,11 +188,13 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     if args.case == "fast-producer-slow-consumer":
-        benchmark.run_fn(args.case, run_fast_producer_slow_consumer, args)
+        benchmark.run_fn(args.case, run_fast_producer_slow_consumer)
     elif args.case == "many-tiny-objects":
-        benchmark.run_fn(args.case, run_many_tiny_objects, args)
+        benchmark.run_fn(args.case, run_many_tiny_objects)
     elif args.case == "training-prefetch":
-        benchmark.run_fn(args.case, run_training_prefetch, args)
+        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=8)
+    elif args.case == "training-prefetch-single-node":
+        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=1)
     else:
         raise ValueError(f"Unexpected benchmark case: {args.case}")
 
