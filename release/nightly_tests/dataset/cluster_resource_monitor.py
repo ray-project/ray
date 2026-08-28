@@ -1,3 +1,4 @@
+import logging
 import time
 import threading
 from typing import NamedTuple, Tuple, Optional
@@ -5,6 +6,8 @@ from typing import NamedTuple, Tuple, Optional
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.data._internal.execution.interfaces import ExecutionResources
+
+logger = logging.getLogger(__name__)
 
 
 class NodeCounts(NamedTuple):
@@ -75,19 +78,24 @@ class ClusterResourceMonitor:
 
         def monitor_cluster_resources():
             while not stop_event.is_set():
-                resources = ray.cluster_resources()
-                self._peak_cpu_count = max(
-                    self._peak_cpu_count, resources.get("CPU", 0)
-                )
-                self._peak_gpu_count = max(
-                    self._peak_gpu_count, resources.get("GPU", 0)
-                )
+                # These query the GCS, so a transient failure shouldn't kill the
+                # thread and leave the peaks frozen for the rest of the run.
+                try:
+                    resources = ray.cluster_resources()
+                    self._peak_cpu_count = max(
+                        self._peak_cpu_count, resources.get("CPU", 0)
+                    )
+                    self._peak_gpu_count = max(
+                        self._peak_gpu_count, resources.get("GPU", 0)
+                    )
 
-                node_counts = _count_worker_nodes()
-                self._peak_node_counts = NodeCounts(
-                    cpu=max(self._peak_node_counts.cpu, node_counts.cpu),
-                    gpu=max(self._peak_node_counts.gpu, node_counts.gpu),
-                )
+                    node_counts = _count_worker_nodes()
+                    self._peak_node_counts = NodeCounts(
+                        cpu=max(self._peak_node_counts.cpu, node_counts.cpu),
+                        gpu=max(self._peak_node_counts.gpu, node_counts.gpu),
+                    )
+                except Exception:
+                    logger.warning("Failed to sample cluster state.", exc_info=True)
 
                 time.sleep(interval_s)
 

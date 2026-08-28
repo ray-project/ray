@@ -36,6 +36,10 @@ _PRODUCE_WORKERS_PER_CONSUME_WORKER = _CONSUME_BLOCKS_PER_S / _PRODUCE_BLOCKS_PE
 _CPUS_NEEDED = EXPECTED_GPU_NODES * _PRODUCE_WORKERS_PER_CONSUME_WORKER
 _CPUS_FROM_GPU_NODES = EXPECTED_GPU_NODES * CPUS_PER_NODE
 MIN_CPU_NODES = math.ceil((_CPUS_NEEDED - _CPUS_FROM_GPU_NODES) / CPUS_PER_NODE)
+assert MIN_CPU_NODES > 0, (
+    "The GPU nodes' own CPUs already satisfy the pipeline, so this test no "
+    "longer exercises CPU scale-up. Adjust the sleeps or the compute config."
+)
 
 
 def produce(_: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
