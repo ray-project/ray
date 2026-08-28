@@ -353,7 +353,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': N",
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -443,7 +442,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': None",
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -635,11 +633,6 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    canonicalized_stats = re.sub(
-        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
-        r"\g<1> H",
-        canonicalized_stats,
-    )
     # Percentile values in DistributionTracker dicts can be None (when datasketches
     # is not installed) or a number (canonicalized to N). Normalize to P.
     canonicalized_stats = re.sub(
@@ -932,7 +925,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1097,7 +1089,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1215,7 +1206,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_outputs_per_task: N,\n"
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
-        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"

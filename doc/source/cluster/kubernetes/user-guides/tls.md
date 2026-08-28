@@ -38,7 +38,7 @@ your CA private key in a Kubernetes Secret in your production environment.
 # `ray-cluster.tls.yaml` will cover from Step 1 to Step 3
 
 # Download `ray-cluster.tls.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.tls.yaml
 
 # Create a RayCluster
 kubectl apply -f ray-cluster.tls.yaml
@@ -82,11 +82,11 @@ kubectl create secret generic ca-tls --from-file=ca.key --from-file=ca.crt
 * `ca.key`: CA's private key
 * `ca.crt`: CA's self-signed certificate
 
-This step is optional because the `ca.key` and `ca.crt` files have already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml).
+This step is optional because the `ca.key` and `ca.crt` files have already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.tls.yaml).
 
 # Step 2: Create separate private key and self-signed certificate for the head and worker Pods
 
-In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
+In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
 
 In the YAML file, you'll find a ConfigMap named `tls` that contains two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts are used to generate the private key and self-signed certificate files (`tls.key` and `tls.crt`) for the Ray head and worker Pods. An alternative approach for users is to prebake the shell scripts directly into the docker image that's utilized by the init containers, rather than relying on a ConfigMap.
 
