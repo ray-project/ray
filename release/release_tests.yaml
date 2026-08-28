@@ -2182,7 +2182,7 @@
         num_nodes: 1
 
 - name: training_ingest_benchmark-soak_test
-  python: "3.14"
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2191,7 +2191,7 @@
 
   cluster:
     byod:
-      type: torch-cu128
+      type: gpu
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
