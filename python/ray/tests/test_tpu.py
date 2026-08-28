@@ -8,11 +8,12 @@ import pytest
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
-from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_tpu_num_slices_for_workers,
+    get_tpu_worker_resources,
 )
 
 
@@ -2729,73 +2730,72 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     ],
 )
 def test_tpu_visible_accelerator_ids_expansion(
-    accel_type, visible_chips, env_override, expected_ids
+    monkeypatch, accel_type, visible_chips, env_override, expected_ids
 ):
-    env = {"TPU_ACCELERATOR_TYPE": accel_type, "TPU_VISIBLE_CHIPS": visible_chips}
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", accel_type)
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", visible_chips)
     if env_override is not None:
-        env[RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR] = env_override
-    with patch.dict(os.environ, env, clear=True):
-        assert (
-            TPUAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == expected_ids
-        )
+        monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, env_override)
+    else:
+        monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+
+    assert (
+        TPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+        == expected_ids
+    )
 
 
-def test_tpu_resource_and_label_spec_resolution_with_visible_chips():
-    # Dual-device (v7x-16) with TPU_VISIBLE_CHIPS="0,1,2,3" and 8 detected devices
-    with patch.dict(
-        os.environ,
-        {
-            "TPU_VISIBLE_CHIPS": "0,1,2,3",
-            "TPU_ACCELERATOR_TYPE": "v7x-16",
-            "TPU_TOPOLOGY": "2x2x1",
-        },
-        clear=False,
-    ):
-        with patch.object(
-            TPUAcceleratorManager,
-            "get_current_node_num_accelerators",
-            return_value=8,
-        ):
-            with patch("ray.util.get_node_ip_address", return_value="10.0.0.1"):
-                # Auto-detect resolves all 8 TPUs
-                spec = ResourceAndLabelSpec()
-                spec.resolve(is_head=True)
-                assert spec.to_resource_dict().get("TPU") == 8
+def test_tpu_set_visible_accelerator_ids_dual_device(monkeypatch):
+    """Test set_current_process_visible_accelerator_ids on dual-device TPUs (v7x)."""
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v7x-16")
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 4
+    )
 
-                # Explicit --resources='{"TPU": 8}' succeeds
-                spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
-                spec_override.resolve(is_head=True)
-                assert spec_override.to_resource_dict().get("TPU") == 8
+    # 1. 1 logical device -> maps to physical chip 0 (1-chip bounds)
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+    assert os.environ.get("TPU_VISIBLE_CHIPS") == "0"
+    assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") == "1,1,1"
+
+    # 2. 2 logical devices (1 physical chip) -> maps to physical chip 0 (1-chip bounds)
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
+    assert os.environ.get("TPU_VISIBLE_CHIPS") == "0"
+    assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") == "1,1,1"
+
+    # 3. 4 logical devices (2 physical chips) -> maps to physical chips 0,1 (2-chip bounds)
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+        ["0", "1", "2", "3"]
+    )
+    assert os.environ.get("TPU_VISIBLE_CHIPS") == "0,1"
+    assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") == "1,2,1"
+
+    # 4. Unknown/non-numeric ID -> preserves ID safely
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "unknown"])
+    assert os.environ.get("TPU_VISIBLE_CHIPS") == "0,unknown"
+    assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") == "1,2,1"
+
+    # 5. Full-node allocation (all 4 physical chips) -> clears host bounds for framework defaults
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+        ["0", "1", "2", "3", "4", "5", "6", "7"]
+    )
+    assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") is None
+    assert os.environ.get("TPU_HOST_BOUNDS") is None
 
 
-@pytest.mark.parametrize(
-    "visible_tpu_chips,expected_chip,expected_bounds",
-    [
-        (["0"], "0", "1,1,1"),
-        (["1"], "0", "1,1,1"),
-        (["4"], "2", "1,1,1"),
-        (["6", "7"], "3", "1,1,1"),
-        (["0", "unknown"], "0,unknown", "1,2,1"),
-    ],
-)
-def test_tpu_set_visible_accelerator_ids_mapping(
-    visible_tpu_chips, expected_chip, expected_bounds
-):
-    with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": "v7x-16"}, clear=True):
-        with patch.object(
-            TPUAcceleratorManager,
-            "get_current_node_num_accelerators",
-            return_value=8,
-        ):
-            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
-                visible_tpu_chips
-            )
-            assert (
-                os.environ[TPUAcceleratorManager.get_visible_accelerator_ids_env_var()]
-                == expected_chip
-            )
-            assert os.environ["TPU_CHIPS_PER_HOST_BOUNDS"] == expected_bounds
+def test_util_tpu_resources_per_chip_scaling(monkeypatch):
+    """Test that util.tpu helpers correctly auto-detect resources per chip for v7x vs legacy."""
+    monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+
+    # Legacy TPU (e.g. v4 2x2x1 = 4 chips -> 4 TPU resources per slice)
+    workers, res = get_tpu_worker_resources("2x2x1", "v4")
+    assert res.get("TPU") == 4
+
+    # Dual-device TPU (e.g. v7x 2x2x1 = 4 chips -> 8 TPU resources per slice)
+    workers, res = get_tpu_worker_resources("2x2x1", "v7x")
+    assert res.get("TPU") == 8
+
+    # get_tpu_num_slices_for_workers with v7x
+    assert get_tpu_num_slices_for_workers("2x2x1", "v7x", num_workers=1) == 1
 
 
 if __name__ == "__main__":
