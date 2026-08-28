@@ -1,4 +1,5 @@
 import gc
+import time
 import weakref
 from collections import deque
 
@@ -137,6 +138,49 @@ def _trace_back_refs(intermediates: list, label: str = ""):
                         )
                 else:
                     print(f"    -> {type(r).__name__}")
+
+
+def test_chained_transforms_dont_double_count_udf_time():
+    """Chained UDF stages must not each re-count their upstream stages' time.
+
+    Timing every stage and summing reported n(n+1)/2x the real time, which could
+    exceed the wall time of the chain that produced it.
+    """
+    NUM_CHAINED_TRANSFORMS = 3
+    NUM_BATCHES = 2
+    SLEEP_S = 0.05
+
+    def udf(batch: DataBatch) -> DataBatch:
+        time.sleep(SLEEP_S)
+        return pd.DataFrame({"id": batch["id"]})
+
+    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS)
+    ctx = TaskContext(task_idx=0, op_name="test")
+
+    def make_input_blocks():
+        for i in range(NUM_BATCHES):
+            yield pd.DataFrame({"id": [i]})
+
+    start_s = time.perf_counter()
+    blocks = list(transformer.apply_transform(make_input_blocks(), ctx))
+    wall_s = time.perf_counter() - start_s
+
+    # Assert on rows rather than block count, which depends on block shaping.
+    assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
+
+    reported_s = transformer.udf_time_s(reset=False)
+    slept_s = NUM_CHAINED_TRANSFORMS * NUM_BATCHES * SLEEP_S
+
+    # Can't exceed the wall time of the chain that produced it. The headroom
+    # absorbs timing noise; the bug inflated this by ~2x at 3 stages.
+    assert (
+        reported_s <= wall_s * 1.05
+    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    # ...and the stages' time must still be measured, not dropped.
+    assert reported_s >= slept_s, (
+        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        "inside the UDFs"
+    )
 
 
 if __name__ == "__main__":

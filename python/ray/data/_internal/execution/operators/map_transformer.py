@@ -204,7 +204,11 @@ class MapTransformer:
     """
 
     class _UDFTimingIterator(Iterator[MapTransformFnData]):
-        """Iterator that times UDF execution"""
+        """Iterator that times UDF execution.
+
+        Times inclusively: pulling one item also runs every upstream stage, which
+        is why ``apply_transform`` wraps only the last UDF.
+        """
 
         def __init__(
             self, input: Iterable[MapTransformFnData], transformer: "MapTransformer"
@@ -305,11 +309,19 @@ class MapTransformer:
                 self.target_max_block_size_override
             )
 
+        # Only the last UDF is timed. The stages are chained behind lazy iterators,
+        # so its timer already covers every UDF ahead of it -- timing each stage
+        # and summing would count upstream stages once per downstream stage.
+        last_udf_idx = max(
+            (i for i, fn in enumerate(self._transform_fns) if fn._is_udf),
+            default=None,
+        )
+
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
-        for transform_fn in self._transform_fns:
+        for i, transform_fn in enumerate(self._transform_fns):
             iter = transform_fn(iter, ctx, report_custom_op_stats)
-            if transform_fn._is_udf:
+            if i == last_udf_idx:
                 iter = self._UDFTimingIterator(iter, self)
 
         return iter

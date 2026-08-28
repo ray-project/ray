@@ -1623,6 +1623,39 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     assert stats_summary.iter_stats is not None
 
 
+def test_fused_udf_time_within_wall_time(ray_start_regular_shared):
+    """A fused operator's UDF time must not exceed its own remote wall time.
+
+    Timing each fused stage and summing counted upstream stages repeatedly,
+    reporting more UDF time than the tasks spent running.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow, batch_size=None)
+        .map_batches(slow, batch_size=None)
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    # Both stages must actually have fused, otherwise this asserts nothing.
+    assert "MapBatches(slow)->MapBatches(slow)" in op.operator_name
+
+    # The headroom absorbs timing noise; the bug inflated this to ~1.5x.
+    assert op.udf_time.sum <= op.wall_time.sum * 1.05, (
+        f"UDF time {op.udf_time.sum:.4f}s exceeds remote wall time "
+        f"{op.wall_time.sum:.4f}s"
+    )
+    # Both stages' sleeps are still accounted for.
+    assert op.udf_time.sum >= 2 * num_blocks * sleep_s * 0.9
+
+
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Test 1: Basic write_parquet - stats stored in _write_ds
     ds1 = ray.data.range(100, override_num_blocks=100)
