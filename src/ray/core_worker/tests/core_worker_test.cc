@@ -2101,6 +2101,47 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   ASSERT_EQ(result2.ready[0], 1);
 }
 
+TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
+  // Completing a wait must deregister its memory-store GetAsync callback.
+  // Otherwise the registration -- and the WaitAsyncState it references --
+  // survives until an object that may never arrive shows up.
+  //
+  // NOTE: the fetch_local=true plasma branch deregisters the same way, but it
+  // is not reachable in this fixture: plasma_store_provider_ is null, so the
+  // Contains() call on that path would segfault. It is covered by inspection
+  // only.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/-1,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_NE(handle, 0u);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(object_id));
+  }
+
+  // The object arriving afterwards must not resurrect anything.
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
 TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);

@@ -94,6 +94,27 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   ASSERT_EQ(unhandled_count, 0);
 }
 
+TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
+  InstrumentedIOContextWithThread io_context("CancelAsyncGetRemovesCallback");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+
+  const auto callback_id =
+      memory_store.GetAsync(object_id, [](std::shared_ptr<RayObject>) {});
+  ASSERT_NE(callback_id, 0u);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_EQ(memory_store.object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  memory_store.CancelGetAsync(object_id, callback_id);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_FALSE(memory_store.object_async_get_requests_.contains(object_id));
+  }
+}
+
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   InstrumentedIOContextWithThread io_context("TestMemoryStoreStats");

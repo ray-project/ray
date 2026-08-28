@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -63,6 +64,15 @@ namespace ray::core {
 
 // Defined in core_worker.cc; opaque to callers.
 struct WaitAsyncState;
+
+// Plasma listeners not created by WaitAsync use id 0. WaitAsync allocates
+// ids starting at 1 so cancel cannot erase those GetAsync-plasma fallbacks.
+inline constexpr uint64_t kUnownedPlasmaCallbackId = 0;
+
+struct PlasmaReadyCallback {
+  uint64_t id = kUnownedPlasmaCallbackId;
+  std::function<void()> callback;
+};
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -2196,8 +2206,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   mutable absl::Mutex plasma_mutex_;
 
   // Callbacks for when when a plasma object becomes ready.
-  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
-      async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+  absl::flat_hash_map<ObjectID, std::vector<PlasmaReadyCallback>> async_plasma_callbacks_
+      ABSL_GUARDED_BY(plasma_mutex_);
+  uint64_t next_async_plasma_callback_id_ ABSL_GUARDED_BY(plasma_mutex_) = 0;
 
   // In-flight WaitAsync requests for this worker. Keyed by opaque handle
   // (never by Python object address) so cancellation is ABA-safe.
