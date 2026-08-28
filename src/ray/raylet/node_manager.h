@@ -408,13 +408,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param node_id Id of the removed node.
   void NodeRemoved(const NodeID &node_id);
 
-  /// Handler for the addition or updation of a resource in the GCS
-  /// \param node_id ID of the node that created or updated resources.
-  /// \param createUpdatedResources Created or updated resources.
-  /// \return Whether the update is applied.
-  bool ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceRequest &createUpdatedResources);
-
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
   void TryLocalInfeasibleTaskScheduling();
@@ -425,15 +418,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Flush objects that are out of scope in the application. This will attempt
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
-
-  /// Handler for a resource usage notification from the GCS.
-  ///
-  /// \param id The ID of the node manager that sent the resource usage.
-  /// \param resource_view_sync_message The resource usage data.
-  /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(
-      const NodeID &id,
-      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Cleanup any lease resources and state for a worker that was granted a lease.
   ///

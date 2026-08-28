@@ -56,12 +56,30 @@ class ClusterResourceManager {
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
 
+  /// What a resource-view update changed about a node, accumulated across
+  /// calls. Capacity is what feasibility depends on (totals, labels); usage is
+  /// what availability depends on (available, queued pulls, draining).
+  struct NodeViewChanges {
+    bool capacity_changed = false;
+    bool usage_changed = false;
+  };
+
   /// Update node resources. This happens when a node resource usage updated.
   ///
   /// \param node_id ID of the node which resources need to be updated.
   /// \param resource_view_sync_message The node resource usage data.
+  /// \param changes If set, records whether the update changed the node's
+  /// capacity and/or usage compared to the stored view.
   bool UpdateNode(scheduling::NodeID node_id,
-                  const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+                  const syncer::ResourceViewSyncMessage &resource_view_sync_message,
+                  NodeViewChanges *changes = nullptr);
+
+  /// Apply a resource-view update, adding the node first if it is not known yet.
+  ///
+  /// \param changes If set, records what the update changed (see UpdateNode).
+  void AddOrUpdateNode(scheduling::NodeID node_id,
+                       const syncer::ResourceViewSyncMessage &resource_view_sync_message,
+                       NodeViewChanges *changes = nullptr);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.

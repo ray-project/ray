@@ -30,6 +30,11 @@ class ClusterLeaseManagerInterface {
   // Schedule and dispatch leases.
   virtual void ScheduleAndGrantLeases() = 0;
 
+  // Like ScheduleAndGrantLeases, but skips the infeasible-queue retry. Use when
+  // nothing could have made an infeasible lease feasible (a usage-only change of
+  // the resource view).
+  virtual void ScheduleAndGrantPendingLeases() = 0;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.

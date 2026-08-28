@@ -1066,31 +1066,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
-bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
-                                        const ResourceRequest &createUpdatedResources) {
-  RAY_LOG(DEBUG).WithField(node_id)
-      << "[ResourceCreateUpdated] received callback from node with created or updated "
-         "resources: "
-      << createUpdatedResources.DebugString()
-      << ". Updating resource map. skip=" << (node_id == self_node_id_);
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
-    cluster_resource_scheduler_.GetClusterResourceManager().UpdateResourceCapacity(
-        scheduling::NodeID(node_id.Binary()),
-        resource_id,
-        createUpdatedResources.Get(resource_id).Double());
-  }
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  return true;
-}
-
 void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -1110,19 +1085,6 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
     driver->AsyncNotifyGCSRestart();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-bool NodeManager::UpdateResourceUsage(
-    const NodeID &node_id,
-    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
-  if (!cluster_resource_scheduler_.GetClusterResourceManager().UpdateNode(
-          scheduling::NodeID(node_id.Binary()), resource_view_sync_message)) {
-    RAY_LOG(INFO).WithField(node_id)
-        << "[UpdateResourceUsage]: received resource usage from unknown node.";
-    return false;
-  }
-
-  return true;
 }
 
 void NodeManager::HandleClientConnectionError(
@@ -2232,6 +2194,12 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
     // and terminate itself.
     if (!request.worker_exiting()) {
       HandleWorkerAvailable(worker);
+    } else {
+      // The worker stays alive on its way out (e.g. it hit max_calls but still
+      // owns objects), so it is not pushed back to the pool and nothing else
+      // wakes the scheduler for the resources it just released. Leases waiting
+      // for them have to be re-evaluated here.
+      cluster_lease_manager_.ScheduleAndGrantLeases();
     }
   }
 
@@ -3074,27 +3042,20 @@ void NodeManager::ConsumeSyncMessages(
     syncer::MessageType message_type,
     std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) {
   if (message_type == syncer::MessageType::RESOURCE_VIEW) {
-    bool resource_view_updated = false;
+    ClusterResourceManager::NodeViewChanges changes;
     for (const auto &message : messages) {
       syncer::ResourceViewSyncMessage resource_view_sync_message;
       resource_view_sync_message.ParseFromString(message->sync_message());
-      NodeID node_id = NodeID::FromBinary(message->node_id());
-      // Set node labels when node added.
-      auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-      cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-          scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-      ResourceRequest resources;
-      for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-        resources.Set(scheduling::ResourceID(resource_entry.first),
-                      FixedPoint(resource_entry.second));
-      }
-      const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-      const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-      resource_view_updated |= capacity_updated || usage_update;
+      cluster_resource_scheduler_.GetClusterResourceManager().AddOrUpdateNode(
+          scheduling::NodeID(message->node_id()), resource_view_sync_message, &changes);
     }
-    // One scheduling pass for the whole batch.
-    if (resource_view_updated) {
+    // One scheduling pass for the whole batch. Only a capacity change (totals,
+    // labels, a new node) can make an infeasible lease feasible, so the infeasible
+    // queue is retried only then.
+    if (changes.capacity_changed) {
       cluster_lease_manager_.ScheduleAndGrantLeases();
+    } else if (changes.usage_changed) {
+      cluster_lease_manager_.ScheduleAndGrantPendingLeases();
     }
   } else if (message_type == syncer::MessageType::COMMANDS) {
     for (const auto &message : messages) {
