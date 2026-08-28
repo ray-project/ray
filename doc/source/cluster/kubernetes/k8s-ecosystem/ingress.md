@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Expose Ray clusters on Kubernetes through AWS ALB ingress on EKS, GKE Ingress, or the GKE Gateway API."
+    description: "Expose Ray clusters on Kubernetes through the KubeRay built-in Ingress, AWS ALB ingress on EKS, GKE Ingress, or the GKE Gateway API."
 ---
 
 (kuberay-ingress)=
@@ -10,6 +10,7 @@ myst:
 
 The following examples show how to use Ingress or Gateway to access your Ray clusters:
 
+  * [KubeRay built-in Ingress](kuberay-builtin-ingress)
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
   * [GKE Gateway API support](kuberay-gke-gateway)
@@ -22,6 +23,53 @@ The following examples show how to use Ingress or Gateway to access your Ray clu
 **Only expose Ingresses or Gateways to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
 ```
 
+(kuberay-builtin-ingress)=
+## KubeRay built-in Ingress
+
+KubeRay 1.7.0 adds `ingressOptions`, which lets the operator generate and manage an Ingress for the Ray head service. You can configure the Ingress directly in the RayCluster using `ingressOptions`. The operator creates the corresponding Ingress, updates it when the configuration changes, and deletes it when the RayCluster is deleted.
+
+### Prerequisites
+
+- KubeRay operator v1.7 or later installed.
+
+- An Ingress controller running in your cluster. See the [Kubernetes Ingress Controllers documentation](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/) for more information.
+
+### Configure `ingressOptions`
+
+Set `enableIngress` to `true` and add `ingressOptions` to `headGroupSpec`:
+
+```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  headGroupSpec:
+    enableIngress: true
+    ingressOptions:
+      host: ray-dashboard.example.com
+      path: /
+      pathType: Prefix
+      tls:
+        - hosts:
+            - ray-dashboard.example.com
+          secretName: ray-dashboard-tls
+```
+
+The operator generates an Ingress named `<raycluster-name>-head-ingress` that routes to the head service on the dashboard port.
+
+Every field under `ingressOptions` is optional:
+
+| Field      | Description                                                                                                                                                                         | Default                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `host`     | Fully qualified domain name that routes external traffic to the Ray head dashboard.                                                                                                 | Unset, which matches any host.  |
+| `path`     | HTTP path that routes to the dashboard.                                                                                                                                             | `/`                             |
+| `pathType` | Path matching mode for `path`. One of `Exact`, `Prefix`, or `ImplementationSpecific`.                                                                                               | `Prefix`                        |
+| `tls`      | TLS termination for the generated Ingress, using the Kubernetes [IngressTLS](https://kubernetes.io/docs/reference/kubernetes-api/service-resources/ingress-v1/#IngressSpec) schema. | Unset, which serves plain HTTP. |
+
+If you set only `enableIngress: true`, KubeRay generates an Ingress that matches any host and routes `/` to the dashboard. If you update `ingressOptions` on an existing RayCluster, KubeRay updates the generated Ingress to match.
 
 (kuberay-aws-alb)=
 ## AWS Application Load Balancer (ALB) Ingress support on AWS EKS
@@ -40,10 +88,10 @@ The following examples show how to use Ingress or Gateway to access your Ray clu
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+helm install raycluster kuberay/ray-cluster --version 1.7.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-alb-ingress.yaml`
 #
@@ -130,10 +178,10 @@ Now run the following commands:
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 
 # Step 2: Install a RayCluster. GKE Ingress requires the backend service to be of type NodePort.
-helm install raycluster kuberay/ray-cluster --version 1.6.0 --set service.type=NodePort
+helm install raycluster kuberay/ray-cluster --version 1.7.0 --set service.type=NodePort
 
 # Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
@@ -210,10 +258,10 @@ Now run the following commands:
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+helm install raycluster kuberay/ray-cluster --version 1.7.0
 
 # Step 3: Edit ray-cluster-gke-gateway.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
@@ -278,12 +326,12 @@ kubectl wait --namespace ingress-nginx \
 # Step 3: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 
 # Step 4: Install RayCluster and create an ingress separately.
 # More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699
 # and `ray-operator/config/samples/ray-cluster.separate-ingress.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.separate-ingress.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.separate-ingress.yaml
 kubectl apply -f ray-cluster.separate-ingress.yaml
 
 # Step 5: Check the ingress created in Step 4.
@@ -322,10 +370,10 @@ kubectl describe ingress raycluster-ingress-head-ingress
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+helm install raycluster kuberay/ray-cluster --version 1.7.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-agc-gatewayapi.yaml`
 #
