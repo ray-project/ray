@@ -821,3 +821,22 @@ class PGCreationMockEngine(MockVLLMEngine):
         super().__init__(llm_config, *args, **kwargs)
         self.engine_config = llm_config.get_engine_config()
         self.engine_config.get_or_create_pg()
+
+
+class StoreEchoingMockEngine(MockVLLMEngine):
+    """
+    A wrapper around the mock engine that echoes the ``store`` value it was
+    handed back to the caller, so a test can assert on what the ingress
+    forwarded. The engine runs in its own replica, so ``metadata`` is what
+    carries the observed value out.
+    """
+
+    async def responses(
+        self,
+        request: ResponsesRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, ResponsesResponse, ErrorResponse], None]:
+        async for chunk in super().responses(request, raw_request_info):
+            if isinstance(chunk, ResponsesResponse):
+                chunk.metadata = {"observed_store": repr(request.store)}
+            yield chunk

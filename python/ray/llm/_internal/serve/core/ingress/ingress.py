@@ -236,6 +236,35 @@ def make_fastapi_ingress(
     return serve.ingress(app)(new_cls)
 
 
+def _enforce_stateless_responses_request(
+    body: ResponsesRequest,
+) -> Optional[OpenAIHTTPException]:
+    """Reject opt-ins to server-side state, and pin ``store`` off otherwise.
+
+    vLLM keeps the response store in the engine process while Serve spreads
+    requests across replicas, so a follow-up would reach a replica without it.
+
+    ``store`` defaults to true and SDKs omit unset fields, so only an explicit
+    ``store`` counts as opting in. Survivors are pinned off here because vLLM
+    only forces that while ``VLLM_ENABLE_RESPONSES_API_STORE`` is unset.
+    """
+    explicitly_stored = "store" in body.model_fields_set and body.store
+    if explicitly_stored or body.previous_response_id is not None or body.background:
+        return OpenAIHTTPException(
+            message=(
+                "Server-side response storage is not supported: Ray Serve routes "
+                "requests across replicas, so a stored or background response is "
+                "not visible to the replica handling the follow-up. Omit `store` "
+                "and send the full conversation in `input`."
+            ),
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            type="not_implemented",
+        )
+
+    body.store = False
+    return None
+
+
 @asynccontextmanager
 async def router_request_timeout(timeout_duration: float):
     try:
@@ -603,7 +632,12 @@ class OpenAiIngress(DeploymentProtocol):
 
         Returns:
             A response object with the generated output.
+
+        Raises:
+            OpenAIHTTPException: 501 if the request asks for server-side state.
         """
+        if error := _enforce_stateless_responses_request(body):
+            raise error
 
         return await self._process_llm_request(
             body,
