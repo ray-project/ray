@@ -125,26 +125,64 @@ def cells(a):
             {"RAY_DATA_PARQUET_BIN_PACKING_BYTES": "67108864"},
         ),
     ]
-    # map_groups_autoscaling_{hash,sort}_column02+column14: wall 1.16 / 1.20,
-    # T spills more than B (53.6 vs 40.8 GB) — release is sf100 multi-node.
-    for tag, strat in [
-        ("mapg_hash", "hash_shuffle"),
-        ("mapg_sort", "sort_shuffle_pull_based"),
+    # map_groups: the P0 pair (hash/sort col02+14, wall 1.16/1.20, T spilling
+    # 53.6 vs B 40.8 GB) plus the spill-asymmetry shapes flagged 2026-08-28:
+    # col08+13+14 (T 31.6 vs B 19.0 GB autoscaling; the M76 OOM-cliff family)
+    # and the hash_shuffle_v2 variants (M77 sustained 1.63/1.17). The aggregate
+    # cells are the M47 positive control — the cleanest decoder WIN in release
+    # (tUSS R 0.56-0.81): a box run where the losses reproduce but this win
+    # doesn't (or vice versa) says the regime is off, not the reader.
+    for name, consume, cols, strat in [
+        (
+            "mapg_hash_col02+col14",
+            "--map-groups",
+            ["column02", "column14"],
+            "hash_shuffle",
+        ),
+        (
+            "mapg_hashv2_col02+col14",
+            "--map-groups",
+            ["column02", "column14"],
+            "hash_shuffle_v2",
+        ),
+        (
+            "mapg_sort_col02+col14",
+            "--map-groups",
+            ["column02", "column14"],
+            "sort_shuffle_pull_based",
+        ),
+        (
+            "mapg_hash_col08+13+14",
+            "--map-groups",
+            ["column08", "column13", "column14"],
+            "hash_shuffle",
+        ),
+        (
+            "mapg_hashv2_col08+13+14",
+            "--map-groups",
+            ["column08", "column13", "column14"],
+            "hash_shuffle_v2",
+        ),
+        (
+            "agg_hash_col02+col14",
+            "--aggregate",
+            ["column02", "column14"],
+            "hash_shuffle",
+        ),
+        (
+            "agg_hash_col08+13+14",
+            "--aggregate",
+            ["column08", "column13", "column14"],
+            "hash_shuffle",
+        ),
     ]:
         out.append(
             (
-                f"{tag}_col02+col14",
+                name,
                 "groupby_benchmark",
-                [
-                    "--sf",
-                    a.groupby_sf,
-                    "--map-groups",
-                    "--group-by",
-                    "column02",
-                    "column14",
-                    "--shuffle-strategy",
-                    strat,
-                ],
+                ["--sf", a.groupby_sf, consume, "--group-by"]
+                + cols
+                + ["--shuffle-strategy", strat],
                 {},
             )
         )
