@@ -1,4 +1,5 @@
 import asyncio
+import platform
 import sys
 import time
 from types import SimpleNamespace
@@ -516,6 +517,10 @@ class TestLLMServer:
             await server.start()
             mock_push_telemetry.assert_called_once()
 
+    @pytest.mark.skipif(
+        platform.machine().lower() in ("aarch64", "arm64"),
+        reason="TPOT jitter comparison is unreliable on ARM CI workers.",
+    )
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
     @pytest.mark.parametrize("stream", [True])
     @pytest.mark.parametrize("max_tokens", [64])
