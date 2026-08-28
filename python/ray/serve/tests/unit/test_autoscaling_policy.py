@@ -1355,6 +1355,31 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=4, inner_result=0)
         assert policy(ctx)[0] == 0
 
+    def test_scale_to_zero_after_downscaling_to_one_gang(self):
+        """The base policy's logical 1 -> 0 transition removes one gang."""
+        ctx = self._make_ctx(current_num_replicas=8)
+        ctx.target_num_replicas = 8
+        ctx.config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=8,
+            downscale_delay_s=0,
+            downscale_to_zero_delay_s=0,
+        )
+        policy = GangSchedulingAutoscalingPolicy(
+            _apply_autoscaling_config(lambda _: (0, {})), gang_size=2
+        )
+
+        # The first scale-down preserves one complete gang.
+        decision, ctx.policy_state = policy(ctx)
+        assert decision == 2
+
+        # The next evaluation must interpret that gang as the base policy's
+        # logical single replica, then allow the final transition to zero.
+        ctx.current_num_replicas = decision
+        ctx.target_num_replicas = decision
+        decision, _ = policy(ctx)
+        assert decision == 0
+
     def test_gang_size_one_no_op(self):
         ctx = self._make_ctx(current_num_replicas=3)
         policy = self._make_policy(gang_size=1, inner_result=5)

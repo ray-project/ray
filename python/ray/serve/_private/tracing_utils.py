@@ -448,7 +448,7 @@ def set_trace_status(is_error: bool, description: Optional[str] = ""):
         )
 
 
-def set_span_exception(exc: Exception, escaped: bool = False):
+def set_span_exception(exc: BaseException, escaped: bool = False):
     """Set the exception for the current span in context."""
     trace_stack = TRACE_STACK.get([])
     if trace_stack:

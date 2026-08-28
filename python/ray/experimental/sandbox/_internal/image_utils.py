@@ -180,6 +180,7 @@ def extract_tar_layer(
     else:
         tar_fileobj = tar_input
 
+    dir_mtimes = []
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
@@ -261,8 +262,22 @@ def extract_tar_layer(
                         shutil.copyfileobj(f_in, f_out)
                 if member.mode:
                     os.chmod(target_path, member.mode)
+                # Preserve the archived mtime: tools inside the sandbox rely
+                # on it (apt revalidates its package lists with
+                # If-Modified-Since from the file mtime, and a reset-to-now
+                # mtime makes mirrors answer 304 for stale baked lists).
+                # Best-effort, like the directory pass below.
+                try:
+                    os.utime(target_path, (member.mtime, member.mtime))
+                except OSError:
+                    pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
+                # Applied after the loop: extracting children would bump it.
+                # Skip preserved symlinks (UsrMerge /bin -> usr/bin): utime
+                # would follow them and stamp the target with the wrong time.
+                if not os.path.islink(target_path):
+                    dir_mtimes.append((target_path, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -279,6 +294,12 @@ def extract_tar_layer(
                         os.link(link_target, target_path)
                     except OSError:
                         pass
+
+    for dir_path, mtime in dir_mtimes:
+        try:
+            os.utime(dir_path, (mtime, mtime))
+        except OSError:
+            pass
 
 
 def pull_and_extract_container_image(
