@@ -90,25 +90,35 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            # No-op when the marker was never written.
+            release_image_use(
+                self._image_manager.get_image_dir(config.image), sandbox_id
+            )
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        self._image_manager.prepare_oci_bundle(
-            root_dir=root_dir,
-            workdir_path=workdir_path,
-            container_cwd=container_cwd,
-            image=config.image,
-            env_dict=config.env,
-            cpu=config.cpu,
-            memory=config.memory,
-            readonly=config.readonly,
-            capabilities=config.capabilities,
-            network=config.network,
-            dns=config.dns,
-            _oci_spec_transform_fn=config._oci_spec_transform_fn,
-        )
+        try:
+            self._image_manager.prepare_oci_bundle(
+                root_dir=root_dir,
+                workdir_path=workdir_path,
+                container_cwd=container_cwd,
+                image=config.image,
+                env_dict=config.env,
+                cpu=config.cpu,
+                memory=config.memory,
+                readonly=config.readonly,
+                capabilities=config.capabilities,
+                network=config.network,
+                dns=config.dns,
+                _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            )
+        except Exception:
+            release_image_use(
+                self._image_manager.get_image_dir(config.image), sandbox_id
+            )
+            raise
         run_args = self._runsc_base_args(config)
         if config.network:
             # "public" = host egress + generated resolv.conf (handled in the
@@ -176,6 +186,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             del_args = self._runsc_base_args(config) + ["delete", sandbox_id]
             subprocess.run(del_args, capture_output=True)
             shutil.rmtree(root_dir, ignore_errors=True)
+            # The sandbox never registered, so delete_sandbox will not run
+            # for it: drop the in-use marker here to keep the image evictable.
+            release_image_use(
+                self._image_manager.get_image_dir(config.image), sandbox_id
+            )
             raise
 
         self._sandbox_metadata[sandbox_id] = {

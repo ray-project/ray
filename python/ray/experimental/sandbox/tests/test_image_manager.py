@@ -608,9 +608,10 @@ def test_image_cache_eviction(tmp_path):
             os.utime(marker, (past, past))
         return d
 
-    oldest = make_image("old", 1000, age=300)
-    newer = make_image("new", 1000, age=100)
-    busy = make_image("busy", 1000, age=200)
+    oldest = make_image("old", 1000, age=3000)
+    newer = make_image("new", 1000, age=1000)
+    busy = make_image("busy", 1000, age=2000)
+    fresh = make_image("fresh", 1000, age=0)
     partial = make_image("partial", 1000, extracted=False)
     mark_image_in_use(str(busy), "sb-live")
 
@@ -619,6 +620,7 @@ def test_image_cache_eviction(tmp_path):
     assert not oldest.exists()  # oldest evictable goes first
     assert newer.exists()
     assert busy.exists()  # in use: protected
+    assert fresh.exists()  # inside the post-extraction grace: protected
     assert partial.exists()  # mid-pull (no marker): protected
 
 

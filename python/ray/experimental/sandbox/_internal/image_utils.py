@@ -8,6 +8,7 @@ import re
 import shutil
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -363,6 +364,9 @@ def extract_tar_layer(
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 _KEEP_IMAGE_TARBALL_ENV = "RAY_SANDBOX_KEEP_IMAGE_TARBALL"
 _USERS_DIRNAME = ".users"
+# Images extracted more recently than this are never evicted: it covers the
+# window between a pull returning and its sandbox registering as a user.
+_EVICTION_GRACE_SEC = 600
 
 
 def mark_image_in_use(image_dir: str, instance_id: str) -> None:
@@ -423,15 +427,26 @@ def evict_images_over_cap(images_dir: str, max_bytes: int) -> None:
         max_bytes: The cache size cap in bytes.
     """
     try:
-        entries = []
-        for name in os.listdir(images_dir):
-            img_dir = os.path.join(images_dir, name)
-            marker = os.path.join(img_dir, ".extracted")
-            if not (os.path.isdir(img_dir) and os.path.exists(marker)):
-                continue
-            entries.append((os.path.getmtime(marker), name, img_dir))
+        names = os.listdir(images_dir)
     except OSError:
         return
+    now = time.time()
+    entries = []
+    for name in names:
+        img_dir = os.path.join(images_dir, name)
+        marker = os.path.join(img_dir, ".extracted")
+        try:
+            if not (os.path.isdir(img_dir) and os.path.exists(marker)):
+                continue
+            marker_mtime = os.path.getmtime(marker)
+        except OSError:
+            # Concurrently deleted: skip it, keep evicting the rest.
+            continue
+        if now - marker_mtime < _EVICTION_GRACE_SEC:
+            # Freshly extracted: the puller may not have registered its
+            # sandbox as a user yet.
+            continue
+        entries.append((marker_mtime, name, img_dir))
 
     total = sum(_dir_size_bytes(img_dir) for _, _, img_dir in entries)
     for _, name, img_dir in sorted(entries):
