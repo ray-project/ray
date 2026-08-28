@@ -306,8 +306,16 @@ def create_app(
             sandbox_id = _sandbox_name_for_token(request.client_token)
             existing = resolver.get(sandbox_id)
             if existing is not None:
-                info = await _describe_or_pending(sandbox_id, existing)
-                return JSONResponse(status_code=200, content=info)
+                try:
+                    info = await _describe_or_pending(sandbox_id, existing)
+                    return JSONResponse(status_code=200, content=info)
+                except _ApiError as exc:
+                    if exc.code != "sandbox_not_found":
+                        raise
+                    # The previous actor died (node loss, OOM). Clear it and
+                    # fall through to create a fresh sandbox under the same
+                    # name, keeping the token idempotent across failures.
+                    resolver.kill(existing)
         else:
             sandbox_id = f"{SANDBOX_ID_PREFIX}{uuid.uuid4().hex[:12]}"
 
@@ -396,17 +404,23 @@ def create_app(
         label: List[str] = Query(default=[]),
     ) -> Dict[str, Any]:
         filters = _parse_label_filters(label)
+        named = [(name, resolver.get(name)) for name in resolver.list_names()]
+        # Concurrently: sequential describes would make the listing scale
+        # linearly with the number of sandboxes.
+        results = await asyncio.gather(
+            *(
+                _describe_or_pending(name, handle)
+                for name, handle in named
+                if handle is not None
+            ),
+            return_exceptions=True,
+        )
         sandboxes: List[Dict[str, Any]] = []
-        for name in resolver.list_names():
-            handle = resolver.get(name)
-            if handle is None:
+        for info in results:
+            if isinstance(info, _ApiError) and info.code == "sandbox_not_found":
                 continue
-            try:
-                info = await _describe_or_pending(name, handle)
-            except _ApiError as exc:
-                if exc.code == "sandbox_not_found":
-                    continue
-                raise
+            if isinstance(info, BaseException):
+                raise info
             if all(info.get("labels", {}).get(k) == v for k, v in filters.items()):
                 sandboxes.append(info)
         return {"sandboxes": sandboxes}

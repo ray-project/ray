@@ -36,7 +36,6 @@ import logging
 import os
 import platform
 import shutil
-import tempfile
 import urllib.request
 import uuid
 from collections import OrderedDict
@@ -74,17 +73,29 @@ def _ensure_runsc_installed() -> None:
     """
     if shutil.which("runsc"):
         return
-    temp_bin = tempfile.mkdtemp(prefix="ray-sandbox-runsc-")
-    os.chmod(temp_bin, 0o755)
-    runsc_path = os.path.join(temp_bin, "runsc")
-    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
-    url = (
-        "https://storage.googleapis.com/gvisor/releases/release/latest/" f"{arch}/runsc"
-    )
-    logger.info("runsc not found on this node; downloading from %s", url)
-    urllib.request.urlretrieve(url, runsc_path)
-    os.chmod(runsc_path, 0o755)
-    os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
+    # One shared, cached location per node: repeated boots reuse it instead
+    # of leaking a ~40MB download per sandbox, and concurrent downloaders
+    # converge through the atomic rename.
+    shared_bin = "/tmp/ray-sandbox-runsc"
+    runsc_path = os.path.join(shared_bin, "runsc")
+    if not os.path.exists(runsc_path):
+        os.makedirs(shared_bin, mode=0o755, exist_ok=True)
+        arch = (
+            "aarch64"
+            if platform.machine().lower() in ("aarch64", "arm64")
+            else "x86_64"
+        )
+        url = (
+            "https://storage.googleapis.com/gvisor/releases/release/latest/"
+            f"{arch}/runsc"
+        )
+        logger.info("runsc not found on this node; downloading from %s", url)
+        tmp_path = f"{runsc_path}.tmp.{os.getpid()}"
+        urllib.request.urlretrieve(url, tmp_path)
+        os.chmod(tmp_path, 0o755)
+        os.replace(tmp_path, runsc_path)
+    if shared_bin not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = f"{shared_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 class _ExecJob:
