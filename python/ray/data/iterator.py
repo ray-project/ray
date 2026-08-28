@@ -1041,12 +1041,12 @@ class DataIterator(abc.ABC):
             If your model accepts a single tensor as input, specify a single feature column.
 
             >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
             >>> it.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
-            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
             tensor as input, combine features with
@@ -1057,7 +1057,7 @@ class DataIterator(abc.ABC):
             >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it.to_tf("features", "target")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts different types, shapes, or names of tensors as input, specify the type spec.
             If type specs are not specified, they are automatically inferred from the schema of the iterator.
@@ -1069,7 +1069,7 @@ class DataIterator(abc.ABC):
             ...     feature_type_spec=tf.TensorSpec(shape=(None, 4), dtype=tf.float32, name="features"),
             ...     label_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="label")
             ... )
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
 
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
@@ -1078,7 +1078,7 @@ class DataIterator(abc.ABC):
             >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> it = ds.iterator()
             >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target", additional_columns="sample weights")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
             If your model accepts different types, shapes, or names for the additional metadata, specify the type spec of the additional column.
 
@@ -1088,7 +1088,7 @@ class DataIterator(abc.ABC):
             ...     additional_columns="sample weights",
             ...     additional_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="weight")
             ... )
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
