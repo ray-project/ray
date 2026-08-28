@@ -62,6 +62,23 @@ def test_get_step_new_sdk_runtime_env_skips_custom_image(mock):
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_reuses_existing_image(mock):
+    test = _stub_test({"cluster": {"byod": {"type": "cpu"}}})
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "pr-123.abc123"}):
+        image = test.get_anyscale_byod_image()
+        step = get_step(test, run_id=0, available_images={image})
+        blocked_step = get_step(
+            test,
+            run_id=0,
+            block_step_key="confirm",
+            available_images={image},
+        )
+
+    assert step["depends_on"] is None
+    assert blocked_step["depends_on"] == "confirm"
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
 def test_get_step_for_test_group(mock):
     grouped_tests = {
         "group1": [

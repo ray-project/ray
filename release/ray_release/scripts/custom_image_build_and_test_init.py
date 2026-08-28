@@ -25,6 +25,7 @@ from ray_release.custom_byod_build_init_helper import (
     build_short_gpu_map,
     collect_rayci_select_keys,
     create_custom_build_yaml,
+    find_available_byod_images,
 )
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -36,6 +37,30 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 # at time of writing). We split below that with headroom so future growth
 # or step multipliers we don't account for don't trip the limit again.
 DEFAULT_MAX_JOBS_PER_UPLOAD = 450
+
+# An empty selection means "run every step" to rayci. When every required image
+# already exists, select a deliberately nonexistent key instead so the static
+# image pipeline contributes no jobs while the dynamically uploaded tests run.
+RAYCI_SELECT_NOOP_KEY = "__release_test_images_already_available__"
+
+
+def _get_reusable_image_build_id(commit: str) -> str:
+    """Return the canonical image version published for this Buildkite build.
+
+    Keep this in sync with
+    ``ReleaseTestImagePushContext._versions`` in
+    ``ci/ray_ci/automation/push_release_test_image.py``.
+    """
+    sha_tag = commit[:6]
+    branch = os.environ.get("BUILDKITE_BRANCH", "")
+    pull_request = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
+    if branch == "master":
+        return sha_tag
+    if branch.startswith("releases/"):
+        return f"{branch[len('releases/'):]}.{sha_tag}"
+    if pull_request != "false":
+        return f"pr-{pull_request}.{sha_tag}"
+    return sha_tag
 
 
 def _group_job_count(group: Dict[str, Any]) -> int:
@@ -226,6 +251,32 @@ def main(
         )
     tests = [test for test, _ in filtered_tests]
 
+    # Manual filtered runs are commonly repeated while iterating on one test.
+    # The regular per-build ID makes each rerun point at a new image tag even
+    # when the commit is unchanged. Use the canonical commit tag for these
+    # runs, then skip image jobs when that tag is already in the target
+    # registry. Automatic and unfiltered runs retain their existing isolation.
+    is_automatic = os.environ.get("AUTOMATIC", "") == "1"
+    commit = os.environ.get("BUILDKITE_COMMIT", "")
+    force_rebuild = os.environ.get("FORCE_REBUILD_RELEASE_TEST_IMAGES", "") == "1"
+    reuse_existing_images = bool(
+        not is_automatic
+        and test_filters
+        and len(commit) >= 6
+        and commit != "HEAD"
+        and not force_rebuild
+    )
+    available_images = set()
+    reusable_build_id = None
+    if reuse_existing_images:
+        reusable_build_id = _get_reusable_image_build_id(commit)
+        os.environ["RAYCI_BUILD_ID"] = reusable_build_id
+        logger.info(
+            "Using commit-based release-test image tag for manual filtered run: %s",
+            reusable_build_id,
+        )
+        available_images = find_available_byod_images(tests)
+
     gpu_map = build_short_gpu_map(os.path.join(_bazel_workspace_dir, "ray-images.json"))
 
     # Generate custom image build steps
@@ -233,9 +284,13 @@ def main(
         os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
         tests,
         gpu_map,
+        available_images=available_images,
+        build_id=reusable_build_id,
     )
 
-    rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
+    rayci_select_keys = collect_rayci_select_keys(
+        tests, gpu_map, available_images=available_images
+    )
 
     # Generate test job steps
     grouped_tests = group_tests(filtered_tests)
@@ -268,7 +323,6 @@ def main(
     # Ask user to confirm before launching the tests.
     block_step = None
 
-    is_automatic = os.environ.get("AUTOMATIC", "") == "1"
     if not is_automatic and test_filters and selection_block_threshold > 0:
         if len(tests) >= selection_block_threshold:
             block_step = generate_block_step(len(tests))
@@ -283,6 +337,7 @@ def main(
         is_concurrency_limit=not no_concurrency_limit,
         block_step_key=block_step["key"] if block_step else None,
         gpu_map=gpu_map,
+        available_images=available_images,
     )
     steps = [{"group": "block", "steps": [block_step]}] + steps if block_step else steps
 
@@ -320,7 +375,8 @@ def main(
                 os.path.join(_bazel_workspace_dir, rayci_select_output_file),
                 "wt",
             ) as fp:
-                fp.write(",".join(sorted(rayci_select_keys)))
+                selected_keys = rayci_select_keys or {RAYCI_SELECT_NOOP_KEY}
+                fp.write(",".join(sorted(selected_keys)))
 
         if upload_to_buildkite:
             for chunk_path in chunk_paths:

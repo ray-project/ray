@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
@@ -57,9 +58,15 @@ def get_images_from_tests(
 
 
 def create_custom_build_yaml(
-    destination_file: str, tests: List[Test], gpu_map: Dict[str, str]
+    destination_file: str,
+    tests: List[Test],
+    gpu_map: Dict[str, str],
+    available_images: Optional[Set[str]] = None,
+    build_id: Optional[str] = None,
 ) -> None:
     """Create a yaml file for building custom BYOD images"""
+    if os.path.exists(destination_file):
+        os.remove(destination_file)
     config = get_global_config()
     if (
         not config
@@ -74,7 +81,7 @@ def create_custom_build_yaml(
     byod_ecr = config.get("byod_ecr")
     aws2gce_credentials = config.get("aws2gce_credentials")
     custom_byod_images, custom_image_test_names_map = get_images_from_tests(
-        tests, "$$RAYCI_BUILD_ID"
+        tests, build_id or "$$RAYCI_BUILD_ID"
     )
     if not custom_byod_images:
         return
@@ -87,6 +94,9 @@ def create_custom_build_yaml(
         python_depset,
         runtime_env,
     ) in custom_byod_images:
+        if image in (available_images or set()):
+            logger.info(f"Reusing existing custom BYOD image: {image}")
+            continue
         logger.info(
             f"Building custom BYOD image: {image}, base image: {base_image}, "
             f"post build script: {post_build_script}, runtime_env: {runtime_env}"
@@ -131,9 +141,14 @@ def create_custom_build_yaml(
                 build_cmd,
             ],
         }
-        step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
+        if build_id:
+            step["env"] = {"RAYCI_BUILD_ID": build_id}
+        if base_image not in (available_images or set()):
+            step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
         build_config["steps"].append(step)
 
+    if not build_config["steps"]:
+        return
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
@@ -243,18 +258,65 @@ def get_prerequisite_step(
     return f"{bare_key}--gpu{sanitized}-python{python_raw}"
 
 
-def collect_rayci_select_keys(tests: List[Test], gpu_map: Dict[str, str]) -> Set[str]:
+def collect_rayci_select_keys(
+    tests: List[Test],
+    gpu_map: Dict[str, str],
+    available_images: Optional[Set[str]] = None,
+) -> Set[str]:
     """Return the RAYCI_SELECT key set (base-image + custom-BYOD) for the given tests."""
+    available_images = available_images or set()
     keys: Set[str] = set()
     for test in tests:
         image = test.get_anyscale_byod_image()
         base_image = test.get_anyscale_base_byod_image()
-        prereq = get_prerequisite_step(image, base_image, gpu_map)
-        if prereq:
-            keys.add(prereq)
+        if image in available_images:
+            continue
+        if base_image not in available_images:
+            prereq = get_prerequisite_step(image, base_image, gpu_map)
+            if prereq:
+                keys.add(prereq)
         if test.require_custom_byod_image():
             keys.add(generate_custom_build_step_key(image))
     return keys
+
+
+def image_exists(image: str, timeout_s: int = 30) -> bool:
+    """Return whether an image manifest exists in its target registry.
+
+    Registry authentication is performed by the release init shell before this
+    helper runs. A lookup failure is treated as a cache miss so release tests
+    remain fail-closed and rebuild the image.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "manifest", "inspect", image],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_s,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning(f"Unable to check whether image exists: {image}: {exc}")
+        return False
+    return result.returncode == 0
+
+
+def find_available_byod_images(tests: List[Test]) -> Set[str]:
+    """Find reusable final and base BYOD images required by selected tests."""
+    candidates: Set[str] = set()
+    for test in tests:
+        candidates.add(test.get_anyscale_byod_image())
+        if test.require_custom_byod_image():
+            candidates.add(test.get_anyscale_base_byod_image())
+
+    available = set()
+    for image in sorted(candidates):
+        if image_exists(image):
+            logger.info(f"Found reusable release-test image: {image}")
+            available.add(image)
+        else:
+            logger.info(f"Release-test image is not reusable: {image}")
+    return available
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
