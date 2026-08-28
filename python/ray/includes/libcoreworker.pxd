@@ -335,7 +335,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
         uint64_t WaitAsync(const c_vector[CObjectID] &object_ids, int num_objects,
-                           int64_t timeout_ms, c_bool fetch_local,
+                           int64_t timeout_ms,
                            wait_async_callback callback, void *user)
         void CancelWaitAsync(uint64_t handle)
         CRayStatus GetLocalObjectLocations(

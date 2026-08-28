@@ -579,11 +579,15 @@ async def test_wait_async_cancel_releases_promptly(ray_start_regular_shared):
 async def test_wait_async_rejects_invalid_args(ray_start_regular_shared):
     ref = ray.put(1)
     with pytest.raises(ValueError, match="unique"):
-        await _wait_async([ref, ref], fetch_local=False)
+        await _wait_async([ref, ref])
     with pytest.raises(ValueError, match="Invalid number"):
-        await _wait_async([ref], num_returns=0, fetch_local=False)
+        await _wait_async([ref], num_returns=0)
     with pytest.raises(TypeError):
-        await _wait_async(ref, fetch_local=False)  # type: ignore[arg-type]
+        await _wait_async(ref)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="fetch_local=False"):
+        await _wait_async([ref])  # default matches ray.wait
+    with pytest.raises(ValueError, match="fetch_local=False"):
+        await _wait_async([ref], fetch_local=True)
 
 
 @pytest.mark.asyncio
@@ -605,68 +609,6 @@ async def test_wait_async_unknown_owner_raises_value_error(ray_start_regular_sha
 
 
 @pytest.mark.asyncio
-async def test_wait_async_fetch_local_true_ready_ref(ray_start_regular_shared):
-    """fetch_local=True completes for an already-local in-memory object."""
-
-    @ray.remote
-    def f():
-        return 1
-
-    ref = f.remote()
-    ray.get(ref)
-    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=True)
-    assert ready == [ref]
-    assert remaining == []
-
-
-@pytest.mark.asyncio
-async def test_wait_async_fetch_local_true_waits_for_value(ray_start_regular_shared):
-    """fetch_local=True waits until the object is locally available."""
-    signal = SignalActor.remote()
-
-    @ray.remote
-    def blocked():
-        ray.get(signal.wait.remote())
-        return "ok"
-
-    ref = blocked.remote()
-    wait_task = asyncio.create_task(_wait_async([ref], timeout=0.1, fetch_local=True))
-    ready, remaining = await wait_task
-    assert ready == []
-    assert remaining == [ref]
-
-    ray.get(signal.send.remote())
-    ready, remaining = await _wait_async([ref], fetch_local=True)
-    assert ready == [ref]
-    assert remaining == []
-    assert ray.get(ref) == "ok"
-
-
-@pytest.mark.asyncio
-async def test_wait_async_fetch_local_true_local_plasma_object(
-    ray_start_regular_shared,
-):
-    """fetch_local=True covers Contains() for an already-local plasma object.
-
-    Small returns are inlined into the memory store; a 1MiB payload is stored
-    in plasma (memory store only has an OBJECT_IN_PLASMA marker). Waiting with
-    fetch_local=True and a non-zero timeout exercises the GetAsync plasma
-    branch that calls Contains() and treats a local plasma object as ready.
-    """
-
-    @ray.remote
-    def large():
-        return b"x" * (1024 * 1024)
-
-    ref = large.remote()
-    assert len(ray.get(ref)) == 1024 * 1024
-    # timeout=0 would skip the plasma path by design; use a positive timeout.
-    ready, remaining = await _wait_async([ref], timeout=5.0, fetch_local=True)
-    assert ready == [ref]
-    assert remaining == []
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "timeout,expected_ms",
     [
@@ -685,13 +627,13 @@ async def test_wait_async_timeout_conversion(
     """A positive sub-millisecond timeout must not truncate to 0.
 
     timeout_ms == 0 is a different operation in C++ (in-process memory store
-    only, no plasma pull), not merely a shorter wait, so only an explicit
-    timeout=0 may select it.
+    only), not merely a shorter wait, so only an explicit timeout=0 may
+    select it.
     """
     recorded = []
 
     class _FakeCoreWorker:
-        def wait_async(self, refs, num_returns, timeout_ms, fetch_local, callback):
+        def wait_async(self, refs, num_returns, timeout_ms, callback):
             recorded.append(timeout_ms)
             callback(None, [True] * len(refs))
             return 0

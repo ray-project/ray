@@ -3772,16 +3772,17 @@ cdef class CoreWorker:
                    object_refs_or_generators,
                    int num_returns,
                    int64_t timeout_ms,
-                   c_bool fetch_local,
                    callback: Callable):
         """Register an async wait that invokes ``callback`` once.
+
+        An object is ready when it exists anywhere in the cluster (memory
+        store or plasma marker). This does not pull plasma objects locally.
 
         Args:
             object_refs_or_generators: List of ObjectRef or ObjectRefGenerator
                 to wait on.
             num_returns: Number of waitables that should become ready.
             timeout_ms: Timeout in milliseconds; negative means wait forever.
-            fetch_local: Whether ready objects must be present locally.
             callback: Called as ``callback(exc, ready_bits)``. ``ready_bits``
                 is a list[bool] parallel to ``object_refs_or_generators``.
                 On error, ``exc`` is set and ``ready_bits`` is None.
@@ -3819,7 +3820,6 @@ cdef class CoreWorker:
                 wait_ids,
                 num_returns,
                 timeout_ms,
-                fetch_local,
                 wait_async_callback_impl,
                 <void*>callback,
             )

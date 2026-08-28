@@ -36,8 +36,8 @@ def _consume_generator_refs_when_ready(
 ) -> int:
     """Advance a peeked generator stream once ``refs`` are ready.
 
-    Uses ``wait_async(fetch_local=False)`` so readiness does not pull or
-    deserialize object payloads. Registers a single completion that consumes
+    Uses ``wait_async`` so readiness does not pull or deserialize object
+    payloads. Registers a single completion that consumes
     ``num_to_consume`` refs to avoid out-of-order partial consumes.
 
     The wait_async callback closes over ``obj_ref_gen`` and is Py_INCREF'd by
@@ -82,7 +82,6 @@ def _consume_generator_refs_when_ready(
         refs,
         len(refs),
         -1,  # timeout_ms: wait forever
-        False,  # fetch_local: readiness without pull
         _on_complete,
     )
 
@@ -163,8 +162,8 @@ class ActorReplicaResult(ReplicaResult):
 
         # Peek generator refs without consuming so to_object_ref* can return
         # immediately. For unary, advance the stream (backpressure) only after
-        # the peeked refs are ready, via wait_async(fetch_local=False) so we
-        # do not pull or deserialize payloads just to move the cursor. For
+        # the peeked refs are ready, via wait_async so we do not pull or
+        # deserialize payloads just to move the cursor. For
         # rejection+unary we wait for both refs then consume 2 once —
         # independent per-ref consumes can race if reports are unordered.
         # Streaming+rejection does not use wait_async: the router always

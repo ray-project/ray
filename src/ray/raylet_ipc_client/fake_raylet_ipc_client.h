@@ -92,12 +92,9 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
   }
 
   void SubscribePlasmaReady(const ObjectID &object_id,
-                            const rpc::Address &owner_address) override {
-    plasma_subscriptions.push_back(object_id);
-  }
+                            const rpc::Address &owner_address) override {}
 
   std::vector<std::vector<ObjectID>> async_get_object_calls;
-  std::vector<ObjectID> plasma_subscriptions;
 };
 
 }  // namespace ipc

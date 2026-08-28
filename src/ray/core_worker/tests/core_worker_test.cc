@@ -1785,7 +1785,6 @@ TEST_F(CoreWorkerTest, WaitAsyncInvalidNumObjects) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/0,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 1);
@@ -1797,7 +1796,6 @@ TEST_F(CoreWorkerTest, WaitAsyncInvalidNumObjects) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/2,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 1);
@@ -1812,7 +1810,6 @@ TEST_F(CoreWorkerTest, WaitAsyncDuplicateObjectIds) {
   core_worker_->WaitAsync({object_id, object_id},
                           /*num_objects=*/1,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 1);
@@ -1827,7 +1824,6 @@ TEST_F(CoreWorkerTest, WaitAsyncUnknownOwner) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/1,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 1);
@@ -1848,7 +1844,6 @@ TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/-1,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_EQ(handle, 0u);
@@ -1866,7 +1861,6 @@ TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/1,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 0);
@@ -1893,7 +1887,6 @@ TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReadyWithoutFetchLocal) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/-1,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_EQ(handle, 0u);
@@ -1914,7 +1907,6 @@ TEST_F(CoreWorkerTest, WaitAsyncNumObjects) {
   core_worker_->WaitAsync(object_ids,
                           /*num_objects=*/2,
                           /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   ASSERT_EQ(result.calls, 0);
@@ -1946,7 +1938,6 @@ TEST_F(CoreWorkerTest, WaitAsyncTimeout) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/1,
                           /*timeout_ms=*/50,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   DrainIoUntilWaitAsyncDone(io_service_, result);
@@ -1969,7 +1960,6 @@ TEST_F(CoreWorkerTest, WaitAsyncTimeoutZeroReportsAlreadyReady) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/0,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_EQ(handle, 0u);
@@ -1977,51 +1967,6 @@ TEST_F(CoreWorkerTest, WaitAsyncTimeoutZeroReportsAlreadyReady) {
   ASSERT_TRUE(result.status.ok());
   ASSERT_EQ(result.ready.size(), 1);
   ASSERT_EQ(result.ready[0], 1);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncFetchLocalTrueReadyInMemory) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-  memory_store_->Put(*MakeRayObject("data", "meta"),
-                     object_id,
-                     reference_counter_->HasReference(object_id));
-
-  WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/0,
-                                            /*fetch_local=*/true,
-                                            OnWaitAsyncDone,
-                                            &result);
-  ASSERT_EQ(handle, 0u);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready[0], 1);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncFetchLocalTruePlasmaMarkerNotReadyAtTimeoutZero) {
-  // Plasma markers are not treated as ready in the in-process pre-pass when
-  // fetch_local=true. timeout=0 must complete without SubscribePlasmaReady
-  // (the old pull-start path registered no async_plasma_callbacks_ entry and
-  // could UB / abort — asserting the subscription list catches that regression).
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                     object_id,
-                     reference_counter_->HasReference(object_id));
-
-  WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/0,
-                                            /*fetch_local=*/true,
-                                            OnWaitAsyncDone,
-                                            &result);
-  ASSERT_EQ(handle, 0u);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready[0], 0);
-  EXPECT_TRUE(fake_raylet_ipc_client_->plasma_subscriptions.empty());
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCancel) {
@@ -2032,7 +1977,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/-1,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_NE(handle, 0u);
@@ -2055,7 +1999,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   uint64_t handle2 = core_worker_->WaitAsync({object_id},
                                              /*num_objects=*/1,
                                              /*timeout_ms=*/0,
-                                             /*fetch_local=*/false,
                                              OnWaitAsyncDone,
                                              &result2);
   ASSERT_EQ(handle2, 0u);
@@ -2071,7 +2014,6 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/-1,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_NE(handle, 0u);
@@ -2095,7 +2037,6 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   uint64_t handle2 = core_worker_->WaitAsync({object_id},
                                              /*num_objects=*/1,
                                              /*timeout_ms=*/0,
-                                             /*fetch_local=*/false,
                                              OnWaitAsyncDone,
                                              &result2);
   ASSERT_EQ(handle2, 0u);
@@ -2107,11 +2048,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   // Completing a wait must deregister its memory-store GetAsync callback.
   // Otherwise the registration -- and the WaitAsyncState it references --
   // survives until an object that may never arrive shows up.
-  //
-  // NOTE: the fetch_local=true plasma branch deregisters the same way, but it
-  // is not reachable in this fixture: plasma_store_provider_ is null, so the
-  // Contains() call on that path would segfault. It is covered by inspection
-  // only.
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
@@ -2119,7 +2055,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   uint64_t handle = core_worker_->WaitAsync({object_id},
                                             /*num_objects=*/1,
                                             /*timeout_ms=*/-1,
-                                            /*fetch_local=*/false,
                                             OnWaitAsyncDone,
                                             &result);
   ASSERT_NE(handle, 0u);
@@ -2152,7 +2087,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
   core_worker_->WaitAsync({object_id},
                           /*num_objects=*/1,
                           /*timeout_ms=*/50,
-                          /*fetch_local=*/false,
                           OnWaitAsyncDone,
                           &result);
   DrainIoUntilWaitAsyncDone(io_service_, result);

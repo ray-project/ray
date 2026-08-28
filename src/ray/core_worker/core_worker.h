@@ -65,15 +65,6 @@ namespace ray::core {
 // Defined in core_worker.cc; opaque to callers.
 struct WaitAsyncState;
 
-// Plasma listeners not created by WaitAsync use id 0. WaitAsync allocates
-// ids starting at 1 so cancel cannot erase those GetAsync-plasma fallbacks.
-inline constexpr uint64_t kUnownedPlasmaCallbackId = 0;
-
-struct PlasmaReadyCallback {
-  uint64_t id = kUnownedPlasmaCallbackId;
-  std::function<void()> callback;
-};
-
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
 /// Tracks stats for inbound tasks (tasks this worker is executing).
@@ -811,13 +802,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * calling thread. Invokes ``callback`` once ``num_objects`` are ready or
    * ``timeout_ms`` elapses (``timeout_ms < 0`` waits forever).
    *
-   * Semantics match ``Wait``, except ``timeout_ms == 0`` only reports objects
-   * already present in the in-process memory store and does not start plasma
-   * pulls (``Wait`` may begin fetches even on a zero timeout).
-   * - ``fetch_local=false``: an object is ready when it is in the memory store
-   *   or a plasma marker is present (no pull).
-   * - ``fetch_local=true``: plasma objects are pulled local before ready
-   *   (when ``timeout_ms != 0``).
+   * An object is ready when it is in the in-process memory store or a plasma
+   * marker is present (exists somewhere in the cluster). This does not pull
+   * plasma objects locally.
+   *
+   * ``timeout_ms == 0`` only reports objects already present in the
+   * in-process memory store (including plasma markers) and does not start
+   * plasma pulls (``Wait`` may begin fetches even on a zero timeout).
    *
    * The callback is invoked at most once. ``ready`` is a byte array of length
    * ``n`` with 1 for ready and 0 otherwise (parallel to ``object_ids``).
@@ -829,10 +820,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] object_ids IDs of the objects to wait for. Must be unique.
    * \param[in] num_objects Number of objects that should become ready.
    * \param[in] timeout_ms Timeout in milliseconds; wait forever if negative.
-   * ``timeout_ms == 0`` only reports in-process memory hits (no timer, no
-   * plasma pull-start).
-   * \param[in] fetch_local Whether ready objects must be present on the local
-   * node.
+   * ``timeout_ms == 0`` only reports in-process memory hits (no timer).
    * \param[in] callback Invoked with status, ready bit array, length, and
    * ``user``.
    * \param[in] user Opaque pointer passed through to ``callback``.
@@ -843,7 +831,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::vector<ObjectID> &object_ids,
       int num_objects,
       int64_t timeout_ms,
-      bool fetch_local,
       void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
       void *user);
 
@@ -2206,9 +2193,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   mutable absl::Mutex plasma_mutex_;
 
   // Callbacks for when when a plasma object becomes ready.
-  absl::flat_hash_map<ObjectID, std::vector<PlasmaReadyCallback>> async_plasma_callbacks_
-      ABSL_GUARDED_BY(plasma_mutex_);
-  uint64_t next_async_plasma_callback_id_ ABSL_GUARDED_BY(plasma_mutex_) = 0;
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>
+      async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
   // In-flight WaitAsync requests for this worker. Keyed by opaque handle
   // (never by Python object address) so cancellation is ABA-safe.

@@ -1406,14 +1406,12 @@ per worker process.
 
 
 class _CoreWorkerAPI(Protocol):
-    """Structural type for :func:`get_core_worker`.
+    """Typed view of ``Worker.core_worker`` for Serve mypy / pyrefly.
 
-    This Protocol is intentionally incomplete and is meant to grow as more
-    call sites move off ``Worker.core_worker`` direct access. Only methods
-    used through the helper need to be declared here.
-
-    ``Worker.core_worker`` is attached dynamically on connect (and deleted on
-    shutdown), so static checkers do not see it on ``Worker``.
+    ``core_worker`` is attached in ``ray.init()`` and deleted on shutdown, so
+    it is not a declared attribute of :class:`Worker`. Serve type-checks
+    ``replica_result.py`` against this helper; without the Protocol those
+    checkers report ``core_worker`` / ``wait_async`` as missing.
     """
 
     def wait_async(
@@ -1421,7 +1419,6 @@ class _CoreWorkerAPI(Protocol):
         object_refs_or_generators: List[Any],
         num_returns: int,
         timeout_ms: int,
-        fetch_local: bool,
         callback: Callable,
     ) -> int:
         ...
@@ -1431,19 +1428,7 @@ class _CoreWorkerAPI(Protocol):
 
 
 def get_core_worker() -> _CoreWorkerAPI:
-    """Return the connected worker's CoreWorker.
-
-    The returned value is typed as :class:`_CoreWorkerAPI`, a structural
-    Protocol that currently declares only the wait-async helpers; extend that
-    Protocol when new call sites need additional CoreWorker methods.
-
-    Returns:
-        The process-global CoreWorker attached on ``ray.init()``.
-
-    Raises:
-        RaySystemError: If Ray is not initialized or the core worker is
-            unavailable (same condition as ``Worker.check_connected``).
-    """
+    """Return the connected worker's CoreWorker."""
     core_worker = getattr(global_worker, "core_worker", None)
     if core_worker is None:
         raise RaySystemError(
@@ -3294,7 +3279,9 @@ async def _wait_async(
     Private API. Argument shape and ``(ready, remaining)`` return value match
     :func:`ray.wait`, but this helper does not auto-init Ray or honor client
     mode. Unlike ``await obj_ref``, ``fetch_local=False`` waits for readiness
-    without pulling the object to the local node.
+    without pulling the object to the local node. ``fetch_local`` defaults to
+    True like :func:`ray.wait`, but True is not implemented; pass False or
+    use :func:`ray.wait` to pull.
 
     Cancelling the awaiting task cancels the underlying C++ wait so the
     Python callback can be released promptly.
@@ -3306,13 +3293,11 @@ async def _wait_async(
             returning.
         timeout: Max seconds to wait, or ``None`` to wait indefinitely.
             Exactly ``timeout=0`` reports waitables already present in the
-            in-process memory store and does not start plasma pulls (unlike
-            :func:`ray.wait`, which may begin fetches on a zero timeout). A
-            positive timeout below 1ms is rounded up to 1ms so it stays a
-            real wait rather than becoming that in-process-only check.
-        fetch_local: If True, wait until objects are present on the local
-            node. If False, return as soon as each object exists anywhere in
-            the cluster (no local pull).
+            in-process memory store (including plasma markers). A positive
+            timeout below 1ms is rounded up to 1ms so it stays a real wait
+            rather than becoming that in-process-only check.
+        fetch_local: Defaults to True to match :func:`ray.wait`. Only False
+            is accepted.
 
     Returns:
         A pair ``(ready, remaining)`` of waitable lists, preserving input
@@ -3366,6 +3351,8 @@ async def _wait_async(
             "num_returns cannot be greater than the number "
             "of ray_waitables provided to _wait_async."
         )
+    if fetch_local:
+        raise ValueError("_wait_async() only supports fetch_local=False")
 
     # timeout=None -> wait forever (-1). Explicit timeout uses milliseconds.
     if timeout is None:
@@ -3409,7 +3396,6 @@ async def _wait_async(
         ray_waitables,
         num_returns,
         timeout_milliseconds,
-        fetch_local,
         _on_complete,
     )
 

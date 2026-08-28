@@ -61,14 +61,12 @@ namespace ray::core {
 
 // Per-request state for one CoreWorker::WaitAsync.
 //
-// Lock order: wait_async_mu_ -> mu -> {CoreWorkerMemoryStore::mu_,
-// plasma_mutex_}. `mu` is held across memory_store_->GetAsync() and across
-// plasma_mutex_ so that registering a callback and recording its cancellation
-// token cannot interleave with completion. The reverse order must never
-// happen; it does not today because both stores only ever *post* their
-// callbacks, so neither invokes WaitAsync code while holding its own mutex.
-// `unregister` and `cancel_pending_callbacks` are both invoked with `mu`
-// released.
+// Lock order: wait_async_mu_ -> mu -> CoreWorkerMemoryStore::mu_. `mu` is
+// held across memory_store_->GetAsync() so that registering a callback and
+// recording its cancellation token cannot interleave with completion. The
+// reverse order must never happen; it does not today because the memory
+// store only ever *posts* its callbacks. `unregister` and
+// `cancel_pending_callbacks` are both invoked with `mu` released.
 struct WaitAsyncState {
   uint64_t handle = 0;
   // Unregisters this request from CoreWorker::wait_async_requests_. Must run
@@ -78,14 +76,12 @@ struct WaitAsyncState {
   std::vector<bool> ready;
   int num_objects = 0;
   int num_ready = 0;
-  bool fetch_local = true;
   bool done = false;
   void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
   void *user = nullptr;
   std::shared_ptr<boost::asio::deadline_timer> timer;
   std::vector<std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>>
       memory_callbacks;
-  std::vector<std::pair<ObjectID, uint64_t>> plasma_callbacks;
   // Runs after completion to unregister callback registrations that would otherwise wait
   // forever for an object that never arrives. It is invoked without mu held.
   std::function<void()> cancel_pending_callbacks;
@@ -1938,7 +1934,6 @@ uint64_t CoreWorker::WaitAsync(
     const std::vector<ObjectID> &ids,
     int num_objects,
     int64_t timeout_ms,
-    bool fetch_local,
     void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
     void *user) {
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -1994,7 +1989,6 @@ uint64_t CoreWorker::WaitAsync(
   std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
   state->ready.assign(ids.size(), false);
   state->num_objects = num_objects;
-  state->fetch_local = fetch_local;
   state->callback = callback;
   state->user = user;
   state->unregister = [this](uint64_t handle) {
@@ -2013,38 +2007,13 @@ uint64_t CoreWorker::WaitAsync(
         }
         std::vector<std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>>
             memory_callbacks;
-        std::vector<std::pair<ObjectID, uint64_t>> plasma_callbacks;
         {
           absl::MutexLock lock(&wait_state->mu);
           memory_callbacks.swap(wait_state->memory_callbacks);
-          plasma_callbacks.swap(wait_state->plasma_callbacks);
         }
-        // Both loops run with state->mu released; see the lock-order note on
-        // WaitAsyncState.
+        // Runs with state->mu released; see the lock-order note on WaitAsyncState.
         for (const auto &registration : memory_callbacks) {
           memory_store_->CancelGetAsync(registration.first, registration.second);
-        }
-        if (!plasma_callbacks.empty()) {
-          absl::MutexLock lock(&plasma_mutex_);
-          for (const auto &registration : plasma_callbacks) {
-            const ObjectID &object_id = registration.first;
-            const uint64_t callback_id = registration.second;
-            auto it = async_plasma_callbacks_.find(object_id);
-            if (it == async_plasma_callbacks_.end()) {
-              continue;
-            }
-            std::vector<PlasmaReadyCallback> &callbacks = it->second;
-            callbacks.erase(
-                std::remove_if(callbacks.begin(),
-                               callbacks.end(),
-                               [callback_id](const PlasmaReadyCallback &callback) {
-                                 return callback.id == callback_id;
-                               }),
-                callbacks.end());
-            if (callbacks.empty()) {
-              async_plasma_callbacks_.erase(it);
-            }
-          }
         }
       };
 
@@ -2071,22 +2040,17 @@ uint64_t CoreWorker::WaitAsync(
     if (ray_object == nullptr) {
       continue;
     }
-    // Memory objects are ready. Plasma markers are ready only when we do not
-    // require a local pull; fetch_local plasma checks stay on the io thread.
-    if (!ray_object->IsInPlasmaError() || !fetch_local) {
-      MarkWaitAsyncReady(state, i);
-    }
+    // In-memory values and plasma markers both mean the object exists in the
+    // cluster. WaitAsync does not pull plasma objects locally.
+    MarkWaitAsyncReady(state, i);
   }
   // Synchronous completion → return 0 (callback already ran; handle unregistered).
   if (IsWaitAsyncDone(state)) {
     return 0;
   }
 
-  // timeout_ms == 0: report whatever the in-process pre-pass found. Do not
-  // SubscribePlasmaReady here to "start pulls" — that requires a matching
-  // async_plasma_callbacks_ entry (HandlePlasmaObjectReady UB otherwise) and
-  // GetOwnerAddressOrDie can abort if the ref is dropped. Sync Wait starts
-  // pulls via plasma_store_provider_->Wait instead.
+  // timeout_ms == 0: report whatever the in-process pre-pass found. Sync Wait
+  // may start plasma pulls on a zero timeout; this API does not.
   if (timeout_ms == 0) {
     FinishWaitAsync(state, Status::OK());
     return 0;
@@ -2094,65 +2058,14 @@ uint64_t CoreWorker::WaitAsync(
 
   for (size_t i = 0; i < ids.size(); i++) {
     const ObjectID object_id = ids[i];
-    const auto on_memory_object = [this,
-                                   weak_state = std::weak_ptr<WaitAsyncState>(state),
-                                   i,
-                                   object_id](std::shared_ptr<RayObject> ray_object) {
+    const auto on_memory_object = [weak_state = std::weak_ptr<WaitAsyncState>(state),
+                                   i](std::shared_ptr<RayObject>) {
       std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
       if (wait_state == nullptr) {
         return;
       }
-      {
-        absl::MutexLock lock(&wait_state->mu);
-        if (wait_state->done) {
-          return;
-        }
-      }
-      if (!ray_object->IsInPlasmaError()) {
-        MarkWaitAsyncReady(wait_state, i);
-        return;
-      }
-      // Plasma marker: ready without pull when fetch_local is false.
-      if (!wait_state->fetch_local) {
-        MarkWaitAsyncReady(wait_state, i);
-        return;
-      }
-      // fetch_local=true: wait until the object is local (may pull).
-      // TODO(wait-async): batch Contains/SubscribePlasmaReady like sync Wait.
-      bool object_is_local = false;
-      if (Contains(object_id, &object_is_local).ok() && object_is_local) {
-        MarkWaitAsyncReady(wait_state, i);
-        return;
-      }
-      rpc::Address owner_address;
-      // Resolve the owner before registering a listener. GetOwnerAddressOrDie
-      // would abort the worker if the ref was dropped after the wait started.
-      // Without an owner there is nothing to subscribe to; skip this object.
-      if (!GetOwnerAddress(object_id, &owner_address).ok()) {
-        return;
-      }
-      {
-        // Keep registration and completion mutually exclusive. The completion path
-        // takes the recorded token after it marks state done, so it either removes
-        // this listener or this check observes that the wait already completed.
-        absl::MutexLock state_lock(&wait_state->mu);
-        if (wait_state->done) {
-          return;
-        }
-        absl::MutexLock plasma_lock(&plasma_mutex_);
-        do {
-          ++next_async_plasma_callback_id_;
-        } while (next_async_plasma_callback_id_ == kUnownedPlasmaCallbackId);
-        const uint64_t callback_id = next_async_plasma_callback_id_;
-        async_plasma_callbacks_[object_id].emplace_back(PlasmaReadyCallback{
-            callback_id, [weak_state, i]() {
-              if (std::shared_ptr<WaitAsyncState> plasma_state = weak_state.lock()) {
-                MarkWaitAsyncReady(plasma_state, i);
-              }
-            }});
-        wait_state->plasma_callbacks.emplace_back(object_id, callback_id);
-      }
-      raylet_ipc_client_->SubscribePlasmaReady(object_id, owner_address);
+      // Memory values and plasma markers both mean the object exists.
+      MarkWaitAsyncReady(wait_state, i);
     };
 
     // Register and record the cancellation token under one acquisition of
@@ -5249,10 +5162,7 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
       GetAsync(object_id, success, py_future);
     };
 
-    // kUnownedPlasmaCallbackId: not a WaitAsync token; cancel must not
-    // remove this GetAsync plasma fallback.
-    async_plasma_callbacks_[object_id].emplace_back(PlasmaReadyCallback{
-        kUnownedPlasmaCallbackId, std::move(plasma_arrived_callback)});
+    async_plasma_callbacks_[object_id].emplace_back(std::move(plasma_arrived_callback));
   }
 
   // Ask raylet to subscribe to object notification. Raylet will call this core worker
@@ -5265,7 +5175,7 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  std::vector<PlasmaReadyCallback> callbacks;
+  std::vector<std::function<void()>> callbacks;
   {
     absl::MutexLock lock(&plasma_mutex_);
     // A notification can arrive with no listener registered, so this lookup
@@ -5279,12 +5189,12 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
       async_plasma_callbacks_.erase(it);
     }
   }
-  for (const PlasmaReadyCallback &callback : callbacks) {
+  for (const std::function<void()> &callback : callbacks) {
     // This callback needs to be asynchronous because it runs on the io_service_, so no
     // RPCs can be processed while it's running. This can easily lead to deadlock (for
     // example if the callback calls ray.get() on an object that is dependent on an RPC
     // to be ready).
-    callback.callback();
+    callback();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
