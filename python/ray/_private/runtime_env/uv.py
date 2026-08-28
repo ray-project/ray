@@ -5,10 +5,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 from asyncio import create_task, get_running_loop
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import try_to_create_directory
@@ -19,6 +20,20 @@ from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
+
+_ENV_VAR_PATTERN = re.compile(r"\$(\w+|\{[^}]*\})", re.ASCII)
+
+
+def _expand_env_vars(value: str, env: Mapping[str, str]) -> str:
+    """Expand shell-style variables using a per-install environment snapshot."""
+
+    def replace(match: re.Match) -> str:
+        name = match.group(1)
+        if name.startswith("{"):
+            name = name[1:-1]
+        return env.get(name, match.group(0))
+
+    return _ENV_VAR_PATTERN.sub(replace, value)
 
 
 def _get_uv_hash(uv_dict: Dict) -> str:
@@ -147,6 +162,7 @@ class UvProcessor:
         """Install required python packages via `uv`."""
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
+        uv_packages = [_expand_env_vars(package, pip_env) for package in uv_packages]
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
@@ -179,7 +195,9 @@ class UvProcessor:
 
         uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
         if uv_opt_list:
-            uv_install_cmd += uv_opt_list
+            uv_install_cmd += [
+                _expand_env_vars(option, pip_env) for option in uv_opt_list
+            ]
 
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)

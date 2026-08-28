@@ -114,6 +114,26 @@ def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     assert ray.get(f.remote()) == "2.32.3"
 
 
+def test_package_install_from_working_dir_requirements(shutdown_only, tmp_path):
+    requirements_file = tmp_path / "requirements.txt"
+    requirements_file.write_text("requests==2.32.3")
+
+    ray.init(
+        runtime_env={
+            "working_dir": str(tmp_path),
+            "uv": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
+        }
+    )
+
+    @ray.remote
+    def get_requests_version():
+        import requests
+
+        return requests.__version__
+
+    assert ray.get(get_requests_version.remote()) == "2.32.3"
+
+
 # Install different versions of the same package across different tasks, used to check
 # uv cache doesn't break runtime env requirement.
 def test_package_install_with_different_versions(shutdown_only):
