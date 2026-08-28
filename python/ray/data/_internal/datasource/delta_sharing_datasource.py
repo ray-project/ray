@@ -3,7 +3,9 @@ from json import loads
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
+import pyarrow as pa
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -44,9 +46,11 @@ class DeltaSharingDatasource(Datasource):
         from delta_sharing.reader import DeltaSharingReader
 
         for file in files:
-            yield DeltaSharingReader._to_pandas(
+            pdf = DeltaSharingReader._to_pandas(
                 action=file, converters=converters, for_cdf=False, limit=None
             )
+            raise_on_pickle_object_columns(pa.Table.from_pandas(pdf))
+            yield pdf
 
     def setup_delta_sharing_connections(self, url: str):
         """
