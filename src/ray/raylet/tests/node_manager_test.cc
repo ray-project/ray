@@ -1080,6 +1080,72 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
 }
 
+TEST_F(NodeManagerTest, TestReturnWorkerLeaseOfExitingWorkerReschedulesWaitingLeases) {
+  // Lease A takes every CPU on the node, so lease B has to wait for it. B asks
+  // for a different amount so it lands in its own scheduling class: the
+  // per-class worker cap would otherwise hold it back for unrelated reasons.
+  auto lease_spec_a = BuildLeaseSpec({{"CPU", kTestTotalCpuResource}});
+  auto lease_spec_b = BuildLeaseSpec({{"CPU", kTestTotalCpuResource - 1}});
+  LeaseID lease_id_a = LeaseID::FromRandom();
+  LeaseID lease_id_b = LeaseID::FromRandom();
+  lease_spec_a.GetMutableMessage().set_lease_id(lease_id_a.Binary());
+  lease_spec_b.GetMutableMessage().set_lease_id(lease_id_b.Binary());
+
+  std::vector<PopWorkerCallback> pop_worker_callbacks;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(2)
+      .WillRepeatedly(
+          [&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+            pop_worker_callbacks.push_back(callback);
+          });
+
+  rpc::RequestWorkerLeaseRequest request_a;
+  rpc::RequestWorkerLeaseReply reply_a;
+  request_a.mutable_lease_spec()->CopyFrom(lease_spec_a.GetMessage());
+  request_a.set_backlog_size(1);
+  node_manager_->HandleRequestWorkerLease(
+      request_a,
+      &reply_a,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(pop_worker_callbacks.size(), 1);
+  auto worker_a = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  pop_worker_callbacks[0](worker_a, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  rpc::RequestWorkerLeaseRequest request_b;
+  rpc::RequestWorkerLeaseReply reply_b;
+  request_b.mutable_lease_spec()->CopyFrom(lease_spec_b.GetMessage());
+  request_b.set_backlog_size(1);
+  node_manager_->HandleRequestWorkerLease(
+      request_b,
+      &reply_b,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  // No CPU is left, so B waits and no worker is requested for it yet.
+  ASSERT_EQ(pop_worker_callbacks.size(), 1);
+
+  // A's worker returns its lease while exiting (e.g. it reached max_calls but
+  // still owns objects): it is not pushed back to the pool, but the CPUs it held
+  // are free again and B must be granted from this return alone.
+  rpc::ReturnWorkerLeaseRequest return_request;
+  rpc::ReturnWorkerLeaseReply return_reply;
+  return_request.set_lease_id(lease_id_a.Binary());
+  return_request.set_worker_exiting(true);
+  node_manager_->HandleReturnWorkerLease(
+      return_request,
+      &return_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(pop_worker_callbacks.size(), 2);
+  auto worker_b = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  pop_worker_callbacks[1](worker_b, PopWorkerStatus::OK, "");
+  ASSERT_TRUE(leased_workers_.contains(lease_id_b));
+}
+
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {
   auto lease_spec = BuildLeaseSpec({});
 
