@@ -1,4 +1,5 @@
 import argparse
+import math
 import time
 from typing import Any, Dict, Iterator
 
@@ -10,16 +11,31 @@ import ray
 from benchmark import Benchmark
 from cluster_resource_monitor import ClusterResourceMonitor
 
-# See #XXXXX for how these are derived. Don't shrink NUM_INPUTS: adding nodes
-# takes minutes, so a shorter run is flaky.
+# With 1000 inputs this takes ~30 minutes. Don't shrink it, since adding nodes
+# takes minutes and a shorter run is flaky.
 NUM_INPUTS = 1000
 BLOCKS_PER_INPUT = 4
 PRODUCE_SLEEP_S = 5
 CONSUME_SLEEP_S = 1
 BLOCK_SHAPE = (128, 1024, 1024)
 CONSUME_BATCH_SIZE = 2 * BLOCK_SHAPE[0]
-EXPECTED_GPU_NODES = 10
-MIN_CPU_NODES = 3
+
+# From the compute config.
+MAX_GPU_NODES = 10
+CPUS_PER_NODE = 8
+
+# `consume` holds one GPU, so it saturates the GPU group.
+EXPECTED_GPU_NODES = MAX_GPU_NODES
+
+# Balancing the pipeline needs this many `produce` workers per `consume` worker.
+_PRODUCE_BLOCKS_PER_S = 1 / PRODUCE_SLEEP_S
+_CONSUME_BLOCKS_PER_S = CONSUME_BATCH_SIZE / BLOCK_SHAPE[0] / CONSUME_SLEEP_S
+_PRODUCE_WORKERS_PER_CONSUME_WORKER = _CONSUME_BLOCKS_PER_S / _PRODUCE_BLOCKS_PER_S
+
+# Each `produce` worker takes one CPU. The GPU nodes supply some of them.
+_CPUS_NEEDED = EXPECTED_GPU_NODES * _PRODUCE_WORKERS_PER_CONSUME_WORKER
+_CPUS_FROM_GPU_NODES = EXPECTED_GPU_NODES * CPUS_PER_NODE
+MIN_CPU_NODES = math.ceil((_CPUS_NEEDED - _CPUS_FROM_GPU_NODES) / CPUS_PER_NODE)
 
 
 def produce(_: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
