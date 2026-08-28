@@ -1,9 +1,11 @@
 import json
+import pickle
 import unittest
 from typing import TYPE_CHECKING, Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
+import pyarrow as pa
 import pytest
 from delta_sharing.protocol import Table
 from delta_sharing.rest_client import DataSharingRestClient
@@ -12,6 +14,7 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
     _parse_delta_sharing_url,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.block import BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource.datasource import ReadTask
@@ -286,6 +289,61 @@ def test_read_delta_sharing_tables(
     assert kwargs["ray_remote_args"] == ray_remote_args
     assert kwargs["concurrency"] == concurrency
     assert kwargs["override_num_blocks"] == override_num_blocks
+
+
+def _mock_file_action(partition_values=None):
+    action = MagicMock()
+    action.url = "https://bucket.s3.us-west-2.amazonaws.com/part-00000.snappy.parquet"
+    action.partition_values = partition_values or {}
+    return action
+
+
+def test_read_files_rejects_pickle_object_columns(monkeypatch, tmp_path):
+    # The guard has to run before the pandas conversion: converting a
+    # 'ray.data.arrow_pickled_object' column to pandas is what unpickles the data,
+    # so a guard placed after the conversion never prevents the payload from running.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.delta_sharing_datasource._read_file_as_arrow",
+        lambda action: table,
+    )
+
+    datasource = DeltaSharingDatasource.__new__(DeltaSharingDatasource)
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(datasource._read_files([_mock_file_action()], converters={}))
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+def test_read_files_adds_partition_and_missing_columns(monkeypatch):
+    """Columns absent from the parquet file come from the file action or are null."""
+    table = pa.table({"eventTime": ["2021-04-28T23:33:48.719Z"]})
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.delta_sharing_datasource._read_file_as_arrow",
+        lambda action: table,
+    )
+
+    action = _mock_file_action(partition_values={"date": "2021-04-28"})
+    converters = {"eventTime": str, "date": str, "absent": str}
+
+    datasource = DeltaSharingDatasource.__new__(DeltaSharingDatasource)
+    (pdf,) = list(datasource._read_files([action], converters=converters))
+
+    assert pdf["eventTime"].tolist() == ["2021-04-28T23:33:48.719Z"]
+    assert pdf["date"].tolist() == ["2021-04-28"]
+    assert pdf["absent"].isna().all()
 
 
 if __name__ == "__main__":
