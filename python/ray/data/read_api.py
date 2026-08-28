@@ -35,6 +35,7 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hdf5_datasource import HDF5Datasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -3043,6 +3044,137 @@ def read_numpy(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hdf5(
+    paths: Union[str, List[str]],
+    *,
+    dataset: str,
+    filesystem: Optional[
+        "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
+    ] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = HDF5Datasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    # Advanced Ray remote parameters
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    max_calls: Optional[int] = None,
+    resources: Optional[Dict[str, float]] = None,
+    accelerator_type: Optional[str] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a dataset in HDF5 files.
+
+    Each item along the HDF5 dataset's first axis becomes a row in the Ray
+    Dataset's ``"data"`` column. For example, an HDF5 dataset with shape
+    ``(100, 32, 32, 3)`` produces 100 rows containing ``(32, 32, 3)`` tensors.
+    A scalar HDF5 dataset produces one row. When ``paths`` contains multiple
+    files, their datasets are concatenated and must have the same dtype and
+    per-row shape.
+
+    Compound dtypes, object and region reference dtypes, external storage,
+    virtual datasets, and null dataspaces aren't supported. String datasets are
+    decoded to Python strings; string arrays with trailing dimensions are
+    represented as nested lists. Variable-length numeric arrays are also represented
+    as nested lists and require a native-order scalar base dtype.
+
+    This function requires `h5py <https://www.h5py.org/>`_. Install it with
+    ``pip install h5py``.
+
+    Examples:
+        Read a dataset named ``observations`` from a local HDF5 file:
+
+        >>> import ray
+        >>> ds = ray.data.read_hdf5(  # doctest: +SKIP
+        ...     "/path/to/data.h5", dataset="observations"
+        ... )
+
+        Read a nested dataset from multiple files in cloud storage:
+
+        >>> ds = ray.data.read_hdf5(  # doctest: +SKIP
+        ...     "s3://bucket/episodes/",
+        ...     dataset="robot/observations",
+        ... )
+
+    Args:
+        paths: A single file or directory path, or a list of file or directory
+            paths. Directories are expanded recursively.
+        dataset: The path of the dataset inside each HDF5 file. Both
+            ``"group/data"`` and ``"/group/data"`` are accepted. The path must
+            identify an HDF5 dataset, not a group.
+        filesystem: The PyArrow or fsspec filesystem implementation to read
+            from. By default, the filesystem is inferred from ``paths``.
+        partition_filter: A path-based partition filter. By default, files are
+            filtered using ``file_extensions``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning`
+            object describing how paths are organized.
+        include_paths: If ``True``, include each source file in a ``"path"``
+            column.
+        ignore_missing_paths: If ``True``, ignore missing input paths.
+        shuffle: If ``"files"``, randomly shuffle input file order. Pass a
+            :class:`~ray.data.FileShuffleConfig` to configure the seed.
+        file_extensions: File extensions to include. Defaults to ``["h5",
+            "hdf5", "hdf"]``. Pass ``None`` to disable extension filtering.
+        concurrency: The maximum number of Ray read tasks to run concurrently.
+        override_num_blocks: Override the target number of output blocks. This
+            also controls how a large HDF5 dataset is divided into row ranges,
+            so one file can be read by multiple tasks.
+        num_cpus: The number of CPUs to reserve for each read worker.
+        num_gpus: The number of GPUs to reserve for each read worker.
+        memory: The heap memory in bytes to reserve for each read worker.
+        label_selector: Labels required on the node where each read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in
+            order if ``label_selector`` can't be satisfied.
+        max_calls: The maximum number of read tasks a worker runs before exiting.
+        resources: Custom resources to reserve for each read task.
+        accelerator_type: The accelerator type required for each read task.
+        runtime_env: The runtime environment to use for each read task.
+        ray_remote_args: Additional options passed to :func:`ray.remote` for
+            each read task. This argument is deprecated and will be removed in
+            Ray 2.64. Use the named remote parameters instead.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing rows from the selected HDF5
+        dataset in a ``"data"`` column.
+    """
+    datasource = HDF5Datasource(
+        paths,
+        dataset=dataset,
+        filesystem=filesystem,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        max_calls=max_calls,
+        resources=resources,
+        accelerator_type=accelerator_type,
+        runtime_env=runtime_env,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )

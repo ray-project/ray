@@ -804,6 +804,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hdf5",
+    size = "small",
+    srcs = ["tests/datasource/test_hdf5.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],

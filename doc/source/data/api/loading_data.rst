@@ -134,6 +134,15 @@ Delta Sharing
 
    read_delta_sharing_tables
 
+HDF5
+^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hdf5
+
 Hudi
 ^^^^
 
