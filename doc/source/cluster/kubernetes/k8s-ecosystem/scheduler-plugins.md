@@ -28,7 +28,7 @@ KubeRay v1.4.0 only supports the *single scheduler mode*. You need to have the a
 KubeRay v1.4.0 and later versions support scheduler plugins.
 
 ```sh
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 --set batchScheduler.name=scheduler-plugins
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 --set batchScheduler.name=scheduler-plugins
 ```
 
 ## Step 4: Deploy a RayCluster with gang scheduling
