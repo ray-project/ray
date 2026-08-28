@@ -15,6 +15,8 @@ from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
 
+PROMETHEUS_QUERY_TIMEOUT_S = 30
+
 
 def _query_prometheus(query: str, timestamp: float):
     # The release test runner copies prometheus_metrics.py into the workload directory.
@@ -31,7 +33,15 @@ def _query_prometheus(query: str, timestamp: float):
     async def run_query():
         client = PrometheusClient()
         try:
-            return await client.query_prometheus("query", query=query, time=timestamp)
+            return await asyncio.wait_for(
+                client.query_prometheus("query", query=query, time=timestamp),
+                timeout=PROMETHEUS_QUERY_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError(
+                "Prometheus head-node memory query timed out after "
+                f"{PROMETHEUS_QUERY_TIMEOUT_S} seconds."
+            ) from exc
         finally:
             await client.close()
 
