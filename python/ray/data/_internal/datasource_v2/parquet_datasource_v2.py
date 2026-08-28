@@ -9,6 +9,7 @@ Constructed from `read_api.read_parquet` when
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
@@ -55,6 +56,8 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -211,14 +214,22 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             )
             from ray.data._internal.util import MiB
 
+            max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+            max_shared_open_bins = env_integer(
+                "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+            )
+            split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+            logger.debug(
+                "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
+                "split_coalesced=%s)",
+                max_bin_bytes,
+                max_shared_open_bins,
+                split_coalesced,
+            )
             return OnlineBinPacker(
-                env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB),
-                max_shared_open_bins=env_integer(
-                    "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
-                ),
-                split_coalesced=env_bool(
-                    "RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False
-                ),
+                max_bin_bytes=max_bin_bytes,
+                max_shared_open_bins=max_shared_open_bins,
+                split_coalesced=split_coalesced,
             )
         return super().get_file_partitioner(**kwargs)
 

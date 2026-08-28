@@ -44,11 +44,11 @@ _DEFAULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", 10)
 # yielded list, so a large directory costs one fetch per file at ``1``. Raising
 # it trades a little latency-to-first-chunk for far fewer driver-side fetches.
 _DEFAULT_RESULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE", 1)
-# Max in-flight footer batches. ``0`` -> auto (``num_actors * 2``). A smaller
+# Max in-flight footer batches. ``None`` -> auto (``num_actors * 2``). A smaller
 # window reads fewer footers before an early ``limit`` stop cancels the pool, at
 # the cost of less pipelining on full reads.
-_DEFAULT_MAX_INFLIGHT_BATCHES = env_integer(
-    "RAY_DATA_PARQUET_FOOTER_MAX_INFLIGHT_BATCHES", 0
+_DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
+    "RAY_DATA_PARQUET_FOOTER_MAX_INFLIGHT_BATCHES", None
 )
 # Bin sizing now belongs to ``OnlineBinPacker``, which the datasource supplies
 # as a ``FilePartitioner``; see ``ParquetDatasourceV2.get_file_partitioner``.
@@ -139,7 +139,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 _DEFAULT_RESULT_BATCH_SIZE,
             )
         )
-        # In-flight footer-batch window; 0/None -> auto (``num_actors * 2``).
+        # In-flight footer-batch window; ``None`` -> auto (``num_actors * 2``).
         _inflight = (
             max_inflight_batches
             if max_inflight_batches is not None
@@ -148,7 +148,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 _DEFAULT_MAX_INFLIGHT_BATCHES,
             )
         )
-        self._max_inflight_batches = _inflight if _inflight else self._num_actors * 2
+        self._max_inflight_batches = (
+            _inflight if _inflight is not None else self._num_actors * 2
+        )
 
     def list_files(
         self,
