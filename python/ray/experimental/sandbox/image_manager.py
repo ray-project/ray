@@ -378,12 +378,9 @@ class ImageManager(BaseImageManager):
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 
-        # Docker parity: keep /tmp on the rootfs. runsc mounts a private
-        # tmpfs over an *empty* /tmp, which puts /tmp on a different device
-        # from the rootfs and breaks the rename(2)-from-/tmp pattern that
-        # works under Docker (EXDEV). A placeholder keeps it non-empty;
-        # readonly sandboxes get an explicit tmpfs mount below instead so
-        # /tmp stays writable there.
+        # Docker parity: runsc mounts a private tmpfs over an *empty*
+        # /tmp, breaking rename(2) from /tmp with EXDEV. The placeholder
+        # keeps /tmp on the rootfs; readonly sandboxes get a tmpfs below.
         tmp_dir = os.path.join(rootfs, "tmp")
         try:
             os.makedirs(tmp_dir, exist_ok=True)
@@ -483,9 +480,8 @@ class ImageManager(BaseImageManager):
             )
             existing_dests.add(_RESOLV_CONF)
 
-        # Read-write like the file container engines inject: tasks may add
-        # entries. The source is always a per-sandbox copy, never the node's
-        # own file.
+        # Read-write like the file container engines inject; the source
+        # is always a per-sandbox copy, never the node's own file.
         if hosts_source and _ETC_HOSTS not in existing_dests:
             mounts.append(
                 {
@@ -497,8 +493,7 @@ class ImageManager(BaseImageManager):
             )
             existing_dests.add(_ETC_HOSTS)
 
-        # The rootfs /tmp above is read-only whenever the rootfs is; keep
-        # /tmp always writable, as it effectively is under Docker.
+        # Keep /tmp writable on a readonly rootfs, as it is under Docker.
         if readonly and "/tmp" not in existing_dests:
             mounts.append(
                 {
@@ -589,10 +584,8 @@ class ImageManager(BaseImageManager):
             elif os.path.exists(_RESOLV_CONF):
                 resolv_conf_source = _RESOLV_CONF
 
-        # Container engines inject a per-container /etc/hosts at run time
-        # (images do not ship a usable one), and without it `localhost` does
-        # not resolve at all. Host networking additionally inherits the
-        # node's entries, mirroring the resolver handling above.
+        # Engines inject /etc/hosts at run time; without it `localhost`
+        # does not resolve. Host networking also inherits the node's entries.
         hosts_source = os.path.join(root_dir, "hosts")
         host_entries = ""
         if network == "host" and os.path.exists(_ETC_HOSTS):

@@ -170,11 +170,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
 
         if not config.readonly:
-            # The rootfs /tmp is seeded with a placeholder so runsc keeps
-            # /tmp on the rootfs device (see create_oci_spec). Remove it
-            # from this sandbox's view — the overlay makes the deletion
-            # per-sandbox while the shared cache stays seeded. Readonly
-            # sandboxes mount a tmpfs over /tmp, which hides it already.
+            # Drop the /tmp placeholder (see create_oci_spec) from this
+            # sandbox's overlay; the shared cache stays seeded, and readonly
+            # sandboxes already hide it under their tmpfs.
             cleanup_args = self._runsc_base_args(config) + [
                 "exec",
                 sandbox_id,
