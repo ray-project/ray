@@ -281,20 +281,18 @@ def take_table(
     """
     from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
+        _is_multi_chunk_extension_column,
         _is_pa_extension_type,
     )
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
         normalized_indices = None
-        if any(
-            _is_pa_extension_type(col.type) and col.num_chunks > 1
-            for col in table.columns
-        ):
+        if any(_is_multi_chunk_extension_column(col) for col in table.columns):
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
 
         new_cols = []
         for col in table.columns:
-            if _is_pa_extension_type(col.type) and col.num_chunks > 1:
+            if _is_multi_chunk_extension_column(col):
                 if normalized_indices is not None:
                     taken = try_take_chunked_tensor(col, normalized_indices)
                     if taken is not None:

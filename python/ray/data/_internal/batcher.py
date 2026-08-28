@@ -9,12 +9,13 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    PreparedChunkedTensorTakePlan,
+    PreparedChunkedTensorTake,
     try_prepare_chunked_tensor_take,
-    try_take_prepared_chunked_tensor,
 )
 from ray.data._internal.util import get_total_obj_store_mem_on_node
-from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+from ray.data._internal.utils.transform_pyarrow import (
+    _is_multi_chunk_extension_column,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
@@ -31,55 +32,45 @@ SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 
 def _prepare_local_shuffle_arrow_table(
-    table: pa.Table, *, max_output_rows: int
-) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTakePlan]]:
+    table: pa.Table,
+) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTake]]:
     """Prepare an Arrow table for repeated local-shuffle row takes.
 
     Args:
         table: Arrow shuffle buffer to prepare.
-        max_output_rows: Maximum rows produced by one take.
 
     Returns:
         A table with unsupported multi-chunk columns combined and a mapping of
         column positions to reusable tensor take plans.
     """
-
-    if not any(
-        column.num_chunks > 1 and _is_pa_extension_type(column.type)
-        for column in table.columns
-    ):
-        return (
-            transform_pyarrow.try_combine_chunked_columns(table, 1),
-            {},
-        )
+    if table.num_columns == 0:
+        return table, {}
 
     prepared_plans = {}
-    for index, column in enumerate(table.columns):
-        if column.num_chunks <= 1:
-            continue
-        plan = try_prepare_chunked_tensor_take(
-            column,
-            max_output_rows=max_output_rows,
-        )
-        if plan is not None:
-            prepared_plans[index] = plan
-
-    if not prepared_plans:
-        return transform_pyarrow.try_combine_chunked_columns(table, 1), {}
-
     columns = []
     for index, column in enumerate(table.columns):
-        if index in prepared_plans or column.num_chunks <= 1:
+        if column.num_chunks <= 1:
             columns.append(column)
-        else:
-            columns.append(transform_pyarrow.combine_chunked_array(column))
+            continue
+
+        prepared = (
+            try_prepare_chunked_tensor_take(column)
+            if _is_multi_chunk_extension_column(column)
+            else None
+        )
+        if prepared is not None:
+            prepared_plans[index] = prepared
+            columns.append(column)
+            continue
+
+        columns.append(transform_pyarrow.combine_chunked_array(column))
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_plans
 
 
 def _take_prepared_arrow_table(
     table: pa.Table,
     indices: np.ndarray,
-    prepared_plans: Dict[int, PreparedChunkedTensorTakePlan],
+    prepared_plans: Dict[int, PreparedChunkedTensorTake],
 ) -> Optional[pa.Table]:
     """Take one batch while reusing validated tensor source metadata.
 
@@ -99,7 +90,7 @@ def _take_prepared_arrow_table(
         if plan is None:
             columns.append(column.take(indices))
             continue
-        taken = try_take_prepared_chunked_tensor(plan, indices)
+        taken = plan.try_take(indices)
         if taken is None:
             return None
         columns.append(taken)
@@ -441,10 +432,7 @@ class ShufflingBatcher(BatcherInterface):
                 (
                     self._shuffle_buffer,
                     prepared_plans,
-                ) = _prepare_local_shuffle_arrow_table(
-                    self._shuffle_buffer,
-                    max_output_rows=min(self._batch_size, accessor.num_rows()),
-                )
+                ) = _prepare_local_shuffle_arrow_table(self._shuffle_buffer)
                 accessor = BlockAccessor.for_block(self._shuffle_buffer)
 
             num_rows = accessor.num_rows()
@@ -471,4 +459,8 @@ class ShufflingBatcher(BatcherInterface):
             )
             if batch is not None:
                 return batch
+            # A prepared plan should remain valid for the lifetime of one immutable
+            # shuffle buffer. If it cannot serve a take, stop retrying it for every
+            # subsequent batch and release its zero-copy views.
+            self._prepared_tensor_take_plans = {}
         return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)

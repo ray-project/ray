@@ -1,0 +1,288 @@
+"""Benchmark multi-chunk tensor row takes before and after the fast path.
+
+The disabled arm reproduces the full-column concatenate-and-take path. The
+enabled arm gathers selected rows directly from their source chunks. A
+single-chunk control verifies that the operational switch does not affect
+columns that are ineligible for the fast path.
+"""
+
+import argparse
+import gc
+import json
+import math
+import os
+import resource
+import statistics
+import subprocess
+import sys
+import time
+
+import numpy as np
+import pyarrow as pa
+
+from ray.data._internal.arrow_ops.transform_pyarrow import take_table
+from ray.data._internal.tensor_extensions import chunked_tensor_take
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+
+
+def _tensor_array(tensor_type, values):
+    values = np.ascontiguousarray(values)
+    flat_values = values.reshape(-1)
+    scalar_type = tensor_type.storage_type.value_type
+    data = pa.Array.from_buffers(
+        scalar_type,
+        flat_values.size,
+        [None, pa.py_buffer(flat_values)],
+    )
+    values_per_row = math.prod(tensor_type.shape)
+    offsets = np.arange(
+        0,
+        (len(values) + 1) * values_per_row,
+        values_per_row,
+        dtype=np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype()),
+    )
+    storage = pa.Array.from_buffers(
+        tensor_type.storage_type,
+        len(values),
+        [None, pa.py_buffer(offsets)],
+        children=[data],
+    )
+    return tensor_type.wrap_array(storage)
+
+
+def _make_table(rows, width, chunks, *, single_chunk):
+    tensor_type = ArrowTensorTypeV2((width,), pa.float32())
+    values = np.arange(rows * width, dtype=np.float32).reshape(rows, width)
+    array = _tensor_array(tensor_type, values)
+    if single_chunk:
+        return pa.table({"tensor": array}), values
+
+    boundaries = np.linspace(0, rows, chunks + 1, dtype=np.int64)
+    arrays = [
+        array.slice(
+            int(boundaries[index]),
+            int(boundaries[index + 1] - boundaries[index]),
+        )
+        for index in range(chunks)
+    ]
+    # Include empty slices to cover the layouts produced by real block pipelines.
+    arrays.insert(0, array.slice(0, 0))
+    arrays.insert(len(arrays) // 2, array.slice(rows // 2, 0))
+    arrays.append(array.slice(rows, 0))
+    return pa.table({"tensor": pa.chunked_array(arrays, type=tensor_type)}), values
+
+
+def _set_fast_path(enabled):
+    chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE = enabled
+
+
+def _take(table, indices):
+    return take_table(table, indices)
+
+
+def _time_arm(table, indices, *, enabled, iterations, warmup):
+    _set_fast_path(enabled)
+    for _ in range(warmup):
+        _take(table, indices)
+
+    samples = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        result = _take(table, indices)
+        samples.append(time.perf_counter() - start)
+        # Keep each result alive until its elapsed time has been recorded.
+        _ = result
+    return {
+        "mean_s": statistics.mean(samples),
+        "min_s": min(samples),
+    }
+
+
+def _check_correctness(table, values, indices):
+    original = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
+    try:
+        _set_fast_path(False)
+        before = _take(table, indices)
+        _set_fast_path(True)
+        after = _take(table, indices)
+    finally:
+        _set_fast_path(original)
+
+    before_values = before.column("tensor").combine_chunks().to_numpy()
+    after_values = after.column("tensor").combine_chunks().to_numpy()
+    np.testing.assert_array_equal(before_values, after_values)
+    np.testing.assert_array_equal(after_values, values[indices])
+
+
+def _peak_rss_kib():
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+
+def _run_memory_arm(args):
+    table, _ = _make_table(
+        args.rows,
+        args.width,
+        args.chunks,
+        single_chunk=args.single_chunk,
+    )
+    indices = np.random.default_rng(0).integers(
+        0,
+        args.rows,
+        size=args.batch_size,
+        dtype=np.int64,
+    )
+
+    gc.collect()
+    try:
+        import ctypes
+
+        ctypes.CDLL(None).malloc_trim(0)
+    except (AttributeError, OSError):
+        pass
+
+    baseline = _peak_rss_kib()
+    result = _take(table, indices)
+    peak = _peak_rss_kib()
+    _ = result
+    print(f"MEMORY {args.memory_arm} {peak} {baseline}")
+
+
+def _measure_memory(args, *, single_chunk):
+    measurements = {}
+    for arm, enabled in (("before", "0"), ("after", "1")):
+        command = [
+            sys.executable,
+            os.path.abspath(__file__),
+            "--rows",
+            str(args.rows),
+            "--width",
+            str(args.width),
+            "--chunks",
+            str(args.chunks),
+            "--batch-size",
+            str(args.batch_size),
+            "--memory-arm",
+            arm,
+        ]
+        if single_chunk:
+            command.append("--single-chunk")
+
+        env = {
+            **os.environ,
+            "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE": enabled,
+        }
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        memory_line = next(
+            line for line in completed.stdout.splitlines() if line.startswith("MEMORY ")
+        )
+        _, measured_arm, peak, baseline = memory_line.split()
+        peak = int(peak)
+        baseline = int(baseline)
+        measurements[f"{measured_arm}_peak_rss_kib"] = peak
+        measurements[f"{measured_arm}_baseline_rss_kib"] = baseline
+        measurements[f"{measured_arm}_incremental_peak_rss_kib"] = peak - baseline
+
+    before_incremental = measurements["before_incremental_peak_rss_kib"]
+    after_incremental = measurements["after_incremental_peak_rss_kib"]
+    if before_incremental > 0:
+        measurements["after_over_before_incremental_peak_rss_ratio"] = (
+            after_incremental / before_incremental
+        )
+    return measurements
+
+
+def _run_case(args, *, single_chunk):
+    table, values = _make_table(
+        args.rows,
+        args.width,
+        args.chunks,
+        single_chunk=single_chunk,
+    )
+    indices = np.random.default_rng(0).integers(
+        0,
+        args.rows,
+        size=args.batch_size,
+        dtype=np.int64,
+    )
+    _check_correctness(table, values, indices)
+
+    original = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
+    try:
+        before = _time_arm(
+            table,
+            indices,
+            enabled=False,
+            iterations=args.iterations,
+            warmup=args.warmup,
+        )
+        after = _time_arm(
+            table,
+            indices,
+            enabled=True,
+            iterations=args.iterations,
+            warmup=args.warmup,
+        )
+    finally:
+        _set_fast_path(original)
+
+    metrics = {
+        "time": after["min_s"],
+        "before_mean_s": before["mean_s"],
+        "before_min_s": before["min_s"],
+        "after_mean_s": after["mean_s"],
+        "after_min_s": after["min_s"],
+        "before_over_after_min_time_ratio": before["min_s"] / after["min_s"],
+        "rows": args.rows,
+        "row_width": args.width,
+        "source_chunks": table.column("tensor").num_chunks,
+        "batch_size": args.batch_size,
+    }
+    if not args.no_memory:
+        metrics.update(_measure_memory(args, single_chunk=single_chunk))
+    return metrics
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rows", type=int, default=50_000)
+    parser.add_argument("--width", type=int, default=1024)
+    parser.add_argument("--chunks", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=8192)
+    parser.add_argument("--iterations", type=int, default=15)
+    parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--no-memory", action="store_true")
+    parser.add_argument("--single-chunk", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--memory-arm",
+        choices=["before", "after"],
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = _parse_args()
+    if args.memory_arm is not None:
+        _run_memory_arm(args)
+        return
+
+    results = {
+        "multi_chunk": _run_case(args, single_chunk=False),
+        "single_chunk_control": _run_case(args, single_chunk=True),
+    }
+    output_path = os.environ.get("TEST_OUTPUT_JSON", "./result.json")
+    with open(output_path, "w") as output_file:
+        json.dump(results, output_file)
+    print(json.dumps(results, indent=2))
+    print(f"Metrics written to {output_path}")
+
+
+if __name__ == "__main__":
+    main()
