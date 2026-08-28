@@ -195,6 +195,10 @@ bool ClusterLeaseManager::CancelAllLeasesOwnedBy(
 void ClusterLeaseManager::ScheduleAndGrantLeases() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleLease();
+  ScheduleAndGrantPendingLeases();
+}
+
+void ClusterLeaseManager::ScheduleAndGrantPendingLeases() {
   std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
   for (auto shapes_it = leases_to_schedule_.begin();
        shapes_it != leases_to_schedule_.end();) {
