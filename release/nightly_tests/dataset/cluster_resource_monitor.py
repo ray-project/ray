@@ -8,8 +8,6 @@ from ray.data._internal.execution.interfaces import ExecutionResources
 
 
 class NodeCounts(NamedTuple):
-    """The number of alive worker nodes, by whether they have a GPU."""
-
     cpu: int
     gpu: int
 
@@ -65,7 +63,6 @@ class ClusterResourceMonitor:
         return ExecutionResources(cpu=self._peak_cpu_count, gpu=self._peak_gpu_count)
 
     def get_peak_node_counts(self) -> NodeCounts:
-        """Get the peak number of alive worker nodes, excluding the head node."""
         return self._peak_node_counts
 
     def _start_background_thread(

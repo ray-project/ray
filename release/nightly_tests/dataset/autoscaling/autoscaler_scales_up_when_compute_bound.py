@@ -61,7 +61,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> Dict[str, Any]:
-    """This test checks if the cluster scales up enough to balance the pipeline."""
     if not ray.is_initialized():
         ray.init()
 
