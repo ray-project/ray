@@ -62,6 +62,11 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
       pending_task_id_to_is_canceled.erase(req.TaskID());
       group_state.pending_retry_tasks.pop_front();
     }
+
+    // Nothing is queued any more, so the reorder deadline no longer applies. Leaving it
+    // armed would fire it against a stopped queue and log a timeout that did not happen.
+    group_state.wait_timer_seq_no.reset();
+    group_state.wait_timer_.cancel();
   }
 }
 
@@ -285,48 +290,71 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
       // We set a generous timeout in case the expected seq_no is never received to avoid
       // hanging. This should happen only if the client crashes or misbehaves. After the
       // timeout, all tasks will be canceled and the client (if alive) must retry.
-      group_state.wait_timer_.expires_from_now(
-          boost::posix_time::seconds(reorder_wait_seconds_));
+      //
+      // Later arrivals must not restart the deadline while the group is still waiting for
+      // the same seq_no. Re-arming it on every arrival would let a steady stream of later
+      // tasks — in this group or, via the enclosing loop over groups, in any other group
+      // of this client — push it out indefinitely, so the missing seq_no would never be
+      // skipped.
+      if (group_state.wait_timer_seq_no != group_state.next_seq_no) {
+        group_state.wait_timer_seq_no = group_state.next_seq_no;
+        group_state.wait_timer_.expires_from_now(
+            boost::posix_time::seconds(reorder_wait_seconds_));
 
-      // Redefining both below because structured bindings can't be captured in lambdas
-      // until C++20
-      auto &group_name_in = group_name;
-      auto next_seq_no = group_state.next_seq_no;
-      group_state.wait_timer_.async_wait(
-          [this, group_name_in, next_seq_no](const boost::system::error_code &error) {
-            if (error == boost::asio::error::operation_aborted) {
-              return;  // Timer deadline was adjusted.
-            }
-            std::string error_message = absl::StrFormat(
-                "Timed out waiting for seq_no %d in concurrency group %s, "
-                "after waiting for %d seconds. Cancelling all queued tasks. "
-                "This means an expected task failed to arrive at the actor via RPC. This "
-                "could be due to network issues, submitter death, or resource contention "
-                "(resource contention can cause RPC failures).",
-                next_seq_no,
-                group_name_in,
-                reorder_wait_seconds_);
-            RAY_LOG(ERROR) << error_message;
-            auto invalid_status = Status::Invalid(error_message);
-            // Cancel tasks in ALL groups if the client didn't send over the task with the
-            // expected seq no
-            for (auto &[_, group_state_in] : group_states_) {
-              while (!group_state_in.pending_tasks.empty()) {
-                auto head = group_state_in.pending_tasks.begin();
-                cancel_task_(head->second, invalid_status);
-                group_state_in.next_seq_no =
-                    std::max(group_state_in.next_seq_no, head->first + 1);
-                {
-                  absl::MutexLock lock(&mu_);
-                  pending_task_id_to_is_canceled.erase(head->second.TaskID());
-                }
-                group_state_in.pending_tasks.erase(head);
+        // Redefining both below because structured bindings can't be captured in lambdas
+        // until C++20
+        auto &group_name_in = group_name;
+        auto next_seq_no = group_state.next_seq_no;
+        group_state.wait_timer_.async_wait([this, group_name_in, next_seq_no](
+                                               const boost::system::error_code &error) {
+          if (error == boost::asio::error::operation_aborted) {
+            return;  // Timer deadline was adjusted.
+          }
+          // An expiry that is already queued cannot be called back, so the group may
+          // have moved past this seq_no, or been disarmed, while this handler waited
+          // its turn. Cancelling everything then would be wrong.
+          auto it = group_states_.find(group_name_in);
+          if (it == group_states_.end() || it->second.wait_timer_seq_no != next_seq_no) {
+            return;
+          }
+          it->second.wait_timer_seq_no.reset();
+          std::string error_message = absl::StrFormat(
+              "Timed out waiting for seq_no %d in concurrency group %s, "
+              "after waiting for %d seconds. Cancelling all queued tasks. "
+              "This means an expected task failed to arrive at the actor via RPC. This "
+              "could be due to network issues, submitter death, or resource contention "
+              "(resource contention can cause RPC failures).",
+              next_seq_no,
+              group_name_in,
+              reorder_wait_seconds_);
+          RAY_LOG(ERROR) << error_message;
+          auto invalid_status = Status::Invalid(error_message);
+          // Cancel tasks in ALL groups if the client didn't send over the task with
+          // the expected seq no
+          for (auto &[_, group_state_in] : group_states_) {
+            while (!group_state_in.pending_tasks.empty()) {
+              auto head = group_state_in.pending_tasks.begin();
+              cancel_task_(head->second, invalid_status);
+              group_state_in.next_seq_no =
+                  std::max(group_state_in.next_seq_no, head->first + 1);
+              {
+                absl::MutexLock lock(&mu_);
+                pending_task_id_to_is_canceled.erase(head->second.TaskID());
               }
+              group_state_in.pending_tasks.erase(head);
             }
-          });
+            // No deadline applies to this group any more: the loop above either skipped
+            // its gap or found nothing queued. A timer left armed here would fire and
+            // report a seq_no that is no longer outstanding.
+            group_state_in.wait_timer_seq_no.reset();
+            group_state_in.wait_timer_.cancel();
+          }
+        });
+      }
     } else {
       // We can cancel the wait timer because the head of line task is not waiting for the
       // previous seq no
+      group_state.wait_timer_seq_no.reset();
       group_state.wait_timer_.cancel();
     }
   }
