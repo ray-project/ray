@@ -411,9 +411,7 @@ def test_actor_init_failure_releases_slot_for_retry():
     )
 
     actor_set.submit(None, [])
-    failed_actor.readiness_ref.completion.set_exception(
-        ray.exceptions.RayActorError(actor_init_failed=True)
-    )
+    failed_actor.readiness_ref.completion.set_exception(ray.exceptions.ActorDiedError())
 
     assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
     replacement_ref = actor_set.submit(None, [])
@@ -451,6 +449,49 @@ def test_ambiguous_readiness_failure_retains_actor_and_fails_closed():
 
     actor_set.close()
     batch_ref.completion.set_result([])
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_actor_unavailable_readiness_retains_actor_and_fails_closed():
+    actor = _FakeActor(ready=False)
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
+    actor.readiness_ref.completion.set_exception(unavailable)
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set._slots[0].actor is actor
+    assert actor_set._error is unavailable
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+
+    actor_set.close()
+    batch_ref.completion.set_exception(unavailable)
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_actor_unavailable_batch_retains_actor_and_fails_closed():
+    actor = _FakeActor()
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
+    batch_ref.completion.set_exception(unavailable)
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set._slots[0].actor is actor
+    assert actor_set._error is unavailable
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+
+    actor_set.close()
     actor.exit_ref.completion.set_result(None)
     actor_set.join()
 
@@ -521,6 +562,37 @@ def test_elastic_pool_rejects_maxtasksperchild(shutdown_only):
     ray.init(num_cpus=1)
     with pytest.raises(ValueError, match="maxtasksperchild"):
         Pool(max_size=1, maxtasksperchild=1)
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("max_concurrency", 2),
+        ("max_restarts", 1),
+        ("max_task_retries", 1),
+    ],
+)
+def test_elastic_pool_rejects_incompatible_actor_options(option, value):
+    assert not ray.is_initialized()
+    with pytest.raises(ValueError, match=rf"{option}=.*got {value}"):
+        Pool(max_size=1, ray_remote_args={option: value})
+    assert not ray.is_initialized()
+
+
+def test_elastic_pool_accepts_serial_nonrestarting_actor_options(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        max_size=1,
+        ray_remote_args={
+            "max_concurrency": 1,
+            "max_restarts": 0,
+            "max_task_retries": 0,
+        },
+    )
+
+    assert pool.apply(abs, (-1,)) == 1
+    pool.close()
+    pool.join()
 
 
 def test_elastic_pool_scales_on_submission_and_reaps_on_idle(shutdown_only):

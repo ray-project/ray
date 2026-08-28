@@ -69,6 +69,9 @@ mailboxes, including while a new actor is waiting for resources or running its
 initializer. This creates cluster-autoscaler demand without a local dispatcher
 or readiness polling. Actor resources do not change implicitly; use
 ``ray_remote_args`` when actors should request CPUs, GPUs, or custom resources.
+Elastic slot ownership relies on a serial, non-restarting actor mailbox, so
+elastic pools reject non-default ``max_concurrency``, ``max_restarts``, and
+``max_task_retries`` actor options.
 
 Elastic pools do not currently support ``maxtasksperchild``. Fixed pools retain
 their existing construction, scheduling, and ``maxtasksperchild`` behavior.

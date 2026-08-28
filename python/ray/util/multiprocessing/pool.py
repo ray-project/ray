@@ -171,6 +171,23 @@ class _TaskFailure:
     error: BaseException
 
 
+_ELASTIC_ACTOR_OPTION_DEFAULTS = {
+    "max_concurrency": 1,
+    "max_restarts": 0,
+    "max_task_retries": 0,
+}
+
+
+def _validate_elastic_actor_options(ray_remote_args: Dict[str, Any]) -> None:
+    """Reject actor lifecycle options that invalidate elastic slot ownership."""
+    for option, required_value in _ELASTIC_ACTOR_OPTION_DEFAULTS.items():
+        if option in ray_remote_args and ray_remote_args[option] != required_value:
+            raise ValueError(
+                f"Elastic Ray Pools require {option}={required_value}; "
+                f"got {ray_remote_args[option]!r}"
+            )
+
+
 class _ElasticSlotState(Enum):
     EMPTY = auto()
     STARTING = auto()
@@ -446,7 +463,7 @@ class _ElasticActorSet:
                 self._condition.notify_all()
                 return
             if error is not None:
-                if isinstance(error, ray.exceptions.RayActorError):
+                if isinstance(error, ray.exceptions.ActorDiedError):
                     # Ray has confirmed that this actor can no longer execute
                     # work, so its bounded slot is safe to reuse.
                     self._clear_slot_locked(slot)
@@ -482,13 +499,19 @@ class _ElasticActorSet:
                 self._error = callback_error
                 self._condition.notify_all()
                 return
-            if isinstance(error, ray.exceptions.RayActorError):
+            if isinstance(error, ray.exceptions.ActorDiedError):
                 restore_capacity_floor = slot.state is _ElasticSlotState.ACTIVE
                 self._clear_slot_locked(slot)
                 if restore_capacity_floor:
                     self._restore_min_size_locked()
                 self._condition.notify_all()
                 return
+            if isinstance(error, ray.exceptions.RayActorError):
+                # ActorUnavailableError is terminal for this ObjectRef but not
+                # proof that the actor has exited. Retain the owned slot and
+                # reject later submissions instead of creating duplicate
+                # capacity while the actor may recover.
+                self._error = error
 
             slot.outstanding -= 1
             if slot.outstanding < 0:
@@ -1118,7 +1141,9 @@ class Pool:
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
-            the pool. See :func:`ray.remote` for details.
+            the pool. See :func:`ray.remote` for details. Elastic pools require
+            serial, non-restarting actors and reject non-default lifecycle and
+            task-retry options.
         min_size: minimum number of actors retained by an elastic pool.
             Supplying any elastic option enables elastic capacity management.
         max_size: maximum number of actor slots in an elastic pool. Defaults
@@ -1156,6 +1181,8 @@ class Pool:
         self._autoscale = any(
             option is not None for option in (min_size, max_size, idle_timeout_s)
         )
+        if self._autoscale:
+            _validate_elastic_actor_options(self._ray_remote_args)
 
         if context and log_once("context_argument_warning"):
             logger.warning(
