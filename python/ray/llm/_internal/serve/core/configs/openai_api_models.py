@@ -204,6 +204,22 @@ class ResponsesRequest(_ResponsesRequest):
 class ResponsesResponse(_ResponsesResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        """Dump the way vLLM's own router does, so clients see aliased names.
+
+        The schema nests OpenAI SDK types that alias fields (``schema_`` is sent
+        as ``schema``), and the generic ingress dump would emit the Python names.
+
+        Args:
+            **kwargs: Forwarded to ``BaseModel.model_dump``.
+
+        Returns:
+            The serialized response.
+        """
+        kwargs.setdefault("mode", "json")
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump(**kwargs)
+
 
 class ScoreRequest(_ScoreTextRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
