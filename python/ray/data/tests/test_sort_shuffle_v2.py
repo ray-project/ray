@@ -278,10 +278,16 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     ds = ray.data.range(10, override_num_blocks=2).sort("id")
 
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.default_hash_shuffle_parallelism = 4
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, ShuffleReduceOp)
     assert dag._preserve_partition_order
-    assert isinstance(dag.input_dependencies[0], SortShuffleMapOp)
+    map_op = dag.input_dependencies[0]
+    assert isinstance(map_op, SortShuffleMapOp)
+    # Follow the other hash-shuffle-v2 planners: without explicit boundaries,
+    # the configured default determines partition count rather than the
+    # estimated number of upstream blocks.
+    assert map_op._num_partitions == ctx.default_hash_shuffle_parallelism
 
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     dag = get_execution_plan(ds._logical_plan)[0].dag

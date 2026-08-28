@@ -1,12 +1,16 @@
 import functools
 import logging
 import typing
-from collections import deque
-from typing import Any, Deque, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    ReorderingBundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionResources,
@@ -148,10 +152,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
 
         # -- Output queue ----------------------------------------------------
-        self._output_queue: deque = deque()
-        self._ordered_output_buffer: Dict[int, Deque[RefBundle]] = {}
-        self._completed_partitions: Set[int] = set()
-        self._next_partition_to_emit = 0
+        self._output_queue: BaseBundleQueue = (
+            ReorderingBundleQueue()
+            if self._preserve_partition_order
+            else FIFOBundleQueue()
+        )
 
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
@@ -355,10 +360,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle: RefBundle = self._output_queue.popleft()
+        bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
@@ -398,8 +403,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             return
         self._shuffle_reduce_tasks.pop(partition_id)
         if self._preserve_partition_order:
-            self._completed_partitions.add(partition_id)
-            self._drain_ordered_outputs()
+            self._output_queue.finalize(key=partition_id)
         self._metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
@@ -418,41 +422,13 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         *,
         partition_complete: bool = False,
     ) -> None:
-        if not self._preserve_partition_order:
-            self._enqueue_output(bundle)
-            return
-
-        # Account for the object-store reference as soon as the reducer emits
-        # it, even if an earlier partition keeps it in the ordering buffer.
+        self._output_queue.add(bundle, key=partition_id)
         self._metrics.on_output_queued(bundle)
-        self._ordered_output_buffer.setdefault(partition_id, deque()).append(bundle)
-        if partition_complete:
-            self._completed_partitions.add(partition_id)
-        self._drain_ordered_outputs()
-
-    def _drain_ordered_outputs(self) -> None:
-        while self._next_partition_to_emit in self._completed_partitions:
-            partition_id = self._next_partition_to_emit
-            for bundle in self._ordered_output_buffer.pop(partition_id, deque()):
-                self._enqueue_output(bundle, already_tracked=True)
-            self._completed_partitions.remove(partition_id)
-            self._next_partition_to_emit += 1
-
-    def _enqueue_output(
-        self, bundle: RefBundle, *, already_tracked: bool = False
-    ) -> None:
-        self._output_queue.append(bundle)
-        if not already_tracked:
-            self._metrics.on_output_queued(bundle)
+        if self._preserve_partition_order and partition_complete:
+            self._output_queue.finalize(key=partition_id)
 
     def has_execution_finished(self) -> bool:
-        if (
-            self._shuffle_reduce_tasks
-            or self._output_queue
-            or self._pending_inputs
-            or self._ordered_output_buffer
-            or self._completed_partitions
-        ):
+        if self._shuffle_reduce_tasks or self._output_queue or self._pending_inputs:
             return False
         return super().has_execution_finished()
 
@@ -461,8 +437,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             not self._shuffle_reduce_tasks
             and not self._output_queue
             and not self._pending_inputs
-            and not self._ordered_output_buffer
-            and not self._completed_partitions
             and super().has_completed()
         )
 
@@ -470,11 +444,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
-        for outputs in self._ordered_output_buffer.values():
-            for bundle in outputs:
-                bundle.destroy_if_owned()
-        self._ordered_output_buffer.clear()
-        self._completed_partitions.clear()
         for pending in self._pending_inputs.values():
             for bundle in pending.values():
                 bundle.destroy_if_owned()

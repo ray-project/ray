@@ -148,7 +148,11 @@ class SortShuffleMapOp(ShuffleMapOp):
         self._num_sample_tasks_total = len(self._pending_sample_block_refs)
         self._num_samples_per_block = max(
             1,
-            int(self._num_partitions * 10 / self._num_sample_tasks_total),
+            int(
+                self._num_partitions
+                * SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+                / self._num_sample_tasks_total
+            ),
         )
         self._max_num_sampling_tasks_in_flight = (
             self._get_max_num_sampling_tasks_in_flight()

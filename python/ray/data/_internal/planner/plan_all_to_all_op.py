@@ -160,10 +160,7 @@ def _plan_sort_v2(
     if sort_key.boundaries:
         num_partitions = len(sort_key.boundaries) + 1
     else:
-        num_partitions = (
-            logical_op.input_dependencies[0].estimated_num_outputs()
-            or data_context.default_hash_shuffle_parallelism
-        )
+        num_partitions = data_context.default_hash_shuffle_parallelism
 
     map_op = SortShuffleMapOp(
         input_physical_op,
