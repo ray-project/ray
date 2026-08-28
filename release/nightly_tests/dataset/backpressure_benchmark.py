@@ -77,13 +77,11 @@ def run_fast_producer_slow_consumer():
     for _ in ds.iter_internal_ref_bundles():
         pass
 
-    return None
-
 
 def run_many_tiny_objects():
     """Benchmark backpressure from many small task outputs.
 
-    Produces 100,000 outputs of about 99 KiB each, or about 9.4 GiB of logical
+    Produces 100,000 outputs of about 50 KiB each, or about 4.8 GiB of logical
     output data. The payload size targets Ray's small-object direct-call path,
     while a single consumer sleeps for 10 ms per batch, creating pressure from
     many queued outputs.
@@ -92,7 +90,7 @@ def run_many_tiny_objects():
     output_batches_per_input_batch = 1
     output_batch_rows = 1
     # Stay below Ray's 100 KiB direct-call limit so outputs are sent inline.
-    output_row_bytes = 99 * 1024
+    output_row_bytes = 50 * 1024
     consumer_sleep_s = 0.01
 
     producer = functools.partial(
@@ -110,8 +108,6 @@ def run_many_tiny_objects():
     )
     for _ in ds.iter_internal_ref_bundles():
         pass
-
-    return None
 
 
 def run_training_prefetch(*, num_trainers: int):
@@ -163,8 +159,6 @@ def run_training_prefetch(*, num_trainers: int):
             for i in range(num_trainers)
         ]
     )
-
-    return None
 
 
 @ray.remote(num_cpus=1)
