@@ -1,3 +1,4 @@
+import asyncio
 import gc
 import json
 import logging
@@ -5,8 +6,6 @@ import math
 import os
 import threading
 import time
-import urllib.parse
-import urllib.request
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 import dataclasses
@@ -16,10 +15,27 @@ from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
-PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
-# Do not let an unavailable Prometheus server hang the benchmark indefinitely.
-PROMETHEUS_QUERY_TIMEOUT_S = 30
+
+def _query_prometheus(query: str, timestamp: float):
+    # The release test runner copies prometheus_metrics.py into the workload directory.
+    try:
+        from prometheus_metrics import PrometheusClient
+    except ModuleNotFoundError as exc:
+        if exc.name != "prometheus_metrics":
+            raise
+        # Use the source module when importing the benchmark from the repo root.
+        from release.ray_release.command_runner._prometheus_metrics import (
+            PrometheusClient,
+        )
+
+    async def run_query():
+        client = PrometheusClient()
+        try:
+            return await client.query_prometheus("query", query=query, time=timestamp)
+        finally:
+            await client.close()
+
+    return asyncio.run(run_query())
 
 
 def _get_peak_head_node_memory_used_bytes(
@@ -40,35 +56,14 @@ def _get_peak_head_node_memory_used_bytes(
     # cases may have no sample in their time window.
     # Prometheus requires a positive range, so use 1 ms for a zero-duration case.
     duration_ms = max(1, math.ceil((end_unix_time - start_unix_time) * 1000))
-    query_params = urllib.parse.urlencode(
-        {
-            "query": f"max_over_time({metric_selector}[{duration_ms}ms])",
-            "time": end_unix_time,
-        }
+    results = _query_prometheus(
+        f"max_over_time({metric_selector}[{duration_ms}ms])",
+        end_unix_time,
     )
-    prometheus_host = os.environ.get(
-        PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
-    ).rstrip("/")
-    url = f"{prometheus_host}/api/v1/query?{query_params}"
-
-    try:
-        with urllib.request.urlopen(
-            url, timeout=PROMETHEUS_QUERY_TIMEOUT_S
-        ) as response:
-            payload = json.load(response)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(
-            f"Failed to query Prometheus for head-node memory at {prometheus_host}."
-        ) from exc
-
-    if payload.get("status") != "success":
-        raise RuntimeError(
-            "Prometheus head-node memory query failed: "
-            f"{payload.get('error', payload)!r}."
-        )
+    if results is None:
+        raise RuntimeError("Failed to query Prometheus for head-node physical memory.")
 
     # The session and head-node filters should match exactly one time series.
-    results = payload.get("data", {}).get("result", [])
     if len(results) != 1:
         raise RuntimeError(
             f"Expected one head-node physical-memory result, got {len(results)}."
@@ -311,6 +306,9 @@ class Benchmark:
         ``run_fn`` automatically records the runtime of ``fn``. To report additional
         metrics, return a ``Dict[str, Any]`` of metric labels to metric values from your
         function.
+
+        Call ``write_result`` in a ``finally`` block to save metrics even if this
+        method fails.
         """
         gc.collect()
 
@@ -358,13 +356,9 @@ class Benchmark:
         max_head_node_memory_bytes = self._max_head_node_memory_bytes
         peak_head_node_memory_bytes = None
         if max_head_node_memory_bytes is not None:
-            try:
-                peak_head_node_memory_bytes = _get_peak_head_node_memory_used_bytes(
-                    start_unix_time, end_unix_time
-                )
-            except RuntimeError:
-                self.write_result()
-                raise
+            peak_head_node_memory_bytes = _get_peak_head_node_memory_used_bytes(
+                start_unix_time, end_unix_time
+            )
             curr_case_metrics[
                 BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
             ] = _bytes_to_gb(peak_head_node_memory_bytes)
@@ -376,7 +370,6 @@ class Benchmark:
             and max_head_node_memory_bytes is not None
             and peak_head_node_memory_bytes > max_head_node_memory_bytes
         ):
-            self.write_result()
             raise AssertionError(
                 f"Benchmark case {name!r} peak head-node physical memory "
                 f"({_bytes_to_gb(peak_head_node_memory_bytes)} GiB) exceeded the "
