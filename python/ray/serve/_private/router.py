@@ -23,6 +23,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
 )
 
 import ray
@@ -117,7 +118,7 @@ class RouterMetricsManager:
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
-        event_loop: asyncio.BaseEventLoop,
+        event_loop: asyncio.AbstractEventLoop,
     ):
         self._handle_id = handle_id
         self._deployment_id = deployment_id
@@ -206,7 +207,7 @@ class RouterMetricsManager:
         self._cached_metrics_task: Optional[asyncio.Task] = None
 
         if self._cached_metrics_enabled:
-            self._cached_num_router_requests = defaultdict(int)
+            self._cached_num_router_requests: DefaultDict[str, int] = defaultdict(int)
 
             def create_metrics_task():
                 self._cached_metrics_task = event_loop.create_task(
@@ -245,7 +246,9 @@ class RouterMetricsManager:
             # - Requests 2,3,4 get rejected since queue appears full
             # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
             # - But we already rejected Request 2 which could have been queued
-            backpressure_config = self._deployment_config.backpressure_config
+            deployment_config = self._deployment_config
+            assert deployment_config is not None
+            backpressure_config = deployment_config.backpressure_config
             e = BackPressureError(
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
@@ -476,18 +479,22 @@ class RouterMetricsManager:
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self.metrics_store.add_metrics_point(
-                self.num_requests_sent_to_replicas, timestamp
+                cast(Dict[Any, float], self.num_requests_sent_to_replicas), timestamp
             )
 
         # Prevent in memory metrics store memory from growing
-        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        autoscaling_config = self.autoscaling_config
+        assert autoscaling_config is not None
+        start_timestamp = time.time() - autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_metrics_report(self) -> HandleMetricReport:
         timestamp = time.time()
         running_requests = dict()
         avg_running_requests = dict()
-        look_back_period = self.autoscaling_config.look_back_period_s
+        autoscaling_config = self.autoscaling_config
+        assert autoscaling_config is not None
+        look_back_period = autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
         if avg_queued_requests is None:
@@ -583,7 +590,7 @@ class Router(ABC):
         *request_args,
         **request_kwargs,
     ) -> AsyncIterator[ReplicaSelection]:
-        yield
+        yield  # type: ignore[misc]  # pyrefly: ignore[invalid-yield]
 
     @abstractmethod
     def dispatch(
@@ -622,12 +629,12 @@ class AsyncioRouter:
         handle_id: str,
         self_actor_id: str,
         handle_source: DeploymentHandleSource,
-        event_loop: asyncio.BaseEventLoop,
+        event_loop: asyncio.AbstractEventLoop,
         enable_strict_max_ongoing_requests: bool,
         node_id: str,
         availability_zone: Optional[str],
         prefer_local_node_routing: bool,
-        resolve_request_arg_func: Coroutine = resolve_deployment_response,
+        resolve_request_arg_func: Callable = resolve_deployment_response,
         request_router_class: Optional[Callable] = None,
         request_router_kwargs: Optional[Dict[str, Any]] = None,
         request_router: Optional[RequestRouter] = None,
@@ -738,16 +745,22 @@ class AsyncioRouter:
 
         self.long_poll_client = LongPollClient(
             controller_handle,
-            {
-                (
-                    LongPollNamespace.DEPLOYMENT_TARGETS,
-                    deployment_id,
-                ): self.update_deployment_targets,
-                (
-                    LongPollNamespace.DEPLOYMENT_CONFIG,
-                    deployment_id,
-                ): self.update_deployment_config,
-            },
+            cast(
+                Dict[
+                    Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]],
+                    Callable[[Any], None],
+                ],
+                {
+                    (
+                        LongPollNamespace.DEPLOYMENT_TARGETS,
+                        deployment_id,
+                    ): self.update_deployment_targets,
+                    (
+                        LongPollNamespace.DEPLOYMENT_CONFIG,
+                        deployment_id,
+                    ): self.update_deployment_config,
+                },
+            ),
             call_in_event_loop=self._event_loop,
             # Multiple AsyncioRouters can share an actor (one per downstream
             # handle), so include the deployment id to disambiguate.
@@ -758,6 +771,13 @@ class AsyncioRouter:
             controller_handle, self._event_loop
         )
         shared.register(self)
+
+    @property
+    def _active_request_router(self) -> RequestRouter:
+        """The request router asserted present (lazy-loads via request_router)."""
+        router = self.request_router
+        assert router is not None, "request router is not initialized"
+        return router
 
     @property
     def request_router(self) -> Optional[RequestRouter]:
@@ -820,7 +840,7 @@ class AsyncioRouter:
 
         running_replicas = deployment_target_info.running_replicas
         if self.request_router:
-            self.request_router._update_running_replicas(running_replicas)
+            self._active_request_router._update_running_replicas(running_replicas)
         else:
             # In this case, the request router hasn't been initialized yet.
             # Store the running replicas so that we can update the request
@@ -924,7 +944,9 @@ class AsyncioRouter:
 
         # Notify request router that request completed (for cleanup, e.g., token release)
         if self.request_router:
-            self.request_router.on_request_completed(replica_id, internal_request_id)
+            self._active_request_router.on_request_completed(
+                replica_id, internal_request_id
+            )
 
         actor_died_error = self._get_actor_died_error(result)
         if actor_died_error is not None:
@@ -938,7 +960,7 @@ class AsyncioRouter:
             # send requests to this replica without actively probing, and retry
             # routing request.
             if self.request_router:
-                self.request_router.on_replica_actor_unavailable(replica_id)
+                self._active_request_router.on_replica_actor_unavailable(replica_id)
             logger.warning(
                 f"Request failed because {replica_id} is temporarily unavailable."
             )
@@ -989,7 +1011,7 @@ class AsyncioRouter:
         ):
             # Replica has died but controller hasn't notified the router yet.
             if self.request_router:
-                self.request_router.on_replica_actor_died(replica_id)
+                self._active_request_router.on_replica_actor_died(replica_id)
             logger.warning(
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
@@ -1031,9 +1053,9 @@ class AsyncioRouter:
             # See: https://github.com/ray-project/ray/issues/60624
             await self._resolve_args_with_metrics(pr)
 
-            num_curr_replicas = len(self.request_router.curr_replicas)
+            num_curr_replicas = len(self._active_request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-                replica = await self.request_router._choose_replica_for_request(
+                replica = await self._active_request_router._choose_replica_for_request(
                     pr, is_retry=is_retry
                 )
 
@@ -1046,7 +1068,7 @@ class AsyncioRouter:
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
                 # Proactively update the queue length cache.
-                self.request_router.on_send_request(replica.replica_id)
+                self._active_request_router.on_send_request(replica.replica_id)
 
             self._register_completion_callback(result, replica, pr)
             callback_registered = True
@@ -1058,11 +1080,14 @@ class AsyncioRouter:
                 return result
 
             queue_info = await result.get_rejection_response()
-            self.request_router.on_new_queue_len_info(
+            assert queue_info is not None
+            self._active_request_router.on_new_queue_len_info(
                 replica.replica_id, queue_info.num_ongoing_requests
             )
             if queue_info.accepted:
-                self.request_router.on_request_routed(pr, replica.replica_id, result)
+                self._active_request_router.on_request_routed(
+                    pr, replica.replica_id, result
+                )
                 self._register_decrement_queue_len_cache_callback(
                     result, replica.replica_id
                 )
@@ -1109,12 +1134,14 @@ class AsyncioRouter:
             # send requests to this replica without actively probing, and retry
             # routing request.
             if replica is not None:
-                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                self._active_request_router.on_replica_actor_unavailable(
+                    replica.replica_id
+                )
                 logger.warning(f"{replica.replica_id} is temporarily unavailable.")
         finally:
             # Only release if callback wasn't registered (callback handles release).
             if replica is not None and not callback_registered:
-                self.request_router.on_request_completed(
+                self._active_request_router.on_request_completed(
                     replica.replica_id, pr.metadata.internal_request_id
                 )
 
@@ -1187,6 +1214,7 @@ class AsyncioRouter:
 
         response_id = generate_request_id()
         assign_request_task = asyncio.current_task()
+        assert assign_request_task is not None
         ray.serve.context._add_request_pending_assignment(
             request_meta.internal_request_id, response_id, assign_request_task
         )
@@ -1297,20 +1325,22 @@ class AsyncioRouter:
                 # workers. Safe because there's no reservation -> no rejection
                 # -> no retry, so the queue's ordering/backoff guarantees are
                 # unused.
-                ranks = await self.request_router.choose_replicas(
-                    candidate_replicas=self.request_router._replicas_list,
+                ranks = await self._active_request_router.choose_replicas(
+                    candidate_replicas=self._active_request_router._replicas_list,
                     pending_request=pr,
                 )
-                replica = next((r for rank in ranks for r in rank), None)
-                if replica is None:
+                flat = [r for rank in ranks for r in rank]
+                candidate = flat[0] if flat else None
+                if candidate is None:
                     raise RuntimeError(
                         f"no replicas available for {self.deployment_id}"
                     )
+                replica = candidate
                 slot_token = None
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
-                node_ip=replica._replica_info.node_ip,
+                node_ip=replica._replica_info.node_ip,  # type: ignore[arg-type]
                 port=replica._replica_info.port,
                 node_id=replica.node_id,
                 availability_zone=replica.availability_zone,
@@ -1342,7 +1372,7 @@ class AsyncioRouter:
                     and not selection._completion_callback_registered
                     and self.request_router
                 ):
-                    self.request_router.on_request_completed(
+                    self._active_request_router.on_request_completed(
                         replica.replica_id, request_meta.internal_request_id
                     )
             finally:
@@ -1407,7 +1437,7 @@ class AsyncioRouter:
         )
 
         try:
-            if replica.replica_id not in self.request_router.curr_replicas:
+            if replica.replica_id not in self._active_request_router.curr_replicas:
                 raise ReplicaUnavailableError(
                     f"Replica {selection.replica_id} is no longer available"
                 )
@@ -1479,11 +1509,11 @@ class AsyncioRouter:
         """
         is_retry = False
         while True:
-            num_curr_replicas = len(self.request_router.curr_replicas)
+            num_curr_replicas = len(self._active_request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(
                 is_retry=is_retry, num_curr_replicas=num_curr_replicas
             ):
-                replica = await self.request_router._choose_replica_for_request(
+                replica = await self._active_request_router._choose_replica_for_request(
                     pr, is_retry=is_retry
                 )
                 try:
@@ -1495,12 +1525,14 @@ class AsyncioRouter:
                     is_retry = True
                     continue
                 except ActorUnavailableError:
-                    self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                    self._active_request_router.on_replica_actor_unavailable(
+                        replica.replica_id
+                    )
                     logger.warning(f"{replica.replica_id} is temporarily unavailable.")
                     is_retry = True
                     continue
 
-                self.request_router.on_new_queue_len_info(
+                self._active_request_router.on_new_queue_len_info(
                     replica.replica_id, queue_info.num_ongoing_requests
                 )
                 if queue_info.accepted:
@@ -1541,7 +1573,7 @@ class AsyncioRouter:
         """Schedule a queue-length-cache decrement for when this result completes."""
         result.add_done_callback(
             lambda _: self._event_loop.call_soon_threadsafe(
-                self.request_router.decrement_queue_len_cache,
+                self._active_request_router.decrement_queue_len_cache,
                 replica_id,
             )
         )
@@ -1559,7 +1591,7 @@ class AsyncioRouter:
         try:
             num_ongoing_requests = await selection._release_slot(force=force)
             if num_ongoing_requests is not None:
-                self.request_router.on_new_queue_len_info(
+                self._active_request_router.on_new_queue_len_info(
                     replica.replica_id, num_ongoing_requests
                 )
         except Exception:
@@ -1593,7 +1625,7 @@ class AsyncioRouter:
             raise DeploymentUnavailableError(self.deployment_id)
 
         replicas: List[RunningReplica] = list(
-            self.request_router.curr_replicas.values()
+            self._active_request_router.curr_replicas.values()
         )
         if not replicas:
             raise DeploymentUnavailableError(self.deployment_id)
@@ -1622,7 +1654,7 @@ class AsyncioRouter:
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
                 # Skip this replica and continue broadcasting to healthy replicas.
-                self.request_router.on_replica_actor_died(replica.replica_id)
+                self._active_request_router.on_replica_actor_died(replica.replica_id)
                 logger.warning(
                     f"{replica.replica_id} will not be considered for future "
                     "requests because it has died."
@@ -1631,12 +1663,14 @@ class AsyncioRouter:
             except ActorUnavailableError:
                 # Replica is temporarily unavailable. Invalidate the cache entry
                 # and continue broadcasting to other replicas.
-                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                self._active_request_router.on_replica_actor_unavailable(
+                    replica.replica_id
+                )
                 logger.warning(f"{replica.replica_id} is temporarily unavailable.")
                 continue
 
             # Proactively update the queue length cache.
-            self.request_router.on_send_request(replica.replica_id)
+            self._active_request_router.on_send_request(replica.replica_id)
 
             self._register_completion_callback(result, replica, replica_pr)
             self._register_decrement_queue_len_cache_callback(
@@ -1706,6 +1740,8 @@ class SingletonThreadRouter(Router):
                 )
 
                 def _run_router_event_loop():
+                    assert cls._asyncio_loop is not None
+                    assert cls._event_loop_monitor is not None
                     asyncio.set_event_loop(cls._asyncio_loop)
                     # Start monitoring before run_forever so the task is scheduled.
                     cls._event_loop_monitor.start(cls._asyncio_loop)
@@ -1790,7 +1826,9 @@ class SingletonThreadRouter(Router):
             except Exception:
                 logger.exception("Failed to release reserved replica slot.")
 
-        future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
+        future = asyncio.run_coroutine_threadsafe(
+            enter_context(), cast(asyncio.AbstractEventLoop, self._asyncio_loop)
+        )
         # Shield so a caller cancellation does not propagate through wrap_future
         # and cancel ``enter_context``: __aenter__ finishes and returns, so the
         # entered CM stays reachable for release. Otherwise the CM is discarded
@@ -1803,7 +1841,8 @@ class SingletonThreadRouter(Router):
             # Honor the cancellation now; release the orphaned slot on the
             # router loop instead of making the cancelled caller wait on it.
             asyncio.run_coroutine_threadsafe(
-                release_entered_context(future), self._asyncio_loop
+                release_entered_context(future),
+                cast(asyncio.AbstractEventLoop, self._asyncio_loop),
             )
             raise
 
@@ -1812,7 +1851,8 @@ class SingletonThreadRouter(Router):
         finally:
             exc_info = sys.exc_info()
             future = asyncio.run_coroutine_threadsafe(
-                exit_context(context_manager, *exc_info), self._asyncio_loop
+                exit_context(context_manager, *exc_info),
+                cast(asyncio.AbstractEventLoop, self._asyncio_loop),
             )
             # Shielded so a cancel landing during cleanup doesn't propagate
             # through wrap_future and abort __aexit__ on the router loop.
@@ -1829,7 +1869,7 @@ class SingletonThreadRouter(Router):
         try:
             selection._mark_dispatched()
         except Exception as exc:
-            future = concurrent.futures.Future()
+            future: concurrent.futures.Future = concurrent.futures.Future()
             future.set_exception(exc)
             return future
 
@@ -1880,9 +1920,10 @@ class SingletonThreadRouter(Router):
                 )
                 result.cancel()
 
-        concurrent_future = concurrent.futures.Future()
+        concurrent_future: concurrent.futures.Future = concurrent.futures.Future()
 
         def create_task_and_setup():
+            assert self._asyncio_loop is not None
             task = self._asyncio_loop.create_task(coro)
 
             # Set up your cancellation callback
@@ -1892,7 +1933,7 @@ class SingletonThreadRouter(Router):
 
             try:
                 # chain the two futures to handle direction channel of cancellation
-                futures._chain_future(
+                futures._chain_future(  # pyrefly: ignore[missing-attribute]
                     ensure_future(task, loop=self._asyncio_loop), concurrent_future
                 )
             except (SystemExit, KeyboardInterrupt):
@@ -1903,7 +1944,9 @@ class SingletonThreadRouter(Router):
                 raise
 
         # Schedule on the event loop thread
-        self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
+        cast(asyncio.AbstractEventLoop, self._asyncio_loop).call_soon_threadsafe(
+            create_task_and_setup
+        )
         return concurrent_future
 
     async def broadcast(
@@ -1918,7 +1961,8 @@ class SingletonThreadRouter(Router):
 
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
-            self._asyncio_router.shutdown(), loop=self._asyncio_loop
+            self._asyncio_router.shutdown(),
+            loop=cast(asyncio.AbstractEventLoop, self._asyncio_loop),
         )
 
 
@@ -1999,7 +2043,15 @@ class SharedRouterLongPollClient:
             )
             for deployment_id in self.routers.keys()
         }
-        self.long_poll_client.add_key_listeners(key_listeners)
+        self.long_poll_client.add_key_listeners(
+            cast(
+                Dict[
+                    Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]],
+                    Callable[[Any], None],
+                ],
+                key_listeners,
+            )
+        )
 
 
 class CurrentLoopRouter(Router):
@@ -2023,7 +2075,7 @@ class CurrentLoopRouter(Router):
     def running_replicas_populated(self) -> bool:
         return self._asyncio_router.running_replicas_populated()
 
-    def assign_request(
+    def assign_request(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         request_meta: RequestMetadata,
         *request_args,
@@ -2048,7 +2100,7 @@ class CurrentLoopRouter(Router):
         ) as selection:
             yield selection
 
-    def dispatch(
+    def dispatch(  # type: ignore[override]  # pyrefly: ignore[bad-override]
         self,
         selection: ReplicaSelection,
         request_meta: RequestMetadata,
@@ -2082,5 +2134,5 @@ class CurrentLoopRouter(Router):
             request_meta, *request_args, **request_kwargs
         )
 
-    def shutdown(self) -> asyncio.Future:
+    def shutdown(self) -> asyncio.Future:  # type: ignore[override]  # pyrefly: ignore[bad-override]
         return self._asyncio_loop.create_task(self._asyncio_router.shutdown())

@@ -82,6 +82,16 @@ RAY_CONFIG(float, memory_usage_threshold, 0.95)
 /// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
+/// When true, swap space is folded into the memory monitor's total/used
+/// accounting, the auto-computed Ray `memory` resource on each node, and the
+/// dashboard "Node Memory" graph. This lets tasks consume swap as overflow
+/// capacity before the OOM killer kicks in. Off by default because relying on
+/// swap can cause silent latency degradation (thrashing) rather than a loud
+/// failure, and most production deployments prefer the loud-failure mode.
+/// The Python `ray start` / `ray.init` paths also honor the
+/// `RAY_count_swap_in_memory_monitor` environment variable to set this.
+RAY_CONFIG(bool, count_swap_in_memory_monitor, false)
+
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold and free space is below min_memory_free_bytes then it
 /// will start killing processes to free up the space. Disabled if it is -1.
@@ -135,6 +145,17 @@ RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
+/// The TTL for CancelWorkerLease tombstones on the raylet. Note that a tombstone only has
+/// to cover the message-reordering window between a CancelWorkerLease and its
+/// matching RequestWorkerLease, not the lifetime of the lease itself.
+RAY_CONFIG(uint64_t, cancelled_lease_tombstone_ttl_ms, 10 * 60 * 1000)
+
+/// Maximum number of CancelWorkerLease tombstones retained by a raylet. Each
+/// tombstone is a 32-byte LeaseID plus an 8-byte timestamp, so 100,000 entries
+/// is roughly 10MB including flat_hash_set / deque overhead. Oldest entries
+/// are dropped when the cap is hit.
+RAY_CONFIG(uint32_t, max_cancelled_lease_tombstones, 100000)
+
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
 /// The process killing is done by memory monitor, which is enabled via
@@ -185,6 +206,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
+
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
+RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
+
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
+/// then again every 1024 objects.
+RAY_CONFIG(int64_t, free_local_objects_backlog_warn_objects_per_node, 500000)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
