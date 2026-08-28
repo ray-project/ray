@@ -295,7 +295,7 @@ def extract_tar_layer(
                     except OSError:
                         pass
 
-    for dir_path, mtime in reversed(dir_mtimes):
+    for dir_path, mtime in dir_mtimes:
         try:
             os.utime(dir_path, (mtime, mtime))
         except OSError:
