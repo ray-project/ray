@@ -42,11 +42,13 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMResponsesResponse,
     LLMScoreResponse,
     LLMTranscriptionResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ResponsesRequest,
     ScoreRequest,
     ScoreResponse,
     TokenizeCompletionRequest,
@@ -114,6 +116,7 @@ class CallMethod(Enum):
     CHAT = "chat"
     COMPLETIONS = "completions"
     TRANSCRIPTIONS = "transcriptions"
+    RESPONSES = "responses"
 
 
 DEFAULT_ENDPOINTS = {
@@ -127,6 +130,7 @@ DEFAULT_ENDPOINTS = {
     "transcriptions": lambda app: app.post(
         "/v1/audio/transcriptions",
     ),
+    "responses": lambda app: app.post("/v1/responses"),
     "score": lambda app: app.post("/v1/score"),
     "tokenize": lambda app: app.post("/tokenize"),
     "detokenize": lambda app: app.post("/detokenize"),
@@ -355,6 +359,7 @@ class OpenAiIngress(DeploymentProtocol):
             ChatCompletionRequest,
             EmbeddingRequest,
             TranscriptionRequest,
+            ResponsesRequest,
             ScoreRequest,
         ],
         call_method: str,
@@ -365,6 +370,7 @@ class OpenAiIngress(DeploymentProtocol):
             LLMCompletionsResponse,
             LLMEmbeddingsResponse,
             LLMTranscriptionResponse,
+            LLMResponsesResponse,
             LLMScoreResponse,
         ],
         None,
@@ -471,9 +477,15 @@ class OpenAiIngress(DeploymentProtocol):
 
     async def _process_llm_request(
         self,
-        body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
+        body: Union[
+            CompletionRequest,
+            ChatCompletionRequest,
+            TranscriptionRequest,
+            ResponsesRequest,
+        ],
         call_method: str,
         raw_request: Optional[Request] = None,
+        append_done: bool = True,
     ) -> Response:
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
@@ -502,7 +514,7 @@ class OpenAiIngress(DeploymentProtocol):
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them
-            openai_stream_generator = _openai_json_wrapper(gen)
+            openai_stream_generator = _openai_json_wrapper(gen, append_done=append_done)
 
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
@@ -580,6 +592,24 @@ class OpenAiIngress(DeploymentProtocol):
 
         return await self._process_llm_request(
             body, call_method=CallMethod.TRANSCRIPTIONS.value, raw_request=request
+        )
+
+    async def responses(self, body: ResponsesRequest, request: Request) -> Response:
+        """Create a model response for the given input.
+
+        Args:
+            body: The Responses request.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with the generated output.
+        """
+
+        return await self._process_llm_request(
+            body,
+            call_method=CallMethod.RESPONSES.value,
+            raw_request=request,
+            append_done=False,
         )
 
     async def score(self, body: ScoreRequest, request: Request) -> Response:
