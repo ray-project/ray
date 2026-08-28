@@ -1,9 +1,13 @@
 """Physical planner for the V2 ``ListFiles`` source operator.
 
 Emits ``FileManifest`` blocks by (a) sharding user-supplied paths into
-parallel listing tasks, (b) invoking the configured ``FileIndexer``, and
-optionally (c) globally shuffling + size-balanced bucketing before the
-downstream ``ReadFiles`` physical op consumes them.
+parallel listing tasks, (b) invoking the configured ``FileIndexer`` (which
+shuffles listed files after path discovery and before metadata fetch when a
+shuffle config is set), and optionally (c) size-balanced bucketing before
+the downstream ``ReadFiles`` physical op consumes them.
+
+A later FileDiscovery physical step will split path listing from metadata
+fetch; this planner only relocates shuffle into the indexer.
 
 Checkpoint filtering is not attached here — it's wrapped around the
 downstream ``ReadFiles`` physical op by
@@ -26,7 +30,6 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
 from ray.data._internal.datasource_v2.listing.listing_utils import (
     list_files_for_each_block,
     partition_files,
-    shuffle_files,
 )
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
@@ -84,23 +87,13 @@ def plan_list_files_op(
                 predicate=op.predicate,
                 limit=op.limit,
                 projected_columns=op.projected_columns,
+                shuffle_config=shuffle_config,
+                execution_idx=data_context._execution_idx,
             ),
             # Disable block-shaping: produce manifest blocks as-is.
             disable_block_shaping=True,
         ),
     ]
-
-    if shuffle_config is not None:
-        transform_fns.append(
-            BlockMapTransformFn(
-                partial(
-                    shuffle_files,
-                    shuffle_config=shuffle_config,
-                    execution_idx=data_context._execution_idx,
-                ),
-                disable_block_shaping=True,
-            )
-        )
 
     if partitioner is not None:
         transform_fns.append(
@@ -118,8 +111,9 @@ def plan_list_files_op(
             op,
             data_context,
             # A single task is required when shuffle needs one global RNG over
-            # the full listing, or when the partitioner packs globally (it must
-            # see every listing row, not just this shard's).
+            # the full listing (the indexer shuffles after path discovery), or
+            # when the partitioner packs globally (it must see every listing
+            # row, not just this shard's).
             should_parallelize=(
                 shuffle_config is None
                 and not (partitioner is not None and partitioner.requires_global_input)

@@ -449,7 +449,8 @@ def _read_datasource_v2(
     Wires a ``ListFiles → ReadFiles`` logical chain:
 
     - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
-      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      optional file shuffle (``FileShuffleConfig``, applied after path
+      discovery and before metadata fetch), and size-balanced
       bucketing (``RoundRobinPartitioner``). Its physical planner
       parallelizes listing across path shards and emits manifest blocks.
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket

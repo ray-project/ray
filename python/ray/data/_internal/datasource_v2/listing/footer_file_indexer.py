@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
     from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
     from ray.data.block import BlockColumn
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ _DEFAULT_MAX_INFLIGHT_BATCHES = env_integer(
 # as a ``FilePartitioner``; see ``ParquetDatasourceV2.get_file_partitioner``.
 
 
-def _manifest_of_runs(file_chunks: FileChunks) -> FileManifest:
+def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
     """One listing row per row-group run of a file.
 
     The row carries the run's exact footer stats, so a downstream partitioner
@@ -63,9 +64,9 @@ def _manifest_of_runs(file_chunks: FileChunks) -> FileManifest:
     """
     n = len(file_chunks.row_groups)
     return FileManifest.construct_manifest(
-        [file_chunks.path] * n,
-        [file_chunks.size] * n,
-        [
+        paths=[file_chunks.path] * n,
+        sizes=[file_chunks.size] * n,
+        chunk_metadatas=[
             create_chunk_metadata(
                 ParquetRowGroupChunkMetadata,
                 row_group_ids=tuple(range(rg.rg_idx, rg.rg_idx + rg.rg_count)),
@@ -85,8 +86,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
 
     Inherits directory traversal and ``list_file_infos`` from
     :class:`NonSamplingFileIndexer`; overrides :meth:`list_files` to attach exact
-    footer stats to each run instead of emitting opaque per-file chunks. Grouping
-    runs into read units is the partitioner's job -- see
+    footer stats to each run instead of emitting opaque per-file chunks. File
+    shuffle, when requested, runs after path discovery and before footer reads.
+    Grouping runs into read units is the partitioner's job -- see
     :class:`~ray.data._internal.datasource_v2.partitioners.online_bin_packer.OnlineBinPacker`.
     """
 
@@ -158,12 +160,16 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
     ) -> Iterable[FileManifest]:
-        file_infos = self.list_file_infos(
+        file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=preserve_order,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
         )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
@@ -234,7 +240,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
                 for file_chunks in ray.get(ref):
-                    yield _manifest_of_runs(file_chunks)
+                    yield _file_chunks_to_manifest(file_chunks)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
                         # stopping can never under-deliver under a filter.

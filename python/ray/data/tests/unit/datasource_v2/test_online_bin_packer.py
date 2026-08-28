@@ -11,7 +11,7 @@ from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing impo
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
-    _manifest_of_runs,
+    _file_chunks_to_manifest,
 )
 from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
     OnlineBinPacker,
@@ -109,7 +109,7 @@ def _pack(
     packer = OnlineBinPacker(max_bin_bytes, **kwargs)
     bins = []
     for file_chunks in file_chunks_list:
-        packer.add_input(_manifest_of_runs(file_chunks))
+        packer.add_input(_file_chunks_to_manifest(file_chunks))
         while packer.has_partition():
             bins.append(_manifest_map(packer.next_partition()))
     packer.finalize()
@@ -173,7 +173,7 @@ def test_full_heavy_bin_is_sealed_immediately() -> None:
     # immediately. The third makes this colour heavy and exactly fills its
     # dedicated bin, which must also seal for early scheduling.
     packer.add_input(
-        _manifest_of_runs(
+        _file_chunks_to_manifest(
             FileChunks(
                 path="a",
                 size=200,

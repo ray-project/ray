@@ -54,7 +54,9 @@ def _write_parquet(path: str, table: pa.Table) -> None:
 
 def _manifest_of(paths):
     sizes = [os.path.getsize(p) for p in paths]
-    return FileManifest.construct_manifest(paths, sizes, [None] * len(paths))
+    return FileManifest.construct_manifest(
+        paths=paths, sizes=sizes, chunk_metadatas=[None] * len(paths)
+    )
 
 
 def test_infer_schema_unpartitioned(tmp_path):
@@ -99,7 +101,7 @@ def test_infer_schema_with_include_paths(tmp_path):
 
 def test_infer_schema_returns_empty_schema_on_empty_manifest(tmp_path):
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    empty = FileManifest.construct_manifest([], [], [])
+    empty = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
     schema = datasource.infer_schema(empty)
     assert schema.names == []
 
@@ -353,7 +355,9 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     file_size = os.path.getsize(file_path)
 
     reader_whole = ParquetFileReader()
-    whole_manifest = FileManifest.construct_manifest([file_path], [file_size], [None])
+    whole_manifest = FileManifest.construct_manifest(
+        paths=[file_path], sizes=[file_size], chunk_metadatas=[None]
+    )
     whole_tables = _read_via_reader(reader_whole, whole_manifest)
     whole_rows = pa.concat_tables(whole_tables).column("id").to_pylist()
 
@@ -365,7 +369,7 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     chunk_metadatas = [md for md, _ in chunks]
     chunk_sizes = [sz for _, sz in chunks]
     chunked_manifest = FileManifest.construct_manifest(
-        paths, chunk_sizes, chunk_metadatas
+        paths=paths, sizes=chunk_sizes, chunk_metadatas=chunk_metadatas
     )
 
     reader_chunked = ParquetFileReader()
@@ -397,7 +401,7 @@ def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
     chunk_metadatas = [md for md, _ in chunks]
     chunk_sizes = [sz for _, sz in chunks]
     chunked_manifest = FileManifest.construct_manifest(
-        paths, chunk_sizes, chunk_metadatas
+        paths=paths, sizes=chunk_sizes, chunk_metadatas=chunk_metadatas
     )
 
     reader = ParquetFileReader(include_row_hash=True)
@@ -424,7 +428,9 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
     paths = [file_path] * (len(chunks) - 1)
     out_of_range_metadatas = [md for md, _ in chunks[1:]]
     sizes = [sz for _, sz in chunks[1:]]
-    manifest = FileManifest.construct_manifest(paths, sizes, out_of_range_metadatas)
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=sizes, chunk_metadatas=out_of_range_metadatas
+    )
 
     reader = ParquetFileReader()
     tables = list(reader.read(manifest))
@@ -619,9 +625,9 @@ def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
 def _row_group_manifest(path, row_group_ids, num_rows):
     """A one-row footer-path manifest selecting explicit row groups of a file."""
     return FileManifest.construct_manifest(
-        [path],
-        [0],
-        [
+        paths=[path],
+        sizes=[0],
+        chunk_metadatas=[
             create_chunk_metadata(
                 ParquetRowGroupChunkMetadata,
                 row_group_ids=tuple(row_group_ids),

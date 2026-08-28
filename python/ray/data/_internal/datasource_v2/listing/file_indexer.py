@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
 
+import numpy as np
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
@@ -22,6 +23,7 @@ from ray.data.block import BlockColumn
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,8 @@ class FileIndexer(ABC):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -60,6 +64,11 @@ class FileIndexer(ABC):
                 early. Others ignore it.
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
+            shuffle_config: When set, listed files are shuffled after path
+                discovery and before metadata fetch (footer reads, chunking).
+                :meth:`list_file_infos` is never shuffled.
+            execution_idx: Execution index used with ``shuffle_config`` to
+                derive a per-execution seed.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -78,10 +87,11 @@ class FileIndexer(ABC):
     ) -> Iterable["FileInfo"]:
         """List files as raw ``FileInfo``\\ s (path + on-disk size).
 
-        Unlike :meth:`list_files`, this yields the pre-chunk file stream. The
-        footer-based Parquet path consumes it directly -- it reads each file's
-        footer and bin-packs row groups itself, so it needs paths + sizes rather
-        than pre-chunked manifest rows.
+        Unlike :meth:`list_files`, this yields the pre-chunk file stream and is
+        never shuffled. The footer-based Parquet path consumes it (after an
+        optional file shuffle) -- it reads each file's footer and bin-packs
+        row groups itself, so it needs paths + sizes rather than pre-chunked
+        manifest rows.
         """
         ...
 
@@ -92,6 +102,23 @@ class FileInfo:
 
     path: str
     size: Optional[int]
+
+
+def _shuffle_file_infos(
+    file_infos: List[FileInfo], seed: Optional[int]
+) -> List[FileInfo]:
+    """Permute ``file_infos`` with the same seeded rule as ``FileManifest.shuffle``.
+
+    When ``seed`` is set, sort by path first so the permutation is independent
+    of upstream listing order (the threaded indexer does not preserve order).
+    """
+    n = len(file_infos)
+    if n <= 1:
+        return file_infos
+    if seed is not None:
+        file_infos = sorted(file_infos, key=lambda fi: fi.path)
+    permutation = np.random.default_rng(seed).permutation(n)
+    return [file_infos[i] for i in permutation]
 
 
 @dataclass(frozen=True)
@@ -210,18 +237,53 @@ class NonSamplingFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
     ) -> Iterable[FileManifest]:
         # This per-file listing path ignores predicate/limit/projected_columns;
         # they're consumed by metadata-aware indexers (e.g. the footer indexer).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
-        # so the manifest builder only has to chunk.
+        # so the manifest builder only has to chunk. Shuffle, when requested,
+        # happens after path discovery and before chunking.
+        file_infos = self._iter_file_infos_for_list(
+            paths,
+            filesystem=filesystem,
+            pruners=pruners,
+            preserve_order=preserve_order,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
+        )
+        yield from self._process_file_infos_to_manifests(file_infos)
+
+    def _iter_file_infos_for_list(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+    ) -> Iterable[FileInfo]:
+        """Path discovery, then optional file shuffle, before metadata fetch.
+
+        :meth:`list_file_infos` stays a pure listing stream. Shuffle, when
+        requested, materializes that stream and permutes whole files so
+        metadata-aware subclasses (footer reads) and chunking both see the
+        shuffled file order. Unshuffled listing stays streaming.
+        """
         file_infos = self.list_file_infos(
             paths,
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=preserve_order,
         )
-        yield from self._process_file_infos_to_manifests(file_infos)
+        if shuffle_config is None:
+            yield from file_infos
+            return
+        yield from _shuffle_file_infos(
+            list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+        )
 
     def _get_file_info_iterator(
         self,
@@ -359,12 +421,14 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileInfo]:
         """Yield pruned, non-empty ``FileInfo``\\ s (path + on-disk size).
 
-        The raw file-info stream that :meth:`list_files` chunks into manifests.
-        The footer-based Parquet path consumes this directly -- it reads each
-        file's footer and bin-packs row groups itself, so it needs paths + sizes
-        rather than pre-chunked manifest rows. Zero-size files are skipped and
-        ``pruners`` (file-extension / partition filters) are applied here, so
-        both listing paths share one filtering point.
+        The raw file-info stream that :meth:`list_files` (via
+        :meth:`_iter_file_infos_for_list`) optionally shuffles, then chunks
+        into manifests. The footer-based Parquet path consumes this same
+        stream -- it reads each file's footer and bin-packs row groups
+        itself, so it needs paths + sizes rather than pre-chunked manifest
+        rows. Zero-size files are skipped and ``pruners`` (file-extension /
+        partition filters) are applied here, so both listing paths share one
+        filtering point.
         """
         pruners = pruners or []
         file_info_iterator = self._get_file_info_iterator(
@@ -411,9 +475,9 @@ class NonSamplingFileIndexer(FileIndexer):
                 if len(running_paths) >= self._max_paths_per_output:
                     manifests_count += 1
                     yield FileManifest.construct_manifest(
-                        running_paths,
-                        running_file_sizes,
-                        running_chunk_metadatas,
+                        paths=running_paths,
+                        sizes=running_file_sizes,
+                        chunk_metadatas=running_chunk_metadatas,
                     )
                     running_paths = []
                     running_file_sizes = []
@@ -422,9 +486,9 @@ class NonSamplingFileIndexer(FileIndexer):
         if running_paths:
             manifests_count += 1
             yield FileManifest.construct_manifest(
-                running_paths,
-                running_file_sizes,
-                running_chunk_metadatas,
+                paths=running_paths,
+                sizes=running_file_sizes,
+                chunk_metadatas=running_chunk_metadatas,
             )
 
         logger.debug(

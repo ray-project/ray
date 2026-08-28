@@ -289,8 +289,6 @@ class OnlineBinPacker(FilePartitioner):
     listing row, hence ``requires_global_input``.
     """
 
-    requires_global_input = True
-
     def __init__(
         self,
         max_bin_bytes: int,
@@ -313,6 +311,10 @@ class OnlineBinPacker(FilePartitioner):
             self._cap, self._output, max_shared_open_bins
         )  # non-isolated bins (mixed files)
         self._heavy = _SingleFileBinPool(self._cap, self._output)
+
+    @property
+    def requires_global_input(self) -> bool:
+        return True
 
     # === Feeding ===
 
@@ -431,5 +433,7 @@ class OnlineBinPacker(FilePartitioner):
         # beyond the empty ``ChunkMetadata`` base, so the concrete list is not
         # assignable to ``List[Optional[ChunkMetadata]]`` without a cast.
         return FileManifest.construct_manifest(
-            paths, sizes, cast(List[Optional[ChunkMetadata]], chunk_metadatas)
+            paths=paths,
+            sizes=sizes,
+            chunk_metadatas=cast(List[Optional[ChunkMetadata]], chunk_metadatas),
         )

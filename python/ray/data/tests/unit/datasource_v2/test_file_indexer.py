@@ -11,8 +11,10 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
+    _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -33,6 +35,18 @@ def _list_all_file_infos(indexer, paths, **kwargs):
         pa.array(paths), filesystem=LocalFileSystem(), **kwargs
     )
     return sorted((fi.path, fi.size) for fi in file_infos)
+
+
+def _list_paths_in_order(indexer, paths, **kwargs):
+    """Run list_files and flatten paths in yield order (not sorted)."""
+    pa_paths = pa.array(paths)
+    fs = LocalFileSystem()
+    manifests = list(indexer.list_files(pa_paths, filesystem=fs, **kwargs))
+    results = []
+    for m in manifests:
+        for p in m.paths:
+            results.append(str(p))
+    return results
 
 
 @pytest.fixture(params=[1, 2], ids=["sequential", "threaded"])
@@ -480,6 +494,115 @@ class TestAsWholeFileIndexer:
         downgraded = source.as_whole_file_indexer()
 
         assert _list_all(downgraded, [str(kept), missing]) == [(str(kept), 10)]
+
+
+class TestFileShuffle:
+    """File shuffle runs after path discovery and before chunking/metadata."""
+
+    def _write_files(self, tmp_path, n=10):
+        paths = []
+        for i in range(n):
+            path = tmp_path / f"f{i:02d}.txt"
+            path.write_bytes(b"x" * (i + 1))
+            paths.append(str(path))
+        return paths
+
+    def test_seeded_shuffle_is_deterministic_and_permutes(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        listed = list(
+            indexer.list_file_infos(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+            )
+        )
+        expected_paths = [fi.path for fi in _shuffle_file_infos(listed, seed=42)]
+
+        first = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        second = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        unshuffled = _list_paths_in_order(indexer, paths, preserve_order=True)
+
+        assert first == second == expected_paths
+        assert first != unshuffled
+        assert sorted(first) == sorted(unshuffled)
+
+    def test_list_file_infos_is_not_shuffled(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        shuffled = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        infos = [
+            fi.path
+            for fi in indexer.list_file_infos(
+                pa.array(paths), filesystem=LocalFileSystem(), preserve_order=True
+            )
+        ]
+        unshuffled = _list_paths_in_order(indexer, paths, preserve_order=True)
+
+        assert infos == unshuffled
+        assert infos != shuffled
+
+    def test_unshuffled_listing_matches_file_info_order(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        infos = [
+            fi.path
+            for fi in indexer.list_file_infos(
+                pa.array(paths), filesystem=LocalFileSystem(), preserve_order=True
+            )
+        ]
+        assert _list_paths_in_order(indexer, paths, preserve_order=True) == infos
+
+
+class TestFooterIndexerFileShuffle:
+    """Footer indexer shuffles files before footer-read batches."""
+
+    def test_shuffled_file_infos_drive_footer_batches(self, tmp_path):
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        paths = []
+        for i in range(8):
+            path = tmp_path / f"f{i:02d}.parquet"
+            path.write_bytes(b"x")
+            paths.append(str(path))
+
+        indexer = FooterFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            footer_batch_size=3,
+        )
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        shuffled = list(
+            indexer._iter_file_infos_for_list(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+                shuffle_config=shuffle_config,
+            )
+        )
+        unshuffled = list(
+            indexer.list_file_infos(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+            )
+        )
+        assert [fi.path for fi in shuffled] != [fi.path for fi in unshuffled]
+        assert [fi.path for fi in shuffled] == [
+            fi.path for fi in _shuffle_file_infos(unshuffled, seed=42)
+        ]
+
+        batches = list(indexer._batches(iter(shuffled)))
+        flattened = [p for batch in batches for p, _ in batch]
+        assert flattened == [fi.path for fi in shuffled]
+        assert len(batches) > 1
 
 
 if __name__ == "__main__":
