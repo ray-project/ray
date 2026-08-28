@@ -419,3 +419,9 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
     tables = list(reader.read(manifest))
     # All sub-fragments are out-of-range -> 0 tables emitted.
     assert sum(t.num_rows for t in tables) == 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
