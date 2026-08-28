@@ -1,15 +1,41 @@
 import time
 import threading
-from typing import Tuple, Optional
+from typing import NamedTuple, Tuple, Optional
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.data._internal.execution.interfaces import ExecutionResources
+
+
+class NodeCounts(NamedTuple):
+    """The number of alive worker nodes, by whether they have a GPU."""
+
+    cpu: int
+    gpu: int
+
+
+def _count_worker_nodes() -> NodeCounts:
+    """Count the alive worker nodes, excluding the head node.
+
+    A node counts as a GPU node if it has any GPU resource.
+    """
+    cpu_nodes = 0
+    gpu_nodes = 0
+    for node in ray.nodes():
+        if not node.get("Alive", False):
+            continue
+        resources = node.get("Resources", {})
+        if HEAD_NODE_RESOURCE_NAME in resources:
+            continue
+        if resources.get("GPU", 0) > 0:
+            gpu_nodes += 1
+        else:
+            cpu_nodes += 1
+    return NodeCounts(cpu=cpu_nodes, gpu=gpu_nodes)
 
 
 class ClusterResourceMonitor:
     """Monitor and validate cluster resources during benchmark execution.
-
-    This class tracks the peak number of cluster resources during execution.
 
     This can be used to validate that the autoscaler behaves well.
     """
@@ -23,6 +49,7 @@ class ClusterResourceMonitor:
 
         self._peak_cpu_count: float = 0
         self._peak_gpu_count: float = 0
+        self._peak_node_counts = NodeCounts(cpu=0, gpu=0)
 
     def __repr__(self):
         return "ClusterResourceMonitor()"
@@ -36,6 +63,10 @@ class ClusterResourceMonitor:
 
     def get_peak_cluster_resources(self) -> ExecutionResources:
         return ExecutionResources(cpu=self._peak_cpu_count, gpu=self._peak_gpu_count)
+
+    def get_peak_node_counts(self) -> NodeCounts:
+        """Get the peak number of alive worker nodes, excluding the head node."""
+        return self._peak_node_counts
 
     def _start_background_thread(
         self, interval_s: float = 5.0
@@ -51,6 +82,13 @@ class ClusterResourceMonitor:
                 self._peak_gpu_count = max(
                     self._peak_gpu_count, resources.get("GPU", 0)
                 )
+
+                node_counts = _count_worker_nodes()
+                self._peak_node_counts = NodeCounts(
+                    cpu=max(self._peak_node_counts.cpu, node_counts.cpu),
+                    gpu=max(self._peak_node_counts.gpu, node_counts.gpu),
+                )
+
                 time.sleep(interval_s)
 
         thread = threading.Thread(target=monitor_cluster_resources, daemon=True)

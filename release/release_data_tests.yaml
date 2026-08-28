@@ -1317,3 +1317,19 @@
       env: aws
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: autoscaler_scales_up_when_compute_bound
+  python: "3.10"
+  group: data-autoscaling
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: autoscaling/autoscaler_scales_up_when_compute_bound_cluster_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python autoscaling/autoscaler_scales_up_when_compute_bound.py
