@@ -1,14 +1,14 @@
 {
-    "_dashboard_memory_usage_mb": 103.510016,
+    "_dashboard_memory_usage_mb": 140.095488,
     "_dashboard_test_success": true,
-    "_peak_memory": 10.66,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3989\t0.53GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n3087\t0.36GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n9017\t0.18GiB\tpython distributed/test_many_tasks.py --num-tasks=1000\n4192\t0.16GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4667\t0.15GiB\tray::DashboardAgent\n3228\t0.12GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/_main/infra/dataplane/web\n1350\t0.12GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n5093\t0.09GiB\tray::StateAPIGeneratorActor.start\n4669\t0.09GiB\tray::RuntimeEnvAgent\n4195\t0.09GiB\tray-dashboard-StateHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import",
+    "_peak_memory": 10.7,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n4114\t0.5GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n3265\t0.41GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n10449\t0.17GiB\tpython distributed/test_many_tasks.py --num-tasks=1000\n4800\t0.17GiB\tray::DashboardAgent\n4325\t0.17GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n1317\t0.15GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3259\t0.13GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/_main/infra/dataplane/web\n4245\t0.12GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n4323\t0.1GiB\tray-dashboard-EventHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import\n6513\t0.09GiB\tray::StateAPIGeneratorActor.start",
     "num_tasks": 1000,
     "perf_metrics": [
         {
             "perf_metric_name": "tasks_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 372.4894970726082
+            "perf_metric_value": 385.5788517330624
         },
         {
             "perf_metric_name": "used_cpus_by_deadline",
@@ -18,20 +18,20 @@
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 5.563
+            "perf_metric_value": 8.032
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 21.245
+            "perf_metric_value": 41.814
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 73.808
+            "perf_metric_value": 57.05
         }
     ],
-    "tasks_per_second": 372.4894970726082,
-    "time": 302.68463945388794,
+    "tasks_per_second": 385.5788517330624,
+    "time": 302.59350323677063,
     "used_cpus": 250.0
 }
