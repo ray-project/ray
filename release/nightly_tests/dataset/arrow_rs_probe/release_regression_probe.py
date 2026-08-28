@@ -46,6 +46,7 @@ release write bucket s3://ray-data-write-benchmark may be unwritable to us).
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -60,6 +61,7 @@ SNIPPET = r"""
 import importlib, json, re, sys, time
 
 mod_name, argv_json, write_root, dry = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+sched_mem_gb = int(sys.argv[5])
 mod = importlib.import_module(mod_name)
 if dry:
     print("CELL_JSON " + json.dumps({"dry_run": True}))
@@ -68,7 +70,12 @@ if write_root and hasattr(mod, "WRITE_PATH"):
     mod.WRITE_PATH = write_root
 sys.argv = [mod_name] + json.loads(argv_json)
 import ray
-ray.init(address="local")
+
+# _memory inflates only the SCHEDULING memory resource (nothing is allocated);
+# stock, multi-JoinOperator/aggregator cells deadlock on one box: the operators'
+# reservations consume the whole ~14.4GiB budget and upstream tasks starve
+# (seen on tpch q2 sf10, PyArrow arm too).
+ray.init(address="local", **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}))
 t0 = time.monotonic()
 mod.main(mod.parse_args())
 wall = time.monotonic() - t0
@@ -234,17 +241,42 @@ def run_cell(name, module, argv, extra_env, reader, a):
         json.dumps(argv),
         write_root,
         "1" if a.dry_run else "0",
+        str(a.sched_mem_gb),
     ]
     log_path = os.path.join(a.outdir, f"{tag}.log")
     if not a.dry_run:
         print(f"    -> {tag} running (tail -f {log_path})", flush=True)
     t0 = time.perf_counter()
+    timed_out = False
     with open(log_path, "w") as fh:
         fh.write(f"# {module} {' '.join(argv)} reader={reader}\n")
         fh.flush()
-        proc = subprocess.run(cmd, env=env, stdout=fh, stderr=subprocess.STDOUT)
+        # start_new_session: one process group per cell, so a timeout reaps the
+        # local Ray daemons too instead of leaking RSS into the next cells.
+        proc = subprocess.Popen(
+            cmd, env=env, stdout=fh, stderr=subprocess.STDOUT, start_new_session=True
+        )
+        try:
+            proc.wait(timeout=None if a.dry_run else a.cell_timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
     with open(log_path) as fh:
         out = fh.read()
+    if timed_out:
+        print(
+            f"    !! {tag} TIMEOUT after {a.cell_timeout}s (see {tag}.log)", flush=True
+        )
+        return {"timeout_s": a.cell_timeout}
     line = next((ln for ln in out.splitlines() if ln.startswith("CELL_JSON ")), None)
     if line is None:
         print(f"    !! {tag} FAILED rc={proc.returncode} (see {tag}.log)", flush=True)
@@ -295,6 +327,19 @@ def main():
         "--join-types",
         default="right_outer",
         help="right_outer, or all four for the sustained-wUSS addendum",
+    )
+    p.add_argument(
+        "--cell-timeout",
+        type=int,
+        default=int(os.environ.get("PROBE_CELL_TIMEOUT", "1800")),
+        help="kill a cell's whole process group after this many seconds",
+    )
+    p.add_argument(
+        "--sched-mem-gb",
+        type=int,
+        default=int(os.environ.get("PROBE_SCHED_MEM_GB", "64")),
+        help="scheduling-only memory resource for the local Ray instance "
+        "(0 = stock; stock deadlocks multi-join/aggregator cells on one box)",
     )
     p.add_argument(
         "--dry-run",

@@ -35,6 +35,7 @@ Needs AWS credentials (public bucket s3://ray-benchmark-data/tpch/parquet).
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -51,12 +52,18 @@ import importlib, json, re, sys, time
 from types import SimpleNamespace
 
 query, sf, dry = sys.argv[1], int(sys.argv[2]), sys.argv[3] == "1"
+sched_mem_gb = int(sys.argv[4])
 mod = importlib.import_module(query)
 if dry:
     print("CELL_JSON " + json.dumps({"dry_run": True}))
     raise SystemExit(0)
 import ray
-ray.init(address="local")
+
+# _memory inflates only the SCHEDULING memory resource (nothing is allocated).
+# Without it, one 8-core/30GB box deadlocks on multi-join hash_shuffle queries:
+# two JoinOperators each reserve num_partitions x ~450MB of the ~14.4GiB budget
+# and upstream shuffle tasks starve forever (seen on q2 sf10, PyArrow arm too).
+ray.init(address="local", **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}))
 t0 = time.monotonic()
 mod.main(SimpleNamespace(sf=sf))
 wall = time.monotonic() - t0
@@ -72,7 +79,7 @@ print("CELL_JSON " + json.dumps({"wall_s": round(wall, 1), "spilled_gb": spilled
 """
 
 
-def run_cell(query, strategy, reader, sf, outdir, dry_run):
+def run_cell(query, strategy, reader, sf, outdir, dry_run, timeout_s, sched_mem_gb):
     tag = f"{query}.{strategy}.{reader}"
     env = dict(os.environ)
     env["PYTHONPATH"] = (
@@ -81,7 +88,15 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run):
     env["RAY_DATA_DEFAULT_SHUFFLE_STRATEGY"] = strategy
     env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
     env["TEST_OUTPUT_JSON"] = os.path.join(outdir, f"{tag}.benchmark.json")
-    cmd = [sys.executable, "-c", SNIPPET, query, str(sf), "1" if dry_run else "0"]
+    cmd = [
+        sys.executable,
+        "-c",
+        SNIPPET,
+        query,
+        str(sf),
+        "1" if dry_run else "0",
+        str(sched_mem_gb),
+    ]
     log_path = os.path.join(outdir, f"{tag}.log")
     if not dry_run:
         # A q9 cell at sf10 runs for MINUTES; stream the query's own output to
@@ -89,12 +104,35 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run):
         # the buffered version looked like a hang.
         print(f"    -> {tag} running (tail -f {log_path})", flush=True)
     t0 = time.perf_counter()
+    timed_out = False
     with open(log_path, "w") as fh:
         fh.write(f"# strategy={strategy} reader={reader} sf={sf}\n")
         fh.flush()
-        proc = subprocess.run(cmd, env=env, stdout=fh, stderr=subprocess.STDOUT)
+        # start_new_session puts the cell + its local Ray daemons in one process
+        # group, so a timeout can reap raylet/gcs/workers too (a bare kill of the
+        # driver leaks them, and idle workers hold RSS the next cells then lack).
+        proc = subprocess.Popen(
+            cmd, env=env, stdout=fh, stderr=subprocess.STDOUT, start_new_session=True
+        )
+        try:
+            proc.wait(timeout=None if dry_run else timeout_s)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
     with open(log_path) as fh:
         out = fh.read()
+    if timed_out:
+        print(f"    !! {tag} TIMEOUT after {timeout_s}s (see {tag}.log)", flush=True)
+        return {"timeout_s": timeout_s}
     line = next((ln for ln in out.splitlines() if ln.startswith("CELL_JSON ")), None)
     if line is None:
         print(f"    !! {tag} FAILED rc={proc.returncode} (see {tag}.log)", flush=True)
@@ -114,6 +152,19 @@ def main():
     p.add_argument("--queries", default="tpch_q9,tpch_q20")
     p.add_argument("--strategies", default="hash_shuffle,hash_shuffle_v2")
     p.add_argument(
+        "--cell-timeout",
+        type=int,
+        default=int(os.environ.get("TPCH_CELL_TIMEOUT", "1200")),
+        help="kill a cell's whole process group after this many seconds",
+    )
+    p.add_argument(
+        "--sched-mem-gb",
+        type=int,
+        default=int(os.environ.get("PROBE_SCHED_MEM_GB", "64")),
+        help="scheduling-only memory resource for the local Ray instance "
+        "(0 = stock; stock deadlocks multi-join hash_shuffle cells on one box)",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="import-and-exit per cell: validates module/env plumbing offline",
@@ -126,7 +177,16 @@ def main():
         for strategy in a.strategies.split(","):
             for reader in ("pa", "rs"):
                 runs = [
-                    run_cell(query, strategy, reader, a.sf, a.outdir, a.dry_run)
+                    run_cell(
+                        query,
+                        strategy,
+                        reader,
+                        a.sf,
+                        a.outdir,
+                        a.dry_run,
+                        a.cell_timeout,
+                        a.sched_mem_gb,
+                    )
                     for _ in range(a.repeat)
                 ]
                 good = sorted(
