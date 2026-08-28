@@ -11,8 +11,8 @@ import ray
 from benchmark import Benchmark
 from cluster_resource_monitor import ClusterResourceMonitor
 
-# With 1000 inputs this takes ~30 minutes. Don't shrink it, since adding nodes
-# takes minutes and a shorter run is flaky.
+# With 1000 inputs this takes ~30 minutes, long enough that node provisioning
+# speed doesn't make the test flaky.
 NUM_INPUTS = 1000
 BLOCKS_PER_INPUT = 4
 PRODUCE_SLEEP_S = 5
@@ -24,15 +24,12 @@ CONSUME_BATCH_SIZE = 2 * BLOCK_SHAPE[0]
 MAX_GPU_NODES = 10
 CPUS_PER_NODE = 8
 
-# `consume` holds one GPU, so it saturates the GPU group.
 EXPECTED_GPU_NODES = MAX_GPU_NODES
 
-# Balancing the pipeline needs this many `produce` workers per `consume` worker.
 _PRODUCE_BLOCKS_PER_S = 1 / PRODUCE_SLEEP_S
 _CONSUME_BLOCKS_PER_S = CONSUME_BATCH_SIZE / BLOCK_SHAPE[0] / CONSUME_SLEEP_S
 _PRODUCE_WORKERS_PER_CONSUME_WORKER = _CONSUME_BLOCKS_PER_S / _PRODUCE_BLOCKS_PER_S
 
-# Each `produce` worker takes one CPU. The GPU nodes supply some of them.
 _CPUS_NEEDED = EXPECTED_GPU_NODES * _PRODUCE_WORKERS_PER_CONSUME_WORKER
 _CPUS_FROM_GPU_NODES = EXPECTED_GPU_NODES * CPUS_PER_NODE
 MIN_CPU_NODES = math.ceil((_CPUS_NEEDED - _CPUS_FROM_GPU_NODES) / CPUS_PER_NODE)
@@ -61,6 +58,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> Dict[str, Any]:
+    """This test checks if the cluster scales up enough to balance the pipeline."""
     if not ray.is_initialized():
         ray.init()
 
