@@ -27,6 +27,10 @@ try:
         ErrorInfo as _ErrorInfo,
         ErrorResponse as _ErrorResponse,
     )
+    from vllm.entrypoints.openai.responses.protocol import (
+        ResponsesRequest as _ResponsesRequest,
+        ResponsesResponse as _ResponsesResponse,
+    )
     from vllm.entrypoints.pooling.embed.protocol import (
         EmbeddingChatRequest as _EmbeddingChatRequest,
         EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
@@ -92,6 +96,8 @@ except ImportError as _vllm_import_error:
     _TranscriptionStreamResponse = _unsupported_model(
         "TranscriptionStreamResponse", _vllm_hint
     )
+    _ResponsesRequest = _unsupported_model("ResponsesRequest", _vllm_hint)
+    _ResponsesResponse = _unsupported_model("ResponsesResponse", _vllm_hint)
 
     # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
     # pattern, so we define our own.
@@ -179,6 +185,23 @@ class TranscriptionResponse(_TranscriptionResponse):
 
 
 class TranscriptionStreamResponse(_TranscriptionStreamResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ResponsesRequest(_ResponsesRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    request_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description=(
+            "The request_id related to this request. If the caller does "
+            "not set it, a random_uuid will be generated. This id is used "
+            "through out the inference process and return in response."
+        ),
+    )
+
+
+class ResponsesResponse(_ResponsesResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
