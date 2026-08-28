@@ -1234,7 +1234,12 @@ class DataIterator(abc.ABC):
         options.experimental_distribute.auto_shard_policy = (
             tf.data.experimental.AutoShardPolicy.OFF
         )
-        return dataset.with_options(options)
+        # Disable TF auto-sharding for pre-sharded Ray datasets. When using
+        # train.get_dataset_shard with MultiWorkerMirroredStrategy, each worker
+        # already receives a disjoint shard (n_rows / n_workers). If TF were to
+        # re-shard the dataset, the effective step count would double
+        # (e.g., 33 -> 66 for 2000 rows, 2 workers, batch 31). See #61838.
+        return dataset.with_options(options).prefetch(tf.data.AUTOTUNE)
 
     @PublicAPI
     def materialize(self) -> "MaterializedDataset":
