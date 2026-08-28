@@ -526,6 +526,7 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
     with tarfile.open(fileobj=buf, mode="w") as tar:
         dir_info = tarfile.TarInfo("etc")
         dir_info.type = tarfile.DIRTYPE
+        dir_info.mode = 0o755  # TarInfo defaults to 0644; dir modes are honored now
         dir_info.mtime = archived_mtime
         tar.addfile(dir_info)
         file_info = tarfile.TarInfo("etc/os-release")
@@ -540,6 +541,8 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
 
     assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
     assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+
+
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
     and /tmp stays on the rootfs (readonly sandboxes get an explicit tmpfs
@@ -622,6 +625,39 @@ def test_extract_tar_layer_applies_directory_modes(tmp_path):
     extract_tar_layer(buf.getvalue(), str(dest))
 
     assert stat.S_IMODE(os.stat(dest / "tmp").st_mode) == 0o1777
+
+
+def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
+    """Directory modes are applied after extraction, children first: tar
+    lists a directory before its contents, so applying a read-only archived
+    mode inline would break extracting the children."""
+    import io
+    import os
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        locked = tarfile.TarInfo("locked")
+        locked.type = tarfile.DIRTYPE
+        locked.mode = 0o500  # no write bit: inline chmod would break children
+        tar.addfile(locked)
+        inner = tarfile.TarInfo("locked/secret.txt")
+        data = b"contents"
+        inner.size = len(data)
+        inner.mode = 0o400
+        tar.addfile(inner, io.BytesIO(data))
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert (dest / "locked" / "secret.txt").read_bytes() == b"contents"
+    assert stat.S_IMODE(os.stat(dest / "locked").st_mode) == 0o500
+    # Restore writability so pytest can clean the tmp dir up.
+    os.chmod(dest / "locked", 0o700)
 
 
 if __name__ == "__main__":

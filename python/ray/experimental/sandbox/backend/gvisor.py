@@ -169,6 +169,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             shutil.rmtree(root_dir, ignore_errors=True)
             raise
 
+        if not config.readonly:
+            # The rootfs /tmp is seeded with a placeholder so runsc keeps
+            # /tmp on the rootfs device (see create_oci_spec). Remove it
+            # from this sandbox's view — the overlay makes the deletion
+            # per-sandbox while the shared cache stays seeded. Readonly
+            # sandboxes mount a tmpfs over /tmp, which hides it already.
+            cleanup_args = self._runsc_base_args(config) + [
+                "exec",
+                sandbox_id,
+                "/bin/rm",
+                "-f",
+                "/tmp/.ray-sandbox-keep",
+            ]
+            subprocess.run(cleanup_args, capture_output=True, timeout=10)
+
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "workdir": workdir_path,
