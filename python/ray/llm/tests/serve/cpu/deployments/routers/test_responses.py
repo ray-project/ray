@@ -67,6 +67,40 @@ def test_responses_response_importable():
     assert ResponsesResponse.__name__ == "ResponsesResponse"
 
 
+def test_responses_response_dump_uses_openai_aliases():
+    """A structured-output response must serialize ``schema``, not ``schema_``.
+
+    The generic ingress dump passes no ``by_alias``, so without the override the
+    nested OpenAI JSON-schema config would go out under its Python field name.
+    """
+    response = ResponsesResponse(
+        model="m",
+        output=[],
+        status="completed",
+        parallel_tool_calls=False,
+        temperature=1.0,
+        tool_choice="auto",
+        tools=[],
+        top_p=1.0,
+        background=False,
+        max_output_tokens=16,
+        service_tier="auto",
+        truncation="disabled",
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "answer",
+                "schema": {"type": "object"},
+            }
+        },
+    )
+
+    text_format = response.model_dump()["text"]["format"]
+
+    assert text_format["schema"] == {"type": "object"}
+    assert "schema_" not in text_format
+
+
 @pytest.mark.asyncio
 async def test_engine_responses_non_streaming(llm_config):
     engine = MockVLLMEngine(llm_config)
