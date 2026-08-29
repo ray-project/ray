@@ -177,10 +177,7 @@ class MCAPDatasource(FileBasedDatasource):
             message_data = self._message_to_dict(schema, channel, message, path)
             builder.add(message_data)
 
-            if (
-                self._batch_size is not None
-                and builder.num_rows() >= self._batch_size
-            ):
+            if self._batch_size is not None and builder.num_rows() >= self._batch_size:
                 yield builder.build()
                 builder = DelegatingBlockBuilder()
 
