@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
@@ -215,6 +216,42 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             shutil.rmtree(root_dir, ignore_errors=True)
 
+    def _resolve_exec_user(self, user: str, image: str) -> str:
+        """Turn a user name or uid[:gid] into runsc exec's numeric form.
+
+        runsc only accepts numeric ids; names are resolved against the
+        image's own /etc/passwd (and the login group via /etc/group).
+
+        Args:
+            user: Numeric uid, "uid:gid", or a user name from the image.
+            image: The sandbox's image, locating the extracted rootfs.
+
+        Returns:
+            A "uid" or "uid:gid" string runsc accepts.
+
+        Raises:
+            SandboxExecError: When a named user is not in the image's
+                /etc/passwd.
+        """
+        head = user.split(":", 1)[0]
+        if head.isdigit():
+            return user
+        rootfs = os.path.join(self._image_manager.get_image_dir(image), "rootfs")
+        try:
+            passwd = Path(os.path.join(rootfs, "etc", "passwd")).read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            passwd = ""
+        for line in passwd.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4 and parts[0] == user:
+                return f"{parts[2]}:{parts[3]}"
+        raise SandboxExecError(
+            f"user {user!r} not found in the image's /etc/passwd; "
+            "pass a numeric uid or uid:gid instead"
+        )
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -223,6 +260,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -237,6 +275,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
         runsc_args.extend(["exec", "-cwd", exec_cwd])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(user, config.image)])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
