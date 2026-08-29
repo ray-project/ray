@@ -948,7 +948,13 @@ class TestRuntimeEnv:
         [
             {},
             {"entrypoint_num_cpus": 1},
-            {"entrypoint_num_gpus": 1},
+            pytest.param(
+                {"entrypoint_num_gpus": 1},
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin",
+                    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",  # noqa: E501
+                ),
+            ),
             {"entrypoint_memory": 4},
             {"entrypoint_resources": {"Custom": 1}},
         ],
