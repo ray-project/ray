@@ -13,10 +13,17 @@ _DEFAULT_AUTH_TOKEN_RELATIVE_PATH = Path(".ray") / "auth_token"
 
 
 def reset_auth_token_state() -> None:
-    """Reset authentication token and AUTH_MODE ray config."""
+    """Reset authentication token and AUTH_MODE ray config.
 
-    AuthenticationTokenLoader.instance().reset_cache()
+    Refresh ``RayConfig`` before dropping the cached token, never the other way
+    around. With an empty cache and the config still reporting token mode, a
+    gRPC call from a core worker thread that is still draining loads the token
+    from disk, and fatally ``RAY_CHECK``-fails when the caller has already
+    removed the token file.
+    """
+
     Config.initialize("")
+    AuthenticationTokenLoader.instance().reset_cache()
 
 
 def set_auth_mode(mode: str) -> None:

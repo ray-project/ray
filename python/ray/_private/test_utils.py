@@ -92,6 +92,16 @@ def get_with_auth_token(url, **kwargs):
     return request_with_auth_token("GET", url, **kwargs)
 
 
+def auth_token_grpc_metadata():
+    """gRPC metadata carrying the cluster's auth token, empty when there is none.
+
+    Test code that reaches a raylet or the GCS over a raw ``grpc`` channel has
+    no client interceptor, so it has to send the token itself or the call is
+    rejected as unauthenticated.
+    """
+    return tuple(_auth_token_header().items())
+
+
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
@@ -1579,7 +1589,8 @@ class RayletKiller(NodeKillerBase):
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
             stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+                metadata=auth_token_grpc_metadata(),
             )
         except _InactiveRpcError:
             assert not graceful
@@ -1947,7 +1958,10 @@ def kill_raylet(raylet, graceful=False):
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
-        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+            metadata=auth_token_grpc_metadata(),
+        )
     except _InactiveRpcError:
         assert not graceful
 

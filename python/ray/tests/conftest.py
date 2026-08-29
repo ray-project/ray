@@ -1602,6 +1602,18 @@ def clean_token_sources(cleanup_auth_token_env):
 
     yield
 
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_token_auth_state():
@@ -1629,6 +1641,12 @@ def _isolate_token_auth_state():
     try:
         yield
     finally:
+        # Turn auth off in this process before the token file changes underneath
+        # it. Ray threads that are still winding down (the GCS log subscriber,
+        # for one) reload the token on their next RPC, and fatally CHECK-fail
+        # when auth is still enabled and the token has gone.
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
         if original_token is None:
             if os.path.exists(default_token):
                 os.remove(default_token)
@@ -1672,21 +1690,13 @@ def _restore_token_auth_env(_token_auth_env_baseline):
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+    # Same ordering constraint as ``_isolate_token_auth_state``: auth has to be
+    # off in this process before the token file goes away.
+    reset_auth_token_state()
+
     default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
     if os.path.exists(default_token):
         os.remove(default_token)
-
-    if ray.is_initialized():
-        ray.shutdown()
-
-    subprocess.run(
-        ["ray", "stop", "--force"],
-        capture_output=True,
-        timeout=60,
-        check=False,
-    )
-
-    reset_auth_token_state()
 
 
 @pytest.fixture
