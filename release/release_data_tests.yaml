@@ -35,11 +35,7 @@
     anyscale_sdk_2026: true
     byod:
       type: cpu
-    cluster_compute: "{{scaling}}_cpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 3600
