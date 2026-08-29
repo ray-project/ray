@@ -302,6 +302,20 @@ py_test_run_all_subdirectory(
 # Test all doc/source/serve/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
+py_test(
+    name = "funasr_asr_test",
+    size = "small",
+    srcs = [
+        "source/serve/doc_code/funasr_asr.py",
+        "source/serve/doc_code/test_funasr_asr.py",
+    ],
+    main = "source/serve/doc_code/test_funasr_asr.py",
+    tags = ["team:serve"],
+    deps = [
+        ci_require("pytest"),
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/serve/doc_code/**/*.py"],
@@ -315,6 +329,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
+        "source/serve/doc_code/test_funasr_asr.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
