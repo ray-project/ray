@@ -1,8 +1,24 @@
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
-load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
+
+# Consumed by //ci/pipeline:test_doc_api_rules_sync, which reads
+# API_PATH_PREFIXES out of api_sidebar.py to keep the doc_api page rules in sync.
+exports_files(["source/_ext/api_sidebar.py"])
+
+# The top-level doc/source modules, for the same test. It parses conf.py's
+# imports and resolves each against this directory to decide which ones are
+# local modules, so the whole glob has to reach the sandbox, not just conf.py:
+# a new machinery module is exactly the case the test exists to catch, and it
+# cannot be named in a data dep ahead of being written. The test's
+# _MACHINERY_IMPORT_FLOOR fails closed if this stops arriving.
+filegroup(
+    name = "doc_source_modules",
+    srcs = glob(["source/*.py"]),
+    visibility = ["//ci/pipeline:__pkg__"],
+)
 
 # --------------------------------------------------------------------
 # Tests from the doc directory.
@@ -164,9 +180,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
     main = "source/ray-core/doc_code/runtime_env_example.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "post_wheel_build",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -177,9 +193,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
     main = "source/ray-core/doc_code/ray_oom_prevention.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "mem_pressure",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -190,9 +206,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
     main = "source/ray-core/doc_code/cgraph_profiling.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "multi_gpu",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -203,9 +219,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/cgraph_nccl.py"],
     main = "source/ray-core/doc_code/cgraph_nccl.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "multi_gpu",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -216,9 +232,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/cgraph_overlap.py"],
     main = "source/ray-core/doc_code/cgraph_overlap.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "multi_gpu",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -240,9 +256,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"],
     main = "source/ray-core/doc_code/direct_transport_nccl.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "multi_gpu",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -253,9 +269,9 @@ py_test(
     srcs = ["source/ray-core/doc_code/direct_transport_nixl.py"],
     main = "source/ray-core/doc_code/direct_transport_nixl.py",
     tags = [
+        "custom_setup",
         "exclusive",
         "multi_gpu",
-        "custom_setup",
         "team:core",
     ],
 )
@@ -348,14 +364,41 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
+    data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     exclude = [
         "source/llm/doc_code/serve/direct_streaming/**/*.py",
         "source/llm/doc_code/serve/multi_gpu/**/*.py",
         "source/llm/doc_code/serve/sglang/**/*.py",
+        # TODO (jeffreywang): Enable TPU example tests once CI sets up TPU.
+        "source/llm/doc_code/serve/tpu/**/*.py",
+        # custom_vllm runs in its own direct-streaming target below.
+        "source/llm/doc_code/serve/custom_vllm/**/*.py",
     ],
     extra_srcs = [],
-    data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
+        "exclusive",
+        "gpu",
+        "team:llm",
+    ],
+)
+
+# Custom vLLM model (Qwen3 reward model) GPU tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/custom_vllm/**/*.py"],
+    data = ["source/llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml"],
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    exclude = [
+        "source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/**/*.py",
+        # setup.py packages the plugin; it is not a runnable example.
+        "source/llm/doc_code/serve/custom_vllm/setup.py",
+    ],
+    extra_srcs = [],
+    tags = [
+        "custom_vllm_plugin",
         "exclusive",
         "gpu",
         "team:llm",
@@ -370,8 +413,6 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/direct_streaming/**/*.py"],
-    exclude = [],
-    extra_srcs = [],
     data = ["source/llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml"],
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
@@ -379,6 +420,8 @@ py_test_run_all_subdirectory(
         # which build_app.py rejects unless HAProxy is enabled.
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
     },
+    exclude = [],
+    extra_srcs = [],
     tags = [
         "exclusive",
         "gpu",
@@ -419,7 +462,7 @@ py_test_run_all_subdirectory(
     tags = [
         "exclusive",
         "gpu",
-        "team:llm"
+        "team:llm",
     ],
 )
 
@@ -430,13 +473,13 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/tune/doc_code/*.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     exclude = [],
     extra_srcs = [],
     tags = [
         "exclusive",
         "team:ml",
     ],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -460,8 +503,8 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     include = ["source/train/doc_code/*.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
         "source/train/doc_code/asynchronous_validation.py",  # pseudocode snippets, not runnable
@@ -498,8 +541,8 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = [
-        "dask",
         "custom_setup",
+        "dask",
         "exclusive",
         "team:data",
     ],
@@ -591,10 +634,10 @@ doctest(
             "source/tune/**/*.rst",
         ],
     ),
-    tags = ["team:none"],
     # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
     # so we use its pytest plugin file (which is a superset of the default).
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
+    tags = ["team:none"],
 )
 
 doctest(
@@ -615,6 +658,8 @@ doctest(
 )
 
 doctest_each(
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     files = glob(
         include = [
             "source/data/**/*.md",
@@ -630,8 +675,6 @@ doctest_each(
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
-    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
-    env = {"TF_USE_LEGACY_KERAS": "1"},
 )
 
 doctest(
@@ -640,9 +683,9 @@ doctest(
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
+    gpu = True,
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
-    gpu = True,
 )
 
 doctest(
@@ -664,13 +707,12 @@ doctest(
 doctest(
     name = "doctest[rllib2]",
     size = "enormous",
-    files = glob(
-        include = [
-            "source/rllib/getting-started.rst",
-        ],
-    ),
+    files = ["source/rllib/getting-started.rst"],
     # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
-    tags = ["manual", "team:rllib"],
+    tags = [
+        "manual",
+        "team:rllib",
+    ],
 )
 
 doctest(
@@ -689,7 +731,6 @@ doctest(
     ),
     tags = ["team:serve"],
 )
-
 
 doctest(
     name = "doctest[train]",
@@ -716,24 +757,23 @@ doctest(
 
 doctest(
     name = "doctest[train-gpu]",
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = [
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-accelerators.rst",
     ],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    tags = ["team:ml"],
     gpu = True,
+    tags = ["team:ml"],
 )
-
 
 doctest(
     name = "doctest[tune]",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     files = [
         "source/tune/**/*.md",
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -752,9 +792,9 @@ filegroup(
         "source/serve/tutorials/**/ci/gce.yaml",
     ]) + [
         "//doc/source/data/examples:data_examples_ci_configs",
-        "//doc/source/tune/examples:tune_examples_ci_configs",
         "//doc/source/ray-core/examples:core_examples_ci_configs",
         "//doc/source/train/examples:train_examples_ci_configs",
+        "//doc/source/tune/examples:tune_examples_ci_configs",
     ],
     visibility = ["//release:__pkg__"],
 )

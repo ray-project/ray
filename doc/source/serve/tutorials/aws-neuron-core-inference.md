@@ -1,11 +1,13 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Experimental tutorial serving an inference model on AWS NeuronCores with Ray Serve and FastAPI."
 ---
 (aws-neuron-core-inference-tutorial)=
 
 # Serve an Inference Model on AWS NeuronCores Using FastAPI (Experimental)
-This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1)
-instance using Ray Serve and FastAPI.
+This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1) instance using Ray Serve and FastAPI.
 
 
 :::{note}

@@ -618,10 +618,11 @@ def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
     ds = ray.data.range(10)
     i1, i2 = ds.streaming_split(2, equal=True)
 
-    tag1 = i1._get_dataset_tag()
-    tag2 = i2._get_dataset_tag()
-    assert "_split_0" in tag1
-    assert "_split_1" in tag2
+    tags1 = i1._get_dataset_tag()
+    tags2 = i2._get_dataset_tag()
+    assert tags1["dataset"] == tags2["dataset"]
+    assert tags1["split_index"] == "0"
+    assert tags2["split_index"] == "1"
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):

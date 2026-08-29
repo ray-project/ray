@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Monitor Ray clusters on Kubernetes with Prometheus and Grafana, using PodMonitors for Ray nodes and a ServiceMonitor for KubeRay."
+---
+
 (kuberay-prometheus-grafana)=
 
 # Using Prometheus and Grafana
@@ -8,8 +14,7 @@ If you do not have any experience with Prometheus and Grafana on Kubernetes, wat
 
 ## Preparation
 
-Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
-This tutorial requires several files in the repository.
+Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch. This tutorial requires several files in the repository.
 
 ## Step 1: Create a Kubernetes cluster with Kind
 
@@ -34,7 +39,7 @@ kubectl get all -n prometheus-system
 ```
 
 * KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
-  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for Ray Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
+  * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for the RayCluster's Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
   * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/blob/master/install/prometheus/overrides.yaml) for more details.
@@ -56,10 +61,15 @@ kubectl get all -n prometheus-system
 * Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
   ```sh
   # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
-  helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 \
-    --set metrics.serviceMonitor.enabled=true \ 
-    --set metrics.serviceMonitor.selector.release=prometheus 
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
+    --set metrics.serviceMonitor.enabled=true \
+    --set metrics.serviceMonitor.additionalLabels.release=prometheus
   ```
+
+  :::{warning}
+  KubeRay v1.7.0 renames the `metrics.serviceMonitor.selector` value to `metrics.serviceMonitor.additionalLabels`, because the value sets labels on the ServiceMonitor rather than a selector. On KubeRay v1.6.x or earlier, use `--set metrics.serviceMonitor.selector.release=prometheus` instead.
+  :::
+
   You can verify the ServiceMonitor creation with:
   ```sh
   kubectl get servicemonitor
@@ -80,7 +90,7 @@ kubectl get service -l ray.io/cluster=raycluster-embed-grafana
 # NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
 # raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 
-# Wait until all Ray Pods are ready.
+# Wait until the RayCluster's Pods are ready.
 kubectl wait pods -l ray.io/cluster=raycluster-embed-grafana --timeout 2m --for condition=Ready
 
 # pod/raycluster-embed-grafana-head-2jk7c condition met
@@ -104,7 +114,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
@@ -114,10 +124,7 @@ curl localhost:8080
     - name: RAY_PROMETHEUS_HOST
       value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
   ```
-  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`.
-    `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend.
-    `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod.
-    Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
+  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`. `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend. `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod. Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
   * `http://` is required.
 
 ## Step 5: Collect Head Node metrics with a PodMonitor
@@ -204,7 +211,7 @@ spec:
 
 Similar to the head Pod, this tutorial also uses a PodMonitor to collect metrics from worker Pods. The reason for using separate PodMonitors for head Pods and worker Pods is that the head Pod exposes multiple metric endpoints, whereas a worker Pod exposes only one.
 
-**Note**: You could create a Kubernetes service with selectors a common label subset from our worker pods, however, this configuration is not ideal because the workers are independent from each other, that is, they aren't a collection of replicas spawned by replicaset controller. Due to this behavior, avoid using a Kubernetes service for grouping them together.
+**Note**: You could create a Kubernetes service with selectors a common label subset from our worker pods, however, this configuration is not ideal because the workers are independent from each other, that is, they aren't a collection of replicas spawned by a ReplicaSet controller. Due to this behavior, avoid using a Kubernetes service for grouping them together.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -411,8 +418,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 After importing the KubeRay operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
 
-The KubeRay operator dashboard should look like this:
-![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
+The KubeRay operator dashboard should look like this: ![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
 
 ## Step 15: Embed Grafana panels in the Ray dashboard (optional)
 

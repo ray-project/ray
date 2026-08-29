@@ -1,3 +1,6 @@
+.. meta::
+   :description: Industry-grade, scalable reinforcement learning with a unified API for single-agent, multi-agent, and offline RL training and deployment.
+
 .. sphinx_rllib_readme_begin
 
 .. _rllib-index:
@@ -123,7 +126,7 @@ You first create a `config` for the algorithm, which defines the :ref:`RL enviro
     )
 
 
-Next, ``build`` the algorithm and ``train`` it for a total of five iterations.
+Next, ``build`` the algorithm and ``train`` it for a total of 2 iterations.
 One training iteration includes parallel, distributed sample collection by the
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, followed by loss calculation
 on the collected data, and a model update step.

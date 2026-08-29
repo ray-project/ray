@@ -162,9 +162,20 @@ class NixlTensorTransport(TensorTransportManager):
         self._memory_pool: Optional[MemoryPoolManager] = None
         # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
         self._backend: Optional[str] = None
+        # The CUDA stream to synchronize before NIXL memory registration in
+        # extract_tensor_transport_metadata. When None, all streams on each
+        # device are synchronized instead.
+        self._cuda_stream: Optional["torch.cuda.Stream"] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
+
+    def set_cuda_stream(self, stream: Optional["torch.cuda.Stream"]) -> None:
+        """Sets the CUDA stream to synchronize before NIXL memory registration.
+
+        See :func:`ray.experimental.set_nixl_cuda_stream` for details.
+        """
+        self._cuda_stream = stream
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -285,20 +296,40 @@ class NixlTensorTransport(TensorTransportManager):
                 if device.type == "cuda":
                     # We have to synchronize before memory registration to assure the
                     # object has been created because nixl doesn't guarantee it will.
-                    for dev in devices:
-                        torch.cuda.synchronize(dev)
+                    stream = self._cuda_stream
+                    if stream is None:
+                        # No stream set: block on all streams of each device.
+                        for dev in devices:
+                            torch.cuda.synchronize(dev)
+                    else:
+                        # Block only on the user-provided stream.
+                        for dev in devices:
+                            if dev != stream.device:
+                                raise ValueError(
+                                    "Device mismatch between the CUDA stream set via "
+                                    "ray.experimental.set_nixl_cuda_stream and the "
+                                    "tensors in this RDT object: the stream is on "
+                                    f"device {stream.device}, but a tensor is on "
+                                    f"device {dev}. The stream's device must match "
+                                    "the device of every tensor in the object."
+                                )
+                        stream.synchronize()
 
                 nixl_agent = self.get_nixl_agent()
-                # Use the pool only when every tensor lives on the exact same
-                # device as the pool, AND no tensor already has an existing
-                # NIXL registration (via register_nixl_memory).
+                # Use the pool when no tensor already has an existing NIXL
+                # registration (via register_nixl_memory).
+                pool_device = (
+                    self._memory_pool.get_pool_tensor().device
+                    if self._memory_pool is not None
+                    else None
+                )
                 pool_eligible = (
                     self._memory_pool is not None
-                    and all(
-                        t.device == self._memory_pool.get_pool_tensor().device
-                        for t in rdt_object
-                    )
                     and not any(self._tensor_memory_registered(t) for t in rdt_object)
+                    and (
+                        pool_device.type == "cpu"
+                        or all(t.device == pool_device for t in rdt_object)
+                    )
                 )
                 if pool_eligible:
                     xfer_descs = self._allocate_pool_xfer_descs(rdt_object)

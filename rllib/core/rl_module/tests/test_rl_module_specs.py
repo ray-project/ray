@@ -233,6 +233,11 @@ class TestRLModuleSpecs(unittest.TestCase):
             marl_spec_1.rl_module_specs["agent_2"].model_config, "I'm new!"
         )
 
+    def test_multi_rl_module_spec_requires_dict(self):
+        """`MultiRLModuleSpec.rl_module_specs` must be a dict, not a single spec."""
+        with self.assertRaisesRegex(ValueError, "must be a dict"):
+            MultiRLModuleSpec(rl_module_specs=RLModuleSpec())
+
 
 if __name__ == "__main__":
     import sys

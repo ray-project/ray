@@ -1,7 +1,9 @@
 import asyncio
 import inspect
 import logging
-from types import FunctionType
+
+# Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
+from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
 from typing import Any, Dict, List, Tuple, Union
 
 from pydantic import BaseModel
@@ -17,7 +19,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
+from ray.serve.config import (
+    ControllerOptions,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
 from ray.serve.context import (
     _check_cached_client_alive,
     _get_global_client,
@@ -25,7 +32,7 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -74,7 +81,9 @@ def _create_controller_and_proxy_refs(
     http_options: Union[None, dict, HTTPOptions],
     grpc_options: Union[None, dict, gRPCOptions],
     global_logging_config: Union[None, dict, LoggingConfig],
+    global_tracing_config: Union[None, dict, TracingConfig],
     controller_options: ControllerOptions,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, List[ObjectRef]]:
     """Create the detached ServeController actor in the caller process.
@@ -114,6 +123,8 @@ def _create_controller_and_proxy_refs(
     if http_options is None:
         http_options = HTTPOptions()
 
+    proxy_location = ProxyLocation._normalize(proxy_location)
+
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
@@ -122,14 +133,19 @@ def _create_controller_and_proxy_refs(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
+    if isinstance(global_tracing_config, dict):
+        global_tracing_config = TracingConfig(**global_tracing_config)
+
     controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
+        proxy_location=proxy_location,
+        global_tracing_config=global_tracing_config,
     )
 
-    proxy_handles = ray.get(controller.get_proxies.remote())
+    proxy_handles: Any = ray.get(controller.get_proxies.remote())
     proxy_ready_refs = (
         [handle.ready.remote() for handle in proxy_handles.values()]
         if len(proxy_handles) > 0
@@ -142,7 +158,9 @@ async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -189,7 +207,9 @@ async def serve_start_async(
         http_options,
         grpc_options,
         global_logging_config,
+        global_tracing_config,
         controller_options,
+        proxy_location,
         **kwargs,
     )
 
@@ -214,7 +234,9 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -257,11 +279,18 @@ def serve_start(
         global_logging_config: Optional ``LoggingConfig`` (or dict) applied as
             the default logging configuration for the Serve controller and all
             proxies/replicas in this Serve instance.
+        global_tracing_config: Optional ``TracingConfig`` (or dict) applied as
+            the default tracing configuration for the Serve controller and all
+            proxies/replicas in this Serve instance.
         controller_options: Optional ``ControllerOptions`` (or dict) for the
             Serve controller actor. Currently only ``runtime_env.env_vars``
             is honored; see ``ray.serve.config.ControllerOptions``. Only
             applied on first controller creation -- ignored if the controller
             is already running in this Ray cluster (a log line is emitted).
+        proxy_location: Where to run proxies that handle ingress traffic to
+            the cluster. See ``ProxyLocation`` for supported options. Defaults
+            to ``EveryNode`` when unspecified. An explicit (deprecated)
+            ``HTTPOptions.location`` overrides this.
         **kwargs: Reserved for forwarding to internal controller-start hooks;
             no public keys are currently supported and unknown keys may raise.
 
@@ -293,7 +322,9 @@ def serve_start(
         http_options,
         grpc_options,
         global_logging_config,
+        global_tracing_config,
         controller_options,
+        proxy_location,
         **kwargs,
     )
 

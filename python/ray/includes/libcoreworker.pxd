@@ -117,7 +117,6 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CRayStatus ReserveSlot(int64_t num_objects)
         c_bool TryReserveSlot(int64_t num_objects)
         void ReleaseSlot(int64_t num_objects)
-        void OnReport(int64_t total)
         void Teardown()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
@@ -331,8 +330,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
-        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
                 c_vector[optional[CObjectLocation]] *results)
@@ -499,6 +496,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         @staticmethod
         CCoreWorker &GetCoreWorker()
+
+        @staticmethod
+        optional[c_bool] ShouldInterruptTaskForCancellation()
 
         @staticmethod
         void Shutdown()

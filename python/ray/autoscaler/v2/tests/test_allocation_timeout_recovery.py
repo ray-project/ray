@@ -83,6 +83,9 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
+    def get_provider_instance_type(self, ray_node_type):
+        return ""
+
     @property
     def provider(self):
         return Provider.UNKNOWN
@@ -253,6 +256,8 @@ class TestAllocationTimeoutRecovery:
         )
 
         # Create real cloud provider with mock k8s client
+        from unittest.mock import MagicMock
+
         from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
             KubeRayProvider,
         )
@@ -260,6 +265,7 @@ class TestAllocationTimeoutRecovery:
         cloud_provider = KubeRayProvider(
             cluster_name="test-ray-cluster",
             provider_config={"namespace": "default"},
+            gcs_client=MagicMock(),
             k8s_api_client=mock_k8s,
         )
 
@@ -397,7 +403,6 @@ class TestAllocationTimeoutRecovery:
                 name="default-worker-group",
                 min_worker_nodes=0,
                 max_worker_nodes=3,
-                idle_worker_nodes=0,
                 resources={"CPU": 4},
                 labels={},
                 launch_config_hash="hash1",
@@ -407,7 +412,6 @@ class TestAllocationTimeoutRecovery:
                 name="head",
                 min_worker_nodes=0,
                 max_worker_nodes=1,
-                idle_worker_nodes=0,
                 resources={"CPU": 0},
                 labels={},
                 launch_config_hash="hash1",

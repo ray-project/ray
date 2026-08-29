@@ -14,10 +14,6 @@ from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
-from ray.data._internal.logical.util import (
-    _recorded_operators,
-    _recorded_operators_lock,
-)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -25,6 +21,10 @@ from ray.data._internal.memory_tracing import (
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
+from ray.data._internal.usage.util import (
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.util import (
     NULL_SENTINEL,
     find_partition_index,
@@ -224,19 +224,22 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation(ref1, "test3", free=False)
-    trace_deallocation(ref2, "test4", free=True)
+    trace_deallocation(ref1, "test3")
+    trace_deallocation(ref2, "test4")
+    # Objects are no longer eagerly freed; both remain retrievable. The
+    # deallocation is only recorded for the leak report.
     ray.get(ref1)
-    with pytest.raises(ray.exceptions.ObjectFreedError):
-        ray.get(ref2)
+    ray.get(ref2)
     report = leak_report()
     print(report)
 
     if enabled:
-        assert "Leaked object, created at test1" in report, report
+        # ref3 (test5) was never deallocated, so it's reported as leaked.
         assert "Leaked object, created at test5" in report, report
+        # ref1/ref2 were deallocated, so they're reported as freed (not leaked).
+        assert "Leaked object, created at test1" not in report, report
+        assert "Freed object from test1 at test3" in report, report
         assert "Freed object from test2 at test4" in report, report
-        assert "skipped dealloc at test3" in report, report
     else:
         assert "test1" not in report, report
         assert "test2" not in report, report

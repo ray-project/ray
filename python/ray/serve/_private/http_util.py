@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import pickle
 import socket
 from collections import deque
@@ -109,7 +110,9 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
 
 
 def convert_object_to_asgi_messages(
-    obj: Optional[Any] = None, status_code: int = 200
+    obj: Optional[Any] = None,
+    status_code: int = 200,
+    extra_headers: Optional[List[Tuple[bytes, bytes]]] = None,
 ) -> List[Message]:
     """Serializes the provided object and converts it to ASGI messages.
 
@@ -137,11 +140,15 @@ def convert_object_to_asgi_messages(
         ).encode()
         content_type = b"application/json"
 
+    headers = [[b"content-type", content_type]]
+    if extra_headers:
+        headers.extend(list(header) for header in extra_headers)
+
     return [
         {
             "type": "http.response.start",
             "status": status_code,
-            "headers": [[b"content-type", content_type]],
+            "headers": headers,
         },
         {"type": "http.response.body", "body": body},
     ]
@@ -351,10 +358,10 @@ class ASGIReceiveProxy:
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
-        self._queue = None
+        self._queue: Optional[asyncio.Queue] = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
-        self._disconnect_message = None
+        self._disconnect_message: Optional[Message] = None
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -639,6 +646,7 @@ class ASGIAppReplicaWrapper:
     def docs_path(self) -> Optional[str]:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
+        return None
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
@@ -657,7 +665,7 @@ class ASGIAppReplicaWrapper:
         scope: Scope,
         receive: Receive,
         send: Send,
-    ) -> Optional[ASGIApp]:
+    ) -> None:
         """Calls into the wrapped ASGI app."""
         await self._asgi_app(
             scope,
@@ -681,7 +689,7 @@ class ASGIAppReplicaWrapper:
 
 def validate_http_proxy_callback_return(
     middlewares: Any,
-) -> [Middleware]:
+) -> List[Middleware]:
     """Validate the return value of HTTP proxy callback.
 
     Middlewares should be a list of Starlette middlewares. If it is None, we
@@ -926,7 +934,16 @@ def get_http_response_status(
             is_error=True,
             message=message,
         )
-    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+    elif isinstance(exc, BackPressureError):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        return ResponseStatus(
+            code=exc.status_code,
+            is_error=True,
+            message=exc.message,
+            headers=retry_after_headers(exc.retry_after_s),
+        )
+    elif isinstance(exc, DeploymentUnavailableError):
         if isinstance(exc, RayTaskError):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
         return ResponseStatus(
@@ -946,14 +963,32 @@ def get_http_response_status(
         )
 
 
+def retry_after_headers(
+    retry_after_s: Optional[float],
+) -> Optional[List[Tuple[bytes, bytes]]]:
+    """Builds a `Retry-After` header from a delay in seconds.
+
+    The header value must be a non-negative integer number of seconds
+    (RFC 9110 `delay-seconds`), so the value is rounded up to avoid
+    suggesting a retry earlier than configured, and clamped at 0 so an
+    invalid header is never emitted on the wire.
+    """
+    if retry_after_s is None:
+        return None
+    return [(b"retry-after", str(max(0, math.ceil(retry_after_s))).encode())]
+
+
 def send_http_response_on_exception(
     status: ResponseStatus, response_started: bool
 ) -> List[Message]:
-    if response_started or status.code not in (408, 503):
+    if response_started or status.code not in (408, 429, 503):
         return []
     return convert_object_to_asgi_messages(
         status.message,
-        status_code=status.code,
+        # `ResponseStatus.code` is a `Union` shared with gRPC, but on the HTTP
+        # path it's always an `int` status code.
+        status_code=status.code,  # type: ignore[arg-type]
+        extra_headers=status.headers,
     )
 
 

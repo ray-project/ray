@@ -31,6 +31,15 @@ class FrameworkCheckpoint(Checkpoint):
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the preprocessor stored in the checkpoint.
 
+        .. warning::
+
+            The checkpoint path must point to a **trusted** source.
+            The preprocessor is stored as a pickle blob inside the checkpoint
+            metadata. Loading a checkpoint from an untrusted path (shared
+            storage, downloaded artifact, checkpoint produced by a different
+            party) is equivalent to executing arbitrary Python code. Never
+            call this method on a checkpoint you do not fully control.
+
         Returns:
             The preprocessor stored in the checkpoint, or ``None`` if no
             preprocessor was stored.

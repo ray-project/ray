@@ -1,3 +1,6 @@
+.. meta::
+   :description: Write Ray Data Datasets to local or cloud storage, control the output file count, write partitioned datasets, and convert back to pandas.
+
 .. _saving-data:
 
 ===========
@@ -14,27 +17,30 @@ This guide shows you how to:
 Writing data to files
 =====================
 
-Ray Data writes to local disk and cloud storage.
+Ray Data writes to shared local storage and cloud storage.
 
-Writing data to local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Writing data to shared local storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To save your :class:`~ray.data.dataset.Dataset` to local disk, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>`  and specify a local
-directory with the `local://` scheme.
+To save your :class:`~ray.data.dataset.Dataset` to a shared local filesystem,
+use storage such as NFS, and mount that storage at the same path on every Ray
+node. Then, call a method like
+:meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the
+mounted directory.
 
 .. warning::
 
-    If your cluster contains multiple nodes and you don't use `local://`, Ray Data
-    writes different partitions of data to different nodes.
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
-    ds.write_parquet("local:///tmp/iris/")
+    ds.write_parquet("/mnt/cluster_storage/iris")
 
 To write data to formats other than Parquet, see the
 :ref:`Saving Data API <saving-data-api>`.
@@ -118,25 +124,6 @@ To write data to formats other than Parquet, see the :ref:`Saving Data API <savi
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
-Writing data to NFS
-~~~~~~~~~~~~~~~~~~~
-
-To save your :class:`~ray.data.dataset.Dataset` to NFS file systems, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a
-mounted directory.
-
-.. testcode::
-    :skipif: True
-
-    import ray
-
-    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-
-    ds.write_parquet("/mnt/cluster_storage/iris")
-
-To write data to formats other than Parquet, see the
-:ref:`Saving Data API <saving-data-api>`.
-
 .. _changing-number-output-files:
 
 Changing the number of output files
@@ -169,17 +156,25 @@ number of output files, configure ``min_rows_per_file``.
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 
-Writing into Partitioned Dataset
+Write into a partitioned dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition the dataset by the partition columns prior to writing into it. 
-This allows you to *have control over the file sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
-meaning that the number of files created should be controlled based on the configuration provided to, 
-for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
-Since every block is written out independently, when writing the dataset without prior 
-repartitioning you could potentially get an N number of files per partition 
-(where N is the number of blocks in your dataset) with very limited ability to control the 
-number of files & their sizes (since every block could potentially carry the rows corresponding to any partition).
+When you write a partitioned dataset using Hive-style, folder-based partitioning,
+repartition the dataset by the partition columns first. Repartitioning gives you control
+over the number of files and their sizes. After you repartition by the partition columns,
+every block holds all the rows for a particular partition, so the repartitioning
+determines how many files Ray creates, with optional limits from the write method such as
+``max_rows_per_file``. Ray writes every block out independently, so if you write the
+dataset without repartitioning first, you can get N files per partition, where N is the
+number of blocks in your dataset. In that case, you have very limited control over the
+number of files and their sizes, because every block can carry rows for any partition.
+
+.. warning::
+    Ray Data has deprecated using ``min_rows_per_file`` with non-empty
+    ``partition_cols``. Support for this combination ends after February 2027. Instead,
+    call ``repartition()`` with the partition columns and an explicit ``num_blocks``, and
+    use ``max_rows_per_file``. If you already repartition the dataset by the partition
+    columns, removing ``min_rows_per_file`` leaves the output layout unchanged.
 
 .. testcode::
     import ray
@@ -199,7 +194,7 @@ number of files & their sizes (since every block could potentially carry the row
             for f in files:
                 print(f'{subindent}{f}')
 
-    # Sample dataset that we’ll partition by ``city`` and ``year``.
+    # Sample dataset to partition by ``city`` and ``year``.
     df = pd.DataFrame(
         {
             "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC", "SF", "NYC"],
@@ -209,20 +204,20 @@ number of files & their sizes (since every block could potentially carry the row
     )
 
     ds = ray.data.from_pandas(df)
-    DataContext.shuffle_strategy=ShuffleStrategy.HASH_SHUFFLE
+    # Key-based repartitioning requires a hash-shuffle strategy such as Shuffle v2.
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
-    # ── Partitioned write ──────────────────────────────────────────────────────
+    # Partitioned write:
     # 1. Repartition so all rows with the same (city, year) land in the same
-    #    block – this minimises shuffling during the write.
+    #    block. This minimizes shuffling during the write.
     # 2. Pass the same columns to ``partition_cols`` so Ray creates a
     #    Hive-style directory layout:  city=<value>/year=<value>/....
-    # 3. Use ``min_rows_per_file`` / ``max_rows_per_file`` to control how many
-    #    rows Ray puts in each Parquet file.
+    # 3. Use ``max_rows_per_file`` to cap how many rows Ray puts in each
+    #    Parquet file.
     ds.repartition(keys=["city", "year"], num_blocks=4).write_parquet(
         "/tmp/sales_partitioned",
         partition_cols=["city", "year"],
-        min_rows_per_file=2,     # At least 2 rows in each file …
-        max_rows_per_file=3,     # … but never more than 3.
+        max_rows_per_file=3,
     )
 
     print_directory_tree("/tmp/sales_partitioned")

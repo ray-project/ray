@@ -1,3 +1,6 @@
+.. meta::
+   :description: Batch LLM inference with ray.data.llm: vLLM and SGLang engines or hosted endpoints, multi-GPU scaling, and vision, video, and audio models.
+
 .. _working-with-llms:
 
 Working with LLMs
@@ -570,7 +573,7 @@ Understanding the parameters
 ``max_concurrent_batches``, default: 8
     The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal batch size depends on the workload.
 
-``max_tasks_in_flight_per_actor``, experimental, default: 16
+``max_tasks_in_flight_per_actor``, default: 16
     The number of tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so tasks are ready when the actor finishes processing.
 
 How they work together
@@ -619,7 +622,11 @@ Each Ray release is fully tested with a compatible vLLM version.
    * - Ray release
      - vLLM version
    * - nightly
-     - 0.23.0
+     - 0.27.0
+   * - 2.58.0
+     - 0.26.0
+   * - 2.57.0
+     - 0.25.1
    * - 2.56.0
      - 0.22.0
    * - 2.55.0
