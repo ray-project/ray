@@ -9,6 +9,10 @@ import ray
 from benchmark import Benchmark
 
 
+# Allow 20% headroom over the observed 10.8 GiB baseline.
+MANY_TINY_OBJECTS_MAX_HEAD_NODE_MEMORY_BYTES = 13 * 1024**3
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backpressure benchmark")
     parser.add_argument(
@@ -179,20 +183,26 @@ class Trainer:
 
 
 def main(args: argparse.Namespace):
-    benchmark = Benchmark()
+    max_head_node_memory_bytes = (
+        MANY_TINY_OBJECTS_MAX_HEAD_NODE_MEMORY_BYTES
+        if args.case == "many-tiny-objects"
+        else None
+    )
+    benchmark = Benchmark(max_head_node_memory_bytes=max_head_node_memory_bytes)
 
-    if args.case == "fast-producer-slow-consumer":
-        benchmark.run_fn(args.case, run_fast_producer_slow_consumer)
-    elif args.case == "many-tiny-objects":
-        benchmark.run_fn(args.case, run_many_tiny_objects)
-    elif args.case == "training-prefetch":
-        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=8)
-    elif args.case == "training-prefetch-single-node":
-        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=1)
-    else:
-        raise ValueError(f"Unexpected benchmark case: {args.case}")
-
-    benchmark.write_result()
+    try:
+        if args.case == "fast-producer-slow-consumer":
+            benchmark.run_fn(args.case, run_fast_producer_slow_consumer)
+        elif args.case == "many-tiny-objects":
+            benchmark.run_fn(args.case, run_many_tiny_objects)
+        elif args.case == "training-prefetch":
+            benchmark.run_fn(args.case, run_training_prefetch, num_trainers=8)
+        elif args.case == "training-prefetch-single-node":
+            benchmark.run_fn(args.case, run_training_prefetch, num_trainers=1)
+        else:
+            raise ValueError(f"Unexpected benchmark case: {args.case}")
+    finally:
+        benchmark.write_result()
 
 
 if __name__ == "__main__":
