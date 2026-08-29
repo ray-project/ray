@@ -14,6 +14,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     import pandas as pd
+    from delta_sharing.protocol import FileAction
 
     from ray.data.context import DataContext
 
@@ -128,7 +129,7 @@ class DeltaSharingDatasource(Datasource):
         return read_tasks
 
 
-def _read_file_as_arrow(action) -> "pa.Table":
+def _read_file_as_arrow(action: "FileAction") -> "pa.Table":
     """Read a Delta Sharing file action into an Arrow table.
 
     Mirrors ``DeltaSharingReader._to_pandas``, but stops short of the pandas
@@ -138,6 +139,12 @@ def _read_file_as_arrow(action) -> "pa.Table":
     from pyarrow.dataset import dataset
 
     url = urlparse(action.url)
+    # Local paths / file:// URIs (used by tests). Delta Sharing file actions are
+    # normally https presigned URLs and take the fsspec branch below.
+    if url.scheme in ("", "file"):
+        source = url.path if url.scheme == "file" else action.url
+        return dataset(source=source, format="parquet").to_table()
+
     if "storage.googleapis.com" in url.netloc.lower():
         # Apply the yarl patch for GCS pre-signed URLs.
         import delta_sharing._yarl_patch  # noqa: F401
@@ -154,7 +161,7 @@ def _read_file_as_arrow(action) -> "pa.Table":
 
 def _add_missing_columns(
     pdf: "pd.DataFrame",
-    action,
+    action: "FileAction",
     converters: Dict[str, Callable[[str], Any]],
 ) -> "pd.DataFrame":
     """Add columns absent from the parquet file, mirroring ``_to_pandas``.
