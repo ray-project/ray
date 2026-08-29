@@ -16,7 +16,9 @@ from ray.tests.conftest import _ray_start
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    # No Authorization header: the client attaches the cluster's real token when
+    # auth is on. A hard-coded placeholder would be rejected as invalid.
+    return {"Connection": "keep-alive"}
 
 
 @pytest.fixture(scope="module")
