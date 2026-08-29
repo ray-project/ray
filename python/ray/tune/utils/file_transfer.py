@@ -262,7 +262,6 @@ def _pack_dir(
 
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
-
         if not files_stats and not exclude:
             # If no `files_stats` is passed, pack whole directory
             tar.add(source_dir, arcname="", recursive=True)
@@ -296,7 +295,7 @@ def _pack_dir(
 
 
 def _gib_string(num_bytes: float) -> str:
-    return f"{float(num_bytes / 1024 ** 3):.2f}GiB"
+    return f"{float(num_bytes / 1024**3):.2f}GiB"
 
 
 @ray.remote
@@ -390,10 +389,14 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
                 if hasattr(tarfile, "data_filter"):
                     tar.extractall(target_dir, filter="data")
                 else:
+
                     def _is_within_directory(directory: str, target: str) -> bool:
                         abs_directory = os.path.abspath(directory)
                         abs_target = os.path.abspath(target)
-                        prefix = os.path.commonpath([abs_directory, abs_target])
+                        try:
+                            prefix = os.path.commonpath([abs_directory, abs_target])
+                        except ValueError:
+                            return False
                         return prefix == abs_directory
 
                     safe_members = []
@@ -403,6 +406,19 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
                             raise RuntimeError(
                                 f"Path traversal attempt detected in tar archive entry: {member.name}"
                             )
+                        if member.issym() or member.islnk():
+                            if member.issym():
+                                link_target = os.path.join(
+                                    target_dir,
+                                    os.path.dirname(member.name),
+                                    member.linkname,
+                                )
+                            else:
+                                link_target = os.path.join(target_dir, member.linkname)
+                            if not _is_within_directory(target_dir, link_target):
+                                raise RuntimeError(
+                                    f"Path traversal attempt detected in tar link entry: {member.name} -> {member.linkname}"
+                                )
                         safe_members.append(member)
                     tar.extractall(target_dir, members=safe_members)
     except TimeoutError:
