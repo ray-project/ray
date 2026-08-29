@@ -86,6 +86,14 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run, timeout_s, sched_mem_
         TPCH_DIR + os.pathsep + DATASET_DIR + os.pathsep + env.get("PYTHONPATH", "")
     )
     env["RAY_DATA_DEFAULT_SHUFFLE_STRATEGY"] = strategy
+    # Anyscale pins RAY_OVERRIDE_RESOURCES (memory=14.4GiB on this box) and it
+    # beats ray.init(_memory=...): that budget deadlocks multi-join hash_shuffle
+    # cells (two JoinOperators' aggregator reservations consume all of it).
+    # Rewrite just the memory field for the cell; scheduling-only, not allocated.
+    if sched_mem_gb and env.get("RAY_OVERRIDE_RESOURCES"):
+        ovr = json.loads(env["RAY_OVERRIDE_RESOURCES"])
+        ovr["memory"] = sched_mem_gb << 30
+        env["RAY_OVERRIDE_RESOURCES"] = json.dumps(ovr)
     env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
     env["TEST_OUTPUT_JSON"] = os.path.join(outdir, f"{tag}.benchmark.json")
     cmd = [

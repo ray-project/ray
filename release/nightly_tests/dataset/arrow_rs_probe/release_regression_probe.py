@@ -226,6 +226,13 @@ def run_cell(name, module, argv, extra_env, reader, a):
     env["PYTHONPATH"] = DATASET_DIR + os.pathsep + env.get("PYTHONPATH", "")
     env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
     env["RAY_DATA_BENCH_NODE_MEM_MONITOR"] = "1"
+    # Anyscale pins RAY_OVERRIDE_RESOURCES (memory=14.4GiB on this box) and it
+    # beats ray.init(_memory=...); rewrite the memory field per cell or the
+    # multi-JoinOperator/aggregator cells deadlock on reservation starvation.
+    if a.sched_mem_gb and env.get("RAY_OVERRIDE_RESOURCES"):
+        ovr = json.loads(env["RAY_OVERRIDE_RESOURCES"])
+        ovr["memory"] = a.sched_mem_gb << 30
+        env["RAY_OVERRIDE_RESOURCES"] = json.dumps(ovr)
     env["TEST_OUTPUT_JSON"] = os.path.join(a.outdir, f"{tag}.benchmark.json")
     env.update(extra_env)
     write_root = ""
