@@ -400,6 +400,87 @@ def parse_and_validate_excludes(excludes: List[str]) -> List[str]:
         )
 
 
+def parse_and_validate_py_executable(
+    py_executable: str,
+) -> str:
+    """Parses and validates a user-provided 'py_executable' option.
+
+    Detects the deprecated bare ``'uv run'`` value that was required in
+    Ray <=2.44 but is no longer needed since Ray 2.47 (uv integration is
+    now automatic when the driver is launched via ``uv run``). A bare
+    ``'uv run'`` does not include a Python interpreter and causes worker
+    startup to fail with unloadable runtime_env/worker logs (see
+    https://github.com/ray-project/ray/issues/54275).
+
+    The hook ``ray._private.runtime_env.uv_runtime_env_hook`` now sets
+    ``py_executable`` to ``'uv run --python X.Y.Z python'`` automatically.
+    Users should remove the manual ``py_executable='uv run'`` entry.
+
+    Args:
+        py_executable: The Python executable command string.
+
+    Returns:
+        The validated py_executable string.
+
+    Raises:
+        TypeError: If py_executable is not a string.
+        ValueError: If py_executable is empty or is the deprecated bare
+            ``'uv run'`` (with optional path prefix) which would cause
+            ambiguous job failures.
+    """
+    assert py_executable is not None
+    if not isinstance(py_executable, str):
+        raise TypeError(
+            "runtime_env['py_executable'] must be of type str, "
+            f"got {type(py_executable)}"
+        )
+
+    stripped = py_executable.strip()
+    if not stripped:
+        raise ValueError(
+            "runtime_env['py_executable'] must be a non-empty string, "
+            f"got {py_executable!r}"
+        )
+
+    # Detect bare ``uv run`` (with optional path prefix, e.g. ``/usr/local/bin/uv run``).
+    # This was the recommended value in Ray 2.44 and below but is incomplete:
+    # it lacks a Python interpreter and leads to worker failures with
+    # unloadable logs after the automatic uv integration in 2.47+.
+    parts = stripped.split()
+    if len(parts) == 2:
+        first, second = parts
+        is_uv = (
+            first == "uv"
+            or first.endswith("/uv")
+            or first.endswith("\\uv")
+            or first == "uv.exe"
+        )
+        if is_uv and second == "run":
+            logger.warning(
+                "runtime_env['py_executable']='uv run' is deprecated and no "
+                "longer required since Ray 2.47. The uv integration is now "
+                "automatic when you run your driver with 'uv run'; please "
+                "remove 'py_executable' from your runtime_env. Jobs with uv "
+                "succeed without it. If you need a custom executable, use a "
+                "full command (the hook sets 'uv run --python X.Y.Z python' "
+                "automatically)."
+            )
+            raise ValueError(
+                "runtime_env['py_executable']='uv run' is deprecated and no "
+                "longer required since Ray 2.47. Ray's uv integration is now "
+                "automatic when the driver is launched with 'uv run'; please "
+                "remove 'py_executable' from your runtime_env. Jobs with uv "
+                "succeed without py_executable (see "
+                "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html"
+                "#using-uv-for-package-management). Got: "
+                f"{py_executable!r}. If you need a custom worker command, "
+                "provide the full executable (e.g., the hook uses "
+                "'uv run --python X.Y.Z python')."
+            )
+
+    return py_executable
+
+
 def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Parses and validates a user-provided 'env_vars' option.
 
@@ -454,6 +535,7 @@ OPTION_TO_VALIDATION_FN = {
     "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
+    "py_executable": parse_and_validate_py_executable,
 }
 
 # RuntimeEnv can be created with local paths
