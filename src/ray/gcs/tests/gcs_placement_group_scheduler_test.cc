@@ -624,6 +624,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
   ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+  // The cancellation came from RemovePlacementGroup: the bundle removal must
+  // say so, so the raylet also cancels the group's waiting leases.
+  ASSERT_EQ(raylet_clients_[0]->remove_pg_bundles_removed_flags, std::vector<bool>{true});
+  ASSERT_EQ(raylet_clients_[1]->remove_pg_bundles_removed_flags, std::vector<bool>{true});
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -984,6 +988,12 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
   ASSERT_EQ(raylet_clients_[0]->commit_callbacks.size(), 0);
   ASSERT_EQ(raylet_clients_[1]->commit_callbacks.size(), 0);
+  // The prepared bundle on node0 is returned by a scheduling abort: the group
+  // lives on, so the removal must NOT claim the group was removed (that would
+  // cancel leases waiting for the group to finish being created).
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[0]->remove_pg_bundles_removed_flags,
+            std::vector<bool>{false});
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 

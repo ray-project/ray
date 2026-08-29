@@ -189,6 +189,11 @@ class ClusterResourceScheduler {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the resource request.
+  ///  \param actor_acquires_lifetime_resources: true for an actor-creation
+  ///  lease whose actor acquires resources for its lifetime. Such a lease
+  ///  waits in the schedule queue when every feasible node is busy instead of
+  ///  being sent to a busy node; a default actor acquires nothing and must
+  ///  stay startable on a fully busy node, so it keeps the legacy path.
   scheduling::NodeID GetBestSchedulableNode(
       const ResourceRequest &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
@@ -196,7 +201,8 @@ class ClusterResourceScheduler {
       bool force_spillback,
       const std::string &preferred_node_id,
       int64_t *violations,
-      bool *is_infeasible);
+      bool *is_infeasible,
+      bool actor_acquires_lifetime_resources = false);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -213,10 +219,13 @@ class ClusterResourceScheduler {
       bool force_spillback,
       const std::string &preferred_node_id,
       int64_t *violations,
-      bool *is_infeasible);
+      bool *is_infeasible,
+      bool actor_acquires_lifetime_resources = false);
 
-  /// Judging whether it affinity with placement group bundle
-  bool IsAffinityWithBundleSchedule(const rpc::SchedulingStrategy &scheduling_strategy);
+  /// Whether the lease is scheduled with a placement group strategy carrying
+  /// a non-nil placement group id.
+  bool IsPlacementGroupSchedulingStrategy(
+      const rpc::SchedulingStrategy &scheduling_strategy);
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Callback to check if node is available.

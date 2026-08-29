@@ -17,7 +17,7 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
+SchedulingResult NodeAffinitySchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::NODE_AFFINITY);
 
@@ -26,14 +26,14 @@ scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
       nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
     if (!options.node_affinity_spill_on_unavailable_ &&
         !options.node_affinity_fail_on_unavailable_) {
-      return target_node_id;
+      return SchedulingResult::Success({target_node_id});
     } else if (nodes_.at(target_node_id).GetLocalView().IsAvailable(resource_request)) {
-      return target_node_id;
+      return SchedulingResult::Success({target_node_id});
     }
   }
 
   if (!options.node_affinity_soft_) {
-    return scheduling::NodeID::Nil();
+    return SchedulingResult::Infeasible();
   }
 
   options.scheduling_type_ = SchedulingType::HYBRID;

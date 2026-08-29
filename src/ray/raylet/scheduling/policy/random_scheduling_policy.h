@@ -34,8 +34,8 @@ class RandomSchedulingPolicy : public ISchedulingPolicy {
         gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
         is_node_available_(is_node_available) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

@@ -2070,39 +2070,50 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   RAY_LOG(INFO) << "Got request to remove " << request.bundle_specs_size()
                 << " bundle(s) for placement group " << pg_id;
 
-  // Cancel all lease requests for the placement group removal.
-  local_lease_manager_.CancelLeases(
-      [&](const std::shared_ptr<internal::Work> &work) {
-        const auto bundle_id =
-            work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
-        return bundle_id.first == pg_id;
-      },
-      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
+  // When the placement group itself is being removed, cancel its waiting
+  // lease requests and kill its workers. ClusterLeaseManager::CancelLeases
+  // sweeps the cluster queues (including the schedule queue, where an
+  // all-busy placement group lease waits for a resource-view change) and
+  // delegates to the local lease manager. When the bundles are merely
+  // returned by a scheduling abort or reschedule, the group lives on and its
+  // waiting leases must be left alone.
+  if (request.placement_group_removed()) {
+    cluster_lease_manager_.CancelLeases(
+        [&](const std::shared_ptr<internal::Work> &work) {
+          const auto bundle_id =
+              work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
+          return bundle_id.first == pg_id;
+        },
+        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
+        absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
 
-  // Kill all workers that are currently associated with the placement group.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
-  // will delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_pg` separately.
-  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
-  for (const auto &worker_it : leased_workers_) {
-    auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == pg_id) {
-      workers_associated_with_pg.emplace_back(worker);
+    // Kill the group's workers, for the same reason as above: on a scheduling
+    // abort or reschedule the group lives on, and a node can hold a committed
+    // bundle (running workers) and an aborted prepared bundle of the same
+    // group at the same time, so those workers must survive.
+    // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
+    // will delete the element of `leased_workers_`. So we need to filter out
+    // `workers_associated_with_pg` separately.
+    std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
+    for (const auto &worker_it : leased_workers_) {
+      auto &worker = worker_it.second;
+      if (worker->GetBundleId().first == pg_id) {
+        workers_associated_with_pg.emplace_back(worker);
+      }
     }
-  }
-  for (const auto &worker : workers_associated_with_pg) {
-    std::ostringstream stream;
-    stream << "Destroying worker since its placement group was removed. Placement "
-              "group id: "
-           << worker->GetBundleId().first
-           << ", bundle index: " << worker->GetBundleId().second
-           << ", lease id: " << worker->GetGrantedLeaseId()
-           << ", actor id: " << worker->GetActorId()
-           << ", worker id: " << worker->WorkerId();
-    const auto &message = stream.str();
-    RAY_LOG(DEBUG) << message;
-    DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
+    for (const auto &worker : workers_associated_with_pg) {
+      std::ostringstream stream;
+      stream << "Destroying worker since its placement group was removed. Placement "
+                "group id: "
+             << worker->GetBundleId().first
+             << ", bundle index: " << worker->GetBundleId().second
+             << ", lease id: " << worker->GetGrantedLeaseId()
+             << ", actor id: " << worker->GetActorId()
+             << ", worker id: " << worker->WorkerId();
+      const auto &message = stream.str();
+      RAY_LOG(DEBUG) << message;
+      DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
+    }
   }
 
   // Return resources for the placement group bundles.
