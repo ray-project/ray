@@ -18,11 +18,16 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data.block import BlockAccessor, DataBatch
 
 
-def _create_chained_transformer(udf, n):
-    """Create a MapTransformer with chained batch transforms that track intermediates."""
+def _create_chained_transformer(udf, n, *, is_udf=False):
+    """Create a MapTransformer with chained batch transforms that track intermediates.
+
+    ``is_udf`` mirrors what the planner sets for real ``map_batches`` stages; it
+    gates UDF timing, so tests that assert on ``udf_time_s`` must pass True.
+    """
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(udf),
+            is_udf=is_udf,
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
@@ -150,11 +155,16 @@ def test_chained_transforms_dont_double_count_udf_time():
     NUM_BATCHES = 2
     SLEEP_S = 0.05
 
+    num_calls = 0
+
     def udf(batch: DataBatch) -> DataBatch:
+        nonlocal num_calls
+        num_calls += 1
         time.sleep(SLEEP_S)
         return pd.DataFrame({"id": batch["id"]})
 
-    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS)
+    # is_udf=True is what gates timing; without it no stage is timed at all.
+    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS, is_udf=True)
     ctx = TaskContext(task_idx=0, op_name="test")
 
     def make_input_blocks():
@@ -167,9 +177,11 @@ def test_chained_transforms_dont_double_count_udf_time():
 
     # Assert on rows rather than block count, which depends on block shaping.
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
+    assert num_calls > 0
 
     reported_s = transformer.udf_time_s(reset=False)
-    slept_s = NUM_CHAINED_TRANSFORMS * NUM_BATCHES * SLEEP_S
+    # Measured, not assumed: block shaping decides how many batches each stage sees.
+    slept_s = num_calls * SLEEP_S
 
     # Can't exceed the wall time of the chain that produced it. The headroom
     # absorbs timing noise; the bug inflated this by ~2x at 3 stages.
@@ -177,9 +189,9 @@ def test_chained_transforms_dont_double_count_udf_time():
         reported_s <= wall_s * 1.05
     ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
     # ...and the stages' time must still be measured, not dropped.
-    assert reported_s >= slept_s, (
+    assert reported_s >= slept_s * 0.9, (
         f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
-        "inside the UDFs"
+        f"across {num_calls} UDF calls"
     )
 
 
