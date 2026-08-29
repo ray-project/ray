@@ -198,6 +198,13 @@ class StartExecRequest(BaseModel):
         default=None,
         description="Override the sandbox's shell for this command only.",
     )
+    user: Optional[str] = Field(
+        default=None,
+        description=(
+            "Run as this user: a numeric uid, 'uid:gid', or a name from "
+            "the image's /etc/passwd. Default: the image's user."
+        ),
+    )
 
     @field_validator("command")
     @classmethod

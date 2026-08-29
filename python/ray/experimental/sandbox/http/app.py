@@ -477,6 +477,7 @@ def create_app(
                 env=request.env,
                 timeout_seconds=request.timeout_seconds,
                 shell=request.shell,
+                user=request.user,
             ),
         )
         if result.get("error_code") == "conflict":
