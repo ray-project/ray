@@ -342,7 +342,7 @@ def configure_shuffle_method(request):
     #       parallelism
     if shuffle_strategy in [
         ShuffleStrategy.HASH_SHUFFLE,
-        ShuffleStrategy.HASH_SHUFFLE_V2,
+        ShuffleStrategy.SHUFFLE_V2,
         ShuffleStrategy.GPU_SHUFFLE,
     ]:
         ctx.default_hash_shuffle_parallelism = 8

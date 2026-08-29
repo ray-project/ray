@@ -21,7 +21,9 @@ getting-started/raycronjob-quick-start
 
 ## Custom Resource Definitions (CRDs)
 
-[KubeRay](https://github.com/ray-project/kuberay) is a powerful, open-source Kubernetes operator that simplifies the deployment and management of Ray applications on Kubernetes. It offers 3 custom resource definitions (CRDs):
+[KubeRay](https://github.com/ray-project/kuberay) is a powerful, open-source Kubernetes operator that simplifies the deployment and management of Ray applications on Kubernetes. It runs each Ray node as a Kubernetes Pod, so a Ray cluster's head node is its head Pod and its worker nodes are its worker Pods.
+
+KubeRay offers 3 custom resource definitions (CRDs):
 
 * **RayCluster**: KubeRay fully manages the lifecycle of RayCluster, including cluster creation/deletion, autoscaling, and ensuring fault tolerance.
 

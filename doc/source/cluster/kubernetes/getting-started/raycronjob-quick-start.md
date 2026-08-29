@@ -68,9 +68,9 @@ Install the KubeRay operator, following [these instructions](https://docs.ray.io
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install KubeRay operator v1.6.0 with the RayCronJob feature gate enabled
+# Install KubeRay operator v1.7.0 with the RayCronJob feature gate enabled
 helm install kuberay-operator kuberay/kuberay-operator \
-  --version 1.6.0 \
+  --version 1.7.0 \
   --set "featureGates[0].name=RayCronJob" \
   --set "featureGates[0].enabled=true"
 ```
@@ -78,7 +78,7 @@ helm install kuberay-operator kuberay/kuberay-operator \
 ### Step 3: Install a RayCronJob
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 ```
 
 ### Step 4: Monitor the RayCronJob
@@ -136,7 +136,7 @@ To stop the recurring jobs and delete the resource, run:
 
 ```bash
 # Step 6.1: Delete the RayCronJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 
 # Step 6.2: Delete the KubeRay operator
 helm uninstall kuberay-operator
