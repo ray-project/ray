@@ -70,7 +70,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
       placement_group_count_gauge_(placement_group_count_gauge),
-      clock_(clock) {}
+      clock_(clock),
+      destroy_actors_bound_to_placement_group_([](const PlacementGroupID &) {}) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
@@ -78,6 +79,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     gcs::GcsTableStorage *gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace,
+    std::function<void(const PlacementGroupID &)> destroy_actors_bound_to_placement_group,
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
@@ -95,7 +97,9 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
       placement_group_count_gauge_(placement_group_count_gauge),
-      clock_(clock) {
+      clock_(clock),
+      destroy_actors_bound_to_placement_group_(
+          std::move(destroy_actors_bound_to_placement_group)) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   // On change, only retract states that dropped to zero (emit their final 0). Live
@@ -431,6 +435,12 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       }
     }
   }
+
+  // Destroy the actors scheduled into this placement group first, so their
+  // in-flight lease requests are cancelled wherever they wait. The raylet-side
+  // sweep below only reaches raylets that hold this group's bundles, and a
+  // waiting lease can sit at its scheduling raylet, which need not hold one.
+  destroy_actors_bound_to_placement_group_(placement_group_id);
 
   // Destroy all bundles.
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
@@ -976,7 +986,15 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(bundles_in_use);
   gcs_placement_group_scheduler_->Initialize(commited_bundles, prepared_pgs);
 
-  for (const auto &placement_group_id : groups_to_remove) {
+  // Deferred to RemoveStartupLeftoverPlacementGroups: removal destroys the
+  // group's pending actors through a callback into the actor manager, which
+  // is constructed after this manager.
+  groups_to_remove_at_startup_ = std::move(groups_to_remove);
+  SchedulePendingPlacementGroups();
+}
+
+void GcsPlacementGroupManager::RemoveStartupLeftoverPlacementGroups() {
+  for (const auto &placement_group_id : groups_to_remove_at_startup_) {
     RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
       if (status.ok()) {
         RAY_LOG(INFO)
@@ -989,7 +1007,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     });
   }
-  SchedulePendingPlacementGroups();
+  groups_to_remove_at_startup_.clear();
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {

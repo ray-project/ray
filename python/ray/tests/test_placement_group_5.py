@@ -515,6 +515,62 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
     )
 
 
+def test_remove_placement_group_cancels_lease_waiting_at_non_bundle_node(
+    ray_start_cluster,
+):
+    """The pending actor's lease waits at the driver's raylet, which holds no
+    bundle of the placement group, so the raylet-side removal sweep (which only
+    reaches bundle-holding nodes) never sees it. Removal must still fail the
+    actor through the GCS instead of leaving it pending forever.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # driver node, never a bundle node
+    context = ray.init(address=cluster.address)
+    prom_address = build_address(
+        context.address_info["node_ip_address"],
+        context.address_info["metrics_export_port"],
+    )
+    cluster.add_node(num_cpus=1)  # the only bundle carrier
+    cluster.wait_for_nodes()
+
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(pg.ready())
+
+    @ray.remote(
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    )
+    class Actor:
+        def ping(self):
+            pass
+
+    actor1 = Actor.remote()
+    ray.get(actor1.ping.remote())
+
+    # The bundle is full: actor2's lease waits at the driver's raylet.
+    actor2 = Actor.remote()
+
+    def actor2_lease_waits_in_schedule_queue():
+        # Pin the setup this test is about: the lease must have reached the
+        # driver's raylet and be waiting in its cluster schedule queue.
+        metrics = fetch_prometheus_metrics([prom_address])
+        samples = metrics.get("ray_scheduler_tasks", None)
+        if samples is None:
+            return False
+        return any(
+            sample.labels["State"] == "Received" and sample.value == 1
+            for sample in samples
+        )
+
+    wait_for_condition(actor2_lease_waits_in_schedule_queue, timeout=30)
+
+    ray.util.remove_placement_group(pg)
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(actor2.ping.remote(), timeout=30)
+
+
 def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resource(
     shutdown_only,
 ):
@@ -524,8 +580,8 @@ def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resourc
     Specific test steps:
       1. Create a placement group with only 1 bundle.
       2. Create two actors using the aforementioned pg. At this point,
-         the latter actor lease request will definitely be pending in local lease manager leases_to_grant queue due to
-         unavailable pg bundle resources.
+         the latter actor lease request will definitely be pending in the cluster
+         lease manager schedule queue due to unavailable pg bundle resources.
       3. Remove the pg while the latter actor lease request is pending.
       4. Verify that the pending actor lease request is cancelled and the pg
          is removed successfully.
@@ -556,18 +612,18 @@ def test_remove_placement_group_with_pending_worker_lease_waiting_for_pg_resourc
 
     actor2 = Actor.remote()
 
-    def wait_for_actor2_added_to_dispatch_queue():
+    def wait_for_actor2_added_to_schedule_queue():
         metrics = fetch_prometheus_metrics([prom_address])
         samples = metrics.get("ray_scheduler_tasks", None)
         if samples is None:
             return False
         for sample in samples:
-            if sample.labels["State"] == "Dispatched" and sample.value == 1:
-                # actor2 is in the local lease manager leases_to_grant queue
+            if sample.labels["State"] == "Received" and sample.value == 1:
+                # actor2 is waiting in the cluster lease manager schedule queue
                 return True
         return False
 
-    wait_for_condition(wait_for_actor2_added_to_dispatch_queue, timeout=30)
+    wait_for_condition(wait_for_actor2_added_to_schedule_queue, timeout=30)
 
     ray.util.remove_placement_group(pg)
 

@@ -1596,6 +1596,29 @@ void GcsActorManager::RestartActor(
   }
 }
 
+void GcsActorManager::DestroyActorsBoundToPlacementGroup(
+    const PlacementGroupID &placement_group_id) {
+  // Collect first: destruction mutates registered_actors_.
+  std::vector<std::shared_ptr<GcsActor>> actors_to_destroy;
+  for (const auto &[actor_id, actor] : registered_actors_) {
+    const auto state = actor->GetState();
+    if (state == rpc::ActorTableData::ALIVE || state == rpc::ActorTableData::DEAD) {
+      continue;
+    }
+    if (actor->GetActorTableData().placement_group_id() == placement_group_id.Binary()) {
+      actors_to_destroy.push_back(actor);
+    }
+  }
+  const auto message =
+      absl::StrCat("Required placement group ", placement_group_id.Hex(), " is removed.");
+  for (auto &actor : actors_to_destroy) {
+    OnActorSchedulingFailed(
+        actor,
+        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
+        message);
+  }
+}
+
 void GcsActorManager::OnActorSchedulingFailed(
     std::shared_ptr<GcsActor> actor,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,

@@ -124,9 +124,13 @@ class RayletClientInterface {
   ///   All bundles in the request must belong to this placement group.
   /// \param bundle_specs Bundles to remove on this raylet. All must belong to
   ///   placement_group_id.
+  /// \param placement_group_removed True when the placement group itself is
+  ///   being removed (waiting leases are cancelled); false when the bundles
+  ///   are returned by a scheduling abort or reschedule.
   virtual void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      bool placement_group_removed,
       const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
           &callback) = 0;
 

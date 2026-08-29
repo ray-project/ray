@@ -97,6 +97,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         gcs_table_storage_.get(),
         *gcs_resource_manager_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
+        [](const PlacementGroupID &) {},
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
@@ -1354,6 +1355,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
                  /*prepared_pgs=*/testing::IsEmpty()))
       .Times(1);
   gcs_placement_group_manager_->Initialize(*gcs_init_data);
+  // Initialize only collects the groups whose creator job is dead; the
+  // removal itself is deferred until the actor-destruction callback is wired
+  // (GcsServer calls this right after doing so).
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  gcs_placement_group_manager_->RemoveStartupLeftoverPlacementGroups();
   // Make sure placement group is removed after gcs restart for the creator job is dead
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
 }

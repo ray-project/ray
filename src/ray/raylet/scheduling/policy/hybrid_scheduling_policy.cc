@@ -42,6 +42,7 @@ bool HybridSchedulingPolicy::IsNodeFeasible(
 }
 
 namespace {
+
 float ComputeNodeScoreImpl(const NodeResources &node_resources, float spread_threshold) {
   float critical_resource_utilization =
       node_resources.CalculateCriticalResourceUtilization();
@@ -93,7 +94,7 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   return node_scores[node_index].first;
 }
 
-scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
+SchedulingResult HybridSchedulingPolicy::ScheduleImpl(
     const ResourceRequest &resource_request,
     float spread_threshold,
     bool force_spillback,
@@ -159,29 +160,36 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
   if (!available_nodes.empty()) {
     bool prioritize_preferred_node = !force_spillback && preferred_node_is_available;
     // First prioritize available nodes.
-    return GetBestNode(available_nodes,
-                       num_candidate_nodes,
-                       prioritize_preferred_node
-                           ? std::optional<scheduling::NodeID>(preferred_node_id)
-                           : std::optional<scheduling::NodeID>(),
-                       ComputeNodeScore(preferred_node_id, spread_threshold));
-  } else if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
-    bool prioritize_preferred_node = !force_spillback && preferred_node_is_feasible;
-    // If there are no available nodes, and the caller is okay with an
-    // unavailable node, check the feasible nodes next.
-    return GetBestNode(feasible_and_unavailable_nodes,
-                       num_candidate_nodes,
-                       prioritize_preferred_node
-                           ? std::optional<scheduling::NodeID>(preferred_node_id)
-                           : std::optional<scheduling::NodeID>(),
-                       ComputeNodeScore(preferred_node_id, spread_threshold));
-  } else {
-    return scheduling::NodeID::Nil();
+    return SchedulingResult::Success({GetBestNode(
+        available_nodes,
+        num_candidate_nodes,
+        prioritize_preferred_node ? std::optional<scheduling::NodeID>(preferred_node_id)
+                                  : std::optional<scheduling::NodeID>(),
+        ComputeNodeScore(preferred_node_id, spread_threshold))});
   }
+  if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
+    bool prioritize_preferred_node = !force_spillback && preferred_node_is_feasible;
+    // The caller is okay with an unavailable node: pick among the feasible
+    // ones. A lease the local node could host ends up waiting there or at the
+    // spill target, as before.
+    return SchedulingResult::Success({GetBestNode(
+        feasible_and_unavailable_nodes,
+        num_candidate_nodes,
+        prioritize_preferred_node ? std::optional<scheduling::NodeID>(preferred_node_id)
+                                  : std::optional<scheduling::NodeID>(),
+        ComputeNodeScore(preferred_node_id, spread_threshold))});
+  }
+  if (!feasible_and_unavailable_nodes.empty()) {
+    // Feasible nodes exist but none is available and the caller required an
+    // available node: this is retryable on the next resource-view change, so
+    // it is Failed, not Infeasible.
+    return SchedulingResult::Failed();
+  }
+  return SchedulingResult::Infeasible();
 }
 
-scheduling::NodeID HybridSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
+SchedulingResult HybridSchedulingPolicy::Schedule(const ResourceRequest &resource_request,
+                                                  SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
   if (!options.avoid_gpu_nodes_ || resource_request.Has(ResourceID::GPU())) {
@@ -196,16 +204,16 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = ScheduleImpl(resource_request,
-                                   options.spread_threshold_,
-                                   options.avoid_local_node_,
-                                   /*require_node_available*/ true,
-                                   NodeFilter::kNonGpu,
-                                   options.preferred_node_id_,
-                                   options.schedule_top_k_absolute_,
-                                   options.scheduler_top_k_fraction_);
-  if (!best_node_id.IsNil()) {
-    return best_node_id;
+  auto result = ScheduleImpl(resource_request,
+                             options.spread_threshold_,
+                             options.avoid_local_node_,
+                             /*require_node_available*/ true,
+                             NodeFilter::kNonGpu,
+                             options.preferred_node_id_,
+                             options.schedule_top_k_absolute_,
+                             options.scheduler_top_k_fraction_);
+  if (result.status.IsSuccess()) {
+    return result;
   }
 
   // If we cannot find any available node from non-gpu nodes, fallback to the original

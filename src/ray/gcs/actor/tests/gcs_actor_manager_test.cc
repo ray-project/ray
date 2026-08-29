@@ -210,13 +210,20 @@ class GcsActorManagerTest : public ::testing::Test {
       int max_restarts = 0,
       bool detached = false,
       const std::string &name = "",
-      const std::string &ray_namespace = "test") {
+      const std::string &ray_namespace = "test",
+      const PlacementGroupID &placement_group_id = PlacementGroupID::Nil()) {
     // The tests queue up operations and sometimes don't execute them through the
     // io_context themselves. This is a hack, and future tests shouldn't use this
     // RegisterActor function.
     drain_io_context();
     auto request =
         GenRegisterActorRequest(job_id, max_restarts, detached, name, ray_namespace);
+    if (!placement_group_id.IsNil()) {
+      request.mutable_task_spec()
+          ->mutable_scheduling_strategy()
+          ->mutable_placement_group_scheduling_strategy()
+          ->set_placement_group_id(placement_group_id.Binary());
+    }
     auto status = gcs_actor_manager_->RegisterActor(request, [](const Status &) {});
     io_service_.run_one();
     io_service_.run_one();
@@ -225,6 +232,23 @@ class GcsActorManagerTest : public ::testing::Test {
     return gcs_actor_manager_->registered_actors_.contains(actor_id)
                ? gcs_actor_manager_->registered_actors_[actor_id]
                : nullptr;
+  }
+
+  /// Drive a registered actor through CreateActor so it enters the scheduling
+  /// pipeline. CreateActor replaces the registered GcsActor object, so the
+  /// refreshed handle is returned and the caller's old one is stale.
+  std::shared_ptr<gcs::GcsActor> CreateRegisteredActor(
+      const std::shared_ptr<gcs::GcsActor> &actor) {
+    rpc::CreateActorRequest create_request;
+    create_request.mutable_task_spec()->CopyFrom(
+        actor->GetCreationTaskSpecification().GetMessage());
+    // The reply must outlive the helper: the creation callback stashed by
+    // HandleCreateActor writes into it when the actor later becomes alive.
+    auto create_reply = std::make_shared<rpc::CreateActorReply>();
+    gcs_actor_manager_->HandleCreateActor(
+        create_request, create_reply.get(), [create_reply](auto, auto, auto) {});
+    drain_io_context();
+    return gcs_actor_manager_->registered_actors_[actor->GetActorID()];
   }
 
   void OnNodeDead(const NodeID &node_id) {
@@ -2620,6 +2644,47 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
+}
+
+TEST_F(GcsActorManagerTest, TestDestroyActorsBoundToPlacementGroup) {
+  auto job_id = JobID::FromInt(1);
+  auto placement_group_id = PlacementGroupID::Of(job_id);
+
+  // A registered-but-unresolved actor bound to the group.
+  auto unresolved_actor = RegisterActor(job_id, 0, false, "", "test", placement_group_id);
+  ASSERT_NE(unresolved_actor, nullptr);
+
+  // A pending-creation actor bound to the group: its lease request is in
+  // flight, the state whose cancellation this mechanism exists for.
+  auto pending_actor = RegisterActor(job_id, 0, false, "", "test", placement_group_id);
+  ASSERT_NE(pending_actor, nullptr);
+  pending_actor = CreateRegisteredActor(pending_actor);
+  ASSERT_EQ(pending_actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
+
+  // An alive actor bound to the group: killed by the raylet hosting it, so
+  // the GCS-side destruction must leave it alone.
+  auto alive_actor = RegisterActor(job_id, 0, false, "", "test", placement_group_id);
+  ASSERT_NE(alive_actor, nullptr);
+  alive_actor = CreateRegisteredActor(alive_actor);
+  ASSERT_FALSE(mock_actor_scheduler_->actors.empty());
+  mock_actor_scheduler_->actors.pop_back();
+  alive_actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(alive_actor, rpc::PushTaskReply());
+  ASSERT_EQ(alive_actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Control: an actor without a placement group must not be touched.
+  auto other_actor = RegisterActor(job_id);
+  ASSERT_NE(other_actor, nullptr);
+
+  gcs_actor_manager_->DestroyActorsBoundToPlacementGroup(placement_group_id);
+  drain_io_context();
+
+  ASSERT_EQ(unresolved_actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_EQ(pending_actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(
+      pending_actor->GetActorTableData().death_cause().has_actor_unschedulable_context());
+  ASSERT_EQ(alive_actor->GetState(), rpc::ActorTableData::ALIVE);
+  ASSERT_NE(other_actor->GetState(), rpc::ActorTableData::DEAD);
 }
 
 }  // namespace gcs
