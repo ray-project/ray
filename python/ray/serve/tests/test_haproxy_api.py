@@ -944,7 +944,6 @@ def test_global_retry_knobs_render(haproxy_api_cleanup):
 # Overriding any of these is supported, and makes the shipped-default
 # assertions below meaningless rather than false, so the test opts out instead.
 _DEFAULT_TUNING_ENV_VARS = (
-    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM",
     "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED",
     "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT",
     "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S",
@@ -957,9 +956,8 @@ _DEFAULT_TUNING_ENV_VARS = (
     reason=f"environment overrides one of {_DEFAULT_TUNING_ENV_VARS}",
 )
 def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
-    """The shipped defaults balance with power-of-two-choices, bound connect
-    time, mark dead replicas down from live traffic, and leave `timeout server`
-    unset.
+    """The shipped defaults bound connect time, mark dead replicas down from
+    live traffic, and leave `timeout server` unset.
 
     Every other test in this file passes explicit overrides, so nothing else
     would catch a silent change to these; each one changes how every Serve
@@ -985,10 +983,6 @@ def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
         api._generate_config_file_internal()
         with open(config_file_path) as f:
             cfg = f.read()
-
-    # Per-node proxies share a backend list but not connection counts, so a
-    # global-minimum rule such as leastconn makes them converge on one replica.
-    assert "\n    balance random(2)\n" in cfg
 
     # Replicas are in-cluster: a connect that takes seconds means the node is
     # gone, and failing fast lets redispatch reach another replica in time.

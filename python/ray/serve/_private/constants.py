@@ -924,18 +924,9 @@ RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT = get_env_int_positive(
     "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT", 3
 )
 
-# The balancing algorithm to use in HAProxy backends.
-#
-# Each node's HAProxy renders the same fleet-wide backend list but counts only
-# its own connections, so a stable server set balances fine. Autoscaling keeps
-# it unstable: a replica that appears or returns from DOWN reads as zero
-# connections on every proxy at once, and `leastconn` deterministically prefers
-# it until local counts catch up. HAProxy's `slowstart` damps that herd; Serve
-# does not set it. `random(2)` ranks by the same counts across two sampled
-# servers, so identical observations stop producing identical choices.
-# Set `leastconn` to restore the previous behavior.
+# The balancing algorithm to use in HAProxy backends. Default is leastconn.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
-    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "random(2)"
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
 )
 
 # Timeout shared by the ingress-request-router Lua call and the frontend
