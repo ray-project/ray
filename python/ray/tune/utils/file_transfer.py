@@ -387,7 +387,24 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
         # will be thrown.
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             with tarfile.open(fileobj=stream) as tar:
-                tar.extractall(target_dir)
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(target_dir, filter="data")
+                else:
+                    def _is_within_directory(directory: str, target: str) -> bool:
+                        abs_directory = os.path.abspath(directory)
+                        abs_target = os.path.abspath(target)
+                        prefix = os.path.commonpath([abs_directory, abs_target])
+                        return prefix == abs_directory
+
+                    safe_members = []
+                    for member in tar.getmembers():
+                        member_path = os.path.join(target_dir, member.name)
+                        if not _is_within_directory(target_dir, member_path):
+                            raise RuntimeError(
+                                f"Path traversal attempt detected in tar archive entry: {member.name}"
+                            )
+                        safe_members.append(member)
+                    tar.extractall(target_dir, members=safe_members)
     except TimeoutError:
         # wait, but do not do anything
         with TempFileLock(f"{target_dir}.lock"):

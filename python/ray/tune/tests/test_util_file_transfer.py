@@ -245,3 +245,22 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+
+def test_unpack_dir_path_traversal_protection(tmp_path):
+    import io
+    import tarfile
+    from ray.tune.utils.file_transfer import _unpack_dir
+
+    target_dir = str(tmp_path / "target")
+    os.makedirs(target_dir, exist_ok=True)
+
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        tinfo = tarfile.TarInfo(name="../traversal_file.txt")
+        tinfo.size = 5
+        tar.addfile(tinfo, io.BytesIO(b"hello"))
+
+    with pytest.raises(Exception):
+        _unpack_dir(stream, target_dir)
