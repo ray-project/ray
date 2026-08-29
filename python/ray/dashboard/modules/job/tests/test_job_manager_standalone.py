@@ -1,4 +1,13 @@
+# isort: skip_file
+# ruff: noqa: E402
+import os
 import sys
+
+# Set before importing ray: the C++ RayConfig reads the auth mode once, at import
+# time. This keeps token auth on and consistent for the in-process cluster this
+# module bootstraps, regardless of any token left in ~/.ray by an earlier test.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
 
 import pytest
 

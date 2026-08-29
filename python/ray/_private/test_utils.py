@@ -68,6 +68,30 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 
+def _auth_token_header():
+    from ray._raylet import AuthenticationTokenLoader
+
+    return AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+
+
+def request_with_auth_token(method, url, **kwargs):
+    """Like ``requests.request`` but attaches the cluster's auth token.
+
+    Test code that talks to the dashboard over raw HTTP must carry the token
+    when auth is on, or the request gets a 401. Nothing is added when no token
+    is available (auth disabled); an explicit ``Authorization`` header is kept.
+    """
+    kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
+    return requests.request(method, url, **kwargs)
+
+
+def get_with_auth_token(url, **kwargs):
+    """``requests.get`` variant that attaches the cluster's auth token."""
+    return request_with_auth_token("GET", url, **kwargs)
+
+
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
