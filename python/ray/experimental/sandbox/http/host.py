@@ -381,6 +381,7 @@ class SandboxHost:
         env: Optional[Dict[str, str]] = None,
         timeout_seconds: Optional[float] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> Dict[str, Any]:
         if self._status != "running":
             return {
@@ -394,7 +395,7 @@ class SandboxHost:
         self._execs[exec_id] = job
         self._prune_exec_history()
         task = asyncio.create_task(
-            self._run_exec(job, command, cwd, env, timeout_seconds, shell)
+            self._run_exec(job, command, cwd, env, timeout_seconds, shell, user)
         )
         self._exec_tasks[exec_id] = task
         task.add_done_callback(lambda _: self._exec_tasks.pop(exec_id, None))
@@ -421,6 +422,7 @@ class SandboxHost:
         env: Optional[Dict[str, str]],
         timeout_seconds: Optional[float],
         shell: Optional[str],
+        user: Optional[str],
     ) -> None:
         try:
             result = await self._runtime.exec_async(
@@ -430,6 +432,7 @@ class SandboxHost:
                 cwd=cwd,
                 env=env or None,
                 shell=shell,
+                user=user,
             )
         except asyncio.CancelledError:
             # _shutdown already marked the job; just stop.

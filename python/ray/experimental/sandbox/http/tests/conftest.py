@@ -89,6 +89,7 @@ class FakeSandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> FakeExecResult:
         self.exec_calls.append(
             {
@@ -98,6 +99,7 @@ class FakeSandboxRuntime:
                 "cwd": cwd,
                 "env": env,
                 "shell": shell,
+                "user": user,
             }
         )
         if self.exec_error is not None:
@@ -114,6 +116,7 @@ class FakeSandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> FakeExecResult:
         return await asyncio.to_thread(
             self.exec,
@@ -123,6 +126,7 @@ class FakeSandboxRuntime:
             cwd=cwd,
             env=env,
             shell=shell,
+            user=user,
         )
 
     def write_file(

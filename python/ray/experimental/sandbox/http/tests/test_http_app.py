@@ -568,6 +568,24 @@ def test_shell_passthrough_to_runtime(fake_resolver: FakeResolver) -> None:
     assert runtime.exec_calls[0]["shell"] == "/bin/dash"
 
 
+def test_exec_user_passthrough(fake_resolver: FakeResolver) -> None:
+    client = _client(fake_resolver)
+    info = _create_sandbox(client)
+    _wait_running(client, info["sandbox_id"])
+
+    response = client.post(
+        f"{BASE}/sandboxes/{info['sandbox_id']}/execs",
+        json={"command": "id", "user": "1000:1000"},
+    )
+    assert response.status_code == 202, response.text
+    exec_id = response.json()["exec_id"]
+    client.get(
+        f"{BASE}/sandboxes/{info['sandbox_id']}/execs/{exec_id}",
+        params={"wait_seconds": 5},
+    )
+    assert fake_resolver.runtimes[0].exec_calls[0]["user"] == "1000:1000"
+
+
 def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
     client = _client(fake_resolver)
     response = client.post(

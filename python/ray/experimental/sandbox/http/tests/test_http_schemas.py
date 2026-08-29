@@ -62,7 +62,14 @@ EXPECTED_MODEL_FIELDS = {
         "labels",
         "error",
     },
-    "StartExecRequest": {"command", "cwd", "env", "timeout_seconds", "shell"},
+    "StartExecRequest": {
+        "command",
+        "cwd",
+        "env",
+        "timeout_seconds",
+        "shell",
+        "user",
+    },
     "ExecStarted": {"exec_id", "status"},
     "ExecInfo": {
         "exec_id",
