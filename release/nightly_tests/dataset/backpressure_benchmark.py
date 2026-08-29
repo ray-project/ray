@@ -10,7 +10,9 @@ from benchmark import Benchmark
 
 
 # Allow 20% headroom over the observed 10.8 GiB baseline.
-MANY_TINY_OBJECTS_MAX_HEAD_NODE_MEMORY_BYTES = 13 * 1024**3
+MAX_HEAD_NODE_MEMORY_BYTES_BY_CASE = {
+    "many-tiny-objects": 13 * 1024**3,
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -183,12 +185,9 @@ class Trainer:
 
 
 def main(args: argparse.Namespace):
-    max_head_node_memory_bytes = (
-        MANY_TINY_OBJECTS_MAX_HEAD_NODE_MEMORY_BYTES
-        if args.case == "many-tiny-objects"
-        else None
+    benchmark = Benchmark(
+        max_head_node_memory_bytes=MAX_HEAD_NODE_MEMORY_BYTES_BY_CASE.get(args.case)
     )
-    benchmark = Benchmark(max_head_node_memory_bytes=max_head_node_memory_bytes)
 
     try:
         if args.case == "fast-producer-slow-consumer":
