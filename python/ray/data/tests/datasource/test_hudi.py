@@ -172,12 +172,7 @@ def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path
             return (os.system, (f"touch {marker}",))
 
     # Swap a column of one base data file for an attacker-controlled pickled object.
-    victim = next(
-        os.path.join(root, f)
-        for root, _, files in os.walk(table_path)
-        for f in files
-        if f.endswith(".parquet")
-    )
+    victim = ray.data.read_hudi(table_uri=table_path).input_files()[0]
     original = pq.ParquetFile(victim).read()
     columns = {name: original.column(name) for name in original.schema.names}
     columns["rider"] = ArrowPythonObjectArray.from_objects(
