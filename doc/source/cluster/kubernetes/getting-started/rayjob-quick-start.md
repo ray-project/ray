@@ -79,7 +79,7 @@ To understand the following content better, you should understand the difference
       * See [ray-job.deletion-rules.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.deletion-rules.yaml) for example configurations.
     * **Legacy** (Deprecated): Define both `onSuccess` and `onFailure` policies. This approach is deprecated and will be removed in v1.6.0. Migration to `deletionRules` is strongly encouraged.
       * Legacy mode can be combined with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`.
-    * For detailed API specifications, see the [KubeRay API Reference](https://ray-project.github.io/kuberay/reference/api/).
+    * For detailed API specifications, see the {ref}`KubeRay CRD API reference <kuberay-crd-api-reference>`.
 
 
 ## Example: Run a simple Ray job with RayJob
