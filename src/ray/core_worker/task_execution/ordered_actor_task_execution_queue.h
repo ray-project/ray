@@ -49,6 +49,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
       ExecuteTaskCallback execute_task,
       CancelTaskCallback cancel_task);
 
+  /// NOT THREAD-SAFE: cancels each group's reorder timer and mutates group_states_, both
+  /// of which the task execution service also touches, so it must not run concurrently
+  /// with that service. Production posts it there from CoreWorkerShutdownExecutor.
   void Stop() override;
 
   void EnqueueTask(int64_t seq_no,
