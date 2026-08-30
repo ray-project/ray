@@ -26,6 +26,7 @@ examples/verl-post-training
 examples/argocd
 examples/rayjob-agent-sandbox
 examples/rayjob-agent-sandbox-snapshot
+examples/ray-sandboxing
 ```
 
 
@@ -45,3 +46,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-verl`
 - {ref}`kuberay-agent-sandbox`
 - {ref}`kuberay-agent-sandbox-snapshot`
+- {ref}`kuberay-sandboxing`
