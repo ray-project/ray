@@ -89,7 +89,9 @@ Elastic capacity has the following guarantees:
 - A user-function exception fails its result without poisoning a live actor.
   A confirmed actor death releases its slot so later submissions can replace
   it. If actor ownership is ambiguous, the pool fails closed instead of
-  risking two actors in one slot.
+  risking two actors in one slot. This includes an ambiguous completion of the
+  actor termination call: the slot remains occupied unless Ray confirms that
+  the actor exited.
 - Autoscaling changes actor capacity only. Ray actor mailboxes remain the task
   queue and Ray object references remain the result protocol.
 
@@ -101,6 +103,13 @@ These guarantees deliberately have the following boundaries:
 - A pool does not reconnect actor handles after a Ray session is replaced or
   recover transparently from an unavailable control plane. Management failures
   are reported to the caller.
+- If an actor needed for ``min_size`` dies during startup, the pool fails closed
+  instead of automatically retrying a permanently failing initializer without
+  a bound. This makes the capacity-floor failure visible and prevents actor
+  creation churn.
+- ``join()`` has no independent deadline. It continues waiting if Ray never
+  settles an actor termination reference, rather than reusing capacity whose
+  physical actor may still exist.
 - Actor capacity is bounded, but queued calls, result objects, and Joblib's
   input cache remain proportional to accepted work. The pool does not impose
   backpressure or a fixed memory limit independent of the workload.

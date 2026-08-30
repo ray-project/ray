@@ -467,6 +467,17 @@ class _ElasticActorSet:
                     # Ray has confirmed that this actor can no longer execute
                     # work, so its bounded slot is safe to reuse.
                     self._clear_slot_locked(slot)
+                    capacity = sum(
+                        candidate.state
+                        in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+                        for candidate in self._slots
+                    )
+                    if capacity < self._min_size:
+                        # Automatically recreating a permanently failing
+                        # initializer would create an unbounded actor-start
+                        # loop. Converge explicitly instead of silently
+                        # violating the configured capacity floor.
+                        self._error = error
                 else:
                     # An ObjectRef can fail while its actor remains alive (for
                     # example, if the readiness task is cancelled). Retain the
@@ -557,8 +568,8 @@ class _ElasticActorSet:
         generation = slot.generation
         try:
             exit_ref.future().add_done_callback(
-                lambda _future, target=slot, expected=generation: self._actor_exited(
-                    target, expected
+                lambda future, target=slot, expected=generation: self._actor_exited(
+                    target, expected, future
                 )
             )
         except BaseException as error:
@@ -581,19 +592,34 @@ class _ElasticActorSet:
         generation = slot.generation
         try:
             exit_ref.future().add_done_callback(
-                lambda _future, target=slot, expected=generation: self._actor_exited(
-                    target, expected
+                lambda future, target=slot, expected=generation: self._actor_exited(
+                    target, expected, future
                 )
             )
         except BaseException as error:
             self._error = error
 
-    def _actor_exited(self, slot: _ElasticSlot, generation: int) -> None:
+    def _actor_exited(self, slot: _ElasticSlot, generation: int, future) -> None:
         with self._condition:
             if (
                 slot.generation != generation
                 or slot.state is not _ElasticSlotState.DRAINING
             ):
+                return
+            try:
+                error = future.exception()
+            except BaseException as callback_error:
+                self._error = callback_error
+                self._condition.notify_all()
+                return
+            if error is not None and not isinstance(
+                error, ray.exceptions.ActorDiedError
+            ):
+                # ActorUnavailableError only proves that this termination call
+                # has settled. The actor may recover, so keep the slot owned
+                # and non-reusable until a separate path confirms its death.
+                self._error = error
+                self._condition.notify_all()
                 return
             self._clear_slot_locked(slot)
             self._restore_min_size_locked()

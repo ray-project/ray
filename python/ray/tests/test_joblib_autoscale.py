@@ -376,7 +376,40 @@ def test_termination_callback_failure_retains_slot_and_fails_closed():
 
     # Simulate a separately confirmed exit so the test-owned reaper can stop.
     slot = actor_set._slots[0]
-    actor_set._actor_exited(slot, slot.generation)
+    confirmed_exit = concurrent.futures.Future()
+    confirmed_exit.set_exception(ray.exceptions.ActorDiedError())
+    actor_set._actor_exited(slot, slot.generation, confirmed_exit)
+    actor_set.join()
+
+
+def test_ambiguous_termination_completion_does_not_release_slot():
+    first_actor = _FakeActor()
+    replacement_actor = _FakeActor()
+    actors = [first_actor, replacement_actor]
+    actor_set = _ElasticActorSet(
+        lambda: actors.pop(0), min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    batch_ref.completion.set_result([])
+    slot = actor_set._slots[0]
+    with actor_set._condition:
+        actor_set._begin_draining_locked(slot)
+
+    unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
+    first_actor.exit_ref.completion.set_exception(unavailable)
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert slot.actor is first_actor
+    assert actor_set._error is unavailable
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+    assert actors == [replacement_actor]
+
+    actor_set.close()
+    confirmed_exit = concurrent.futures.Future()
+    confirmed_exit.set_exception(ray.exceptions.ActorDiedError())
+    actor_set._actor_exited(slot, slot.generation, confirmed_exit)
     actor_set.join()
 
 
@@ -420,6 +453,55 @@ def test_actor_init_failure_releases_slot_for_retry():
 
     actor_set.close()
     replacement_actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_min_size_startup_death_fails_closed_without_retry_churn():
+    failed_actor = _FakeActor(ready=False)
+    replacement_actor = _FakeActor()
+    actors = [failed_actor, replacement_actor]
+    actor_set = _ElasticActorSet(
+        lambda: actors.pop(0), min_size=1, max_size=1, idle_timeout_s=60
+    )
+
+    startup_error = ray.exceptions.ActorDiedError()
+    failed_actor.readiness_ref.completion.set_exception(startup_error)
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set._error is startup_error
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+    assert actors == [replacement_actor]
+
+    actor_set.close()
+    actor_set.join()
+
+
+def test_startup_death_above_min_size_keeps_pool_available():
+    active_actor = _FakeActor()
+    failed_actor = _FakeActor(ready=False)
+    actors = [active_actor, failed_actor]
+    actor_set = _ElasticActorSet(
+        lambda: actors.pop(0), min_size=1, max_size=2, idle_timeout_s=60
+    )
+
+    refs = [actor_set.submit(None, []) for _ in range(3)]
+    failed_actor.readiness_ref.completion.set_exception(ray.exceptions.ActorDiedError())
+
+    assert actor_set.snapshot() == [
+        (_ElasticSlotState.ACTIVE, 2),
+        (_ElasticSlotState.EMPTY, 0),
+    ]
+    assert actor_set._error is None
+
+    refs[0].completion.set_result([])
+    refs[1].completion.set_result([])
+    refs[2].completion.set_exception(ray.exceptions.ActorDiedError())
+    continuation_ref = actor_set.submit(None, [])
+    continuation_ref.completion.set_result([])
+
+    actor_set.close()
+    active_actor.exit_ref.completion.set_result(None)
     actor_set.join()
 
 
