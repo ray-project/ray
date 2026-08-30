@@ -372,13 +372,14 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
-        usage = ExecutionResources.zero()
+        cpu = memory = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
-            usage = usage.add(ExecutionResources(cpu=bundle.cpu, memory=bundle.memory))
-        return usage
+            cpu += bundle.cpu
+            memory += bundle.memory
+        return ExecutionResources(cpu=cpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
