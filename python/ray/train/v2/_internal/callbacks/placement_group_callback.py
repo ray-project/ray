@@ -150,7 +150,6 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
     def _unregister_placement_group(self) -> bool:
         placement_group = self._registered_placement_group
-        self._registered_placement_group = None
         if (
             not self._cleaner
             or not self._controller_actor_id
@@ -172,6 +171,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
                 "Failed to unregister placement group from PlacementGroupCleaner."
             )
             return False
+        self._registered_placement_group = None
         return True
 
     def _unregister_controller(self):
@@ -199,8 +199,10 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
     def _stop_cleaner(self):
         # Worker-group shutdown has already completed before this hook runs, so
-        # it is safe to drop this controller's durable registration.
-        self._unregister_controller()
+        # it is safe to drop this controller's durable registration only after
+        # its placement group registration has been removed successfully.
+        if self._unregister_placement_group():
+            self._unregister_controller()
 
     def before_controller_abort(self):
         # Keep the durable registration until worker-group abort has completed.

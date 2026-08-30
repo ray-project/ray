@@ -575,6 +575,22 @@ def test_callback_keeps_registration_during_controller_abort():
     cleaner.unregister_controller.remote.assert_called_once_with("controller-id")
 
 
+def test_callback_keeps_controller_registration_when_pg_unregister_fails():
+    callback = PlacementGroupCleanerCallback(check_interval_s=0.1)
+    callback._controller_actor_id = "controller-id"
+    cleaner = MagicMock()
+    callback._cleaner = cleaner
+    placement_group = MagicMock()
+    callback._registered_placement_group = placement_group
+
+    with patch.object(ray, "get", side_effect=RuntimeError("cleaner unavailable")):
+        callback.after_worker_group_shutdown(MagicMock())
+        callback.before_controller_shutdown()
+
+    assert callback._registered_placement_group is placement_group
+    cleaner.unregister_controller.remote.assert_not_called()
+
+
 def test_callback_warns_if_late_registration_is_rejected():
     callback = PlacementGroupCleanerCallback(check_interval_s=0.1)
     callback._controller_actor_id = "dead-controller"
