@@ -255,50 +255,83 @@ def _gather_into_output(
         chunk_ids = np.searchsorted(chunk_starts, subbatch_indices, side="right") - 1
         local_indices = subbatch_indices - chunk_starts[chunk_ids]
 
-        # Ordered chunk IDs need no sorting and may collapse to direct slices.
         if np.all(chunk_ids[1:] >= chunk_ids[:-1]):
-            boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
-            group_start = 0
-            # Add the final sentinel lazily instead of materializing a Python tuple
-            # proportional to the number of chunk groups.
-            for group_stop in chain(boundaries, (len(chunk_ids),)):
-                chunk_id = chunk_ids[group_start]
-                group_indices = local_indices[group_start:group_stop]
-                if len(group_indices) <= 1 or np.all(
-                    group_indices[1:] == group_indices[:-1] + 1
-                ):
-                    source_start = int(group_indices[0])
-                    source_stop = source_start + len(group_indices)
-                    output_slice[group_start:group_stop] = chunks[chunk_id][
-                        source_start:source_stop
-                    ]
-                else:
-                    output_slice[group_start:group_stop] = chunks[chunk_id][
-                        group_indices
-                    ]
-                group_start = group_stop
-            continue
-
-        # For a few chunks, masks avoid the fixed cost of sorting every row.
-        if len(chunks) <= _MAX_MASK_GROUP_CHUNKS:
-            present_chunk_ids = np.flatnonzero(
-                np.bincount(chunk_ids, minlength=len(chunks))
+            _gather_monotonic_chunk_ids(
+                output_slice,
+                local_indices,
+                chunks,
+                chunk_ids,
             )
-            for chunk_id in present_chunk_ids:
-                positions = np.flatnonzero(chunk_ids == chunk_id)
-                output_slice[positions] = chunks[chunk_id][local_indices[positions]]
-            continue
+        elif len(chunks) <= _MAX_MASK_GROUP_CHUNKS:
+            _gather_by_chunk_masks(
+                output_slice,
+                local_indices,
+                chunks,
+                chunk_ids,
+            )
+        else:
+            _gather_by_sorted_chunk_ids(
+                output_slice,
+                local_indices,
+                chunks,
+                chunk_ids,
+            )
 
-        # For many chunks, sort positions once to avoid one full mask per chunk.
-        order = np.argsort(chunk_ids, kind="quicksort")
-        sorted_chunk_ids = chunk_ids[order]
-        boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
-        group_start = 0
-        for group_stop in chain(boundaries, (len(order),)):
-            positions = order[group_start:group_stop]
-            chunk_id = chunk_ids[positions[0]]
-            output_slice[positions] = chunks[chunk_id][local_indices[positions]]
-            group_start = group_stop
+
+def _gather_monotonic_chunk_ids(
+    output: np.ndarray,
+    local_indices: np.ndarray,
+    chunks: tuple[np.ndarray, ...],
+    chunk_ids: np.ndarray,
+) -> None:
+    """Gather ordered chunk groups, using source slices when rows are contiguous."""
+    boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
+    group_start = 0
+    # Add the final sentinel lazily instead of materializing a Python tuple
+    # proportional to the number of chunk groups.
+    for group_stop in chain(boundaries, (len(chunk_ids),)):
+        chunk_id = chunk_ids[group_start]
+        group_indices = local_indices[group_start:group_stop]
+        if len(group_indices) <= 1 or np.all(
+            group_indices[1:] == group_indices[:-1] + 1
+        ):
+            source_start = int(group_indices[0])
+            source_stop = source_start + len(group_indices)
+            output[group_start:group_stop] = chunks[chunk_id][source_start:source_stop]
+        else:
+            output[group_start:group_stop] = chunks[chunk_id][group_indices]
+        group_start = group_stop
+
+
+def _gather_by_chunk_masks(
+    output: np.ndarray,
+    local_indices: np.ndarray,
+    chunks: tuple[np.ndarray, ...],
+    chunk_ids: np.ndarray,
+) -> None:
+    """Gather unordered rows by masking each present chunk."""
+    present_chunk_ids = np.flatnonzero(np.bincount(chunk_ids, minlength=len(chunks)))
+    for chunk_id in present_chunk_ids:
+        positions = np.flatnonzero(chunk_ids == chunk_id)
+        output[positions] = chunks[chunk_id][local_indices[positions]]
+
+
+def _gather_by_sorted_chunk_ids(
+    output: np.ndarray,
+    local_indices: np.ndarray,
+    chunks: tuple[np.ndarray, ...],
+    chunk_ids: np.ndarray,
+) -> None:
+    """Gather unordered rows by sorting output positions into chunk groups."""
+    order = np.argsort(chunk_ids, kind="quicksort")
+    sorted_chunk_ids = chunk_ids[order]
+    boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
+    group_start = 0
+    for group_stop in chain(boundaries, (len(order),)):
+        positions = order[group_start:group_stop]
+        chunk_id = chunk_ids[positions[0]]
+        output[positions] = chunks[chunk_id][local_indices[positions]]
+        group_start = group_stop
 
 
 def _wrap_tensor_output(output: np.ndarray, tensor_type, values_per_row: int):

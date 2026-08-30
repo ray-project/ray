@@ -213,6 +213,18 @@ def _try_normalize_take_indices(
     if isinstance(indices, (np.ma.MaskedArray, pyarrow.ChunkedArray)):
         return None
 
+    if isinstance(indices, list):
+        try:
+            indices = pyarrow.array(indices)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowTypeError,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ):
+            return None
+
     if isinstance(indices, pyarrow.Array):
         if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
             return None
@@ -225,35 +237,8 @@ def _try_normalize_take_indices(
             ValueError,
         ):
             return None
-    elif isinstance(indices, list):
-        try:
-            arrow_indices = pyarrow.array(indices)
-        except (
-            pyarrow.ArrowInvalid,
-            pyarrow.ArrowTypeError,
-            TypeError,
-            ValueError,
-            OverflowError,
-        ):
-            return None
-        if arrow_indices.null_count > 0 or not pyarrow.types.is_integer(
-            arrow_indices.type
-        ):
-            return None
-        try:
-            values = arrow_indices.to_numpy(zero_copy_only=False)
-        except (
-            pyarrow.ArrowInvalid,
-            pyarrow.ArrowNotImplementedError,
-            TypeError,
-            ValueError,
-        ):
-            return None
     elif isinstance(indices, np.ndarray):
-        try:
-            values = np.asarray(indices)
-        except (TypeError, ValueError, OverflowError):
-            return None
+        values = np.asarray(indices)
     else:
         return None
 

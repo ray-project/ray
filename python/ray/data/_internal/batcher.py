@@ -41,12 +41,12 @@ def _prepare_local_shuffle_arrow_table(
 
     Returns:
         A table with unsupported multi-chunk columns combined and a mapping of
-        column positions to reusable tensor take plans.
+        column positions to reusable prepared tensor takes.
     """
-    if table.num_columns == 0:
+    if not any(column.num_chunks > 1 for column in table.columns):
         return table, {}
 
-    prepared_plans = {}
+    prepared_takes = {}
     columns = []
     for index, column in enumerate(table.columns):
         if column.num_chunks <= 1:
@@ -59,25 +59,25 @@ def _prepare_local_shuffle_arrow_table(
             else None
         )
         if prepared is not None:
-            prepared_plans[index] = prepared
+            prepared_takes[index] = prepared
             columns.append(column)
             continue
 
         columns.append(transform_pyarrow.combine_chunked_array(column))
-    return pa.Table.from_arrays(columns, schema=table.schema), prepared_plans
+    return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
 
 
 def _take_prepared_arrow_table(
     table: pa.Table,
     indices: np.ndarray,
-    prepared_plans: Dict[int, PreparedChunkedTensorTake],
+    prepared_takes: Dict[int, PreparedChunkedTensorTake],
 ) -> Optional[pa.Table]:
     """Take one batch while reusing validated tensor source metadata.
 
     Args:
         table: Prepared Arrow shuffle buffer.
         indices: Normalized row indices for this batch.
-        prepared_plans: Mapping of column positions to tensor take plans.
+        prepared_takes: Mapping of column positions to prepared tensor takes.
 
     Returns:
         The selected table, or ``None`` if a prepared tensor take is no longer
@@ -86,11 +86,11 @@ def _take_prepared_arrow_table(
 
     columns = []
     for index, column in enumerate(table.columns):
-        plan = prepared_plans.get(index)
-        if plan is None:
+        prepared = prepared_takes.get(index)
+        if prepared is None:
             columns.append(column.take(indices))
             continue
-        taken = plan.try_take(indices)
+        taken = prepared.try_take(indices)
         if taken is None:
             return None
         columns.append(taken)
@@ -304,7 +304,7 @@ class ShufflingBatcher(BatcherInterface):
         self._shuffled_indices: Optional[np.ndarray] = None
         self._batch_head = 0
         self._done_adding = False
-        self._prepared_tensor_take_plans = {}
+        self._prepared_tensor_takes = {}
 
         self._total_object_store_nbytes = get_total_obj_store_mem_on_node()
         self._total_num_rows_added = 0
@@ -404,6 +404,35 @@ class ShufflingBatcher(BatcherInterface):
         """Return number of unyielded rows in the uncompacted buffer."""
         return self._builder.num_rows()
 
+    def _compact_shuffle_buffer(self) -> None:
+        """Build and shuffle one immutable buffer for subsequent batch takes."""
+        # Prepared takes retain zero-copy views into the current buffer. Release
+        # them before replacing that buffer, then prepare new takes below.
+        self._prepared_tensor_takes = {}
+        if self._shuffle_buffer is not None:
+            assert self._shuffled_indices is not None
+            if self._batch_head < len(self._shuffled_indices):
+                remaining_indices = self._shuffled_indices[self._batch_head :]
+                remaining_block = BlockAccessor.for_block(self._shuffle_buffer).take(
+                    remaining_indices
+                )
+                self._builder.add_block(remaining_block)
+        self._shuffle_buffer = self._builder.build()
+
+        accessor = BlockAccessor.for_block(self._shuffle_buffer)
+        prepared_takes = {}
+        if isinstance(accessor, ArrowBlockAccessor):
+            (
+                self._shuffle_buffer,
+                prepared_takes,
+            ) = _prepare_local_shuffle_arrow_table(self._shuffle_buffer)
+            accessor = BlockAccessor.for_block(self._shuffle_buffer)
+
+        self._shuffled_indices = self._rng.permutation(accessor.num_rows())
+        self._builder = DelegatingBlockBuilder()
+        self._batch_head = 0
+        self._prepared_tensor_takes = prepared_takes
+
     def next_batch(self) -> Block:
         """Get the next shuffled batch from the shuffle buffer.
 
@@ -415,32 +444,7 @@ class ShufflingBatcher(BatcherInterface):
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            self._prepared_tensor_take_plans = {}
-            if self._shuffle_buffer is not None:
-                assert self._shuffled_indices is not None
-                if self._batch_head < len(self._shuffled_indices):
-                    remaining_indices = self._shuffled_indices[self._batch_head :]
-                    remaining_block = BlockAccessor.for_block(
-                        self._shuffle_buffer
-                    ).take(remaining_indices)
-                    self._builder.add_block(remaining_block)
-            self._shuffle_buffer = self._builder.build()
-
-            accessor = BlockAccessor.for_block(self._shuffle_buffer)
-            prepared_plans = {}
-            if isinstance(accessor, ArrowBlockAccessor):
-                (
-                    self._shuffle_buffer,
-                    prepared_plans,
-                ) = _prepare_local_shuffle_arrow_table(self._shuffle_buffer)
-                accessor = BlockAccessor.for_block(self._shuffle_buffer)
-
-            num_rows = accessor.num_rows()
-            self._shuffled_indices = self._rng.permutation(num_rows)
-
-            self._builder = DelegatingBlockBuilder()
-            self._batch_head = 0
-            self._prepared_tensor_take_plans = prepared_plans
+            self._compact_shuffle_buffer()
 
         assert self._shuffle_buffer is not None
         assert self._shuffled_indices is not None
@@ -451,16 +455,16 @@ class ShufflingBatcher(BatcherInterface):
         ]
         self._batch_head += batch_size
 
-        if self._prepared_tensor_take_plans:
+        if self._prepared_tensor_takes:
             batch = _take_prepared_arrow_table(
                 self._shuffle_buffer,
                 batch_indices,
-                self._prepared_tensor_take_plans,
+                self._prepared_tensor_takes,
             )
             if batch is not None:
                 return batch
-            # A prepared plan should remain valid for the lifetime of one immutable
+            # A prepared take should remain valid for the lifetime of one immutable
             # shuffle buffer. If it cannot serve a take, stop retrying it for every
             # subsequent batch and release its zero-copy views.
-            self._prepared_tensor_take_plans = {}
+            self._prepared_tensor_takes = {}
         return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
