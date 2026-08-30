@@ -86,10 +86,10 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
 
 .. note::
 
-    When a Ray Job's driver exits, the worker processes belonging to that job
-    are stopped, so any unfinished tasks from that job do not continue running.
+    When a Ray job's driver exits, any unfinished tasks and non-detached actors
+    submitted by that job are automatically terminated, so they do not continue running.
     If a Python script needs its submitted tasks to finish, retain their
-    ObjectRefs and wait for them before the driver exits. Submitting all tasks
+    ``ObjectRef``s and wait for them before the driver exits. Submitting all tasks
     before calling :func:`ray.get` still lets them run in parallel.
 
     .. literalinclude:: doc_code/tasks.py
