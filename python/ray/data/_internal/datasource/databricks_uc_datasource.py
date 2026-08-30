@@ -1,9 +1,11 @@
+import ipaddress
 import json
 import logging
 import os
+import socket
 import time
-from typing import TYPE_CHECKING, List, Optional
-from urllib.parse import urljoin
+from typing import TYPE_CHECKING, Optional
+from urllib.parse import urljoin, urlparse
 
 import numpy as np
 import pyarrow
@@ -25,6 +27,80 @@ logger = logging.getLogger(__name__)
 
 
 _STATEMENT_EXEC_POLL_TIME_S = 1
+
+
+def _validate_external_url(url: str) -> None:
+    """Validate an external URL to prevent SSRF attacks.
+
+    Ensures the URL uses HTTPS and does not resolve to a private,
+    loopback, link-local, or reserved IP address. This prevents a
+    compromised or MITM'd Databricks server from redirecting requests
+    to internal services such as cloud metadata endpoints.
+
+    Private IP addresses (RFC 1918 / IPv6 ULA) are blocked by default.
+    If your Databricks workspace uses VPC PrivateLink and storage
+    endpoints resolve to private addresses, set the environment variable
+    ``RAY_DATABRICKS_ALLOW_PRIVATE_IPS=1`` to permit them.
+
+    Args:
+        url: The external URL to validate.
+
+    Raises:
+        ValueError: If the URL scheme is not HTTPS, has no hostname,
+            or resolves to a non-public IP address.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme.lower() != "https":
+        raise ValueError(
+            f"External URL {url!r} has an invalid scheme {parsed.scheme!r}. "
+            f"Only HTTPS is allowed."
+        )
+
+    # Block URLs containing '@' in their authority (netloc) to prevent
+    # basic authentication parser mismatches (e.g. urllib vs urllib3).
+    # Databricks pre-signed URLs never use basic authentication in the netloc.
+    if "@" in parsed.netloc:
+        raise ValueError(
+            f"External URL {url!r} contains basic authentication which is "
+            f"not allowed to prevent SSRF parser mismatch attacks."
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"External URL has no hostname: {url!r}")
+
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise ValueError(
+            f"Cannot resolve hostname {hostname!r} " f"in external URL {url!r}: {e}"
+        ) from e
+
+    allow_private = os.environ.get("RAY_DATABRICKS_ALLOW_PRIVATE_IPS", "0") == "1"
+
+    for _family, _type, _proto, _canonname, sockaddr in addr_infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or getattr(ip, "is_unspecified", False)
+        ):
+            raise ValueError(
+                f"External URL {url!r} resolves to "
+                f"IP address {ip}, which is "
+                f"blocked to prevent SSRF attacks."
+            )
+
+        if ip.is_private and not allow_private:
+            raise ValueError(
+                f"External URL {url!r} resolves to private "
+                f"IP address {ip}, which is blocked to prevent "
+                f"SSRF attacks. If you are using Databricks VPC "
+                f"PrivateLink, set RAY_DATABRICKS_ALLOW_PRIVATE_IPS=1."
+            )
 
 
 @PublicAPI(stability="alpha")
@@ -93,7 +169,7 @@ class DatabricksUCDatasource(Datasource):
                 response.raise_for_status()
             except Exception as e:
                 logger.warning(
-                    f"Canceling query {query!r} execution failed, reason: {repr(e)}."
+                    f"Canceling query {query!r} execution failed, reason: {e!r}."
                 )
             raise
 
@@ -123,7 +199,7 @@ class DatabricksUCDatasource(Datasource):
         credential_provider_for_tasks = self._credential_provider
 
         def get_read_task(
-            task_index: int, parallelism: int, per_task_row_limit: Optional[int] = None
+            task_index: int, parallelism: int, per_task_row_limit: int | None = None
         ):
             # Handle empty chunk list by yielding an empty PyArrow table
             if num_chunks == 0:
@@ -174,8 +250,26 @@ class DatabricksUCDatasource(Datasource):
                     external_url = resolve_response.json()["external_links"][0][
                         "external_link"
                     ]
-                    # NOTE: do _NOT_ send the authorization header to external urls
-                    raw_response = requests.get(external_url, auth=None, headers=None)
+                    # Validate URL to prevent SSRF attacks before
+                    # fetching data from the external link.
+                    _validate_external_url(external_url)
+                    # NOTE: do _NOT_ send the authorization header
+                    # to external urls.
+                    raw_response = requests.get(
+                        external_url,
+                        auth=None,
+                        headers=None,
+                        allow_redirects=False,
+                    )
+                    if raw_response.is_redirect or (
+                        300 <= raw_response.status_code < 400
+                    ):
+                        raise ValueError(
+                            f"HTTP redirects are not allowed for external data "
+                            f"fetching to prevent SSRF. "
+                            f"Received status {raw_response.status_code} "
+                            f"from {external_url!r}"
+                        )
                     raw_response.raise_for_status()
 
                     with pyarrow.ipc.open_stream(raw_response.content) as reader:
@@ -205,15 +299,15 @@ class DatabricksUCDatasource(Datasource):
 
         self._get_read_task = get_read_task
 
-    def estimate_inmemory_data_size(self) -> Optional[int]:
+    def estimate_inmemory_data_size(self) -> int | None:
         return self._estimate_inmemory_data_size
 
     def get_read_tasks(
         self,
         parallelism: int,
-        per_task_row_limit: Optional[int] = None,
+        per_task_row_limit: int | None = None,
         data_context: Optional["DataContext"] = None,
-    ) -> List[ReadTask]:
+    ) -> list[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:
             return [self._get_read_task(0, 1, per_task_row_limit)]

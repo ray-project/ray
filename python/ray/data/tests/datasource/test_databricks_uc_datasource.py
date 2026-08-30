@@ -1,8 +1,7 @@
-"""Tests for Databricks Unity Catalog datasource."""
-
 import json
 import os
 import re
+import socket
 import tempfile
 import uuid
 from contextlib import contextmanager
@@ -12,6 +11,7 @@ from unittest import mock
 import pandas as pd
 import pyarrow as pa
 import pytest
+import requests
 
 import ray
 import ray.cloudpickle as pickle
@@ -21,13 +21,14 @@ from ray.data._internal.datasource.databricks_credentials import (
 )
 from ray.data._internal.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
+    _validate_external_url,
 )
 from ray.data._internal.util import rows_same
 from ray.data.tests.datasource.databricks_test_utils import (
     MockResponse,
     RefreshableCredentialProvider,
 )
-from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa: F403
 
 # =============================================================================
 # Dataclasses for mock objects
@@ -96,9 +97,19 @@ def token_tracking_provider():
 @pytest.fixture
 def requests_mocker():
     """Fixture that mocks requests.get and requests.post."""
-    with mock.patch("requests.get") as mock_get:
-        with mock.patch("requests.post") as mock_post:
-            yield {"get": mock_get, "post": mock_post}
+    with (
+        mock.patch("requests.get") as mock_get,
+        mock.patch("requests.post") as mock_post,
+        mock.patch("socket.getaddrinfo") as mock_dns,
+    ):
+
+        # Return a decoy public IP so fake test hostnames pass SSRF validation
+        # and existing integration tests can execute normally.
+        mock_dns.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+        ]
+
+        yield {"get": mock_get, "post": mock_post, "dns": mock_dns}
 
 
 @pytest.fixture
@@ -267,6 +278,12 @@ class TestDatabricksUCDatasourceIntegration:
         with (
             mock.patch("requests.get", request_get_mock),
             mock.patch("requests.post", request_post_mock),
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=[
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+                ],
+            ),
             mock.patch.dict(
                 os.environ,
                 {
@@ -590,7 +607,7 @@ class TestDatabricksUCDatasource401Retry:
 
             # External URL fetch (no auth headers)
             if url.startswith("https://external/"):
-                return mock.Mock(status_code=200, content=arrow_data)
+                return mock.Mock(status_code=200, content=arrow_data, is_redirect=False)
 
             if "/result/chunks/" in url:
                 chunk_fetch_count[0] += 1
@@ -692,6 +709,335 @@ class TestDatabricksUCDatasourceEmptyResult:
         )
 
         assert ds.count() == 0
+
+
+class TestSSRFValidation:
+    """Tests for SSRF URL validation (GitHub issue #65669)."""
+
+    # Helper to create a mock getaddrinfo return value for a given IP.
+    @staticmethod
+    def _make_addrinfo(ip_str):
+        """Return a getaddrinfo-style result list for the given IP."""
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip_str, 0))]
+
+    def test_valid_https_url(self):
+        """Test that a valid HTTPS URL with a public IP passes."""
+        public_ip = "52.94.228.100"
+        with mock.patch(
+            "socket.getaddrinfo",
+            return_value=self._make_addrinfo(public_ip),
+        ):
+            # Should not raise.
+            _validate_external_url("https://valid.example.com/data")
+
+    def test_http_scheme_rejected(self):
+        """Test that HTTP URLs are rejected."""
+        with pytest.raises(ValueError, match="Only HTTPS"):
+            _validate_external_url("http://example.com/data")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "ftp://example.com/data",
+            "file:///etc/passwd",
+            "gopher://example.com/",
+        ],
+    )
+    def test_non_http_scheme_rejected(self, url):
+        """Test that non-HTTP(S) schemes are rejected."""
+        with pytest.raises(ValueError, match="Only HTTPS"):
+            _validate_external_url(url)
+
+    def test_loopback_ip_rejected(self):
+        """Test that loopback IPs (127.0.0.1) are blocked."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("127.0.0.1"),
+            ),
+            pytest.raises(ValueError, match="prevent SSRF attacks"),
+        ):
+            _validate_external_url("https://localhost/data")
+
+    def test_multicast_ip_rejected(self):
+        """Test that multicast IPs are blocked."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("224.0.0.1"),
+            ),
+            pytest.raises(ValueError, match="prevent SSRF attacks"),
+        ):
+            _validate_external_url("https://multicast.example.com/data")
+
+    def test_private_ip_rejected(self):
+        """Test that private IPs (RFC 1918) are blocked by default."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("10.0.0.1"),
+            ),
+            pytest.raises(ValueError, match="private"),
+        ):
+            _validate_external_url("https://vpc.example.com/data")
+
+    def test_private_ip_allowed_with_env_var(self):
+        """Test that private IPs pass when RAY_DATABRICKS_ALLOW_PRIVATE_IPS=1."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("10.0.0.1"),
+            ),
+            mock.patch.dict(os.environ, {"RAY_DATABRICKS_ALLOW_PRIVATE_IPS": "1"}),
+        ):
+            # Should NOT raise
+            _validate_external_url("https://vpc.example.com/data")
+
+    def test_parser_mismatch_rejected(self):
+        """Test that URLs with basic authentication (@) are blocked."""
+        # This prevents urllib vs requests parser mismatch vulnerabilities
+        with mock.patch("socket.getaddrinfo"):
+            with pytest.raises(ValueError, match="basic authentication"):
+                _validate_external_url(
+                    "https://169.254.169.254\\@valid.example.com/data"
+                )
+
+            with pytest.raises(ValueError, match="basic authentication"):
+                _validate_external_url("https://user:pass@127.0.0.1/data")
+
+    def test_metadata_ip_rejected(self):
+        """Test that cloud metadata IP (169.254.169.254) is blocked."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("169.254.169.254"),
+            ),
+            pytest.raises(ValueError, match="prevent SSRF attacks"),
+        ):
+            _validate_external_url("https://metadata.example.com/data")
+
+    def test_no_hostname_rejected(self):
+        """Test that URLs with no hostname are rejected."""
+        with pytest.raises(ValueError, match="no hostname"):
+            _validate_external_url("https:///path/only")
+
+    def test_dns_failure_rejected(self):
+        """Test that unresolvable hostnames raise ValueError."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                side_effect=socket.gaierror("Name resolution failed"),
+            ),
+            pytest.raises(ValueError, match="Cannot resolve hostname"),
+        ):
+            _validate_external_url("https://nonexistent.invalid/data")
+
+    def test_ssrf_blocked_during_read(self, requests_mocker):
+        """Test that SSRF is blocked end-to-end during data reading."""
+        # POST for statement creation succeeds.
+        requests_mocker["post"].return_value = mock.Mock(
+            status_code=200,
+            json=lambda: {
+                "statement_id": "test_stmt",
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {
+                    "truncated": False,
+                    "chunks": [
+                        {
+                            "chunk_index": 0,
+                            "row_count": 10,
+                            "byte_count": 100,
+                        }
+                    ],
+                },
+            },
+        )
+
+        # GET for chunk resolution returns a malicious internal URL.
+        def get_side_effect(url, *args, **kwargs):
+            if "/result/chunks/" in url:
+                return mock.Mock(
+                    status_code=200,
+                    json=lambda: {
+                        "external_links": [
+                            {
+                                "external_link": (
+                                    "http://169.254.169.254" "/latest/meta-data/"
+                                ),
+                            }
+                        ]
+                    },
+                )
+            return mock.Mock(
+                status_code=200,
+                json=lambda: {
+                    "status": {"state": "SUCCEEDED"},
+                    "manifest": {
+                        "truncated": False,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "row_count": 10,
+                                "byte_count": 100,
+                            }
+                        ],
+                    },
+                },
+            )
+
+        requests_mocker["get"].side_effect = get_side_effect
+
+        provider = StaticCredentialProvider(token="test_token", host="test_host")
+        datasource = DatabricksUCDatasource(
+            warehouse_id="test_warehouse",
+            catalog="test_catalog",
+            schema="test_schema",
+            query="SELECT 1",
+            credential_provider=provider,
+        )
+
+        read_tasks = datasource.get_read_tasks(parallelism=1)
+        assert len(read_tasks) == 1
+
+        # The read function should raise ValueError due to SSRF
+        # validation rejecting the HTTP metadata URL.
+        read_fn = read_tasks[0].read_fn
+        with pytest.raises(ValueError, match="Only HTTPS"):
+            list(read_fn())
+
+    def test_ssrf_redirect_blocked_during_read(self, requests_mocker):
+        """Test that SSRF via HTTP redirect is blocked end-to-end."""
+        # POST for statement creation succeeds.
+        requests_mocker["post"].return_value = mock.Mock(
+            status_code=200,
+            json=lambda: {
+                "statement_id": "test_stmt",
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {
+                    "truncated": False,
+                    "chunks": [
+                        {
+                            "chunk_index": 0,
+                            "row_count": 10,
+                            "byte_count": 100,
+                        }
+                    ],
+                },
+            },
+        )
+
+        def get_side_effect(url, *args, **kwargs):
+            if "/result/chunks/" in url:
+                return mock.Mock(
+                    status_code=200,
+                    json=lambda: {
+                        "external_links": [
+                            {
+                                "external_link": "https://valid.example.com/data",
+                            }
+                        ]
+                    },
+                )
+            if "valid.example.com" in url:
+                # The actual read request. Return a redirect response.
+                m = mock.Mock(status_code=302, is_redirect=True)
+                m.raise_for_status = mock.Mock()
+                return m
+
+            return mock.Mock(
+                status_code=200,
+                json=lambda: {
+                    "status": {"state": "SUCCEEDED"},
+                    "manifest": {
+                        "truncated": False,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "row_count": 10,
+                                "byte_count": 100,
+                            }
+                        ],
+                    },
+                },
+            )
+
+        requests_mocker["get"].side_effect = get_side_effect
+
+        with mock.patch(
+            "socket.getaddrinfo",
+            return_value=self._make_addrinfo("52.94.228.100"),
+        ):
+            provider = StaticCredentialProvider(token="test_token", host="test_host")
+            datasource = DatabricksUCDatasource(
+                warehouse_id="test_warehouse",
+                catalog="test_catalog",
+                schema="test_schema",
+                query="SELECT 1",
+                credential_provider=provider,
+            )
+
+            read_tasks = datasource.get_read_tasks(parallelism=1)
+            assert len(read_tasks) == 1
+
+            # The read function should raise ValueError because of the 302 redirect.
+            read_fn = read_tasks[0].read_fn
+            with pytest.raises(ValueError, match="HTTP redirects are not allowed"):
+                list(read_fn())
+
+    def test_ssrf_non_redirect_errors_raise_http_error(self, requests_mocker):
+        """Test that 4xx/5xx HTTP errors are not blocked as redirects."""
+        requests_mocker["post"].return_value = mock.Mock(
+            status_code=200,
+            json=lambda: {
+                "statement_id": "test_stmt",
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {
+                    "truncated": False,
+                    "chunks": [{"chunk_index": 0, "row_count": 10, "byte_count": 100}],
+                },
+            },
+        )
+
+        def get_side_effect(url, *args, **kwargs):
+            if "/result/chunks/" in url:
+                return mock.Mock(
+                    status_code=200,
+                    json=lambda: {
+                        "external_links": [
+                            {"external_link": "https://valid.example.com/data"}
+                        ]
+                    },
+                )
+            if "valid.example.com" in url:
+                # Return a 403 Forbidden
+                m = mock.Mock(status_code=403, is_redirect=False)
+                m.raise_for_status.side_effect = requests.exceptions.HTTPError(
+                    "403 Forbidden"
+                )
+                return m
+
+            return mock.Mock(status_code=200, is_redirect=False)
+
+        requests_mocker["get"].side_effect = get_side_effect
+
+        with mock.patch(
+            "socket.getaddrinfo",
+            return_value=self._make_addrinfo("52.94.228.100"),
+        ):
+            provider = StaticCredentialProvider(token="test", host="test")
+            datasource = DatabricksUCDatasource(
+                warehouse_id="w",
+                catalog="c",
+                schema="s",
+                query="q",
+                credential_provider=provider,
+            )
+            read_tasks = datasource.get_read_tasks(parallelism=1)
+
+            # The read function should raise HTTPError, not ValueError.
+            read_fn = read_tasks[0].read_fn
+            with pytest.raises(requests.exceptions.HTTPError, match="403 Forbidden"):
+                list(read_fn())
 
 
 if __name__ == "__main__":

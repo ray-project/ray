@@ -24,6 +24,7 @@ class MockResponse:
     content: Optional[bytes] = None
     _json_data: Optional[dict] = None
     raise_on_error: bool = field(default=True, repr=False)
+    is_redirect: bool = False
 
     def raise_for_status(self):
         """Raise an exception if status code indicates an error."""
