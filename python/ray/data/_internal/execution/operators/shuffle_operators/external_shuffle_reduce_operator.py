@@ -372,7 +372,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
-        cpu = memory = 0
+        cpu: float = 0
+        memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
