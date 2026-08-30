@@ -4632,6 +4632,39 @@ cdef class CoreWorker:
             cpython.Py_DECREF(callback)
         return registered
 
+    def add_borrowed_object_out_of_scope_callback(
+            self, ObjectRef object_ref, callback: Callable[[bytes], None]):
+        """Register a Python callable for a borrowed object going out of scope.
+
+        This is an internal Ray API used by RDT to release per-borrower
+        metadata. Owned objects are ignored because their lifecycle is handled
+        by the owner-side callback.
+
+        The callback has the same threading and non-blocking requirements as
+        ``add_object_out_of_scope_callback``.
+
+        Returns:
+            True if registered; False if the object is owned by this worker or
+            is already out of scope.
+        """
+        if not callable(callback):
+            raise TypeError(
+                f"callback must be callable, got {type(callback).__name__!r}"
+            )
+        cdef CObjectID c_object_id = object_ref.native()
+        if CCoreWorkerProcess.GetCoreWorker().CheckObjectOwnedByUs(
+                c_object_id).ok():
+            return False
+        cpython.Py_INCREF(callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectOutOfScopeOrFreedCallback(
+                c_object_id,
+                _invoke_object_out_of_scope_callback,
+                <void *>callback)
+        if not registered:
+            cpython.Py_DECREF(callback)
+        return registered
+
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
