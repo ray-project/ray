@@ -243,10 +243,29 @@ def _gather_into_output(
 ) -> None:
     """Gather normalized row indices into a preallocated tensor output.
 
-    Each bounded subbatch maps global rows to source chunks once. Monotonic chunk IDs
-    preserve output order and use contiguous source slices when possible. Unordered
-    takes use mask grouping for at most 16 chunks; larger chunk sets sort output
-    positions once and scatter each chunk group back to its original positions.
+    Each bounded subbatch maps every global row index to a source ``chunk_id``
+    and an index local to that chunk. The gather strategy then depends only on
+    how those chunk IDs are arranged:
+
+    * Monotonic chunk IDs already form contiguous chunk groups. They can be
+      copied in output order and can use source slices for contiguous rows.
+    * Unordered IDs over at most 16 chunks are grouped with masks. Repeated
+      linear scans are cheaper than allocating and sorting an order array when
+      the number of chunks is small.
+    * Unordered IDs over more chunks sort output positions by chunk once, gather
+      each resulting group, and scatter it back to the original positions. The
+      temporary sort changes processing order, never caller-visible row order.
+
+    Subbatching bounds the temporary chunk-ID, local-index, mask, and sort
+    arrays. All three strategies write into the same preallocated output and
+    preserve the order of ``indices``.
+
+    Args:
+        output: Destination tensor array.
+        indices: Normalized global source-row indices.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_starts: Global starting row of each source chunk.
+        subbatch_rows: Maximum indices processed by one gather subbatch.
     """
     for start in range(0, len(indices), subbatch_rows):
         stop = min(len(indices), start + subbatch_rows)
@@ -284,7 +303,19 @@ def _gather_monotonic_chunk_ids(
     chunks: tuple[np.ndarray, ...],
     chunk_ids: np.ndarray,
 ) -> None:
-    """Gather ordered chunk groups, using source slices when rows are contiguous."""
+    """Gather chunk groups that already occur in nondecreasing chunk order.
+
+    A change in ``chunk_ids`` marks a group boundary. Because every group
+    occupies a contiguous output range, it can be written without sorting or
+    scattering. Consecutive local row indices use a source slice; other rows
+    use NumPy advanced indexing.
+
+    Args:
+        output: Destination for this subbatch.
+        local_indices: Source-row indices relative to their chunks.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_ids: Nondecreasing source chunk IDs for each output position.
+    """
     boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
     group_start = 0
     # Add the final sentinel lazily instead of materializing a Python tuple
@@ -309,7 +340,23 @@ def _gather_by_chunk_masks(
     chunks: tuple[np.ndarray, ...],
     chunk_ids: np.ndarray,
 ) -> None:
-    """Gather unordered rows by masking each present chunk."""
+    """Gather unordered rows by scanning positions for each present chunk.
+
+    ``bincount`` first avoids visiting chunks absent from this subbatch. For
+    every present chunk, an equality mask finds its original output positions;
+    the corresponding local rows are gathered together and written back to
+    those positions. This preserves row order without sorting.
+
+    The work is proportional to the number of present chunks times the
+    subbatch size, so the caller reserves this strategy for at most 16 chunks.
+
+    Args:
+        output: Destination for this subbatch.
+        local_indices: Source-row indices relative to their chunks.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_ids: Potentially unordered source chunk IDs for each output
+            position.
+    """
     present_chunk_ids = np.flatnonzero(np.bincount(chunk_ids, minlength=len(chunks)))
     for chunk_id in present_chunk_ids:
         positions = np.flatnonzero(chunk_ids == chunk_id)
@@ -322,7 +369,24 @@ def _gather_by_sorted_chunk_ids(
     chunks: tuple[np.ndarray, ...],
     chunk_ids: np.ndarray,
 ) -> None:
-    """Gather unordered rows by sorting output positions into chunk groups."""
+    """Gather unordered rows after sorting positions into chunk groups.
+
+    ``argsort`` returns output positions ordered by source chunk. Equal chunk
+    IDs then form contiguous processing groups, so each source chunk is gathered
+    once. Results are scattered through the saved original positions, preserving
+    the caller-visible row order. A stable sort is unnecessary because every
+    gathered row is written to its own original position.
+
+    Sorting costs ``O(K log K)`` for ``K`` subbatch rows, but avoids one full
+    ``chunk_ids`` scan per chunk and therefore scales better for many chunks.
+
+    Args:
+        output: Destination for this subbatch.
+        local_indices: Source-row indices relative to their chunks.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_ids: Potentially unordered source chunk IDs for each output
+            position.
+    """
     order = np.argsort(chunk_ids, kind="quicksort")
     sorted_chunk_ids = chunk_ids[order]
     boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
