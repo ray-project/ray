@@ -14,10 +14,10 @@ exclude: |
     src/ray/thirdparty/|
     doc/external/|
     # Excludes doc/source, except the Markdown and rST prose under doc/source/data
-  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
-  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
-  # hook out entirely and it silently matched zero files.
-  doc/source/(?!data/.*[.](md|rst)$)|
+    # that the `vale` hook below lints and Bazel BUILD files for buildifier.
+    # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
+    # excluded BUILD files would never reach the buildifier hooks.
+    doc/source/(?!data/.*[.](md|rst)$|(?:.*/)?BUILD(?:\.bazel)?$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -94,9 +94,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0

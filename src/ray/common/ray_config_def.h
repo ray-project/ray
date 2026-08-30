@@ -391,6 +391,17 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
+/// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
+/// DEL reclaims memory synchronously; Redis operators can configure DEL itself
+/// to reclaim memory lazily.
+/// UNLINK (Redis >= 4.0) removes the key from the keyspace immediately and frees
+/// the value in a background thread, so deleting a multi-GB GCS table hash does
+/// not stall the Redis main thread and does not add latency to other clients.
+/// When enabled, the Redis server must support UNLINK and the configured user must
+/// have permission to run it. Ray does not probe for support or fall back to DEL.
+RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
