@@ -96,8 +96,10 @@ except ImportError as _vllm_import_error:
     _TranscriptionStreamResponse = _unsupported_model(
         "TranscriptionStreamResponse", _vllm_hint
     )
-    _ResponsesRequest = _unsupported_model("ResponsesRequest", _vllm_hint)
-    _ResponsesResponse = _unsupported_model("ResponsesResponse", _vllm_hint)
+    # SGLang does not provide Responses protocol models either.
+    _responses_hint = "Install vLLM to use the responses endpoint."
+    _ResponsesRequest = _unsupported_model("ResponsesRequest", _responses_hint)
+    _ResponsesResponse = _unsupported_model("ResponsesResponse", _responses_hint)
 
     # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
     # pattern, so we define our own.
