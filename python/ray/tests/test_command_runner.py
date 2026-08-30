@@ -212,7 +212,7 @@ def test_rsync_uses_node_id_as_proxy_target():
 
     process_runner.clear_history()
 
-    cmd_runner.run_rsync_down("/remote/source", "/local/target", options={})
+    cmd_runner.run_rsync_down("/remote/source", "/local/target")
 
     download_command = process_runner.calls[0]
     assert f"ray@{node_id}:/remote/source" in download_command

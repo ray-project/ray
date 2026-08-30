@@ -452,6 +452,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         ssh_target = self._get_ssh_target()
+        options = options or {}
 
         # on Windows use scp -r instead of rsync
         if sys.platform == "win32":
