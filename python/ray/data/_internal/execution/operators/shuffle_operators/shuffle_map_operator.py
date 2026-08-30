@@ -395,7 +395,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         return super().has_execution_finished()
 
     def has_completed(self) -> bool:
-        return self.has_execution_finished()
+        return self.has_execution_finished() and super().has_completed()
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
