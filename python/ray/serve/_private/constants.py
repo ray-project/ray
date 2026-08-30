@@ -801,14 +801,8 @@ RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = get_env_int(
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.
-#
-# Every reload leaves the outgoing worker soft-stopping with a frozen copy of
-# the backend list, alive until hard-stop-after, so the number of workers
-# routing from a stale snapshot scales with the reload rate. The window trades
-# a bounded amount of propagation delay for a large reduction in that
-# population; it is additive with the reload itself, which dominates it.
 RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
-    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 1.0
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
 )
 
 # Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
