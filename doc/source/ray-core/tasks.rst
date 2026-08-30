@@ -84,6 +84,19 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
             ray::Task(SlowFunction).Remote();
           }
 
+.. note::
+
+    When a Ray Job's driver exits, the worker processes belonging to that job
+    are stopped, so any unfinished tasks from that job do not continue running.
+    If a Python script needs its submitted tasks to finish, retain their
+    ObjectRefs and wait for them before the driver exits. Submitting all tasks
+    before calling :func:`ray.get` still lets them run in parallel.
+
+    .. literalinclude:: doc_code/tasks.py
+        :language: python
+        :start-after: __wait_for_tasks_before_driver_exit_start__
+        :end-before: __wait_for_tasks_before_driver_exit_end__
+
 Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 
 .. code-block:: bash

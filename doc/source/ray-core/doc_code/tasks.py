@@ -39,6 +39,12 @@ for _ in range(4):
     slow_function.remote()
 # __tasks_end__
 
+# __wait_for_tasks_before_driver_exit_start__
+# Submit all tasks before waiting so that they can run in parallel.
+task_refs = [slow_function.remote() for _ in range(4)]
+assert ray.get(task_refs) == [1] * 4
+# __wait_for_tasks_before_driver_exit_end__
+
 # __pass_by_ref_start__
 @ray.remote
 def function_with_an_argument(value):
