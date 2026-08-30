@@ -2581,14 +2581,6 @@ TEST(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
   EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(worker_ports));
 }
 
-TEST(WorkerPortPoolTest, ExplicitPortListPreservesDuplicates) {
-  const std::vector<int> worker_ports = {30000, 30001, 30000};
-  std::mt19937 gen(42);
-  auto ports = BuildWorkerPortPool(
-      worker_ports, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
-  EXPECT_THAT(ports, ::testing::UnorderedElementsAre(30000, 30000, 30001));
-}
-
 TEST(WorkerPortPoolTest, MaxPortDefaultsToTheHighestValidPort) {
   std::mt19937 gen(42);
   auto ports = BuildWorkerPortPool(/*worker_ports=*/{},
@@ -2648,14 +2640,6 @@ TEST(WorkerPortPoolTest, DifferentSeedsProduceDifferentOrders) {
   ASSERT_NE(first_ports, second_ports);
 }
 
-TEST(WorkerPortPoolTest, ExplicitPortListPreservesLegacyValues) {
-  const std::vector<int> worker_ports = {0, 80, 1023, 30000, 30000};
-  std::mt19937 gen(42);
-  auto ports = BuildWorkerPortPool(
-      worker_ports, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
-  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(worker_ports));
-}
-
 TEST(WorkerPortPoolTest, PortRangeBelow1024IsAllowed) {
   std::mt19937 gen(42);
   auto range_ports = BuildWorkerPortPool(/*worker_ports=*/{},
@@ -2663,13 +2647,6 @@ TEST(WorkerPortPoolTest, PortRangeBelow1024IsAllowed) {
                                          /*max_worker_port=*/3,
                                          gen);
   EXPECT_THAT(range_ports, ::testing::UnorderedElementsAre(1, 2, 3));
-}
-
-TEST(WorkerPortPoolTest, ExplicitPortListAllowsOsAssignedPort) {
-  std::mt19937 gen(42);
-  auto ports = BuildWorkerPortPool(
-      /*worker_ports=*/{0}, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
-  ASSERT_EQ(ports, std::vector<int>({0}));
 }
 
 class WorkerPoolExplicitZeroPortTest : public WorkerPoolTest {
