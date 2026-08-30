@@ -30,6 +30,11 @@ _MAX_MASK_GROUP_CHUNKS = 16
 _INDEX_SCRATCH_BYTES_PER_ROW = 64
 
 
+def is_chunked_tensor_take_enabled() -> bool:
+    """Return whether callers should use the chunked tensor take fast path."""
+    return ENABLE_CHUNKED_TENSOR_TAKE
+
+
 class PreparedChunkedTensorTake(NamedTuple):
     """Executable tensor take prepared from one immutable chunked column."""
 
@@ -81,8 +86,12 @@ def try_prepare_chunked_tensor_take(
     Returns:
         Validated source metadata when the fast path supports the column.
         Otherwise, ``None`` so the caller can use the standard Arrow fallback.
+
+    This capability check is independent of the operational feature flag.
+    Callers check ``is_chunked_tensor_take_enabled`` before performing any
+    fast-path-specific index normalization or column preparation.
     """
-    if not ENABLE_CHUNKED_TENSOR_TAKE or column.num_chunks <= 1:
+    if column.num_chunks <= 1:
         return None
 
     tensor_type = column.type

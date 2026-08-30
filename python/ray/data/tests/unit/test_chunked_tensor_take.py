@@ -6,6 +6,7 @@ import pyarrow as pa
 import pytest
 
 from ray.data._internal import batcher as batcher_module
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _try_normalize_take_indices,
     hash_partition,
@@ -295,7 +296,22 @@ def test_chunked_tensor_take_can_be_disabled(monkeypatch):
     indices = np.array([39, 1, 20], dtype=np.int64)
     monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
 
-    assert try_prepare_chunked_tensor_take(column) is None
+    # Column preparation is a feature-flag-independent capability check.
+    assert try_prepare_chunked_tensor_take(column) is not None
+
+    def fail_fast_path(*args, **kwargs):
+        raise AssertionError("Disabled chunked tensor fast path was entered")
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "_try_normalize_take_indices",
+        fail_fast_path,
+    )
+    monkeypatch.setattr(
+        batcher_module,
+        "try_prepare_chunked_tensor_take",
+        fail_fast_path,
+    )
 
     table = pa.table({"tensor": column})
     output = take_table(table, indices)

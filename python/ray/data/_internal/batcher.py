@@ -10,6 +10,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     PreparedChunkedTensorTake,
+    is_chunked_tensor_take_enabled,
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.util import get_total_obj_store_mem_on_node
@@ -46,6 +47,7 @@ def _prepare_local_shuffle_arrow_table(
     if not any(column.num_chunks > 1 for column in table.columns):
         return table, {}
 
+    fast_path_enabled = is_chunked_tensor_take_enabled()
     prepared_takes = {}
     columns = []
     for index, column in enumerate(table.columns):
@@ -55,7 +57,7 @@ def _prepare_local_shuffle_arrow_table(
 
         prepared = (
             try_prepare_chunked_tensor_take(column)
-            if _is_multi_chunk_extension_column(column)
+            if fast_path_enabled and _is_multi_chunk_extension_column(column)
             else None
         )
         if prepared is not None:

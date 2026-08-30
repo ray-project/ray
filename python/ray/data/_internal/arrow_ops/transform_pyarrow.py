@@ -16,6 +16,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    is_chunked_tensor_take_enabled,
     try_take_chunked_tensor,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -273,12 +274,13 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
 
-    When an eligible multi-chunk tensor column is present, indices are
-    normalized and validated once before the per-column loop. The normalized
-    representation is shared by all tensor fast-path columns; each column then
-    checks only its own layout and output-size constraints. If normalization or
-    a column check fails, the original ``indices`` object is passed unchanged
-    to the standard Arrow fallback.
+    When the operational fast path is enabled and an eligible multi-chunk
+    tensor column is present, indices are normalized and validated once before
+    the per-column loop. The normalized representation is shared by all tensor
+    fast-path columns; each column then checks only its own layout and
+    output-size constraints. If the feature is disabled, normalization fails,
+    or a column check fails, the original ``indices`` object is passed
+    unchanged to the standard Arrow fallback.
     """
     from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
@@ -288,7 +290,9 @@ def take_table(
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
         normalized_indices = None
-        if any(_is_multi_chunk_extension_column(col) for col in table.columns):
+        if is_chunked_tensor_take_enabled() and any(
+            _is_multi_chunk_extension_column(col) for col in table.columns
+        ):
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
 
         new_cols = []
