@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 from unittest.mock import MagicMock, call, patch
@@ -585,7 +586,7 @@ def test_callback_keeps_controller_registration_when_pg_unregister_fails():
 
     with patch.object(ray, "get", side_effect=RuntimeError("cleaner unavailable")):
         callback.after_worker_group_shutdown(MagicMock())
-        callback.before_controller_shutdown()
+        asyncio.run(callback.before_controller_shutdown())
 
     assert callback._registered_placement_group is placement_group
     cleaner.unregister_controller.remote.assert_not_called()
