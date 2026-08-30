@@ -317,9 +317,9 @@ class _DeploymentHandleBase(Generic[T]):
 
     async def shutdown_async(self):
         if self._router:
-            shutdown_future: Union[
-                asyncio.Future, concurrent.futures.Future
-            ] = self._router.shutdown()
+            shutdown_future: Union[asyncio.Future, concurrent.futures.Future] = (
+                self._router.shutdown()
+            )
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
@@ -1140,9 +1140,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             response_serialization=response_serialization,
         )
 
-    def remote(
-        self, *args: Any, **kwargs: Any
-    ) -> DeploymentResponse[Any]:
+    def remote(self, *args: Any, **kwargs: Any) -> DeploymentResponse[Any]:
         """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
