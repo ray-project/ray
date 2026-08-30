@@ -2833,7 +2833,7 @@ def read_orc(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Partitioning = None,
+    partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -2918,6 +2918,34 @@ def read_orc(
     Returns:
         :class:`~ray.data.Dataset` holding records from the ORC files.
     """
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+
+        from ray.data._internal.datasource_v2.orc_datasource_v2 import (
+            OrcDatasourceV2,
+        )
+
+        datasource_v2 = OrcDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = ORCDatasource(
         paths,

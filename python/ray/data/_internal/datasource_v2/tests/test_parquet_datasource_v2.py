@@ -25,6 +25,7 @@ from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
+from ray.data._internal.datasource_v2.readers.file_reader import _FragmentReadUnit
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     ParquetInMemorySizeEstimator,
 )
@@ -199,7 +200,11 @@ def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
 
     rows_by_fragment = {}
     for fragment in dataset.get_fragments():
-        tables = list(reader._iter_fragment_tables(fragment, scanner_kwargs))
+        tables = list(
+            reader._iter_fragment_tables(
+                _FragmentReadUnit(fragment=fragment), scanner_kwargs
+            )
+        )
         rows_by_fragment[os.path.basename(fragment.path)] = sum(
             t.num_rows for t in tables
         )
