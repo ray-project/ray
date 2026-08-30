@@ -224,6 +224,12 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
       }
     }
 
+    // The async getters below receive this object, so mark it accessed before the
+    // unhandled-error check, the way GetRequest::Set does above for a waiting Get.
+    if (!async_callbacks.empty()) {
+      object_entry->SetAccessed();
+    }
+
     // Don't put it in the store, if we can't get a callback for deletion.
     // The exception here is if we are in local mode, put should still put the object in
     // the store.
@@ -236,10 +242,6 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
       if (IsUnhandledError(object_entry) && unhandled_exception_handler_ != nullptr) {
         unhandled_error = object_entry;
       }
-    }
-
-    if (!async_callbacks.empty()) {
-      object_entry->SetAccessed();
     }
   }
 

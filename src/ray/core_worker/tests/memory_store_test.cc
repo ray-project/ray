@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -149,6 +150,36 @@ TEST(TestMemoryStore, TestUnhandledErrorCallbacksRunOutsideLock) {
   memory_store->NotifyUnhandledErrors();
 
   EXPECT_EQ(unhandled_count, 4);
+}
+
+TEST(TestMemoryStore, TestPutDeliveredToAsyncGetIsNotUnhandled) {
+  // Nothing holds a reference, so the store drops the object instead of keeping it, and
+  // that is the one path where Put itself reports an unhandled error. A pending GetAsync
+  // still receives the object, so it is handled and must not be reported.
+  InstrumentedIOContextWithThread io_context("TestPutDeliveredToAsyncGetIsNotUnhandled");
+  Clock clock;
+  int unhandled_count = 0;
+  std::atomic<bool> delivered{false};
+  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context.GetIoService(),
+      clock,
+      /*reference_counting_enabled=*/true,
+      nullptr,
+      nullptr,
+      [&](const RayObject &) { unhandled_count++; });
+
+  const auto object_id = ObjectID::FromRandom();
+  memory_store->GetAsync(object_id, [&](std::shared_ptr<RayObject> obj) {
+    EXPECT_TRUE(obj->IsException());
+    delivered = true;
+  });
+
+  RayObject unhandled_error(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  memory_store->Put(unhandled_error, object_id, /*has_reference=*/false);
+
+  // Put reports synchronously, so the count is already final here.
+  EXPECT_EQ(unhandled_count, 0);
+  ASSERT_TRUE(WaitForCondition([&] { return delivered.load(); }, 5000));
 }
 
 TEST(TestMemoryStore, TestUnhandledErrorCallbacksContinueAfterException) {
