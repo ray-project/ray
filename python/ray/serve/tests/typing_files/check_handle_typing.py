@@ -9,7 +9,7 @@ on handle classes work correctly. Run with:
 mypy will fail if any assert_type() call doesn't match the expected type.
 """
 
-from typing import Any, AsyncIterator, Iterator, Union
+from typing import Any, AsyncIterator, Iterator
 
 from typing_extensions import assert_type
 
