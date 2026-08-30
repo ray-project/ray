@@ -65,8 +65,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
 
     // Nothing is queued any more, so the reorder deadline no longer applies. Leaving it
     // armed would fire it against a stopped queue and log a timeout that did not happen.
-    group_state.wait_timer_seq_no.reset();
-    group_state.wait_timer_.cancel();
+    group_state.DisarmTimer();
   }
 }
 
@@ -317,6 +316,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
           if (it == group_states_.end() || it->second.wait_timer_seq_no != next_seq_no) {
             return;
           }
+          // Only the seq_no here; the loop below disarms every group's timer, this one
+          // included.
           it->second.wait_timer_seq_no.reset();
           std::string error_message = absl::StrFormat(
               "Timed out waiting for seq_no %d in concurrency group %s, "
@@ -346,16 +347,14 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
             // No deadline applies to this group any more: the loop above either skipped
             // its gap or found nothing queued. A timer left armed here would fire and
             // report a seq_no that is no longer outstanding.
-            group_state_in.wait_timer_seq_no.reset();
-            group_state_in.wait_timer_.cancel();
+            group_state_in.DisarmTimer();
           }
         });
       }
     } else {
       // We can cancel the wait timer because the head of line task is not waiting for the
       // previous seq no
-      group_state.wait_timer_seq_no.reset();
-      group_state.wait_timer_.cancel();
+      group_state.DisarmTimer();
     }
   }
 }

@@ -82,6 +82,12 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     explicit ConcurrencyGroupOrderingState(instrumented_io_context &io_context)
         : wait_timer_(io_context) {}
 
+    /// Clears the deadline together with the seq_no it was counting down for.
+    void DisarmTimer() {
+      wait_timer_seq_no.reset();
+      wait_timer_.cancel();
+    }
+
     /// Sorted map of task callbacks keyed by their per-group sequence number.
     absl::btree_map<int64_t, TaskToExecute> pending_tasks;
     /// List of task retry requests (unordered within the group).
