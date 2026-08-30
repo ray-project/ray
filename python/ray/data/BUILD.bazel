@@ -2345,6 +2345,20 @@ py_test(
 )
 
 py_test(
+    name = "test_delta_pushdown",
+    size = "medium",
+    srcs = ["tests/datasource/test_delta_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_write_delta",
     size = "medium",
     srcs = ["tests/datasource/test_write_delta.py"],

@@ -89,6 +89,7 @@ def plan_list_files_op(
                 predicate=op.predicate,
                 limit=op.limit,
                 projected_columns=op.projected_columns,
+                partition_predicate=op.partition_predicate,
             ),
             # Disable block-shaping: produce manifest blocks as-is.
             disable_block_shaping=True,

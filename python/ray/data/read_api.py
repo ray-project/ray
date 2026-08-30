@@ -5876,6 +5876,174 @@ def read_unity_catalog(
     raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 
+_DELETION_VECTORS_FEATURE = "deletionVectors"
+_COLUMN_MAPPING_MODE_KEY = "delta.columnMapping.mode"
+
+
+def _delta_table_supports_datasource_v2(dt, arrow_parquet_args: dict) -> bool:
+    """Whether the V2 read path can serve this table exactly as V1 does.
+
+    V2 is faster but narrower. Anything it would answer *differently* rather
+    than merely slower belongs on V1, so that turning V2 on never changes a
+    result. Every check here fails closed: an error while inspecting the
+    table sends the read to V1.
+
+    Returns False when:
+
+    - **Column mapping** is on. The Parquet columns carry generated names and
+      the logical names live only in the log, so opening the files directly
+      with the logical schema finds none of the requested columns and hands
+      back empty ones.
+    - **PyArrow read options were passed.** V1 forwards ``**arrow_parquet_args``
+      to ``iter_batches``; V2 has nowhere to put them, so honoring them means
+      staying on V1 rather than silently dropping them.
+    - **The table has a column called ``path``.** That name is how the V2
+      reader labels the synthesized file path, so the real column would be
+      shadowed rather than returned.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        INCLUDE_PATHS_COLUMN_NAME,
+    )
+
+    try:
+        if arrow_parquet_args:
+            return False
+
+        mode = (dt.metadata().configuration or {}).get(_COLUMN_MAPPING_MODE_KEY)
+        if mode is not None and mode.lower() != "none":
+            return False
+
+        schema = pa.schema(dt.schema().to_arrow())
+        return schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1
+    except Exception:  # noqa: BLE001 - an unreadable table belongs on V1
+        logger.debug(
+            "Falling back to the V1 Delta read path; could not determine V2 "
+            "eligibility.",
+            exc_info=True,
+        )
+        return False
+
+
+def _delta_partition_field_types(dt) -> Dict[str, type]:
+    """Map each partition column to the Python type path parsing should yield.
+
+    Partition values only exist as directory names, so they arrive as strings
+    unless ``Partitioning.field_types`` says otherwise, and an untyped
+    ``"2024"`` compared against an ``int64`` literal raises inside PyArrow.
+    That only costs pruning -- the predicate is enforced by a ``Filter``
+    above the read, not by path parsing (see :class:`DeltaScanner`) -- so
+    types this mapping can't express are simply left out rather than
+    disqualifying the table.
+    """
+    import pyarrow as pa
+
+    partition_columns = dt.metadata().partition_columns
+    if not partition_columns:
+        return {}
+
+    schema = pa.schema(dt.schema().to_arrow())
+    field_types: Dict[str, type] = {}
+    for name in partition_columns:
+        index = schema.get_field_index(name)
+        if index < 0:
+            continue
+        arrow_type = schema.field(index).type
+        if pa.types.is_boolean(arrow_type):
+            field_types[name] = bool
+        elif pa.types.is_integer(arrow_type):
+            field_types[name] = int
+        elif pa.types.is_floating(arrow_type):
+            field_types[name] = float
+        elif pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type):
+            field_types[name] = str
+        # date / timestamp / decimal / binary aren't expressible here; left
+        # unmapped, they stay strings and simply prune less.
+    return field_types
+
+
+def _delta_output_columns(columns: Optional[List[str]], include_paths: bool):
+    """Columns a ``read_delta`` result should end up with, in order.
+
+    ``path`` is synthesized rather than read, so it survives an explicit
+    ``columns`` projection instead of being filtered out by it. Both the
+    empty-table shortcut and a real read narrow to this same list, which is
+    what keeps their schemas identical under the same options.
+    """
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        INCLUDE_PATHS_COLUMN_NAME,
+    )
+
+    if columns is None:
+        return None
+    output = list(columns)
+    if include_paths and INCLUDE_PATHS_COLUMN_NAME not in output:
+        output.append(INCLUDE_PATHS_COLUMN_NAME)
+    return output
+
+
+def _empty_delta_dataset(dt, columns: Optional[List[str]], include_paths: bool):
+    """Build a zero-row dataset with the schema the log declares.
+
+    A Delta table with no data files is a legitimate state, so honor
+    ``columns`` and ``include_paths`` here exactly as a non-empty read would
+    -- otherwise unioning an empty table with a populated one fails on
+    mismatched schemas.
+    """
+    import pyarrow
+
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        INCLUDE_PATHS_COLUMN_NAME,
+    )
+
+    schema = pyarrow.schema(dt.schema().to_arrow())
+    if include_paths and schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1:
+        schema = schema.append(
+            pyarrow.field(INCLUDE_PATHS_COLUMN_NAME, pyarrow.string())
+        )
+    columns = _delta_output_columns(columns, include_paths)
+    if columns is not None:
+        missing = [c for c in columns if schema.get_field_index(c) == -1]
+        if missing:
+            raise ValueError(
+                f"Columns {missing} don't exist in the Delta table schema "
+                f"{schema.names}."
+            )
+        schema = pyarrow.schema([schema.field(c) for c in columns])
+
+    return from_arrow(schema.empty_table())
+
+
+def _raise_if_delta_table_uses_deletion_vectors(dt, path: str) -> None:
+    """Reject tables whose rows are filtered by Deletion Vectors.
+
+    A Delta table with this reader feature records deletes as a side file of
+    row positions instead of rewriting the Parquet data, so the data files
+    still physically contain the deleted rows. Ray reads those files
+    directly and does not apply the vectors, which would silently resurrect
+    deleted rows.
+
+    ``deltalake`` refuses such tables too, so this is not a new restriction
+    -- it just fails before the read instead of somewhere inside it, and
+    covers the path that no longer goes through ``to_pyarrow_dataset``.
+    """
+    try:
+        reader_features = dt.protocol().reader_features or ()
+    except Exception:  # noqa: BLE001 - older deltalake may not expose these
+        return
+
+    if _DELETION_VECTORS_FEATURE in reader_features:
+        raise ValueError(
+            f"The Delta table at {path!r} uses Deletion Vectors, which "
+            f"`ray.data.read_delta` doesn't support. Reading it would return "
+            f"rows the table marks as deleted. Rewrite the table without "
+            f"Deletion Vectors (for example `REORG TABLE ... APPLY (PURGE)` "
+            f"in Spark, or set `delta.enableDeletionVectors = false` and "
+            f"recompact) before reading it with Ray."
+        )
+
+
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
@@ -6027,6 +6195,7 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
+    catalog_filesystem = None
     if catalog is not None:
         from ray.data.catalog import ReaderFormat
 
@@ -6034,34 +6203,75 @@ def read_delta(
         path = resolved.path
         if resolved.storage_options:
             storage_options = {**resolved.storage_options, **(storage_options or {})}
-        if resolved.filesystem is not None:
-            if filesystem is not None:
-                logger.warning(
-                    "Both `filesystem` and `catalog` were specified. Overriding "
-                    "the provided `filesystem` with the catalog-resolved "
-                    "credentials."
-                )
-            # `to_pyarrow_dataset` emits table-relative file paths and requires
-            # the filesystem to be rooted at the table directory. The catalog
-            # vends a bucket-rooted filesystem, so wrap it in a SubTreeFileSystem
-            # rooted at the table path (see `DeltaTable.to_pyarrow_dataset`).
-            import pyarrow.fs as pafs
-
-            _, normalized_path = pafs.FileSystem.from_uri(path)
-            filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
+        catalog_filesystem = resolved.filesystem
+        if catalog_filesystem is not None and filesystem is not None:
+            logger.warning(
+                "Both `filesystem` and `catalog` were specified. Overriding "
+                "the provided `filesystem` with the catalog-resolved "
+                "credentials."
+            )
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
-    try:
-        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
-    except Exception as e:
-        error_msg = str(e)
-        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
-        if "deletionVectors" in error_msg:
-            raise RuntimeError(
-                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
-                f"Error: {error_msg}\n"
-            ) from e
-        raise
+    _raise_if_delta_table_uses_deletion_vectors(dt, path)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2 and _delta_table_supports_datasource_v2(
+        dt, arrow_parquet_args
+    ):
+
+        from ray.data._internal.datasource_v2.delta_datasource_v2 import (
+            DeltaDatasourceV2,
+        )
+
+        # The catalog vends a bucket-rooted filesystem, which is what the V2
+        # path wants: it resolves absolute object paths from the log. Only the
+        # V1 path needs the table-rooted `SubTreeFileSystem` below.
+        if catalog_filesystem is not None:
+            filesystem = catalog_filesystem
+
+        # A Delta table with no data files is a legitimate state, and its
+        # log still defines the schema. The V2 read path treats an empty
+        # file listing as user error -- an empty directory, or filters that
+        # matched nothing -- so answer this from the log rather than send an
+        # empty listing through a pipeline that will reject it.
+        if dt.get_add_actions().num_rows == 0:
+            return _empty_delta_dataset(dt, columns, include_paths)
+
+        datasource_v2 = DeltaDatasourceV2(
+            path,
+            # Pin the snapshot resolved on the driver. Listing happens later,
+            # on workers, so leaving this as ``None`` would re-resolve "latest"
+            # at execution time -- a concurrent append would then be read with
+            # a schema inferred before it existed, and a retried task could
+            # disagree with its first attempt.
+            version=dt.version(),
+            storage_options=storage_options,
+            filesystem=filesystem,
+            columns=columns,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    if catalog_filesystem is not None:
+        # `to_pyarrow_dataset` emits table-relative file paths and requires the
+        # filesystem to be rooted at the table directory. The catalog vends a
+        # bucket-rooted filesystem, so wrap it in a SubTreeFileSystem rooted at
+        # the table path (see `DeltaTable.to_pyarrow_dataset`).
+        import pyarrow.fs as pafs
+
+        _, normalized_path = pafs.FileSystem.from_uri(path)
+        filesystem = pafs.SubTreeFileSystem(normalized_path, catalog_filesystem)
+
+    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
         pa_dataset,
