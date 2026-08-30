@@ -109,13 +109,12 @@ def test_deployment_handle_types() -> None:
     new_handle = handle.options(method_name="get_string")
     assert_type(new_handle, DeploymentHandle[MyDeployment])
 
-    # remote() returns Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]
-    # (until plugin is implemented to infer the actual return type)
+    # remote() returns DeploymentResponse[Any] for unary calls.
+    # Streaming calls return DeploymentResponseGenerator via options(stream=True);
+    # the base remote() is typed as awaitable only, so it does not claim
+    # DeploymentResponseGenerator (whose __await__ is NoReturn) is awaitable.
     response = handle.remote()
-    assert_type(
-        response,
-        Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]],
-    )
+    assert_type(response, DeploymentResponse[Any])
 
     broadcast_response = handle.broadcast("get_string")
     assert_type(broadcast_response, DeploymentBroadcastResponse)

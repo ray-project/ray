@@ -13,14 +13,14 @@ from typing import (
     Generic,
     Iterator,
     List,
+    NoReturn,
     Optional,
     Tuple,
-    TypeVar,
     Union,
     cast,
 )
 
-from typing_extensions import AsyncContextManager
+from typing_extensions import AsyncContextManager, TypeVar
 
 import ray
 from ray import serve
@@ -60,9 +60,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # TypeVar for the deployment class type in DeploymentHandle[T]
-T = TypeVar("T")
+T = TypeVar("T", default=Any)
 # TypeVar for the response/result type in DeploymentResponse[R]
-R = TypeVar("R")
+R = TypeVar("R", default=Any)
 
 
 class _DeploymentHandleBase(Generic[T]):
@@ -712,7 +712,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
     `DeploymentHandle` call.
     """
 
-    def __await__(self):
+    def __await__(self) -> NoReturn:
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
             "or `await response.__anext__() instead`."
@@ -1142,7 +1142,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
     def remote(
         self, *args: Any, **kwargs: Any
-    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
+    ) -> DeploymentResponse[Any]:
         """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
@@ -1150,7 +1150,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         deployments.
 
         If `handle.options(stream=True)` is set and a generator method is called, this
-        returns a `DeploymentResponseGenerator` instead.
+        returns a `DeploymentResponseGenerator` instead. ``DeploymentResponseGenerator``
+        is not awaitable — use ``async for`` or ``await anext()`` instead — so the
+        awaitable return is ``DeploymentResponse`` only. This avoids claiming
+        ``NoReturn`` (from the generator's ``__await__``) is awaitable.
 
         Example:
 
@@ -1177,10 +1180,13 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
-            return DeploymentResponseGenerator(
-                future,
-                request_metadata,
-                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            return cast(
+                DeploymentResponse[Any],
+                DeploymentResponseGenerator(
+                    future,
+                    request_metadata,
+                    _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                ),
             )
         else:
             return DeploymentResponse(
@@ -1222,7 +1228,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         selection: ReplicaSelection,
         *args: Any,
         **kwargs: Any,
-    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
+    ) -> DeploymentResponse[Any]:
         """Dispatch a request to a previously selected replica.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
@@ -1255,10 +1261,13 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         future, request_metadata = self._dispatch(selection, args, kwargs)
         # Use the stream flag captured at choose_replica time
         if request_metadata.is_streaming:
-            return DeploymentResponseGenerator(
-                future,
-                request_metadata,
-                _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            return cast(
+                DeploymentResponse[Any],
+                DeploymentResponseGenerator(
+                    future,
+                    request_metadata,
+                    _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                ),
             )
         else:
             return DeploymentResponse(
