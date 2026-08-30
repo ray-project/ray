@@ -1,6 +1,7 @@
 import hashlib
 import sys
 from getpass import getuser
+from unittest.mock import patch
 
 import pytest
 
@@ -122,6 +123,99 @@ def test_ssh_command_runner():
     for x, y in zip(process_runner.calls[0], expected):
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
+
+
+def test_ssh_command_runner_uses_node_id_as_proxy_target():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+
+    node_id = "i-0123456789abcdef0"
+    proxy_command = (
+        "aws ssm start-session --target %h "
+        "--document-name AWS-StartSSHSession "
+        "--parameters portNumber=%p"
+    )
+
+    def fail_if_ip_is_requested(_):
+        pytest.fail("SSH through a node-ID proxy should not request an external IP.")
+
+    provider.external_ip = fail_if_ip_is_requested
+
+    cmd_runner = SSHCommandRunner(
+        log_prefix="prefix",
+        node_id=node_id,
+        provider=provider,
+        auth_config={
+            **auth_config,
+            "ssh_proxy_command": proxy_command,
+            "ssh_proxy_use_node_id": True,
+        },
+        cluster_name="cluster",
+        process_runner=process_runner,
+        use_internal_ip=False,
+    )
+
+    with patch(
+        "ray.autoscaler._private.command_runner.os.makedirs"
+    ) as make_control_path:
+        cmd_runner.run("true")
+
+    make_control_path.assert_called_once_with(
+        cmd_runner.ssh_control_path,
+        mode=0o700,
+        exist_ok=True,
+    )
+
+    command = process_runner.calls[0]
+
+    assert f"ProxyCommand={proxy_command}" in command
+    assert f"ray@{node_id}" in command
+    assert cmd_runner.remote_shell_command_str() == (
+        f"ssh -o IdentitiesOnly=yes -i 8265.pem ray@{node_id}\n"
+    )
+
+
+def test_rsync_uses_node_id_as_proxy_target():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+
+    node_id = "i-0123456789abcdef0"
+    proxy_command = (
+        "aws ssm start-session --target %h "
+        "--document-name AWS-StartSSHSession "
+        "--parameters portNumber=%p"
+    )
+
+    def fail_if_ip_is_requested(_):
+        pytest.fail("Rsync through a node-ID proxy should not request an external IP.")
+
+    provider.external_ip = fail_if_ip_is_requested
+
+    cmd_runner = SSHCommandRunner(
+        log_prefix="prefix",
+        node_id=node_id,
+        provider=provider,
+        auth_config={
+            **auth_config,
+            "ssh_proxy_command": proxy_command,
+            "ssh_proxy_use_node_id": True,
+        },
+        cluster_name="cluster",
+        process_runner=process_runner,
+        use_internal_ip=False,
+    )
+
+    cmd_runner.run_rsync_up("/local/source", "/remote/target", options={})
+
+    upload_command = process_runner.calls[0]
+    assert f"ray@{node_id}:/remote/target" in upload_command
+
+    process_runner.clear_history()
+
+    cmd_runner.run_rsync_down("/remote/source", "/local/target", options={})
+
+    download_command = process_runner.calls[0]
+    assert f"ray@{node_id}:/remote/source" in download_command
 
 
 def test_docker_command_runner():

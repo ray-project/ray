@@ -218,6 +218,11 @@
                 "ssh_proxy_command": {
                     "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
                     "type": "string"
+                },
+                "ssh_proxy_use_node_id": {
+                    "description": "Whether to use the provider node ID instead of the node IP as the SSH target. This is useful for proxy commands that require a node ID.",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },

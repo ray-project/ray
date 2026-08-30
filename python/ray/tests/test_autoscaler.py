@@ -492,6 +492,19 @@ class AutoscalingTest(unittest.TestCase):
         with pytest.raises(ValidationError):
             validate_config(config)
 
+    def testValidateSshProxyUseNodeId(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["auth"]["ssh_proxy_command"] = "aws ssm start-session --target %h"
+        config["auth"]["ssh_proxy_use_node_id"] = True
+
+        # Boolean values should be accepted.
+        validate_config(config)
+
+        # Strings that merely look like booleans must be rejected.
+        config["auth"]["ssh_proxy_use_node_id"] = "true"
+        with pytest.raises(ValidationError):
+            validate_config(config)
+
     def testValidateDefaultConfig(self):
         config = {}
         config["provider"] = {
@@ -504,6 +517,29 @@ class AutoscalingTest(unittest.TestCase):
             validate_config(config)
         except ValidationError:
             self.fail("Default config did not pass validation test!")
+
+    def testHeadNodeConfigDropsSshProxyOptions(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["auth"]["ssh_proxy_command"] = "aws ssm start-session --target %h"
+        config["auth"]["ssh_proxy_use_node_id"] = True
+
+        updated_config, remote_config_file = commands._set_up_config_for_head_node(
+            config,
+            MockProvider(),
+            no_restart=False,
+        )
+
+        try:
+            remote_config_path = updated_config["file_mounts"][
+                "~/ray_bootstrap_config.yaml"
+            ]
+            with open(remote_config_path, encoding="utf-8") as file:
+                remote_config = json.load(file)
+        finally:
+            remote_config_file.close()
+
+        assert "ssh_proxy_command" not in remote_config["auth"]
+        assert "ssh_proxy_use_node_id" not in remote_config["auth"]
 
     def testGetOrCreateHeadNode(self):
         config = copy.deepcopy(SMALL_CLUSTER)
