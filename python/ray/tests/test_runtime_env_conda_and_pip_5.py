@@ -70,18 +70,7 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
             "packages": conflict_packages,
             "pip_version": "==20.2.3",
             "pip_check": False,
-        },
-        # Resolve from PyPI rather than whatever PIP_INDEX_URL this process
-        # inherited. The pip versions below are the point of the test, and both
-        # predate PEP 691 (added in pip 22.2), so they can only read an index page
-        # served as text/html. CI points pip at a caching mirror that keys entries
-        # on URL alone while PyPI answers `Vary: Accept`, so an entry warmed by a
-        # JSON-speaking client is then handed to these, and the resolve fails with
-        # "from versions: none" rather than the conflict this asserts on.
-        # runtime_env env_vars win over the inherited environment (pip.py
-        # _pip_env), and do not feed the pip hash, so the cache behaviour under
-        # test is unchanged.
-        "env_vars": {"PIP_INDEX_URL": "https://pypi.org/simple"},
+        }
     }
 
     @ray.remote
