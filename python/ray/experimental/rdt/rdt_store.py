@@ -1,3 +1,4 @@
+import logging
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -14,6 +15,9 @@ from ray.experimental.rdt.util import (
 
 if TYPE_CHECKING:
     import torch
+
+
+logger = logging.getLogger(__name__)
 
 
 def __ray_send__(
@@ -107,18 +111,27 @@ def __ray_free__(
     try:
         from ray._private.worker import global_worker
 
-        tensor_transport_manager = get_tensor_transport_manager(
-            tensor_transport_backend
-        )
         rdt_manager = global_worker.rdt_manager
         rdt_store = rdt_manager.rdt_store
 
         if not rdt_store.has_object(obj_id):
             return
         tensors = rdt_store.get_object(obj_id)
-        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
-
-        rdt_store.pop_object(obj_id)
+        try:
+            tensor_transport_manager = get_tensor_transport_manager(
+                tensor_transport_backend
+            )
+            tensor_transport_manager.garbage_collect(
+                obj_id, tensor_transport_meta, tensors
+            )
+        except Exception:
+            logger.exception(
+                "Failed to garbage collect RDT object %s with transport %s.",
+                obj_id,
+                tensor_transport_backend,
+            )
+        finally:
+            rdt_store.pop_object(obj_id)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
