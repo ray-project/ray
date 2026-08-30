@@ -132,8 +132,8 @@ class ModelLoadingConfig(BaseModelExtended):
         description=(
             "Where to obtain the model weights from. "
             "Should be a HuggingFace model ID, S3 mirror config, GCS mirror config, "
-            "or a local path. When omitted, defaults to the model_id as a "
-            "HuggingFace model ID."
+            "an oci:// reference to a CNCF ModelPack artifact, or a local path. "
+            "When omitted, defaults to the model_id as a HuggingFace model ID."
         ),
     )
     tokenizer_source: Optional[str] = Field(
