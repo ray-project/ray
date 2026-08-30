@@ -317,9 +317,9 @@ class _DeploymentHandleBase(Generic[T]):
 
     async def shutdown_async(self):
         if self._router:
-            shutdown_future: Union[asyncio.Future, concurrent.futures.Future] = (
-                self._router.shutdown()
-            )
+            shutdown_future: Union[
+                asyncio.Future, concurrent.futures.Future
+            ] = self._router.shutdown()
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
