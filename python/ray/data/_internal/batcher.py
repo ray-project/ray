@@ -76,12 +76,17 @@ def _take_prepared_arrow_table(
 
     Args:
         table: Prepared Arrow shuffle buffer.
-        indices: Normalized row indices for this batch.
+        indices: One-dimensional, native ``np.int64`` row indices validated to
+            be within the prepared table's bounds. Local shuffle establishes
+            this invariant when it creates its permutation.
         prepared_takes: Mapping of column positions to prepared tensor takes.
 
     Returns:
         The selected table, or ``None`` if a prepared tensor take is no longer
         eligible and the caller must use the standard block take path.
+
+    The indices are intentionally not revalidated for every prepared column.
+    Each prepared take checks only constraints derived from its own column.
     """
 
     columns = []
@@ -428,7 +433,11 @@ class ShufflingBatcher(BatcherInterface):
             ) = _prepare_local_shuffle_arrow_table(self._shuffle_buffer)
             accessor = BlockAccessor.for_block(self._shuffle_buffer)
 
-        self._shuffled_indices = self._rng.permutation(accessor.num_rows())
+        # Prepared tensor takes consume the same normalized native-int64 index
+        # representation as ``take_table``'s fast path.
+        self._shuffled_indices = self._rng.permutation(accessor.num_rows()).astype(
+            np.int64, copy=False
+        )
         self._builder = DelegatingBlockBuilder()
         self._batch_head = 0
         self._prepared_tensor_takes = prepared_takes

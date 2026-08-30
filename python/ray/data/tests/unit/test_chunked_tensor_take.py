@@ -174,8 +174,6 @@ def test_chunked_tensor_take(tensor_cls, chunks):
     assert output is not None
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
     assert output.type == column.type
-    assert plan.try_take(np.array([rows, 0], dtype=np.int64)) is None
-    assert plan.try_take(np.array([3, -1], dtype=np.int64)) is None
 
     larger_indices = np.arange(10, dtype=np.int64)
     larger_output = plan.try_take(larger_indices)
@@ -265,16 +263,9 @@ def test_chunked_tensor_take_accepts_integer_index_dtypes(index_dtype):
     column, values = _chunked_tensor(40, 64, 4)
     indices = np.array([39, 1, 20], dtype=index_dtype)
 
-    output = try_take_chunked_tensor(column, indices)
+    output = take_table(pa.table({"tensor": column}), indices).column("tensor").chunk(0)
 
-    assert output is not None
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
-
-
-def test_chunked_tensor_take_rejects_non_integer_indices():
-    column, _ = _chunked_tensor(40, 64, 4)
-
-    assert try_take_chunked_tensor(column, np.array([1.0, 2.0])) is None
 
 
 def test_prepared_chunked_tensor_take_owns_source_lifetime():
@@ -417,6 +408,7 @@ def test_zero_shape_tensor_falls_back(tensor_cls, rows, shape):
         np.array([4, 0, 4, 2], dtype=np.int64),
         np.array([4, 0, 4, 2], dtype=np.uint64),
         pa.array([4, 0, 4, 2], type=pa.int64()),
+        pa.chunked_array([[4, 0], [4, 2]], type=pa.int32()),
         np.ma.array([0, 1], mask=[False, True]),
         pa.array([0, None], type=pa.int64()),
     ],
@@ -451,6 +443,7 @@ def test_take_table_matches_single_chunk_tensor(indices):
         (np.array([4, 0, 2], dtype=np.int32), [4, 0, 2]),
         (np.array([4, 0, 2], dtype=np.uint64), [4, 0, 2]),
         (pa.array([4, 0, 2], type=pa.int16()), [4, 0, 2]),
+        (pa.chunked_array([[4, 0], [2]], type=pa.int32()), [4, 0, 2]),
     ],
 )
 def test_normalize_take_indices(indices, expected):
@@ -466,8 +459,9 @@ def test_normalize_take_indices(indices, expected):
     "indices",
     [
         np.ma.array([0, 1], mask=[False, True]),
-        pa.chunked_array([[0], [1]]),
         pa.array([0, None], type=pa.int64()),
+        pa.chunked_array([[0], [None]], type=pa.int64()),
+        pa.chunked_array([[0.0], [1.0]], type=pa.float64()),
         np.array([-1], dtype=np.int64),
         np.array([5], dtype=np.int64),
         np.array([1.0], dtype=np.float64),

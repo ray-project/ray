@@ -34,7 +34,6 @@ class PreparedChunkedTensorTake(NamedTuple):
     """Executable tensor take prepared from one immutable chunked column."""
 
     tensor_type: Any
-    input_rows: int
     max_supported_output_rows: int
     values_per_row: int
     value_dtype: np.dtype
@@ -43,9 +42,16 @@ class PreparedChunkedTensorTake(NamedTuple):
     chunk_starts: np.ndarray
 
     def try_take(self, indices: np.ndarray) -> Optional[pa.Array]:
-        """Take rows from the prepared source, or return ``None`` for fallback."""
-        indices = _try_normalize_indices(indices, input_rows=self.input_rows)
-        if indices is None or len(indices) > self.max_supported_output_rows:
+        """Take normalized rows, or return ``None`` for a column fallback.
+
+        ``indices`` must be a one-dimensional, native ``np.int64`` array whose
+        values are within the source column's bounds. Callers establish this
+        invariant once before applying the same indices to multiple columns.
+        This method only checks the output-size limit derived from this tensor
+        column's Arrow offset type; rescanning indices here would duplicate
+        caller work for every prepared column and every take.
+        """
+        if len(indices) > self.max_supported_output_rows:
             return None
 
         output = np.empty(
@@ -53,8 +59,6 @@ class PreparedChunkedTensorTake(NamedTuple):
             dtype=self.value_dtype,
         )
         if len(indices) > 0:
-            if not self.chunk_views:
-                return None
             _gather_into_output(
                 output,
                 indices,
@@ -121,7 +125,6 @@ def try_prepare_chunked_tensor_take(
 
     return PreparedChunkedTensorTake(
         tensor_type=tensor_type,
-        input_rows=len(column),
         max_supported_output_rows=max_supported_output_rows,
         values_per_row=values_per_row,
         value_dtype=value_dtype,
@@ -139,16 +142,18 @@ def try_take_chunked_tensor(
 
     Args:
         column: Source chunked tensor column.
-        indices: One-dimensional integer NumPy row indices.
+        indices: One-dimensional, native ``np.int64`` row indices already
+            validated to be within the bounds of ``column``.
 
     Returns:
         A single tensor extension array when the fast path supports the input.
         Otherwise, ``None`` so the caller can use Ray's standard column path.
 
-    The fast path supports non-null, numeric, fixed-shape Ray V1/V2 tensor
-    columns. It gathers from validated zero-copy chunk views into one output
-    buffer in bounded subbatches. Unexpected allocation and internal errors
-    propagate.
+    Index type, shape, and bounds are caller invariants rather than fallback
+    conditions here. The fast path supports non-null, numeric, fixed-shape Ray
+    V1/V2 tensor columns. It gathers from validated zero-copy chunk views into
+    one output buffer in bounded subbatches. Unexpected allocation and internal
+    errors propagate.
     """
     prepared = try_prepare_chunked_tensor_take(column)
     return prepared.try_take(indices) if prepared is not None else None
@@ -185,20 +190,6 @@ def _try_get_tensor_layout(tensor_type):
         return None
 
     return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
-
-
-def _try_normalize_indices(indices, *, input_rows: int) -> Optional[np.ndarray]:
-    """Normalize one-dimensional integer indices for the prepared kernel."""
-    if (
-        not isinstance(indices, np.ndarray)
-        or indices.ndim != 1
-        or not np.issubdtype(indices.dtype, np.integer)
-    ):
-        return None
-    if len(indices) > 0 and (indices.min() < 0 or indices.max() >= input_rows):
-        return None
-    # NumPy can promote uint64-minus-int64 chunk offset arithmetic to float64.
-    return indices.astype(np.int64, copy=False)
 
 
 def _try_get_zero_copy_chunk_view(
