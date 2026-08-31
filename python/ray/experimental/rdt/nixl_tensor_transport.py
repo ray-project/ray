@@ -316,16 +316,20 @@ class NixlTensorTransport(TensorTransportManager):
                         stream.synchronize()
 
                 nixl_agent = self.get_nixl_agent()
-                # Use the pool only when every tensor lives on the exact same
-                # device as the pool, AND no tensor already has an existing
-                # NIXL registration (via register_nixl_memory).
+                # Use the pool when no tensor already has an existing NIXL
+                # registration (via register_nixl_memory).
+                pool_device = (
+                    self._memory_pool.get_pool_tensor().device
+                    if self._memory_pool is not None
+                    else None
+                )
                 pool_eligible = (
                     self._memory_pool is not None
-                    and all(
-                        t.device == self._memory_pool.get_pool_tensor().device
-                        for t in rdt_object
-                    )
                     and not any(self._tensor_memory_registered(t) for t in rdt_object)
+                    and (
+                        pool_device.type == "cpu"
+                        or all(t.device == pool_device for t in rdt_object)
+                    )
                 )
                 if pool_eligible:
                     xfer_descs = self._allocate_pool_xfer_descs(rdt_object)

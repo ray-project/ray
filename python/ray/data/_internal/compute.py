@@ -90,17 +90,17 @@ class ActorPoolStrategy(ComputeStrategy):
         3. Batching Outputs
 
     The `enable_true_multi_threading` flag affects step 2. If set to `True`, then the UDF can be run concurrently.
-    By default, it is set to `False`, so at most 1 actor UDF is running at a time per actor. The `max_concurrency`
-    flag on `ray.remote` affects steps 1 and 3. Below is a matrix summary:
+    By default, it is set to `False`, so at most 1 actor UDF is running at a time per actor. The `max_concurrent_calls_per_actor`
+    argument affects steps 1 and 3. Below is a matrix summary:
 
-    - [`enable_true_multi_threading=False or True`, `max_concurrency=1`] = 1 actor task running per actor. So at most 1
+    - [`enable_true_multi_threading=False or True`, `max_concurrent_calls_per_actor=1`] = 1 actor task running per actor. So at most 1
         of steps 1, 2, or 3 is running at any point in time.
-    - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
+    - [`enable_true_multi_threading=False`, `max_concurrent_calls_per_actor>1`] = multiple tasks running per actor
       (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
       where you want to use a large batch size but want to hide the overhead of *batching*
       the inputs. In this case, CPU *batching* is done concurrently, while GPU *inference*
       is done 1 at a time. Concretely, steps 1 and 3 can have multiple threads, while step 2 is done serially.
-    - [`enable_true_multi_threading=True`, `max_concurrency>1`] = multiple tasks running per actor.
+    - [`enable_true_multi_threading=True`, `max_concurrent_calls_per_actor>1`] = multiple tasks running per actor.
       Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL). No restrictions on steps 1, 2, or 3
 
     NOTE: `enable_true_multi_threading` does not apply to async actors
@@ -114,7 +114,8 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
-        enable_true_multi_threading: bool = False,
+        max_concurrent_calls_per_actor: Optional[int] = None,
+        enable_true_multi_threading: Optional[bool] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -130,9 +131,12 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
-            enable_true_multi_threading: If enable_true_multi_threading=False, no more than 1 UDF
-                runs per actor. Otherwise, respects the `max_concurrency` argument. For more details, see
-                the `ActorPoolStrategy` class docstring.
+            max_concurrent_calls_per_actor: The maximum number of calls that can run
+                concurrently on each actor worker.
+            enable_true_multi_threading: If enable_true_multi_threading=False, no more
+                than 1 UDF runs per actor. Otherwise, respects the `max_concurrent_calls_per_actor` argument.
+                By default, this flag is `None`, which gets translated to `False`.
+                For more details, see the `ActorPoolStrategy` class docstring.
         """
         if size is not None:
             if size < 1:
@@ -159,6 +163,14 @@ class ActorPoolStrategy(ComputeStrategy):
                 "max_tasks_in_flight_per_actor must be >= 1, got: ",
                 max_tasks_in_flight_per_actor,
             )
+        if (
+            max_concurrent_calls_per_actor is not None
+            and max_concurrent_calls_per_actor < 1
+        ):
+            raise ValueError(
+                "max_concurrent_calls_per_actor must be >= 1, got: ",
+                max_concurrent_calls_per_actor,
+            )
 
         self.min_size = min_size or 1
         self.max_size = max_size or float("inf")
@@ -176,11 +188,26 @@ class ActorPoolStrategy(ComputeStrategy):
 
         self.initial_size = initial_size or self.min_size
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+        self.max_concurrent_calls_per_actor = max_concurrent_calls_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
-        self.enable_true_multi_threading = enable_true_multi_threading
+        self._enable_true_multi_threading = enable_true_multi_threading
+
+    @property
+    def enable_true_multi_threading(self) -> bool:
+        # backwards compatibility from serialization: instances pickled
+        # before this became a property carry the value under the public
+        # name instead.
+        return bool(
+            self.__dict__.get(
+                "_enable_true_multi_threading",
+                self.__dict__.get("enable_true_multi_threading"),
+            )
+        )
 
     def __eq__(self, other: Any) -> bool:
+        # intentionally compare resolved enable_true_multi_threading values
+        # because the two strategy classes are effectively the same.
         return isinstance(other, ActorPoolStrategy) and (
             self.min_size == other.min_size
             and self.max_size == other.max_size
@@ -188,6 +215,8 @@ class ActorPoolStrategy(ComputeStrategy):
             and self.enable_true_multi_threading == other.enable_true_multi_threading
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
+            and self.max_concurrent_calls_per_actor
+            == other.max_concurrent_calls_per_actor
         )
 
     def __repr__(self) -> str:
@@ -195,7 +224,8 @@ class ActorPoolStrategy(ComputeStrategy):
             f"ActorPoolStrategy(min_size={self.min_size}, "
             f"max_size={self.max_size}, "
             f"initial_size={self.initial_size}, "
-            f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor})"
+            f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor}, "
+            f"max_concurrent_calls_per_actor={self.max_concurrent_calls_per_actor}, "
             f"num_workers={self.num_workers}, "
             f"enable_true_multi_threading={self.enable_true_multi_threading}, "
             f"ready_to_total_workers_ratio={self.ready_to_total_workers_ratio})"

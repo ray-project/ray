@@ -737,6 +737,11 @@ class LLMServer(LLMServerProtocol):
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
+    async def __del__(self) -> None:
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            await engine.shutdown()
+
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         engine_config = llm_config.get_engine_config()
