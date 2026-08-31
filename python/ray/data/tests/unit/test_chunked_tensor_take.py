@@ -346,7 +346,7 @@ def test_small_narrow_chunked_tensor_take_falls_back(rows):
     )
 
 
-def test_chunked_tensor_take_eligibility_uses_source_and_output_work():
+def test_chunked_tensor_take_eligibility_uses_row_and_source_size():
     narrow_large_source, _ = _chunked_tensor(100_000, 8, 32)
     assert (
         try_prepare_chunked_tensor_take(
@@ -378,7 +378,39 @@ def test_chunked_tensor_take_eligibility_uses_source_and_output_work():
             wide_large_source,
             expected_output_rows=100_000,
         )
-        is None
+        is not None
+    )
+
+
+def test_take_table_only_prepares_candidate_columns(monkeypatch):
+    eligible, eligible_values = _chunked_tensor(4096, 64, 4)
+    ineligible, ineligible_values = _chunked_tensor(4096, 8, 4)
+    indices = np.array([4095, 1, 2048], dtype=np.int64)
+    calls = []
+    original_try_take = transform_pyarrow.try_take_chunked_tensor
+
+    def record_try_take(column, normalized_indices):
+        calls.append(column.type)
+        return original_try_take(column, normalized_indices)
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "try_take_chunked_tensor",
+        record_try_take,
+    )
+    output = take_table(
+        pa.table({"eligible": eligible, "ineligible": ineligible}),
+        indices,
+    )
+
+    assert calls == [eligible.type]
+    np.testing.assert_array_equal(
+        output.column("eligible").combine_chunks().to_numpy(),
+        eligible_values[indices],
+    )
+    np.testing.assert_array_equal(
+        output.column("ineligible").combine_chunks().to_numpy(),
+        ineligible_values[indices],
     )
 
 
@@ -588,6 +620,23 @@ def test_zero_shape_tensor_falls_back(tensor_cls, rows, shape):
     )
 
 
+def test_chunked_tensor_take_rejects_output_offset_overflow_before_chunk_views(
+    monkeypatch,
+):
+    tensor = _zero_shape_chunked_tensor(2, (2**30,), ArrowTensorType)
+
+    def fail_chunk_view(*args, **kwargs):
+        raise AssertionError("Output offset overflow reached chunk preparation")
+
+    monkeypatch.setattr(
+        chunked_tensor_take,
+        "_try_get_zero_copy_chunk_view",
+        fail_chunk_view,
+    )
+
+    assert try_prepare_chunked_tensor_take(tensor, expected_output_rows=2) is None
+
+
 @pytest.mark.parametrize(
     "indices",
     [
@@ -729,8 +778,8 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_is_fast_take_worthwhile",
-        lambda **kwargs: True,
+        "_passes_source_size_gates",
+        lambda *args, **kwargs: True,
     )
     tensor_table = _tensor_table(79, 64, 20)
     plain_table = tensor_table.select(["row_id"])
@@ -935,8 +984,8 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_is_fast_take_worthwhile",
-        lambda **kwargs: True,
+        "_passes_source_size_gates",
+        lambda *args, **kwargs: True,
     )
     original_combine = batcher_module.transform_pyarrow.combine_chunked_array
     combine_calls = 0

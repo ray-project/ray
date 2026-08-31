@@ -41,8 +41,9 @@ def _prepare_local_shuffle_arrow_table(
 
     Args:
         table: Arrow shuffle buffer to prepare.
-        expected_output_rows: Expected rows per shuffled batch, used by the
-            tensor take cost model. Omit for capability-only preparation.
+        expected_output_rows: Expected rows per shuffled batch, used to apply
+            operational source-size and Arrow output offset checks. Omit for
+            capability-only preparation.
 
     Returns:
         A table with unsupported multi-chunk columns combined and a mapping of

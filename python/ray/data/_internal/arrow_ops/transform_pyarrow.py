@@ -285,18 +285,24 @@ def take_table(
     )
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
-        normalized_indices = None
-        if is_chunked_tensor_take_enabled() and any(
-            _is_multi_chunk_extension_column(col)
-            and is_chunked_tensor_take_candidate(col)
-            for col in table.columns
-        ):
+        candidate_columns = (
+            {
+                index
+                for index, column in enumerate(table.columns)
+                if is_chunked_tensor_take_candidate(column)
+            }
+            if is_chunked_tensor_take_enabled()
+            else set()
+        )
+        if candidate_columns:
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
+        else:
+            normalized_indices = None
 
         new_cols = []
-        for col in table.columns:
+        for index, col in enumerate(table.columns):
             if _is_multi_chunk_extension_column(col):
-                if normalized_indices is not None:
+                if normalized_indices is not None and index in candidate_columns:
                     taken = try_take_chunked_tensor(col, normalized_indices)
                     if taken is not None:
                         new_cols.append(taken)

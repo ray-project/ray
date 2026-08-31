@@ -23,11 +23,10 @@ ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
 TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # Narrow rows do not copy enough payload per grouped NumPy operation, while a
 # small source column does not amortize preparation even when its rows are wide.
-# These gates are combined with the output/chunk-aware estimate below; no one
-# dimension alone decides eligibility.
+# Keep these operational gates independent of the scratch limit: an eligible
+# source row may be larger than the soft scratch cap.
 _MIN_FAST_ROW_BYTES = 256
 _MIN_FAST_SOURCE_BYTES = 1024 * 1024
-_MIN_COPY_TO_INDEX_WORK_RATIO = 2
 # Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
 # the number of chunks makes repeated full-subbatch masks expensive.
 _MAX_MASK_GROUP_CHUNKS = 16
@@ -41,11 +40,19 @@ def is_chunked_tensor_take_enabled() -> bool:
     return ENABLE_CHUNKED_TENSOR_TAKE
 
 
+def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
+    """Return whether the source can amortize fast-path setup work."""
+    return (
+        row_bytes >= _MIN_FAST_ROW_BYTES
+        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
+    )
+
+
 def is_chunked_tensor_take_candidate(column: pa.ChunkedArray) -> bool:
     """Return whether source-copy savings can justify index normalization.
 
-    This intentionally cheap preflight uses only source metadata. Full layout,
-    logical-offset, output-size, and output-work checks remain in preparation.
+    This intentionally cheap preflight uses only source metadata. Logical
+    offsets and output offset capacity remain validated during preparation.
     """
     if column.num_chunks <= 1 or column.null_count > 0:
         return False
@@ -53,10 +60,7 @@ def is_chunked_tensor_take_candidate(column: pa.ChunkedArray) -> bool:
     if layout is None:
         return False
     _, row_bytes, _ = layout
-    return (
-        row_bytes >= _MIN_FAST_ROW_BYTES
-        and len(column) * row_bytes >= _MIN_FAST_SOURCE_BYTES
-    )
+    return _passes_source_size_gates(len(column), row_bytes)
 
 
 class PreparedChunkedTensorTake(NamedTuple):
@@ -108,9 +112,9 @@ def try_prepare_chunked_tensor_take(
 
     Args:
         column: Source chunked tensor column.
-        expected_output_rows: Rows expected in each take. When provided, the
-            fast path is used only when its source-copy savings are expected to
-            amortize chunk grouping. Omit this for a capability-only plan.
+        expected_output_rows: Rows expected in each take. When provided,
+            operational source-size gates are applied and Arrow output offset
+            capacity is checked. Omit this for a capability-only plan.
 
     Returns:
         Validated source metadata when the fast path supports the column.
@@ -132,15 +136,21 @@ def try_prepare_chunked_tensor_take(
         return None
     values_per_row, row_bytes, value_dtype = layout
 
-    nonempty_chunks = sum(len(chunk) > 0 for chunk in column.chunks)
-    if nonempty_chunks <= 1:
-        return None
-    if expected_output_rows is not None and not _is_fast_take_worthwhile(
-        source_rows=len(column),
-        output_rows=expected_output_rows,
-        row_bytes=row_bytes,
-        num_chunks=nonempty_chunks,
+    if expected_output_rows is not None and not _passes_source_size_gates(
+        len(column), row_bytes
     ):
+        return None
+
+    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
+    max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
+    if (
+        expected_output_rows is not None
+        and expected_output_rows > max_supported_output_rows
+    ):
+        return None
+
+    chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
+    if len(chunks) <= 1:
         return None
 
     subbatch_rows = max(
@@ -148,15 +158,10 @@ def try_prepare_chunked_tensor_take(
         TENSOR_TAKE_SCRATCH_CAP_BYTES // (row_bytes + _INDEX_SCRATCH_BYTES_PER_ROW),
     )
 
-    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
-    max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
-
     chunk_views = []
     chunk_starts = []
     row_offset = 0
-    for chunk in column.chunks:
-        if len(chunk) == 0:
-            continue
+    for chunk in chunks:
         view = _try_get_zero_copy_chunk_view(
             chunk,
             tensor_type,
@@ -208,39 +213,6 @@ def try_take_chunked_tensor(
     return prepared.try_take(indices) if prepared is not None else None
 
 
-def _is_fast_take_worthwhile(
-    *,
-    source_rows: int,
-    output_rows: int,
-    row_bytes: int,
-    num_chunks: int,
-) -> bool:
-    """Estimate whether avoiding a full source-column copy is worthwhile.
-
-    Both paths allocate the selected tensor output, so that common cost is not
-    part of the comparison. The native path additionally copies the complete
-    source column while combining chunks. The fast path instead groups output
-    indices by chunk: repeated scans for at most 16 chunks, or a sort for more
-    chunks. Treating that index work as bytes gives a deliberately conservative
-    and monotonic eligibility rule in addition to the two cheap metadata gates.
-    """
-    if output_rows < 0:
-        return False
-
-    source_copy_bytes = source_rows * row_bytes
-    if row_bytes < _MIN_FAST_ROW_BYTES or source_copy_bytes < _MIN_FAST_SOURCE_BYTES:
-        return False
-    if output_rows == 0:
-        return True
-
-    if num_chunks <= _MAX_MASK_GROUP_CHUNKS:
-        grouping_passes = min(num_chunks, output_rows)
-    else:
-        grouping_passes = max(1, math.ceil(math.log2(max(2, output_rows))))
-    estimated_index_work = output_rows * grouping_passes * _INDEX_SCRATCH_BYTES_PER_ROW
-    return source_copy_bytes >= _MIN_COPY_TO_INDEX_WORK_RATIO * estimated_index_work
-
-
 def _try_get_tensor_layout(tensor_type):
     """Return fixed numeric tensor layout metadata, or ``None`` if unsupported.
 
@@ -283,7 +255,7 @@ def _try_get_zero_copy_chunk_view(
     """Return a safe zero-copy tensor view, or ``None`` for column fallback.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,
-    contiguity, ownership, and pointer bounds explicit. The logical list
+    contiguity, ownership, and buffer bounds explicit. The logical list
     offsets are authoritative: a legal array may start after child element 0,
     while malformed or variable-stride offsets cannot represent the declared
     fixed tensor shape and must fall back.
@@ -304,11 +276,9 @@ def _try_get_zero_copy_chunk_view(
 
     first_value = int(offsets[0])
     last_value = first_value + len(chunk) * values_per_row
-    if np.any(offsets < 0) or np.any(offsets > len(values)):
+    if first_value < 0 or int(offsets[-1]) != last_value or last_value > len(values):
         return None
-    if int(offsets[-1]) != last_value or not np.all(
-        np.diff(offsets.astype(np.int64, copy=False)) == values_per_row
-    ):
+    if not np.all(np.diff(offsets.astype(np.int64, copy=False)) == values_per_row):
         return None
 
     buffers = values.buffers()
@@ -318,13 +288,10 @@ def _try_get_zero_copy_chunk_view(
     byte_offset = first_value * value_dtype.itemsize
     view_nbytes = len(chunk) * values_per_row * value_dtype.itemsize
     try:
-        buffer_start = data_buffer.address
-        buffer_end = buffer_start + data_buffer.size
+        buffer_size = data_buffer.size
     except (AttributeError, TypeError):
         return None
-    view_start = buffer_start + byte_offset
-    view_end = view_start + view_nbytes
-    if not (buffer_start <= view_start <= view_end <= buffer_end):
+    if byte_offset > buffer_size or view_nbytes > buffer_size - byte_offset:
         return None
     try:
         return np.ndarray(
