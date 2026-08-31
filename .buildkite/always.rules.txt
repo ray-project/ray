@@ -12,8 +12,14 @@
 #   @ tag1 tag2 tag3  # Tags to emit for a rule. A rule without tags is a skipping rule.
 #
 #   ;  # Semicolon to separate rules
+#
+# Scope: these rules apply to every changed file in every pull request, on top
+# of .buildkite/test.rules.txt. That makes this the widest-reaching rule file
+# in the repository -- a change here affects all contributors' builds, so treat
+# an edit as a repo-wide change rather than a local one. See the scope notes at
+# the top of test.rules.txt, which apply here too.
 
-! always lint
+! always lint pypi_readme
 
 # Documentation prose (.md and .rst) and static image assets do not need the
 # code-oriented lint checks. A Markdown-only pull request cannot produce a
@@ -57,6 +63,23 @@ doc/*.jpeg
 doc/*.gif
 doc/*.webp
 @ always
+;
+
+# Inputs to `lint: doc_readme`, which runs `setup.py check --restructuredtext
+# --strict --metadata` and so guards how Ray's PyPI long description renders.
+# `--restructuredtext` validates `long_description`, which python/setup.py
+# reads from the repo-root README.rst, and `--metadata` validates setup.py's
+# own fields. Those two files are the whole input set; nothing under doc/
+# feeds the check.
+#
+# The step carries `pypi_readme` alone in lint.rayci.yml, so this rule is its
+# only trigger: no other rule emits the tag, and the catch-all below does not.
+# Both files keep `always lint` as well, since the catch-all would otherwise
+# have given them those tags and dropping them here would silently narrow
+# every other step.
+README.rst
+python/setup.py
+@ always lint pypi_readme
 ;
 
 *

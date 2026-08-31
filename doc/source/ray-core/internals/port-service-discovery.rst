@@ -58,7 +58,7 @@ and languages (C++/Python). Raylet spawns two agents:
 
 2. **Runtime Env Agent** - manages runtime environments:
 
-   - ``runtime_env_agent_port``: gRPC (default: random)
+   - ``runtime_env_agent_port``: HTTP (default: random)
 
 After binding, agents write their ports to
 ``{session_dir}/{port_name}_{node_id_hex}`` (see `port_persistence.h <https://github.com/ray-project/ray/blob/master/src/ray/util/port_persistence.h>`_).
@@ -100,7 +100,8 @@ Node Table
 
 Each Raylet registers a GcsNodeInfo to GCS, containing its own ports
 (``node_manager_port``, ``object_manager_port``) and agent ports
-(``runtime_env_agent_port``, ``metrics_agent_port``, ``dashboard_agent_listen_port``).
+(``runtime_env_agent_port``, ``metrics_agent_port``, ``metrics_export_port``,
+``dashboard_agent_listen_port``).
 
 Other components query GCS for this information:
 

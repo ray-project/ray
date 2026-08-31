@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import multiprocessing
 import os
 import signal
 import sys
@@ -18,7 +19,7 @@ from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
 )
-from ray._raylet import GcsClient, NodeID
+from ray._raylet import Config, GcsClient, NodeID
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
@@ -317,7 +318,8 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     ray.shutdown()
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
     host, port = parse_address(redis_addr)
-    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+    is_cluster_mode = os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1"
+    if is_cluster_mode:
         cli = redis.RedisCluster(host, int(port))
     else:
         cli = redis.Redis(host, int(port))
@@ -326,10 +328,57 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
     c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
     assert set(cli.keys()) == set(c1_keys + c2_keys)
-    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
+    if not is_cluster_mode:
+        cli.config_resetstat()
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
     assert set(cli.keys()) == set(c2_keys)
-    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
+    if not is_cluster_mode:
+        # Cleanup uses DEL by default: one DEL DUMMY from its Redis connection
+        # setup plus one DEL per key. An exact delta proves which verb the
+        # delete loop used.
+        commandstats = cli.info("commandstats")
+        assert commandstats.get("cmdstat_del", {}).get("calls") == len(c1_keys) + 1
+        assert commandstats.get("cmdstat_unlink", {}).get("calls", 0) == 0
+    # Cleaning an already-clean namespace is idempotent and still succeeds.
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
+    assert set(cli.keys()) == set(c2_keys)
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
+
+
+def _test_gcs_leader_local_default_when_leader_elect(gcs_address):
+    # Enable leader election in this subprocess only.
+    os.environ["RAY_ENABLE_GCS_LEADER_ELECTION"] = "true"
+    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION = True
+    Config.initialize(b'{"ENABLE_GCS_LEADER_ELECTION": true}')
+
+    gcs_client_le = GcsClient(address=gcs_address)
+    # With leader election enabled, the client conservatively starts as
+    # non-leader until a CheckAlive reply reports the actual status. This only
+    # exercises the client-side cache initialization; the server-side behavior
+    # that populates is_leader is covered in a later PR.
+    assert gcs_client_le.is_gcs_leader_local() is False
+
+
+def test_is_gcs_leader_defaults(ray_start_regular):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+
+    # By default, RAY_ENABLE_GCS_LEADER_ELECTION is False, so the client always
+    # reports itself as leader (legacy behavior).
+    gcs_client = GcsClient(address=gcs_address)
+    assert gcs_client.is_gcs_leader() is True
+    assert gcs_client.is_gcs_leader_local() is True
+
+    # With RAY_ENABLE_GCS_LEADER_ELECTION enabled, is_gcs_leader_local() starts as False.
+    # Run in a spawned subprocess so the env var / Config only affect that
+    # process.
+    ctx = multiprocessing.get_context("spawn")
+    p = ctx.Process(
+        target=_test_gcs_leader_local_default_when_leader_elect, args=(gcs_address,)
+    )
+    p.start()
+    p.join()
+    assert p.exitcode == 0
 
 
 if __name__ == "__main__":

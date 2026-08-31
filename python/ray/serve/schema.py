@@ -26,7 +26,6 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     ReplicaState,
     RequestProtocol,
-    ServeDeployMode,
 )
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
@@ -604,11 +603,6 @@ class DeploymentSchema(BaseModel):
                         exclude_unset=True
                     )
 
-                min_replicas = autoscaling_config.get("min_replicas")
-                if min_replicas is not None and min_replicas == 0:
-                    raise ValueError(
-                        "Scale to zero isn't supported for gang scheduling."
-                    )
                 for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
                     val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
@@ -1834,13 +1828,6 @@ class ServeInstanceDetails(BaseModel):
             "Mapping from node_id to details about the Proxy running on that node."
         )
     )
-    deploy_mode: ServeDeployMode = Field(
-        default=ServeDeployMode.MULTI_APP,
-        description=(
-            "[DEPRECATED]: single-app configs are removed, so this is always "
-            "MULTI_APP. This field will be removed in a future release."
-        ),
-    )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
@@ -1867,7 +1854,6 @@ class ServeInstanceDetails(BaseModel):
         """
 
         return {
-            "deploy_mode": "MULTI_APP",
             "controller_info": {},
             "proxies": {},
             "applications": {},
