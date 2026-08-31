@@ -189,19 +189,18 @@ def main(args: argparse.Namespace):
         max_head_node_memory_bytes=MAX_HEAD_NODE_MEMORY_BYTES_BY_CASE.get(args.case)
     )
 
-    try:
-        if args.case == "fast-producer-slow-consumer":
-            benchmark.run_fn(args.case, run_fast_producer_slow_consumer)
-        elif args.case == "many-tiny-objects":
-            benchmark.run_fn(args.case, run_many_tiny_objects)
-        elif args.case == "training-prefetch":
-            benchmark.run_fn(args.case, run_training_prefetch, num_trainers=8)
-        elif args.case == "training-prefetch-single-node":
-            benchmark.run_fn(args.case, run_training_prefetch, num_trainers=1)
-        else:
-            raise ValueError(f"Unexpected benchmark case: {args.case}")
-    finally:
-        benchmark.write_result()
+    if args.case == "fast-producer-slow-consumer":
+        benchmark.run_fn(args.case, run_fast_producer_slow_consumer)
+    elif args.case == "many-tiny-objects":
+        benchmark.run_fn(args.case, run_many_tiny_objects)
+    elif args.case == "training-prefetch":
+        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=8)
+    elif args.case == "training-prefetch-single-node":
+        benchmark.run_fn(args.case, run_training_prefetch, num_trainers=1)
+    else:
+        raise ValueError(f"Unexpected benchmark case: {args.case}")
+
+    benchmark.write_result()
 
 
 if __name__ == "__main__":
