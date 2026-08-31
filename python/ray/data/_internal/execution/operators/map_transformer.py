@@ -254,7 +254,9 @@ class MapTransformer:
             input: Iterable[MapTransformFnData],
             scope: "UDFTimeScope",
         ):
-            self._input = input
+            # `input` is an Iterable, but `__next__` needs an Iterator, and some
+            # callers hand `apply_transform` a plain list.
+            self._input = iter(input)
             self._scope = scope
 
         def __iter__(self) -> "MapTransformer._UDFTimingIterator":
