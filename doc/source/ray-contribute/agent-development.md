@@ -92,6 +92,7 @@ The `/fetch-buildkite-logs` skill requires a Buildkite API token to fetch CI log
 
    - `read_builds`
    - `read_build_logs`
+   - `read_artifacts`
 
 3. Add it to your shell profile:
 

@@ -1,47 +1,41 @@
 import asyncio
-from typing import Any, List, Optional, Type
+from typing import Optional, Type
 
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
-from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    KV_ROUTER_ACTOR_NAME,
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_llm_router_handle,
     get_worker_id,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
+from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
 
-def _get_prompt_token_ids(prompt: Any) -> List[int]:
-    """The prompt's pre-tokenized token ids."""
-    try:
-        return list(prompt["prompt_token_ids"])
-    except (KeyError, TypeError) as e:
-        raise ValueError(
-            "KV-aware token tracking requires a pre-tokenized prompt "
-            f"(dict with 'prompt_token_ids'); got {type(prompt).__name__}"
-        ) from e
-
-
 class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to the KV router actor
-    which maintains per-replica token load statistics.
+    """Ordered, non-blocking bridge from the engine to every LLMRouter
+    replica's KVTokenTracker, which maintains per-replica token load
+    statistics. Each batch is broadcast to all ingress replicas, whose
+    selection services received the reservation through the ingress-side
+    background broadcast.
 
-    ``report`` only enqueues locally, so generation never blocks on the actor.
-    A single delivery task per replica drains the queue to the actor, awaiting
-    one ``on_lifecycle_events`` call at a time so events arrive in the order they
-    were reported. Events that pile up during a call are sent together in the
-    next one.
+    ``report`` only enqueues locally, so generation never blocks on delivery.
+    A single delivery task per replica drains the queue to the trackers,
+    awaiting one broadcast at a time so events arrive everywhere in the order
+    they were reported. Events that pile up during a call are sent together in
+    the next one.
     """
 
-    def __init__(self, actor: ActorHandle, worker_id: int):
-        self.actor = actor
+    def __init__(self, handle: DeploymentHandle, worker_id: int):
+        self.handle = handle
         self.worker_id = worker_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
@@ -61,8 +55,27 @@ class LifecycleEventForwarder:
             while not self._events.empty():
                 batch.append(self._events.get_nowait())
             try:
-                await self.actor.on_lifecycle_events.remote(batch)
-            except (RayActorError, RayTaskError) as e:
+                # return_exceptions so one failed replica cannot mask delivery
+                # to the rest; failures are logged and dropped below.
+                results = await self.handle.broadcast(
+                    "on_lifecycle_events", batch
+                ).results_async(
+                    timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+                    return_exceptions=True,
+                )
+                errors = [r for r in results if isinstance(r, Exception)]
+                if errors:
+                    logger.warning(
+                        "KV lifecycle events dropped on %d/%d ingress replicas: %s",
+                        len(errors),
+                        len(results),
+                        errors[0],
+                    )
+            except Exception as e:
+                # Best-effort delivery: any failure (no LLMRouter replica being
+                # available during a redeploy, backpressure, a booking error) is
+                # dropped so the engine's token stream is never disrupted; report()
+                # restarts the delivery task on the next event.
                 logger.warning("Dropping KV lifecycle events: %s", e)
             finally:
                 for _ in batch:
@@ -86,21 +99,14 @@ class RequestTokenTracker:
         self,
         forwarder: LifecycleEventForwarder,
         request_id: str,
-        prompt_token_ids: List[int],
-        expected_output_tokens: Optional[int],
+        report_decode_progress: bool = False,
     ):
         self._forwarder = forwarder
         self._request_id = request_id
         self._cumulative = 0
         self._prefill_marked = False
         self._finished = False
-        forwarder.report(
-            "on_request_added",
-            request_id,
-            forwarder.worker_id,
-            prompt_token_ids,
-            expected_output_tokens,
-        )
+        self._report_decode_progress = report_decode_progress
 
     def on_output(self, output: RequestOutput) -> None:
         """Observe one engine ``RequestOutput`` (forwarded to the caller as-is).
@@ -117,7 +123,10 @@ class RequestTokenTracker:
             # The first output token signals prefill completion.
             self._prefill_marked = True
             self._forwarder.report("on_prefill_complete", self._request_id)
-        self._forwarder.report("on_decode_progress", self._request_id, self._cumulative)
+        if self._report_decode_progress:
+            self._forwarder.report(
+                "on_decode_progress", self._request_id, self._cumulative
+            )
 
     def finish(self) -> None:
         """Report completion exactly once."""
@@ -126,22 +135,27 @@ class RequestTokenTracker:
             self._forwarder.report("on_request_completed", self._request_id)
 
 
-def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
+def enable_token_tracking(
+    engine_cls: Type[AsyncLLM], report_decode_progress: bool = False
+) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
+        _report_decode_progress: bool = report_decode_progress
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
                 try:
-                    actor = serve.get_deployment_actor(KV_ROUTER_ACTOR_NAME)
+                    # The KVTokenTracker lives inside the LLMRouter, so
+                    # forward lifecycle events to its deployment handle method.
+                    handle = get_llm_router_handle()
                     worker_id = get_worker_id(
                         serve.get_replica_context().replica_id.unique_id
                     )
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        actor, worker_id
+                        handle, worker_id
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.
@@ -175,12 +189,7 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
             tracker = RequestTokenTracker(
                 forwarder,
                 lifecycle_request_id,
-                _get_prompt_token_ids(prompt),
-                # The request's own output cap is its expected length; weights
-                # the selection service's decode-block decay.
-                # TODO(jeffreywang): Use an agent-provided expected-OSL hint for
-                # more accurate decode-load estimation.
-                sampling_params.max_tokens,
+                report_decode_progress=self._report_decode_progress,
             )
             try:
                 async for output in stream:

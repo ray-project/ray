@@ -48,7 +48,7 @@ wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
 # Add gdb since ray dashboard uses `memray attach`, which requires gdb.
 
 APT_PKGS=(
-    google-cloud-sdk
+    google-cloud-cli
     supervisor
     vim
     zsh

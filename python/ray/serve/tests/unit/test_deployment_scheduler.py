@@ -566,6 +566,51 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = original
 
 
+def test_best_fit_node_tie_break_key():
+    """Test that _best_fit_node uses tie_break_key only to break ties."""
+
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    required_resources = RequestedResources(CPU=1)
+    tie_break_key = {"node1": 5, "node2": 1, "node3": 3}.get
+
+    # All nodes leave identical remaining space, so the smallest key wins.
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # Best fit dominates: node1 leaves less space and wins despite the largest key.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=2),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # An equal key keeps the first node seen; the tie break only wins if strictly smaller.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=lambda node_id: 0,
+    )
+
+
 def test_schedule_replica():
     """Test DeploymentScheduler._schedule_replica()"""
 

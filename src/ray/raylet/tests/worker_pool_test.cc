@@ -62,6 +62,24 @@ constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
+TEST(WorkerGrpcThreadsWarningTest, WarnsAboveThresholdWhenNotConfigured) {
+  ASSERT_FALSE(
+      GetWorkerGrpcThreadsWarning(kWorkerGrpcThreadsWarningThreshold, 0).has_value());
+
+  const auto warning =
+      GetWorkerGrpcThreadsWarning(kWorkerGrpcThreadsWarningThreshold + 1, 0);
+  ASSERT_TRUE(warning.has_value());
+  EXPECT_NE(warning->find("Ray detected 17 CPUs"), std::string::npos);
+  EXPECT_NE(warning->find("RAY_worker_num_grpc_internal_threads"), std::string::npos);
+  EXPECT_TRUE(GetWorkerGrpcThreadsWarning(kWorkerGrpcThreadsWarningThreshold + 1, -1)
+                  .has_value());
+}
+
+TEST(WorkerGrpcThreadsWarningTest, ExplicitConfigurationSuppressesWarning) {
+  EXPECT_FALSE(
+      GetWorkerGrpcThreadsWarning(kWorkerGrpcThreadsWarningThreshold + 1, 1).has_value());
+}
+
 class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   MockWorkerClient() = default;

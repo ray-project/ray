@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Avoid Ray Data out-of-memory errors: recognize Ray and kernel OOM kills, tune batch size, and configure memory for reads and high-memory UDFs."
+---
+
 # How to avoid out-of-memory errors (OOMs)
 
 Out-of-memory errors (OOMs) are one of the most common issues Ray Data users encounter.
@@ -123,7 +129,7 @@ If your UDF runs on GPU, a good rule of thumb is to use about 1/4 of the GPU mem
 
 If a task or actor uses more than a few GiB of memory, set ``memory``. This tells Ray Data how much memory each task or actor needs so it doesn't launch too many at once.
 
-To pick a value for ``memory``, read the Ray Data log file and look for the `max_uss_bytes` field. Ray typically writes the log file to `/tmp/ray/session-latest/ray-data/ray-data.log`.
+To pick a value for ``memory``, read the Ray Data log file and look for the `max` value in the `max_uss_bytes` field. Set ``memory`` to 1.25 times that value. This keeps the observed maximum worker heap usage at 80% of the requested memory, leaving a 20% buffer. Ray typically writes the log file to `/tmp/ray/session-latest/ray-data/ray-data.log`.
 
 ```
 ReadRange->MapBatches(uses_lots_of_memory): {'average_num_outputs_per_task': 1.0, ..., 'max_uss_bytes': {'num_samples': 20, 'mean': 4393336422.4, 'variance': 26855731156.89417, 'min': 4393119744, 'max': 4393529344, 'p50': 4393418752.0, 'p90': 4393500672.0, 'p95': 4393529344.0, 'p99': 4393529344.0}, ...}
@@ -149,10 +155,10 @@ or disable the warning by setting value to -1. (current value: 30)
 
 Unless you specify a value, Ray Data assumes a UDF needs 0 ``memory``. So even if you've set ``memory`` correctly for some APIs, Ray Data can still oversubscribe tasks and actors for the ones you haven't.
 
-To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
+To avoid this, set ``DataContext.get_current().default_map_logical_memory_enabled = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory``
+``DataContext.default_map_logical_memory_enabled``
 :::
 
 ### Start Ray with resource isolation
@@ -204,11 +210,11 @@ If you do all of the following:
 - Start Ray with resource isolation enabled.
 - Set system memory large enough to cover everything used outside of Ray worker tasks and actors
 - Set logical memory to physical memory minus system memory minus object store memory.
-- Set ``memory`` for each API to at least the heap memory that API needs to run.
+- Set ``memory`` for each API to at least 125% of its maximum observed heap memory.
 
 Then you shouldn't see OOMs or node deaths.
 
-The main limitation of these configurations is performance. When you set ``memory`` based on worst-case heap memory use, the system might launch fewer tasks or actors than it might be able to, and that can decrease throughput.
+The main limitation of these configurations is performance. When you set ``memory`` based on maximum observed heap memory use, the system might launch fewer tasks or actors than it might be able to, and that can decrease throughput.
 
 If you want to experiment with oversubscription at the risk of potential OOMs, decrease `memory`.
 
