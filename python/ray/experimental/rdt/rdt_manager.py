@@ -5,6 +5,7 @@ import warnings
 import weakref
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from queue import Queue
 from typing import (
     TYPE_CHECKING,
@@ -40,7 +41,6 @@ class ObjectStoreFetchRequest(FetchRequest):
 
 
 if TYPE_CHECKING:
-
     from ray.experimental.rdt.rdt_store import (
         RDTStore,
     )
@@ -53,13 +53,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# RDTMeta is a named tuple containing the source actor, tensor transport
+class RDTSource(Enum):
+    DRIVER = "driver"
+
+
+RDTSourceType = Union[RDTSource, "ray.actor.ActorHandle"]
+
+
+# RDTMeta is a named tuple containing the source actor or driver, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the RDT store.
 class RDTMeta(NamedTuple):
-    src_actor: "ray.actor.ActorHandle"
+    src_actor: RDTSourceType
     tensor_transport_backend: str
     # This is set when the actual object is created and the metadata makes it back to the owner.
     # For ray.put the owner is the creator so it's immediately set.
@@ -76,7 +83,7 @@ class RDTMeta(NamedTuple):
 # This is used to periodically check in on the RDT transfer through the refs from
 # __ray_send__ and __ray_recv__ and abort operations in case of failures / timeouts.
 class TransferMetadata(NamedTuple):
-    src_actor: "ray.actor.ActorHandle"
+    src_actor: RDTSourceType
     dst_actor: "ray.actor.ActorHandle"
     send_ref: Optional[ObjectRef]
     recv_ref: ObjectRef
@@ -343,6 +350,7 @@ class RDTManager:
             if not tensor_transport_manager.__class__.is_one_sided():
                 # This is dead code until we implement a NCCL abort since NIXL
                 # is the only abortable transport for now and is one-sided.
+                assert ref_info.src_actor != RDTSource.DRIVER
                 ref_info.src_actor.__ray_call__.options(
                     concurrency_group="_ray_system_error"
                 ).remote(
@@ -367,7 +375,8 @@ class RDTManager:
             )
         else:
             # TODO(#51276): Kill all actors in the collective group when we support more collective operations
-            ray.kill(ref_info.src_actor)
+            if ref_info.src_actor != RDTSource.DRIVER:
+                ray.kill(ref_info.src_actor)
             ray.kill(ref_info.dst_actor)
             logger.error(
                 "RDT transfer with src actor %s and dst actor %s failed. Killing the actors. "
@@ -394,7 +403,7 @@ class RDTManager:
     def add_rdt_ref(
         self,
         obj_ref: ObjectRef,
-        src_actor: "ray.actor.ActorHandle",
+        src_actor: RDTSourceType,
         tensor_transport: str,
         tensor_transport_meta: Optional["TensorTransportMetadata"] = None,
     ):
@@ -404,7 +413,8 @@ class RDTManager:
 
         Args:
             obj_ref: The ObjectRef of the task output.
-            src_actor: The actor that executes the task and that creates the RDT object.
+            src_actor: The actor that executes the task and creates the RDT object,
+                or RDTSource.DRIVER when the driver creates it.
             tensor_transport: The tensor transport protocol to use for the RDT object.
             tensor_transport_meta: The tensor transport metadata that is pre-computed.
                 This is known at ref creation time if the object is created through ray.put.
@@ -495,12 +505,19 @@ class RDTManager:
         assert rdt_meta is not None
 
         if use_object_store:
-            if rdt_meta.target_buffers:
+            if rdt_meta.src_actor == RDTSource.DRIVER:
+                raise ValueError(
+                    "_use_object_store=True is not supported for RDT objects "
+                    "created by the driver. Use the object's one-sided tensor "
+                    "transport instead."
+                )
+            if rdt_meta.target_buffers or rdt_meta.target_device:
                 logger.warning(
                     "Target buffers are not supported for use_object_store=True. Ignoring the target buffers."
                 )
 
             src_actor = rdt_meta.src_actor
+            assert src_actor != RDTSource.DRIVER
             object_ref = src_actor.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(__ray_fetch_rdt_object__, obj_id)
@@ -665,7 +682,8 @@ class RDTManager:
             # 2. object is sent back to its source actor.
             # 3. object is also sent to at least one other actor
             if (
-                not rdt_meta.sent_to_src_actor_and_others_warned
+                src_actor != RDTSource.DRIVER
+                and not rdt_meta.sent_to_src_actor_and_others_warned
                 and src_actor._actor_id in rdt_meta.sent_dest_actors
                 and len(rdt_meta.sent_dest_actors) > 1
             ):
@@ -681,7 +699,10 @@ class RDTManager:
                     sent_to_src_actor_and_others_warned=True
                 )
 
-            if src_actor._actor_id == dst_actor._actor_id:
+            if (
+                src_actor != RDTSource.DRIVER
+                and src_actor._actor_id == dst_actor._actor_id
+            ):
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
@@ -690,8 +711,12 @@ class RDTManager:
             tensor_transport_manager = get_tensor_transport_manager(
                 rdt_meta.tensor_transport_backend
             )
+            assert (
+                src_actor != RDTSource.DRIVER
+                or tensor_transport_manager.__class__.is_one_sided()
+            )
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
-                src_actor,
+                None if src_actor == RDTSource.DRIVER else src_actor,
                 dst_actor,
                 rdt_meta.tensor_transport_backend,
             )
@@ -910,12 +935,20 @@ class RDTManager:
         src_actor = rdt_meta.src_actor
         tensor_transport_backend = rdt_meta.tensor_transport_backend
         tensor_transport_meta = rdt_meta.tensor_transport_meta
-        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_free__,
-            object_id,
-            tensor_transport_backend,
-            tensor_transport_meta,
-        )
+        if src_actor == RDTSource.DRIVER:
+            __ray_free__(
+                None,
+                object_id,
+                tensor_transport_backend,
+                tensor_transport_meta,
+            )
+        else:
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__,
+                object_id,
+                tensor_transport_backend,
+                tensor_transport_meta,
+            )
 
     @staticmethod
     def actor_has_tensor_transport(
@@ -952,7 +985,16 @@ class RDTManager:
             tensor_transport: The tensor transport backend to use.
             tensors: The tensors to put into the RDT manager.
         """
-        src_actor = ray.get_runtime_context().current_actor
+        from ray.experimental.rdt.util import is_one_sided_transport
+
+        try:
+            src_actor = ray.get_runtime_context().current_actor
+        except RuntimeError:
+            src_actor = RDTSource.DRIVER
+
+        if src_actor is None:
+            src_actor = RDTSource.DRIVER
+        assert src_actor != RDTSource.DRIVER or is_one_sided_transport(tensor_transport)
         tensor_transport_meta = self.rdt_store.add_object_primary(
             obj_ref.hex(), tensors, tensor_transport
         )

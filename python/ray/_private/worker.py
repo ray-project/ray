@@ -829,8 +829,9 @@ class Worker:
             )
             if not is_one_sided_transport(tensor_transport):
                 raise ValueError(
-                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
-                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                    f"ray.put() is not supported for two-sided RDT transport {tensor_transport!r}. "
+                    "Use a one-sided transport such as NIXL, or return the value from an actor task "
+                    f"and use the @ray.method(tensor_transport={tensor_transport!r}) decorator instead."
                 )
         try:
             if tensor_transport is not None:
@@ -2154,6 +2155,18 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
+def _should_ignore_worker_log_prefix(worker) -> bool:
+    """Whether to skip the "(name pid=...)" prefix on worker logs forwarded
+    to the driver: either the job's LoggingConfig implies it (structured
+    output would otherwise be broken by the prefix), or the user explicitly
+    opted out via RAY_DISABLE_WORKER_LOG_PREFIX.
+    """
+    return (
+        worker.job_logging_config is not None
+        or ray_constants.RAY_DISABLE_WORKER_LOG_PREFIX
+    )
+
+
 def print_to_stdstream(data, ignore_prefix: bool):
     should_dedup = data.get("pid") not in ["autoscaler"]
 
@@ -2728,9 +2741,7 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        # If the job's logging config is set, don't add the prefix
-        # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(global_worker)
 
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
@@ -2780,8 +2791,7 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        # Ignore the prefix if the logging config is set.
-        ignore_prefix = worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(worker)
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
