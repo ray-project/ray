@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -22,10 +23,10 @@ def ensure_runsc():
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
 
     if not shutil.which("runsc"):
-
+        temp_bin = tempfile.mkdtemp()
         script = Path(__file__).resolve().parents[5] / "ci" / "env" / "install-runsc.sh"
-
         try:
-            subprocess.check_call(["bash", str(script)])
+            subprocess.check_call(["bash", str(script), temp_bin])
+            os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
         except Exception as e:
             pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
