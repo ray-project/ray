@@ -1705,7 +1705,16 @@ class OperatorStatsSummary:
     block_execution_summary_str: str
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
+    # Time in the map transform chain. The four fields below decompose it.
     udf_time: Optional[StatsSummary] = None
+    # Time turning input blocks into the batches or rows the transforms consume.
+    input_prep_time: Optional[StatsSummary] = None
+    # Time inside the UDF bodies themselves.
+    udf_body_time: Optional[StatsSummary] = None
+    # Time assembling transform output back into blocks.
+    output_build_time: Optional[StatsSummary] = None
+    # Time in the bodies of non-UDF stages fused into the same chain.
+    other_stage_time: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1754,6 +1763,10 @@ class OperatorStatsSummary:
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
         udf_time_acc: _StatsAccumulator = _StatsAccumulator()
+        input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
+        udf_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
+        other_stage_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1776,6 +1789,14 @@ class OperatorStatsSummary:
                     cpu_time_acc.add(es.cpu_time_s)
                 if es.udf_time_s is not None:
                     udf_time_acc.add(es.udf_time_s)
+                if es.input_prep_time_s is not None:
+                    input_prep_time_acc.add(es.input_prep_time_s)
+                if es.udf_body_time_s is not None:
+                    udf_body_time_acc.add(es.udf_body_time_s)
+                if es.output_build_time_s is not None:
+                    output_build_time_acc.add(es.output_build_time_s)
+                if es.other_stage_time_s is not None:
+                    other_stage_time_acc.add(es.other_stage_time_s)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1819,6 +1840,10 @@ class OperatorStatsSummary:
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
         udf_stats = udf_time_acc.get()
+        input_prep_stats = input_prep_time_acc.get()
+        udf_body_stats = udf_body_time_acc.get()
+        output_build_stats = output_build_time_acc.get()
+        other_stage_stats = other_stage_time_acc.get()
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1845,6 +1870,10 @@ class OperatorStatsSummary:
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
             udf_time=udf_stats,
+            input_prep_time=input_prep_stats,
+            udf_body_time=udf_body_stats,
+            output_build_time=output_build_stats,
+            other_stage_time=other_stage_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1889,6 +1918,31 @@ class OperatorStatsSummary:
                 fmt(self.udf_time.mean),
                 fmt(self.udf_time.sum),
             )
+            # Breakdown of the line above, in execution order: input blocks
+            # become batches or rows, the UDF runs, output goes back into
+            # blocks. These sum to the total. Absent for row-based transforms
+            # unless `DataContext.accurate_map_phase_timing` is set, since
+            # measuring them per row costs more than it reports.
+            breakdown = [
+                ("Input prep", self.input_prep_time),
+                ("Function body", self.udf_body_time),
+                ("Output block build", self.output_build_time),
+                # Only non-zero when a non-UDF stage (a read, a write) is fused
+                # into the same chain.
+                ("Other stages", self.other_stage_time),
+            ]
+            if any(s is not None and s.sum for _, s in breakdown):
+                for label, stats in breakdown:
+                    if stats is None or not stats.sum:
+                        continue
+                    out += indent
+                    out += "\t* {}: {} min, {} max, {} mean, {} total\n".format(
+                        label,
+                        fmt(stats.min),
+                        fmt(stats.max),
+                        fmt(stats.mean),
+                        fmt(stats.sum),
+                    )
 
         if self.output_num_rows:
             out += indent

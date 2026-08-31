@@ -242,8 +242,23 @@ class BlockExecStats:
     end_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside UDF while generating block.
+    # Time spent in the map transform chain while generating this block. This
+    # is the long-standing "UDF time"; the four fields below decompose it and
+    # sum back to it.
     udf_time_s: Optional[float] = 0
+    # Time spent turning input blocks into the batches or rows the transforms
+    # consume.
+    input_prep_time_s: Optional[float] = 0
+    # Time spent inside the UDF bodies themselves, with the formatting and block
+    # building around them excluded.
+    udf_body_time_s: Optional[float] = 0
+    # Time spent assembling transform output back into blocks. Includes
+    # materializing Python objects into Arrow, which is why it is not covered by
+    # `block_ser_time_s`.
+    output_build_time_s: Optional[float] = 0
+    # Time spent in the bodies of non-UDF stages fused into the same chain, such
+    # as a read or a write. Kept so the decomposition adds up.
+    other_stage_time_s: Optional[float] = 0
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.

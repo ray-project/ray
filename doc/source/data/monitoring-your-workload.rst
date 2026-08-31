@@ -393,9 +393,17 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
+* **Input prep time**: Time spent turning input blocks into the batches or rows your functions receive, including converting
+  them to the ``batch_format`` you asked for. This can dominate when rows hold Python objects or large tensors.
 * **UDF time**: The UDF time is time spent in functions defined by the user. This time includes functions you pass into Ray
   Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`,
-  etc. You can use this stat to track the time spent in functions you define and how much time optimizing those functions could save.
+  etc. It excludes the input prep and output block build time around those calls, so you can use this stat to track the time
+  spent in functions you define and how much time optimizing those functions could save.
+* **Output block build time**: Time spent assembling what your functions return back into blocks, including materializing
+  Python objects into Arrow. Note that this is separate from the object store write, which Ray Data reports as the
+  ``data_block_serialization_time_s`` metric.
+
+  Ray Data fuses adjacent operators where it can, and a fused operator reports one figure per phase covering all of its stages.
 * **Memory usage**: The output displays memory usage per block in MiB.
 * **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
   output rows per task is also included. All of this together gives you insight into how much data Ray Data is outputting at a per
