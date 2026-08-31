@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sys
 import tarfile
@@ -7,7 +8,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import image_utils
+from ray.experimental.sandbox._internal.idmap import IdMap
 from ray.experimental.sandbox._internal.image_utils import (
+    expected_extract_marker,
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
@@ -431,6 +435,198 @@ def test_get_registry_auth_headers_no_auth_needed():
             "localhost:5000", "my/repo", reference="latest"
         )
         assert headers == {}
+
+
+def _add_member(tar, name, data=b"", uid=0, gid=0, mode=0o644, typ=tarfile.REGTYPE):
+    ti = tarfile.TarInfo(name)
+    ti.uid = uid
+    ti.gid = gid
+    ti.mode = mode
+    ti.type = typ
+    if typ == tarfile.REGTYPE:
+        ti.size = len(data)
+        tar.addfile(ti, io.BytesIO(data))
+    else:
+        tar.addfile(ti)
+
+
+def test_extract_tar_layer_ownership_recording(tmp_path):
+    """The ownership map accumulates across layers and honors whiteouts —
+    modeled on the mailman image (uid=101 spool dirs, opaque whiteout)."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership = {}
+
+    buf1 = io.BytesIO()
+    with tarfile.open(fileobj=buf1, mode="w:gz") as tar:
+        _add_member(
+            tar, "var/spool/postfix/defer", uid=101, mode=0o700, typ=tarfile.DIRTYPE
+        )
+        _add_member(
+            tar,
+            "var/spool/postfix/maildrop",
+            uid=101,
+            gid=104,
+            mode=0o1730,
+            typ=tarfile.DIRTYPE,
+        )
+        _add_member(
+            tar,
+            "var/lib/mailman3/data",
+            uid=38,
+            gid=38,
+            mode=0o755,
+            typ=tarfile.DIRTYPE,
+        )
+        _add_member(tar, "var/lib/mailman3/data/gone.txt", b"x", uid=38, gid=38)
+        _add_member(tar, "etc/passwd", b"root:x:0:0::/root:/bin/sh\n")
+    extract_tar_layer(buf1.getvalue(), str(dest), ownership=ownership)
+
+    assert ownership == {
+        "var/spool/postfix/defer": (101, 0),
+        "var/spool/postfix/maildrop": (101, 104),
+        "var/lib/mailman3/data": (38, 38),
+        "var/lib/mailman3/data/gone.txt": (38, 38),
+    }
+
+    # Layer 2: deletion whiteout drops the file; opaque whiteout clears the
+    # mailman3 subtree; a root-owned replacement records nothing.
+    buf2 = io.BytesIO()
+    with tarfile.open(fileobj=buf2, mode="w:gz") as tar:
+        _add_member(tar, "var/spool/postfix/.wh.maildrop")
+        _add_member(tar, "var/lib/mailman3/.wh..wh..opq")
+        _add_member(tar, "var/lib/mailman3/fresh.txt", b"y")
+    extract_tar_layer(buf2.getvalue(), str(dest), ownership=ownership)
+
+    assert ownership == {"var/spool/postfix/defer": (101, 0)}
+
+    # Layer 3: the same path shipped root-owned again drops its record.
+    buf3 = io.BytesIO()
+    with tarfile.open(fileobj=buf3, mode="w:gz") as tar:
+        _add_member(tar, "var/spool/postfix/defer", mode=0o755, typ=tarfile.DIRTYPE)
+    extract_tar_layer(buf3.getvalue(), str(dest), ownership=ownership)
+    assert ownership == {}
+
+
+def _owned_sample_tar(path):
+    with tarfile.open(str(path), "w") as tar:
+        _add_member(tar, "opt/data", uid=38, gid=38, mode=0o750, typ=tarfile.DIRTYPE)
+        _add_member(tar, "opt/data/f.txt", b"z", uid=38, gid=38)
+        _add_member(tar, "etc/hosts", b"127.0.0.1 localhost\n")
+
+
+def test_single_uid_pull_writes_marker_and_keeps_worker_ownership(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(image_utils, "detect_idmap", lambda: None)
+    local_tar = tmp_path / "sample.tar"
+    _owned_sample_tar(local_tar)
+
+    images_dir = tmp_path / "images"
+    extracted_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(extracted_dir, ".extracted")
+    assert open(marker, encoding="utf-8").read() == expected_extract_marker(None)
+    assert json.loads(expected_extract_marker(None)) == {"format": 2, "idmap": None}
+    assert os.stat(os.path.join(extracted_dir, "rootfs", "opt", "data")).st_uid == (
+        os.geteuid()
+    )
+
+
+def test_multi_uid_pull_applies_recorded_ownership(tmp_path, monkeypatch):
+    """On a multi-uid node the recorded owners are applied inside the mapped
+    namespace to the freshly extracted tree, and the marker names the mapping."""
+    idmap = IdMap(1000, 1000, 100000, 65536, 200000, 65536)
+    monkeypatch.setattr(image_utils, "detect_idmap", lambda: idmap)
+    applied = []
+    monkeypatch.setattr(
+        image_utils,
+        "_apply_ownership_in_namespace",
+        lambda rootfs, ownership, m, timeout: applied.append((rootfs, ownership, m)),
+    )
+    local_tar = tmp_path / "sample.tar"
+    _owned_sample_tar(local_tar)
+
+    images_dir = tmp_path / "images"
+    extracted_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    # Ownership is applied to the staging tree before it is promoted.
+    ((rootfs, ownership, used_idmap),) = applied
+    assert rootfs.startswith(str(images_dir)) and rootfs.endswith("/rootfs")
+    assert ownership == {"opt/data": (38, 38), "opt/data/f.txt": (38, 38)}
+    assert used_idmap == idmap
+    marker = open(os.path.join(extracted_dir, ".extracted"), encoding="utf-8").read()
+    assert json.loads(marker) == {"format": 2, "idmap": [100000, 65536, 200000, 65536]}
+
+
+def test_marker_mismatch_triggers_reextract(tmp_path, monkeypatch):
+    """A legacy marker, or one written for another id mapping, re-pulls once."""
+    monkeypatch.setattr(image_utils, "detect_idmap", lambda: None)
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        _add_member(tar, "hello.txt", b"hi")
+
+    images_dir = tmp_path / "images"
+    extracted_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(extracted_dir, ".extracted")
+    for stale in ("ok", expected_extract_marker(IdMap(1, 1, 100000, 65536, 1, 65536))):
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(stale)
+        again = pull_and_extract_container_image(
+            str(local_tar), images_dir=str(images_dir)
+        )
+        assert again == extracted_dir
+        assert open(marker, encoding="utf-8").read() == expected_extract_marker(None)
+
+
+def test_apply_ownership_chowns_then_restores_mode(tmp_path, monkeypatch):
+    """The idmapped copy applies sidecar owners and puts back the setuid/setgid
+    bits that chown clears; symlinks are lchowned without a chmod."""
+    from ray.experimental.sandbox._internal import idmap_extract
+
+    calls = []
+    monkeypatch.setattr(
+        "ray.experimental.sandbox._internal.image_utils.os.lchown",
+        lambda path, uid, gid: calls.append(("lchown", path, uid, gid)),
+    )
+    real_chmod = os.chmod
+    monkeypatch.setattr(
+        idmap_extract.os,
+        "chmod",
+        lambda path, mode: (
+            calls.append(("chmod", path, mode)),
+            real_chmod(path, mode),
+        ),
+    )
+    dest = tmp_path / "rootfs"
+    (dest / "spool").mkdir(parents=True)
+    tool = dest / "spool" / "suid-tool"
+    tool.write_bytes(b"#!")
+    real_chmod(tool, 0o4750)
+    (dest / "spool" / "link").symlink_to("suid-tool")
+
+    idmap_extract.apply_ownership(
+        str(dest),
+        {
+            "spool": (101, 0),
+            "spool/suid-tool": (101, 104),
+            "spool/link": (101, 0),
+            "gone": (1, 1),
+        },
+    )
+
+    assert calls == [
+        ("lchown", str(dest / "spool"), 101, 0),
+        ("chmod", str(dest / "spool"), 0o755),
+        ("lchown", str(tool), 101, 104),
+        ("chmod", str(tool), 0o4750),
+        ("lchown", str(dest / "spool" / "link"), 101, 0),
+    ]
 
 
 if __name__ == "__main__":

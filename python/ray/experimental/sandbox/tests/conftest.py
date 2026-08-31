@@ -97,3 +97,22 @@ def ensure_pasta(ensure_runsc):
             'network="public" needs a per-sandbox user+network namespace this '
             "environment forbids (nested user namespace denied at sandbox boot)"
         )
+
+
+@pytest.fixture(scope="session")
+def ensure_idmap_node():
+    """The node's multi-uid mapping; skips when the node cannot map one.
+
+    Multi-uid tests need the setuid newuidmap/newgidmap helpers (uidmap
+    package) and /etc/subuid + /etc/subgid ranges for the test user.
+    """
+    from ray.experimental.sandbox._internal.idmap import detect_idmap
+
+    detect_idmap.cache_clear()
+    idmap = detect_idmap()
+    if idmap is None:
+        pytest.skip(
+            "node lacks newuidmap/newgidmap or usable /etc/subuid ranges; "
+            "multi-uid tests skipped"
+        )
+    return idmap

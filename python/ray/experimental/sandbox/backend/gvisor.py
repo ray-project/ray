@@ -9,6 +9,11 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.idmap import (
+    IdMap,
+    detect_idmap,
+    remove_tree_as_mapped_root,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -44,6 +49,11 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # leaves through pasta's tap. Mount and pid namespaces stay shared, so the
 # bundle and runsc's control sockets under _RUNSC_ROOT keep working for
 # pod-side state/exec/kill/delete.
+#
+# Multi-uid nodes (see _internal/idmap.py) use the same holder + nsenter
+# shape for every rootless sandbox, network namespace or not, so that runsc
+# runs as mapped root in a user namespace carrying the node's subordinate id
+# range; single-uid nodes wrap only network="public".
 #
 # pasta relays every outbound connection through the pod's own sockets, so
 # the sandbox can reach any address the pod can reach: other Ray nodes
@@ -87,7 +97,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
-        if config.network == "public":
+        use_pasta = config.network == "public"
+        # Rootless sandboxes map a subordinate id range into their user
+        # namespace when the node can (warn-once inside detect_idmap);
+        # privileged runsc needs no namespace of ours.
+        idmap = detect_idmap() if config.rootless else None
+        if use_pasta:
             missing = [b for b in ("pasta", "nsenter") if not shutil.which(b)]
             if missing:
                 raise SandboxCreationError(
@@ -162,7 +177,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         overlay_dir = os.path.join(root_dir, "overlay")
         os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config, root_dir, overlay_dir, sandbox_id, idmap=idmap
+        )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -222,7 +239,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
+            self._remove_root_dir(root_dir, idmap)
             # The sandbox never registered, so delete_sandbox will not run
             # for it: release the image here to keep it evictable.
             self._image_manager.release_image(config.image, sandbox_id)
@@ -238,6 +255,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "proc": proc,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
+            "idmap": idmap,
         }
         return sandbox_id
 
@@ -271,9 +289,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
+            self._remove_root_dir(root_dir, meta.get("idmap"))
             # Only now is the overlay's lower layer unused.
             self._image_manager.release_image(config.image, sandbox_id)
+
+    def _remove_root_dir(self, root_dir: str, idmap: Optional[IdMap]) -> None:
+        """Remove a sandbox's directory, including subordinate-owned files.
+
+        A multi-uid sandbox can chown files under its workdir bind to ids the
+        worker cannot delete from the initial namespace; those go through a
+        namespace mapped with the sandbox's ``idmap``.
+        """
+        shutil.rmtree(root_dir, ignore_errors=True)
+        if idmap is not None and os.path.lexists(root_dir):
+            remove_tree_as_mapped_root(root_dir, idmap)
 
     def exec_command(
         self,
@@ -431,49 +460,74 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        overlay_dir: str,
+        sandbox_id: str,
+        idmap: Optional[IdMap] = None,
     ) -> List[str]:
-        """Build the full `runsc run` argv, pasta-wrapped for network="public".
+        """Build the full `runsc run` argv, wrapped in a user namespace when needed.
 
         Pure argv construction (no filesystem side effects) so tests can
         assert the exact command without runsc or pasta installed.
+
+        A bare ``runsc --rootless`` invocation is enough for a single-uid
+        sandbox on the worker's network. Two features need runsc to run as
+        mapped root inside a user namespace we own: ``network="public"``
+        (the namespace also carries the private network namespace pasta
+        bridges) and multi-uid ``idmap`` (the namespace maps the node's
+        subordinate id range via newuidmap/newgidmap). runsc drops
+        ``--rootless`` there because nesting a second user namespace breaks
+        the gofer's /proc magic-link derefs, and gains ``--ignore-cgroups``
+        to keep rootless mode's tolerance of cgroup permission failures.
         """
         args = self._runsc_base_args(config)
         use_pasta = config.network == "public"
-        if use_pasta and "--rootless" in args:
-            # runsc runs as mapped root inside the holder's user namespace;
-            # --rootless would nest a second user namespace whose
-            # /proc/<pid>/root magic links the gofer cannot dereference.
-            # Rootless mode also tolerates cgroup permission failures, so
-            # keep that behavior explicitly.
+        wrap = config.rootless and (use_pasta or idmap is not None)
+        if wrap:
             args = [a for a in args if a != "--rootless"]
             if "--ignore-cgroups" not in args:
                 args.insert(1, "--ignore-cgroups")
         if config.network:
             # "public" = host egress + generated resolv.conf (handled in the
-            # OCI bundle); runsc itself just sees host networking — of the
-            # per-sandbox namespace when wrapped, of the worker otherwise.
+            # OCI bundle); runsc itself just sees host networking: of the
+            # per-sandbox namespace when pasta wraps it, of the worker
+            # otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
         args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
+        if not wrap:
+            return args
+
+        netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+        runsc = " ".join(shlex.quote(a) for a in args)
+        net_flag = " --net" if use_pasta else ""
+        if idmap is not None:
+            # The holder starts unmapped (DAC is kuid-based, so writing the
+            # pidfile into the 0777 root_dir and sleeping both work; ids
+            # merely read as the overflow uid until mapped). The maps are
+            # written exactly once into the fresh uid_map/gid_map: container
+            # root onto the worker's own ids, 1..count onto the subordinate
+            # range. Plain --user never writes setgroups=deny, so newgidmap
+            # works. &&-chaining surfaces a map failure through
+            # runsc.stderr.log.
+            holder = f"unshare --user{net_flag} --fork --kill-child "
+            maps = (
+                f"newuidmap $NSPID 0 {idmap.euid} 1"
+                f" 1 {idmap.subuid_base} {idmap.subuid_count} && "
+                f"newgidmap $NSPID 0 {idmap.egid} 1"
+                f" 1 {idmap.subgid_base} {idmap.subgid_count} && "
+            )
+        else:
+            holder = f"unshare --user --map-root-user{net_flag} --fork --kill-child "
+            maps = ""
+        pasta_part = ""
         if use_pasta:
-            netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             pasta_pidfile = shlex.quote(os.path.join(root_dir, "pasta.pid"))
-            runsc = " ".join(shlex.quote(a) for a in args)
             pasta = " ".join(["pasta", *_PASTA_FLAGS])
-            script = (
-                # The holder pins the namespaces for the sandbox's lifetime;
-                # --kill-child ties it to this script's process group.
-                "unshare --user --map-root-user --net --fork --kill-child "
-                f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
-                "HOLDER=$!; "
-                # Stop waiting as soon as the holder dies, and refuse an
-                # empty NSPID (which would resolve to /proc//ns/net).
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
-                f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
-                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
+            pasta_part = (
                 # pasta attaches from the pod side and stays in the
                 # foreground, so it lives and dies with this process group.
                 # It writes --pid once initialised: that is the go signal.
@@ -483,10 +537,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"for i in $(seq 1 100); do [ -s {pasta_pidfile} ] && break; "
                 "kill -0 $PASTA 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {pasta_pidfile} ] || {{ echo "pasta failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
             )
-            return ["bash", "-c", script]
-        return args
+        enter = "-U -n" if use_pasta else "-U"
+        script = (
+            # The holder pins the namespaces for the sandbox's lifetime;
+            # --kill-child ties it to this script's process group.
+            f"{holder}"
+            f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
+            "HOLDER=$!; "
+            # Stop waiting as soon as the holder dies, and refuse an empty
+            # NSPID (which would resolve to /proc//ns/net).
+            f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
+            "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+            f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
+            '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
+            f"{maps}"
+            f"{pasta_part}"
+            f"exec nsenter --preserve-credentials {enter} -t $NSPID -- {runsc}"
+        )
+        return ["bash", "-c", script]
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
         """SIGKILL the sandbox process group and reap the Popen.

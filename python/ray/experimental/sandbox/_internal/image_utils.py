@@ -6,6 +6,8 @@ import os
 import platform
 import re
 import shutil
+import subprocess
+import sys
 import tarfile
 import tempfile
 import urllib.error
@@ -14,12 +16,27 @@ import urllib.request
 import uuid
 from typing import BinaryIO, Dict, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal.idmap import (
+    IdMap,
+    detect_idmap,
+    mapped_userns,
+    remove_tree_as_mapped_root,
+    run_as_mapped_root,
+)
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
+
+# Cache layout version recorded in each image's ``.extracted`` marker, next
+# to the uid/gid mapping the rootfs was extracted for. A cache written under
+# another version or mapping is re-extracted once.
+_EXTRACT_FORMAT = 2
+
+# Warn once per process about uids the node's subordinate range cannot map.
+_UNMAPPED_ID_WARNED = False
 
 
 def _registry_request(
@@ -225,16 +242,59 @@ def get_registry_auth_headers(
     return {}
 
 
+def _drop_ownership_subtree(ownership: Dict[str, Tuple[int, int]], name: str) -> None:
+    """Forget recorded owners for a deleted path and everything under it."""
+    ownership.pop(name, None)
+    prefix = name + "/"
+    for key in [k for k in ownership if k.startswith(prefix)]:
+        del ownership[key]
+
+
+def _lchown_preserving(target_path: str, uid: int, gid: int) -> None:
+    """lchown that tolerates ids outside the mapped subordinate range."""
+    global _UNMAPPED_ID_WARNED
+    try:
+        os.lchown(target_path, uid, gid)
+    except OSError as err:
+        if not _UNMAPPED_ID_WARNED:
+            _UNMAPPED_ID_WARNED = True
+            logger.warning(
+                "Could not chown '%s' to %d:%d (%s); ids outside the mapped "
+                "subordinate range keep the extracting user's ownership "
+                "(warning once).",
+                target_path,
+                uid,
+                gid,
+                err,
+            )
+
+
 def extract_tar_layer(
-    tar_input: Union[bytes, io.IOBase, BinaryIO], dest_dir: str
+    tar_input: Union[bytes, io.IOBase, BinaryIO],
+    dest_dir: str,
+    ownership: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
-    """Extract a tar archive layer onto dest_dir with OCI whiteout handling."""
+    """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
+
+    ``ownership`` (shared by the caller across an image's layers) records the
+    final {path: (uid, gid)} for members shipped with a non-root owner;
+    whiteouts drop entries. The extracted files themselves stay owned by the
+    extracting user; the idmapped-rootfs build applies the recorded owners.
+    Directory modes are applied children-first after the loop, since a
+    restrictive parent written mid-extraction could block its own children.
+    """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
-    dir_mtimes = []
+    # {dir target_path: (mode, mtime)} in final (last-layer-wins) state,
+    # applied children-first after the loop. The mtime matters: apt inside
+    # the sandbox revalidates package lists with If-Modified-Since from the
+    # directory mtime, so a reset-to-now mtime makes mirrors answer 304 for
+    # stale baked lists.
+    deferred_dirs: Dict[str, Tuple[int, int]] = {}
+
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
@@ -274,6 +334,9 @@ def extract_tar_layer(
                                 os.remove(item_path)
                             except OSError:
                                 pass
+                if ownership is not None and dirname:
+                    for key in [k for k in ownership if k.startswith(dirname + "/")]:
+                        del ownership[key]
                 continue
 
             # Handle OCI deletion whiteout (.wh.<filename>)
@@ -287,6 +350,11 @@ def extract_tar_layer(
                         os.remove(del_path)
                     except OSError:
                         pass
+                if ownership is not None:
+                    _drop_ownership_subtree(
+                        ownership,
+                        os.path.join(dirname, del_name) if dirname else del_name,
+                    )
                 continue
 
             # Remove conflicting existing file/dir if member type differs
@@ -327,12 +395,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Deferred to the post-loop pass: tar lists a directory
-                # before its contents, so a restrictive archived mode (0500)
-                # applied here would break extracting the children. Preserved
-                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
+                # Deferred to the post-loop pass: tar lists a directory before
+                # its contents, so a restrictive archived mode (0500) applied
+                # here would break extracting the children. Preserved symlinks
+                # (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mode, member.mtime))
+                    deferred_dirs[target_path] = (member.mode, member.mtime)
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -349,15 +417,102 @@ def extract_tar_layer(
                         os.link(link_target, target_path)
                     except OSError:
                         pass
+                # Hardlinks share the target's inode: no chown, and the
+                # ownership record comes from the link target's own member.
 
-    # Children first, so a parent's restrictive mode cannot block them.
-    for dir_path, mode, mtime in reversed(dir_mtimes):
+            if ownership is not None and not member.islnk():
+                if member.uid or member.gid:
+                    ownership[name] = (member.uid, member.gid)
+                else:
+                    # A later layer re-shipping the path as root wins.
+                    ownership.pop(name, None)
+
+    if deferred_dirs:
+        # Children first: a restrictive parent mode (0500) applied before its
+        # children would block extracting them.
+        for target_path in sorted(
+            deferred_dirs, key=lambda p: p.count(os.sep), reverse=True
+        ):
+            mode, mtime = deferred_dirs[target_path]
+            try:
+                if mode:
+                    os.chmod(target_path, mode)
+                os.utime(target_path, (mtime, mtime))
+            except OSError:
+                pass
+
+
+def expected_extract_marker(idmap: Optional[IdMap]) -> str:
+    """The ``.extracted`` content a cache built for ``idmap`` must carry."""
+    mapping = None
+    if idmap is not None:
+        mapping = [
+            idmap.subuid_base,
+            idmap.subuid_count,
+            idmap.subgid_base,
+            idmap.subgid_count,
+        ]
+    return json.dumps({"format": _EXTRACT_FORMAT, "idmap": mapping}, sort_keys=True)
+
+
+def _apply_ownership_in_namespace(
+    rootfs: str,
+    ownership: Dict[str, Tuple[int, int]],
+    idmap: IdMap,
+    timeout_seconds: float,
+) -> None:
+    """Give a freshly extracted rootfs the image's real owners.
+
+    Runs ``idmap_extract`` as root inside a user namespace mapped with
+    ``idmap``: only there can ``lchown`` produce the subordinate host ids
+    that read as the image's uids from inside a sandbox.
+    """
+    if not ownership:
+        return
+    ownership_path = f"{rootfs}.ownership.json"
+    with open(ownership_path, "w", encoding="utf-8") as f:
+        json.dump({p: list(ids) for p, ids in ownership.items()}, f)
+    try:
+        with mapped_userns(idmap, timeout=max(timeout_seconds, 60.0)) as pid:
+            res = run_as_mapped_root(
+                pid,
+                [
+                    sys.executable,
+                    "-m",
+                    "ray.experimental.sandbox._internal.idmap_extract",
+                    rootfs,
+                    ownership_path,
+                ],
+                timeout=timeout_seconds,
+            )
+    except (RuntimeError, subprocess.TimeoutExpired) as err:
+        raise SandboxCreationError(f"applying image ownership failed: {err}") from err
+    finally:
         try:
-            if mode:
-                os.chmod(dir_path, mode)
-            os.utime(dir_path, (mtime, mtime))
+            os.remove(ownership_path)
         except OSError:
             pass
+    if res.returncode != 0:
+        raise SandboxCreationError(
+            "applying image ownership failed: "
+            + res.stderr.decode(errors="replace").strip()
+        )
+
+
+def _remove_image_tree(path: str) -> None:
+    """Remove a cached image tree; multi-uid caches need the node's mapping."""
+    shutil.rmtree(path, ignore_errors=True)
+    if not os.path.lexists(path):
+        return
+    idmap = detect_idmap()
+    if idmap is not None:
+        remove_tree_as_mapped_root(path, idmap)
+    if os.path.lexists(path):
+        logger.warning(
+            "Could not fully remove %s; it holds files owned by subordinate ids "
+            "and the node's id mapping is unavailable.",
+            path,
+        )
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
@@ -447,11 +602,11 @@ def evict_least_recently_used_images(
 
     Nodes cache every image they ever ran, so without a cap a long-lived
     node eventually fills its disk. Candidates are fully extracted images
-    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
-    by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
-    per-image lock is held (a pull in progress), or when it is ``keep``. The
-    in-use check is repeated under the lock, which is also where pulls
-    register their users, so a marked image is never removed.
+    (``.extracted`` marker present) and stray ``<name>.tar`` archives left by
+    earlier Ray versions, oldest first. An image is skipped when a live
+    sandbox uses it, when its per-image lock is held (a pull in progress), or
+    when it is ``keep``. The in-use check is repeated under the lock, which is
+    also where pulls register their users, so a marked image is never removed.
 
     Args:
         images_dir: Root image cache directory.
@@ -490,6 +645,8 @@ def evict_least_recently_used_images(
         except OSError:
             continue  # Concurrently deleted; keep going.
         tar_path = os.path.join(images_dir, f"{name}.tar")
+        # Subordinate-owned subtrees of a multi-uid cache are unreadable
+        # here, so this is a lower bound for them.
         size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
         entries.append((mtime, name, path, tar_path, size))
 
@@ -507,7 +664,7 @@ def evict_least_recently_used_images(
                 if img_dir is not None and _has_users(img_dir):
                     continue
                 if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                    _remove_image_tree(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
@@ -552,6 +709,12 @@ def pull_and_extract_container_image(
     if max_cache > 0:
         evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
 
+    # The node's mapping decides the cache's ownership layout: multi-uid nodes
+    # store the image's real owners (at subordinate host ids), single-uid
+    # nodes store everything worker-owned.
+    idmap = detect_idmap()
+    expected_marker = expected_extract_marker(idmap)
+
     def _finish() -> str:
         if instance_id is not None:
             _mark_image_in_use(target_dir, instance_id)
@@ -562,11 +725,19 @@ def pull_and_extract_container_image(
             fcntl.flock(f_lock, fcntl.LOCK_EX)
             marker_path = os.path.join(target_dir, ".extracted")
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                if os.path.isfile(image):
-                    if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                try:
+                    with open(marker_path, "r", encoding="utf-8") as f_mark:
+                        marker_current = f_mark.read() == expected_marker
+                except OSError:
+                    marker_current = False
+                # A cache from another layout version or id mapping falls
+                # through to a one-time re-pull.
+                if marker_current:
+                    if os.path.isfile(image):
+                        if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                            return _finish()
+                    else:
                         return _finish()
-                else:
-                    return _finish()
 
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
@@ -576,12 +747,14 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
 
+            ownership: Dict[str, Tuple[int, int]] = {}
+
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
-                        extract_tar_layer(f, tmp_rootfs_dir)
+                        extract_tar_layer(f, tmp_rootfs_dir, ownership=ownership)
                 except Exception as err:
-                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    _remove_image_tree(tmp_extract_dir)
                     raise SandboxCreationError(
                         f"Failed to extract local image archive '{image}': {err}"
                     ) from err
@@ -592,7 +765,7 @@ def pull_and_extract_container_image(
                     or image.startswith("./")
                     or image.startswith("../")
                 ):
-                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    _remove_image_tree(tmp_extract_dir)
                     raise SandboxCreationError(
                         f"Local image archive '{image}' not found."
                     )
@@ -689,24 +862,45 @@ def pull_and_extract_container_image(
                                     blob_resp, tmp_blob_file, length=64 * 1024
                                 )
                                 tmp_blob_file.seek(0)
-                                extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
+                                extract_tar_layer(
+                                    tmp_blob_file,
+                                    tmp_rootfs_dir,
+                                    ownership=ownership,
+                                )
 
                 except Exception as err:
-                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    _remove_image_tree(tmp_extract_dir)
                     if isinstance(err, SandboxCreationError):
                         raise
                     raise SandboxCreationError(
                         f"Failed to pull and extract container image '{image}': {err}"
                     ) from err
 
+            if idmap is not None:
+                try:
+                    _apply_ownership_in_namespace(
+                        tmp_rootfs_dir, ownership, idmap, timeout_seconds
+                    )
+                except Exception:
+                    _remove_image_tree(tmp_extract_dir)
+                    raise
+
             with open(
                 os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
             ) as f_mark:
-                f_mark.write("ok")
+                f_mark.write(expected_marker)
 
+            # A re-extract (stale marker) replaces the directory; keep the
+            # pins of sandboxes already running on the old extraction.
+            try:
+                users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
+            except OSError:
+                users = []
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                _remove_image_tree(target_dir)
             os.replace(tmp_extract_dir, target_dir)
+            for user in users:
+                _mark_image_in_use(target_dir, user)
 
             return _finish()
         finally:

@@ -38,6 +38,7 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **pasta (`network="public"` only)**: The [passt](https://passt.top) package's `pasta` binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. pasta bridges each sandbox's private network namespace to the node.
+* **uidmap (multi-uid sandboxes)**: The `uidmap` package's setuid `newuidmap`/`newgidmap` helpers plus `/etc/subuid` and `/etc/subgid` ranges for the worker user (for example `ray:100000:65536`). With them, every sandbox's user namespace maps a subordinate id range, so files inside the sandbox can be owned by distinct uids and images that spread ownership across users (postfix, mailman) behave as under Docker. Without them, sandboxes run single-uid: every file reads as root and `chown` to other users fails. `RAY_SANDBOX_SINGLE_UID=1` on workers forces single-uid.
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `pasta` ships as the `passt` package on Debian 12+/Ubuntu 23.04+ and Fedora, or as a [static build](https://passt.top/builds/latest/) (x86_64 only; on arm64 use the distro package or build from source — passt has no build dependencies).
 
@@ -244,7 +245,7 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction. On a multi-uid node (see Requirements) the cached files carry the image's real owners, mapped to the node's subordinate id range; a node that switches between single-uid and multi-uid re-extracts its cache once.
 
 ### Route Docker Hub pulls through a mirror
 
@@ -368,6 +369,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 * **`pasta` not found for `network="public"`**: Install the passt package (or a [static build](https://passt.top/builds/latest/)) on worker nodes.
 * **`public` sandboxes fail to start with a tap or namespace error**: pasta needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The pasta error appears in the sandbox's `runsc.stderr.log` and in the creation error message.
+* **Files all appear owned by root, or `chown` fails with "Invalid argument"**: The node lacks multi-uid prerequisites (uidmap package, `/etc/subuid`/`/etc/subgid` ranges), the pod runs with `allowPrivilegeEscalation: false` (disables the setuid `newuidmap`/`newgidmap` helpers), or the pod itself runs under a sandboxed runtime such as gVisor (GKE Sandbox), whose kernel accepts only single-entry self-maps — even privileged writes to a child `uid_map` fail there, so multi-uid needs regular runc-backed nodes. Ray probes the node once per process, logs the fallback reason, and runs single-uid. Also note gVisor's own `runsc spec` capability default is far narrower than Docker's: traversing another user's `0700` directory as root needs `CAP_DAC_OVERRIDE`, so pass `DOCKER_DEFAULT_CAPABILITIES` for Docker-like behavior. `RAY_SANDBOX_SINGLE_UID=1` on workers forces the single-uid behavior fleet-wide.
 
 ## Next steps
 
