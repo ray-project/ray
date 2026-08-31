@@ -194,6 +194,34 @@ class MapTransformFn(ABC):
             return self._output_block_size_option.target_num_rows_per_block
 
 
+class UDFTimeScope:
+    """Running total of UDF time for one task, and the nesting state to get it.
+
+    ``_map_task`` creates one per task and threads it into ``apply_transform``,
+    the same way it threads a :class:`CustomOpStatsReporter`. Keeping it per
+    task rather than on the :class:`MapTransformer` matters because an actor
+    pool reuses one transformer across every task the actor runs, and with
+    ``max_concurrent_calls_per_actor > 1`` several of those run concurrently:
+    a total living on the transformer would mix their timings together and let
+    one task's reset discard another's work.
+
+    ``attributed_s`` doubles as the nesting cursor. Each stage's timer records
+    how far it had advanced before its own call, so it can subtract whatever
+    upstream stages added in between.
+    """
+
+    __slots__ = ("attributed_s",)
+
+    def __init__(self) -> None:
+        self.attributed_s: float = 0.0
+
+    def drain(self) -> float:
+        """Return the time accumulated since the last drain, and reset."""
+        elapsed_s = self.attributed_s
+        self.attributed_s = 0.0
+        return elapsed_s
+
+
 class MapTransformer:
     """Encapsulates the data transformation logic of a physical MapOperator.
 
@@ -204,27 +232,40 @@ class MapTransformer:
     """
 
     class _UDFTimingIterator(Iterator[MapTransformFnData]):
-        """Iterator that times UDF execution.
+        """Times one UDF stage, net of the stages feeding it.
 
-        Times inclusively: pulling one item also runs every upstream stage, which
-        is why ``apply_transform`` wraps only the last UDF.
+        ``__next__`` can only measure inclusive time: the stages are chained
+        behind lazy iterators, so pulling one item also runs every stage
+        upstream. Subtracting what upstream stages credited to ``scope`` during
+        the same window leaves this stage's own time, so the scope's running
+        total is the time actually spent in UDFs rather than a sum that counts
+        each stage once per stage downstream of it.
         """
 
         def __init__(
-            self, input: Iterable[MapTransformFnData], transformer: "MapTransformer"
+            self,
+            input: Iterable[MapTransformFnData],
+            scope: "UDFTimeScope",
         ):
             self._input = input
-            self._transformer = transformer
+            self._scope = scope
 
         def __iter__(self) -> "MapTransformer._UDFTimingIterator":
             return self
 
         def __next__(self) -> MapTransformFnData:
+            scope = self._scope
+            attributed_before_s = scope.attributed_s
             start = time.perf_counter()
             try:
                 return next(self._input)
             finally:
-                self._transformer._report_udf_time(time.perf_counter() - start)
+                inclusive_s = time.perf_counter() - start
+                upstream_s = scope.attributed_s - attributed_before_s
+                # Upstream stages' exclusive spans are disjoint sub-intervals of
+                # this window, so the difference is non-negative; clamp only to
+                # absorb floating-point rounding.
+                scope.attributed_s += max(0.0, inclusive_s - upstream_s)
 
     def __init__(
         self,
@@ -246,7 +287,6 @@ class MapTransformer:
         self._transform_fns: List[MapTransformFn] = []
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option_override = output_block_size_option_override
-        self._udf_time_s = 0
 
         # Add transformations
         self.add_transform_fns(transform_fns)
@@ -286,6 +326,7 @@ class MapTransformer:
         input_blocks: Iterable[Block],
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
+        udf_time_scope: Optional["UDFTimeScope"] = None,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks.
 
@@ -296,6 +337,9 @@ class MapTransformer:
                 its :class:`CustomOpStats`. ``_map_task`` passes its reporter's
                 ``report``; defaults to a stateless no-op for callers (e.g. tests)
                 that don't collect custom stats.
+            udf_time_scope: Where to accumulate this task's UDF time.
+                ``_map_task`` passes the scope it created for the task; callers
+                that don't collect timings get a throwaway one.
 
         Returns:
             An iterable of the transformed output blocks.
@@ -309,20 +353,22 @@ class MapTransformer:
                 self.target_max_block_size_override
             )
 
-        # Only the last UDF is timed. The stages are chained behind lazy iterators,
-        # so its timer already covers every UDF ahead of it -- timing each stage
-        # and summing would count upstream stages once per downstream stage.
-        last_udf_idx = max(
-            (i for i, fn in enumerate(self._transform_fns) if fn._is_udf),
-            default=None,
-        )
+        if udf_time_scope is None:
+            udf_time_scope = UDFTimeScope()
 
         iter = input_blocks
-        # Apply the transform functions sequentially to the input iterable.
-        for i, transform_fn in enumerate(self._transform_fns):
+        # Every UDF stage is timed, as it is built. Timing only the last one
+        # would be cheaper and would still cover the others -- but only if
+        # nothing pulls data before the chain is finished, and something does:
+        # `MapTransformFn.__call__` runs `_pre_process` eagerly, and with
+        # `batch_size="auto"` that peeks at a real block to size batches,
+        # dragging every upstream stage's work in ahead of any timer installed
+        # later. Installing each stage's timer before the next stage is built
+        # keeps that peek inside a timed window.
+        for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx, report_custom_op_stats)
-            if i == last_udf_idx:
-                iter = self._UDFTimingIterator(iter, self)
+            if transform_fn._is_udf:
+                iter = self._UDFTimingIterator(iter, udf_time_scope)
 
         return iter
 
@@ -367,15 +413,6 @@ class MapTransformer:
         cls, ones: List[MapTransformFn], others: List[MapTransformFn]
     ) -> list[Any]:
         return ones + others
-
-    def udf_time_s(self, reset: bool) -> float:
-        cur_time_s = self._udf_time_s
-        if reset:
-            self._udf_time_s = 0
-        return cur_time_s
-
-    def _report_udf_time(self, udf_time: float) -> None:
-        self._udf_time_s += udf_time
 
 
 class RowMapTransformFn(MapTransformFn):

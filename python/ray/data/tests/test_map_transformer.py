@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     MapTransformer,
+    UDFTimeScope,
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
@@ -171,15 +172,18 @@ def test_chained_transforms_dont_double_count_udf_time():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i]})
 
+    scope = UDFTimeScope()
     start_s = time.perf_counter()
-    blocks = list(transformer.apply_transform(make_input_blocks(), ctx))
+    blocks = list(
+        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
+    )
     wall_s = time.perf_counter() - start_s
 
     # Assert on rows rather than block count, which depends on block shaping.
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
     assert num_calls > 0
 
-    reported_s = transformer.udf_time_s(reset=False)
+    reported_s = scope.attributed_s
     # Measured, not assumed: block shaping decides how many batches each stage sees.
     slept_s = num_calls * SLEEP_S
 

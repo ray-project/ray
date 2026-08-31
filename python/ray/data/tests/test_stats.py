@@ -20,6 +20,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray.data import ActorPoolStrategy
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -1654,6 +1655,97 @@ def test_fused_udf_time_within_wall_time(ray_start_regular_shared):
     )
     # Both stages' sleeps are still accounted for.
     assert op.udf_time.sum >= 2 * num_blocks * sleep_s * 0.9
+
+
+def test_fused_udf_time_survives_auto_batch_size(ray_start_regular_shared):
+    """An upstream fused stage must be timed even when a later one peeks.
+
+    ``MapTransformFn.__call__`` runs ``_pre_process`` eagerly, so with
+    ``batch_size="auto"`` the second stage peeks at a real block to size its
+    batches while the chain is still being built. That peek runs the first
+    stage's UDF, so any timer installed after the chain is assembled misses it
+    entirely -- half the work here.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow_a(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    def slow_b(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow_a, batch_size=None)
+        .map_batches(slow_b, batch_size="auto")
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    # Both stages must actually have fused, otherwise this asserts nothing.
+    assert "MapBatches(slow_a)->MapBatches(slow_b)" in op.operator_name
+
+    real_s = 2 * num_blocks * sleep_s
+    assert op.udf_time.sum >= real_s * 0.9, (
+        f"UDF time {op.udf_time.sum:.4f}s covers only "
+        f"{op.udf_time.sum / real_s * 100:.0f}% of the {real_s:.2f}s spent in UDFs; "
+        "the stage that ran during the auto-batch-size peek was not timed"
+    )
+    assert op.udf_time.sum <= op.wall_time.sum * 1.05
+
+
+def test_udf_time_is_not_shared_across_concurrent_actor_tasks(
+    ray_start_regular_shared,
+):
+    """Tasks sharing an actor must not be credited with each other's UDF time.
+
+    An actor reuses one ``MapTransformer`` for every task it runs, and
+    ``max_concurrent_calls_per_actor > 1`` runs several at once. A UDF-time
+    total living on the transformer mixes those tasks together, and one task's
+    read-and-reset takes whatever the others had accumulated.
+
+    Every block here does exactly one ``sleep``, so the total and the mean stay
+    plausible even when attribution is broken -- only the per-block spread shows
+    it. Before this was fixed the same run reported min=0.000s and max=0.767s.
+    """
+    sleep_s = 0.25
+    num_blocks = 8
+
+    class Slow:
+        def __call__(self, batch):
+            time.sleep(sleep_s)
+            return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(
+            Slow,
+            batch_size=None,
+            compute=ActorPoolStrategy(
+                size=1,
+                max_concurrent_calls_per_actor=4,
+                enable_true_multi_threading=True,
+            ),
+        )
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    assert op.udf_time.count == num_blocks
+
+    # No block may be starved of the time it spent, ...
+    assert op.udf_time.min >= sleep_s * 0.5, (
+        f"a block reports {op.udf_time.min:.4f}s of UDF time for one {sleep_s}s "
+        "call; another task drained its total"
+    )
+    # ... nor credited with a sibling task's.
+    assert op.udf_time.max <= sleep_s * 2.0, (
+        f"a block reports {op.udf_time.max:.4f}s of UDF time for one {sleep_s}s "
+        "call; it absorbed another task's total"
+    )
 
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
