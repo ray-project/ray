@@ -14,7 +14,6 @@ from ray.experimental.rdt.nixl_memory_pool import (
     group_tensors_by_desc,
     packed_offsets,
 )
-from ray.experimental.rdt.nixl_tensor_transport import _merged_desc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -145,58 +144,6 @@ class TestPackedLayout:
 
 
 # ---------------------------------------------------------------------------
-# Receiver-side merge decision for user-supplied target buffers
-# ---------------------------------------------------------------------------
-
-
-class TestMergedDesc:
-    """A group collapses to one descriptor only if the buffers already match it."""
-
-    def _desc_for(self, buffers):
-        offsets, packed_nbytes = packed_offsets(_layout(buffers))
-        desc_group = list(range(len(buffers)))
-        return _merged_desc(buffers, desc_group, offsets, packed_nbytes), packed_nbytes
-
-    def test_views_of_one_buffer_merge(self):
-        parent = torch.zeros(6, dtype=torch.float32)
-        desc, packed_nbytes = self._desc_for([parent[0:2], parent[2:6]])
-        assert desc is not None
-        addr, length, _dev_id = desc
-        assert addr == parent.data_ptr()
-        assert length == packed_nbytes == 24
-
-    def test_single_buffer_merges(self):
-        t = _make_tensor([1.0, 2.0])
-        desc, packed_nbytes = self._desc_for([t])
-        assert desc == (t.data_ptr(), packed_nbytes, 0)
-
-    def test_separate_allocations_do_not_merge(self):
-        desc, _ = self._desc_for([torch.zeros(2), torch.zeros(4)])
-        assert desc is None
-
-    def test_gap_between_views_does_not_merge(self):
-        parent = torch.zeros(8, dtype=torch.float32)
-        desc, _ = self._desc_for([parent[0:2], parent[3:7]])
-        assert desc is None
-
-    def test_out_of_order_views_do_not_merge(self):
-        parent = torch.zeros(6, dtype=torch.float32)
-        desc, _ = self._desc_for([parent[4:6], parent[0:4]])
-        assert desc is None
-
-    def test_mixed_dtype_naturally_aligned_views_merge(self):
-        # torch itself requires the float64 view to start on an 8-byte boundary,
-        # which is exactly where the sender packs it.
-        parent = torch.zeros(24, dtype=torch.int8)
-        desc, packed_nbytes = self._desc_for(
-            [parent[0:3], parent[8:24].view(torch.float64)]
-        )
-        assert desc is not None
-        assert desc[0] == parent.data_ptr()
-        assert desc[1] == packed_nbytes == 24
-
-
-# ---------------------------------------------------------------------------
 # allocate_group — basic allocation and data copy
 # ---------------------------------------------------------------------------
 
@@ -286,13 +233,8 @@ class TestAllocateGroup:
         assert regions[0].numel() == _nbytes(view)
         assert torch.equal(_unpack(regions, [view])[0], view)
 
-    def test_chained_views_of_one_storage(self):
-        """Ordered views of one weight are packed as one copy, byte-exact.
-
-        This is the weight-sync layout the chaining in ``_copy_into_pool``
-        targets, so it needs to produce the same bytes as the per-tensor path it
-        replaces.
-        """
+    def test_ordered_views_of_one_storage(self):
+        """Ordered views of one weight pack into a single tight block."""
         base = torch.arange(64, dtype=torch.float32).reshape(8, 8)
         rows = [base[i] for i in range(8)]
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
@@ -305,7 +247,7 @@ class TestAllocateGroup:
             assert torch.equal(view, row)
 
     def test_reversed_views_still_byte_exact(self):
-        """Out-of-order sources cannot chain, and must still copy correctly."""
+        """Sources supplied out of storage order must still copy correctly."""
         base = torch.arange(32, dtype=torch.float32).reshape(4, 8)
         rows = [base[i] for i in reversed(range(4))]
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
@@ -315,7 +257,7 @@ class TestAllocateGroup:
             assert torch.equal(view, row)
 
     def test_interleaved_storages_still_byte_exact(self):
-        """Alternating between two storages breaks chains at every tensor."""
+        """Tensors drawn from two separate storages pack correctly."""
         a = torch.arange(8, dtype=torch.float32)
         b = torch.arange(100, 108, dtype=torch.float32)
         tensors = [a[0:2], b[0:2], a[2:4], b[2:4]]
@@ -326,7 +268,7 @@ class TestAllocateGroup:
             assert torch.equal(view, tensor)
 
     def test_mixed_dtypes_copied_correctly(self):
-        """A dtype change mid-group breaks the copy chain but keeps the bytes."""
+        """A dtype change mid-group pads the layout but keeps the bytes."""
         f32 = torch.arange(4, dtype=torch.float32)
         f64 = torch.arange(2, dtype=torch.float64)
         i8 = torch.arange(3, dtype=torch.int8)
@@ -337,8 +279,8 @@ class TestAllocateGroup:
         for tensor, view in zip(tensors, _unpack(regions, tensors)):
             assert torch.equal(view, tensor)
 
-    def test_chain_broken_by_gap_in_source(self):
-        """Skipping bytes in the source must not be copied over as one chain."""
+    def test_gap_in_source_not_copied(self):
+        """Bytes skipped between two source views must not land in the pool."""
         base = torch.arange(16, dtype=torch.float32)
         tensors = [base[0:4], base[8:12]]
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))

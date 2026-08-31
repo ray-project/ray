@@ -330,16 +330,8 @@ class MemoryPoolManager:
         pool_starts: List[int],
     ) -> None:
         """Copy each tensor's own bytes into its packed slot in the pool.
-
-        Consecutive tensors that are adjacent in both the source storage and the
-        pool are copied together as one device copy. Weight-sync layouts, where
-        the tensors are ordered views of one weight, collapse to a single copy
-        per block. Anything else, such as interleaved order or separately
-        allocated tensors, simply forms chains of one and copies per tensor.
-
-        This is about launch overhead, not bandwidth: a per-tensor copy costs
-        roughly the same regardless of size, so at tens of thousands of tensors
-        the launches cost far more than the bytes.
+        Only the tensor's own bytes are copied, never its whole storage, so a
+        view into a larger weight costs only the bytes it occupies.
 
         Args:
             tensors: Source tensors, in input order.
@@ -348,38 +340,9 @@ class MemoryPoolManager:
         """
         import torch
 
-        # Gather the addresses once. Probing them inside the scan below would
-        # cost a few tensor attribute lookups per comparison, which at tens of
-        # thousands of tensors outweighs the scan itself.
-        storage_ptrs = [t.untyped_storage().data_ptr() for t in tensors]
-        data_ptrs = [t.data_ptr() for t in tensors]
-
-        num_tensors = len(tensors)
-        chain_start = 0
-        while chain_start < num_tensors:
-            chain_end = chain_start + 1
-            while (
-                chain_end < num_tensors
-                # A chain must stay inside one storage: the source view below is
-                # built from the head's storage and cannot run past its end.
-                and storage_ptrs[chain_end] == storage_ptrs[chain_end - 1]
-                and data_ptrs[chain_end]
-                == data_ptrs[chain_end - 1] + sizes[chain_end - 1]
-                and pool_starts[chain_end]
-                == pool_starts[chain_end - 1] + sizes[chain_end - 1]
-            ):
-                chain_end += 1
-
-            head = tensors[chain_start]
-            pool_start = pool_starts[chain_start]
-            nbytes = pool_starts[chain_end - 1] + sizes[chain_end - 1] - pool_start
-            src_bytes = torch.empty(0, dtype=torch.uint8, device=head.device).set_(
-                head.untyped_storage(),
-                head.storage_offset() * head.element_size(),
-                (nbytes,),
-            )
+        for tensor, nbytes, pool_start in zip(tensors, sizes, pool_starts):
+            src_bytes = tensor.flatten().view(torch.uint8)
             self._pool_tensor[pool_start : pool_start + nbytes].copy_(src_bytes)
-            chain_start = chain_end
 
     def free_object(self, obj_id: str) -> bool:
         """Return pool blocks for ``obj_id`` if any.

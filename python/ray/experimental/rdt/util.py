@@ -304,11 +304,7 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     Pool blocks are freed when the ``ObjectRef`` goes out of scope.
 
     Each tensor is placed on a multiple of its own element size, so tensors
-    sharing a dtype pack with no padding between them. A receiver that passes
-    views of one pre-allocated buffer to
-    :func:`ray.experimental.set_target_for_ref` therefore matches this layout and
-    is filled by a single transfer per pool block; other buffer layouts fall back
-    to one transfer per tensor.
+    sharing a dtype pack with no padding between them.
 
     If the pool has insufficient space for an allocation,
     :class:`NixlOutOfMemoryError` is raised.

@@ -768,7 +768,7 @@ def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_nixl_memory_pool_with_target_buffers(ray_start_regular):
-    """Pool-backed multi-tensor put works with set_target_for_ref (split path)."""
+    """Pool-backed multi-tensor put works with set_target_for_ref."""
 
     @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
     class PoolSrc:
@@ -793,16 +793,10 @@ def test_nixl_memory_pool_with_target_buffers(ray_start_regular):
             ]
 
         def get_with_buffers(self, refs):
-            from ray.util.debug import log_once
-
             set_target_for_ref(refs[0], self.buffers)
             tensors = ray.get(refs[0])
             for t, buf in zip(tensors, self.buffers):
                 assert id(t) == id(buf)
-            # Separately allocated buffers cannot take the sender's packed
-            # region in one read, so the receive path splits the group back
-            # into one descriptor per tensor and logs that it did so.
-            assert not log_once("nixl_target_buffers_not_packed")
             return [t.cpu().tolist() for t in tensors]
 
     src = PoolSrc.remote()
@@ -814,7 +808,7 @@ def test_nixl_memory_pool_with_target_buffers(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_nixl_memory_pool_contiguous_target_buffers(ray_start_regular):
-    """Views of one pre-allocated buffer match the packed layout (merged path)."""
+    """Pool-backed put receives into views of one pre-allocated buffer."""
 
     @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
     class PoolSrc:
@@ -839,18 +833,12 @@ def test_nixl_memory_pool_contiguous_target_buffers(ray_start_regular):
             self.buffers = [self.parent[0:4], self.parent[4:8]]
 
         def get_with_buffers(self, refs):
-            from ray.util.debug import log_once
-
             # The ref must be passed inside a list, otherwise Ray dereferences
             # the argument and transfers the object before this method runs.
             set_target_for_ref(refs[0], self.buffers)
             tensors = ray.get(refs[0])
             for t, buf in zip(tensors, self.buffers):
                 assert t.data_ptr() == buf.data_ptr()
-            # The buffers already match the sender's packed layout, so the whole
-            # region arrives in one read: the fallback to one descriptor per
-            # tensor never ran and so never claimed this log key.
-            assert log_once("nixl_target_buffers_not_packed")
             return self.parent.cpu().tolist()
 
     src = PoolSrc.remote()

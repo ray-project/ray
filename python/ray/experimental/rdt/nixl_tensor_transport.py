@@ -8,7 +8,7 @@ import time
 import traceback
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import (
@@ -100,42 +100,6 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
-
-
-def _merged_desc(
-    buffers: List["torch.Tensor"],
-    desc_group: List[int],
-    offsets: List[int],
-    packed_nbytes: int,
-) -> Optional[Tuple[int, int, int]]:
-    """Return one descriptor covering the group if the buffers match the layout.
-
-    A NIXL descriptor cannot span memory registrations, and ``_add_tensor_descs``
-    registers one region per storage, so the group's buffers must share a storage
-    and sit at exactly the packed offsets within it.
-
-    Args:
-        buffers: The full list of target buffers, in tensor order.
-        desc_group: Indices into ``buffers`` for the tensors covered by one
-            descriptor.
-        offsets: Packed byte offset of each tensor in the group, relative to the
-            start of the group.
-        packed_nbytes: Total byte length of the packed group.
-
-    Returns:
-        A single (addr, len, device_id) descriptor, or None if the group needs
-        one descriptor per tensor.
-    """
-    first = buffers[desc_group[0]]
-    storage_ptr = first.untyped_storage().data_ptr()
-    base = first.data_ptr()
-    for local_k, tensor_i in enumerate(desc_group):
-        buf = buffers[tensor_i]
-        if buf.untyped_storage().data_ptr() != storage_ptr:
-            return None
-        if buf.data_ptr() - base != offsets[local_k]:
-            return None
-    return (base, packed_nbytes, max(first.get_device(), 0))
 
 
 @dataclass
@@ -463,22 +427,13 @@ class NixlTensorTransport(TensorTransportManager):
             if target_buffers:
                 tensors = target_buffers
                 # NIXL requires the local and remote lists to agree on descriptor
-                # count and length, so build both together: one descriptor for a
-                # whole group when the user's buffers already match the packed
-                # layout, otherwise one per tensor.
+                # count and length, so build both together, one per tensor.
                 mem_type = "cuda" if device == "cuda" else "cpu"
                 local_descs = []
                 remote_descs = []
                 for desc_idx, desc_group in enumerate(desc_groups):
                     addr, _length, dev_id = remote_xfer_descs[desc_idx]
-                    offsets, packed_nbytes = packed_offsets(
-                        [tensor_layouts[j] for j in desc_group]
-                    )
-                    merged = _merged_desc(tensors, desc_group, offsets, packed_nbytes)
-                    if merged is not None:
-                        local_descs.append(merged)
-                        remote_descs.append((addr, packed_nbytes, dev_id))
-                        continue
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
                     for offset, tensor_i in zip(offsets, desc_group):
                         buf = tensors[tensor_i]
                         nbytes = tensor_layouts[tensor_i].nbytes
@@ -486,23 +441,6 @@ class NixlTensorTransport(TensorTransportManager):
                             (buf.data_ptr(), nbytes, max(buf.get_device(), 0))
                         )
                         remote_descs.append((addr + offset, nbytes, dev_id))
-                if len(local_descs) > len(desc_groups):
-                    # TODO(swang): There is a circular import error because
-                    # ray.util currently depends on ray.experimental.internal_kv.
-                    from ray.util.debug import log_once
-
-                    if log_once("nixl_target_buffers_not_packed"):
-                        logger.info(
-                            "Transferring object %s into target buffers using %d "
-                            "NIXL descriptors instead of %d because the target "
-                            "buffers do not match the sender's packed layout. To "
-                            "receive each remote region in a single transfer, pass "
-                            "views into one pre-allocated buffer, ordered and sized "
-                            "to match the tensors in the object.",
-                            obj_id,
-                            len(local_descs),
-                            len(desc_groups),
-                        )
                 self._add_tensor_descs(tensors)
                 added_tensor_descs = True
                 registered_tensors = tensors
