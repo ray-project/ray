@@ -330,37 +330,34 @@ def test_resolve_exec_user(tmp_path, monkeypatch):
 
 
 def test_build_run_command_public_wraps_with_pasta(monkeypatch):
-    """network="public" runs runsc inside a pasta-managed private netns.
+    """network="public" builds the holder + pasta-attach + nsenter chain.
 
-    The exact pasta flag list is the isolation property (no host-side port
-    republishing, no loopback splicing, no gateway mapping) — pin it.
+    The pasta flag list is the isolation property (no pod-side port
+    republishing, no loopback splicing, no gateway mapping) and the
+    chain's shape is the topology (holder namespaces pinned first; pasta
+    attached from the pod side so its uplink is the pod's interface;
+    runsc entered as mapped root, never --rootless) — pin both.
     """
     monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
     backend = GVisorSandboxBackend()
     cfg = GVisorSandboxConfig(image="busybox:latest", network="public")
     cmd = backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
 
-    sep = cmd.index("--")
-    assert cmd[:sep] == [
-        "pasta",
-        "--foreground",
-        "--config-net",
-        "-t",
-        "none",
-        "-u",
-        "none",
-        "-T",
-        "none",
-        "-U",
-        "none",
-        "--no-map-gw",
-        "-4",
-    ]
-    runsc_cmd = cmd[sep + 1 :]
-    assert runsc_cmd[0] == "runsc"
-    assert runsc_cmd[runsc_cmd.index("--network") + 1] == "host"
-    assert "--overlay2=root:dir=/tmp/rd/overlay" in runsc_cmd
-    assert runsc_cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[:2] == ["bash", "-c"]
+    script = cmd[2]
+    assert script.startswith(
+        "unshare --user --map-root-user --net --fork --kill-child "
+    )
+    assert "/tmp/rd/netns.pid" in script
+    assert (
+        "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
+        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user" in script
+    )
+    assert "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc" in script
+    assert "--rootless" not in script
+    assert "--network host" in script
+    assert "--overlay2=root:dir=/tmp/rd/overlay" in script
+    assert script.endswith("run --bundle /tmp/rd sb-1")
 
 
 def test_build_run_command_other_modes_unwrapped(monkeypatch):
@@ -428,8 +425,8 @@ def _host_primary_ip() -> str:
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener on localhost, the bind
-    never appears in the worker's namespace, and one sandbox cannot reach
-    the other's listener."""
+    never appears in the worker's namespace, and no sandbox can reach the
+    other's listener."""
     backend = GVisorSandboxBackend()
 
     def _cfg():
@@ -440,31 +437,37 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
     sb1 = backend.create_sandbox(_cfg())
     sb2 = backend.create_sandbox(_cfg())
     try:
-        for sb in (sb1, sb2):
+        for sb, token in ((sb1, "SB1-TOKEN"), (sb2, "SB2-TOKEN")):
+            # /tmp stays a writable tmpfs on the readonly rootfs.
+            backend.write_file(sb, "/tmp/www/token", token)
             # busybox httpd daemonizes; under a shared netns the second bind
             # would fail with EADDRINUSE.
-            res = backend.exec_command(sb, "httpd -p 2222 -h /etc", timeout=30)
+            res = backend.exec_command(sb, "httpd -p 2222 -h /tmp/www", timeout=30)
             assert res.exit_code == 0, res.stderr
 
-        for sb in (sb1, sb2):
+        for sb, token in ((sb1, "SB1-TOKEN"), (sb2, "SB2-TOKEN")):
             res = backend.exec_command(
-                sb, "wget -q -T 5 -O - http://127.0.0.1:2222/passwd", timeout=30
+                sb, "wget -q -T 5 -O - http://127.0.0.1:2222/token", timeout=30
             )
             assert res.exit_code == 0, res.stderr
-            assert "root" in res.stdout
+            assert token in res.stdout
 
         # The worker's own namespace must see nothing on 2222.
         for target in ("127.0.0.1", _host_primary_ip()):
             with pytest.raises(OSError):
                 socket.create_connection((target, 2222), timeout=3).close()
 
-        # Nor can one sandbox reach the other's listener via the worker IP.
+        # No address names one sandbox from another: pasta --config-net
+        # gives every sandbox the worker's own IP, so from sb2 that IP is
+        # sb2 itself — the fetch must never reach sb1's listener.
         res = backend.exec_command(
             sb2,
-            f"wget -q -T 3 -O - http://{_host_primary_ip()}:2222/passwd",
+            f"wget -q -T 3 -O - http://{_host_primary_ip()}:2222/token",
             timeout=30,
         )
-        assert res.exit_code != 0
+        assert "SB1-TOKEN" not in res.stdout
+        if res.exit_code == 0:
+            assert "SB2-TOKEN" in res.stdout
     finally:
         backend.delete_sandbox(sb1)
         backend.delete_sandbox(sb2)
@@ -493,7 +496,6 @@ def test_netns_teardown_reaps_pasta(ensure_pasta):
         GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="public")
     )
     meta = backend._sandbox_metadata[sb]
-    assert meta["pasta"] is True
     proc = meta["proc"]
     root_dir = meta["root_dir"]
     assert proc.poll() is None

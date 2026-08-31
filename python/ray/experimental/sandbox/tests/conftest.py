@@ -50,11 +50,16 @@ def ensure_pasta():
     if shutil.which("pasta"):
         return
 
+    if platform.machine().lower() not in ("x86_64", "amd64"):
+        pytest.skip(
+            "no static pasta build for this arch; install passt to run "
+            "the netns tests"
+        )
+
     temp_bin = tempfile.mkdtemp()
     os.chmod(temp_bin, 0o755)
     pasta_path = os.path.join(temp_bin, "pasta")
-    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
-    url = f"https://passt.top/builds/latest/{arch}/pasta"
+    url = "https://passt.top/builds/latest/x86_64/pasta"
     try:
         urllib.request.urlretrieve(url, pasta_path)
         os.chmod(pasta_path, 0o755)

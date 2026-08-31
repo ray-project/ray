@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -33,26 +34,30 @@ _RUNSC_ROOT = "/tmp/runsc"
 # Directory to store sandbox states, container images and overlay filesystem.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
-# pasta (passt) invocation for network="public": pasta unshares a user+net
-# namespace pair (the mount namespace stays shared, so the runsc control
-# sockets under _RUNSC_ROOT and the bundle keep working), configures a tap
-# with the pod's addressing, and execs runsc inside. runsc still runs with
-# --network=host, but "host" is now a namespace private to this sandbox, so
-# a bind on 0.0.0.0 cannot collide with or be reached by other sandboxes.
-# The namespace is anonymous — held by the process tree, freed with it.
+# network="public" gives each sandbox a private user+net namespace pair,
+# bridged by pasta (passt) user-mode networking. Topology (the rootless
+# Podman shape): a tiny holder process unshares the namespaces and sleeps;
+# pasta, launched from the pod side so its uplink is the pod's real
+# interface, attaches to the holder's namespaces and daemonizes; runsc runs
+# inside via nsenter, mapped to root in the user namespace (so no
+# --rootless — runsc would nest a second user namespace whose /proc
+# magic-link derefs the gofer cannot perform). runsc still gets
+# --network=host, but "host" is now private to this sandbox: a bind on
+# 0.0.0.0 cannot collide with or be reached by the pod or other sandboxes,
+# while egress flows out through pasta's tap. Mount and pid namespaces stay
+# shared, so the bundle and the runsc control sockets under _RUNSC_ROOT
+# keep working for pod-side state/exec/kill/delete. The namespaces are
+# anonymous — held by the process group, freed with it.
 # These flags are the isolation property; tests pin the exact list:
-#   --foreground  pasta must stay the Popen child (never daemonize); it
-#                 exits when the wrapped `runsc run` exits.
-#   --config-net  copy the host interface's addressing/routes onto the tap.
-#   -t/-u none    never republish namespace binds on the host (the "auto"
+#   --config-net  copy the pod interface's addressing/routes onto the tap.
+#   -t/-u none    never republish namespace binds on the pod (the "auto"
 #                 default would recreate the cross-sandbox collision).
-#   -T/-U none    no loopback splicing: host-local services stay
+#   -T/-U none    no loopback splicing: pod-local services stay
 #                 unreachable from the sandbox's 127.0.0.1.
-#   --no-map-gw   don't remap gateway-addressed traffic to the host
-#                 loopback (closes the remaining sandbox->host path).
+#   --no-map-gw   don't remap gateway-addressed traffic to the pod
+#                 loopback (closes the remaining sandbox->pod path).
 #   -4            IPv4 only, matching the generated resolv.conf.
 _PASTA_FLAGS = [
-    "--foreground",
     "--config-net",
     "-t",
     "none",
@@ -87,15 +92,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         use_pasta = self._uses_pasta_netns(config)
-        if use_pasta and not shutil.which("pasta"):
-            raise SandboxCreationError(
-                "network='public' isolates each sandbox in its own network "
-                "namespace via pasta (passt), but 'pasta' was not found in "
-                "PATH. Install the passt package on the node image, enable "
-                "the auto_install_pasta server setting, or set "
-                f"{_PUBLIC_HOST_NETNS_ENV}=1 on workers to restore the "
-                "previous shared-host-network behavior."
-            )
+        if use_pasta:
+            missing = [b for b in ("pasta", "nsenter") if not shutil.which(b)]
+            if missing:
+                raise SandboxCreationError(
+                    "network='public' isolates each sandbox in its own "
+                    "network namespace via pasta (passt), but "
+                    f"{', '.join(repr(b) for b in missing)} was not found in "
+                    "PATH. Install the passt package (and util-linux) on the "
+                    "node image, enable the auto_install_pasta server "
+                    f"setting, or set {_PUBLIC_HOST_NETNS_ENV}=1 on workers "
+                    "to restore the previous shared-host-network behavior."
+                )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -156,10 +164,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-        # start_new_session puts pasta, runsc run, and the sandbox in one
-        # process group so cleanup can kill the whole tree; pasta shares the
-        # stderr log so its startup failures (seccomp, missing /dev/net/tun)
-        # surface through the SandboxCreationError path below.
+        # start_new_session puts the namespace holder, pasta, and runsc run
+        # in one process group so cleanup can kill the whole tree; they share
+        # the stderr log so startup failures (missing /dev/net/tun, no
+        # uplink) surface through the SandboxCreationError path below.
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
@@ -169,7 +177,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         start_time = time.time()
         timeout = config.timeout_seconds
-        state_args = self._runsc_base_args(config) + ["state", sandbox_id]
 
         try:
             while True:
@@ -180,6 +187,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
+                if time.time() - start_time > timeout:
+                    raise SandboxTimeoutError(
+                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                    )
+
+                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
                 res = subprocess.run(state_args, capture_output=True, text=True)
                 if res.returncode == 0:
                     try:
@@ -196,19 +209,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             raise
                         pass
 
-                if time.time() - start_time > timeout:
-                    raise SandboxTimeoutError(
-                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                    )
-
                 time.sleep(0.1)
         except Exception:
-            # Kill the whole group: under pasta, proc.kill() alone would
-            # reap only pasta and orphan the runsc run child.
+            # Delete runsc's container state, then kill the whole group:
+            # under pasta, a bare proc.kill() would orphan the namespace
+            # holder and the pasta daemon.
+            self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
-            subprocess.run(del_args, capture_output=True)
             shutil.rmtree(root_dir, ignore_errors=True)
             raise
 
@@ -217,11 +225,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
-            # The foreground process whose exit means the sandbox ended:
-            # pasta (with runsc run as its child) when wrapped, runsc run
-            # otherwise.
+            # The process group leader whose tree holds the sandbox — and,
+            # for network="public", the namespace holder and pasta daemon.
             "proc": proc,
-            "pasta": use_pasta,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
         }
@@ -243,11 +249,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             except subprocess.TimeoutExpired:
                 pass
 
-            # Normally `runsc kill` ends the container, runsc run exits, and
-            # pasta (its parent) exits with it; this is the backup when the
-            # container didn't die, and must take the whole group (a bare
-            # terminate would stop pasta but orphan runsc run).
-            if proc and proc.poll() is None:
+            self._delete_container_state(config, sandbox_id)
+
+            # Always take the whole group: after `runsc run` exits, the
+            # namespace holder and pasta daemon (network="public") are
+            # still alive in it.
+            if proc:
                 self._terminate_tree(proc)
 
             if stderr_file:
@@ -255,10 +262,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     stderr_file.close()
                 except Exception:
                     pass
-
-            del_args = self._runsc_base_args(config)
-            del_args.extend(["delete", "-force", sandbox_id])
-            subprocess.run(del_args, capture_output=True)
 
             shutil.rmtree(root_dir, ignore_errors=True)
 
@@ -455,6 +458,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             config.network == "public" and os.environ.get(_PUBLIC_HOST_NETNS_ENV) != "1"
         )
 
+    def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
+        """Best-effort ``runsc delete -force`` for teardown paths."""
+        del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
+        subprocess.run(del_args, capture_output=True)
+
     def _build_run_command(
         self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
     ) -> List[str]:
@@ -464,6 +472,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         assert the exact command without runsc or pasta installed.
         """
         args = self._runsc_base_args(config)
+        use_pasta = self._uses_pasta_netns(config)
+        if use_pasta:
+            # runsc runs as mapped root inside the holder's user namespace;
+            # --rootless would nest a second user namespace whose
+            # /proc/<pid>/root magic links the gofer cannot dereference.
+            args = [a for a in args if a != "--rootless"]
         if config.network:
             # "public" = host egress + generated resolv.conf (handled in the
             # OCI bundle); runsc itself just sees host networking — of the
@@ -472,8 +486,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             args.extend(["--network", runsc_network])
         args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
-        if self._uses_pasta_netns(config):
-            return ["pasta", *_PASTA_FLAGS, "--", *args]
+        if use_pasta:
+            pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+            runsc = " ".join(shlex.quote(a) for a in args)
+            pasta = " ".join(["pasta", *_PASTA_FLAGS])
+            script = (
+                # The holder pins the namespaces for the sandbox's lifetime;
+                # --kill-child ties it to this script's process group.
+                "unshare --user --map-root-user --net --fork --kill-child "
+                f"bash -c 'echo $$ > {pidfile}; exec sleep infinity' & "
+                f"for i in $(seq 1 100); do [ -s {pidfile} ] && break; sleep 0.1; done; "
+                f"NSPID=$(cat {pidfile}); "
+                # pasta runs from the pod side (its uplink is the pod's real
+                # interface), attaches to the holder's namespaces, and
+                # daemonizes; it exits when the namespaces empty.
+                f"{pasta} --netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user && "
+                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+            )
+            return ["bash", "-c", script]
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
