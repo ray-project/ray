@@ -55,8 +55,8 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 128)
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 8)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 8)
 
 
 def _estimate_batch_size_from_metadata(
