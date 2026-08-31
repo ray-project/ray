@@ -1,8 +1,7 @@
 import os
-import platform
 import shutil
-import tempfile
-import urllib.request
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -23,18 +22,10 @@ def ensure_runsc():
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
 
     if not shutil.which("runsc"):
-        temp_bin = tempfile.mkdtemp()
-        os.chmod(temp_bin, 0o755)
-        runsc_path = os.path.join(temp_bin, "runsc")
-        arch = (
-            "aarch64"
-            if platform.machine().lower() in ("aarch64", "arm64")
-            else "x86_64"
-        )
-        url = f"https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
+
+        script = Path(__file__).resolve().parents[5] / "ci" / "env" / "install-runsc.sh"
+
         try:
-            urllib.request.urlretrieve(url, runsc_path)
-            os.chmod(runsc_path, 0o755)
-            os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
+            subprocess.check_call(["bash", str(script)])
         except Exception as e:
             pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
