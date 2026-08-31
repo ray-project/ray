@@ -77,6 +77,8 @@ def main(args):
 
         if args.aggregate:
             ds = ds.select_columns(list(dict.fromkeys([*args.group_by, "column05"])))
+        else:
+            ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
         grouped_ds = ds.groupby(args.group_by)
         consume_fn(grouped_ds)
 
