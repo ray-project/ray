@@ -1663,14 +1663,16 @@ def test_fused_udf_time_within_wall_time(ray_start_regular_shared):
 
 
 def test_fused_udf_time_survives_auto_batch_size(ray_start_regular_shared):
-    """An upstream fused stage must be timed even when a later one peeks.
+    """An upstream fused stage must be timed even when a later one pulls it early.
 
-    ``MapTransformFn.__call__`` runs ``_pre_process`` eagerly, so with
-    ``batch_size="auto"`` the second stage peeks at a real block to size its
-    batches while the chain is still being built. That peek runs the first
-    stage's UDF, and with one block per task it is the only time that stage
-    ever runs -- so a chain whose timers aren't in place by then loses half
-    the work measured here.
+    ``_pre_process`` always runs while the chain is being built, but only
+    ``batch_size="auto"`` makes it consume: sizing batches needs a real block, so
+    it pulls one through the stages already in the chain, where a fixed
+    ``batch_size`` just builds a lazy generator and moves no data.
+    ``_peek_first_nonempty_block`` caches the block it pulled, so those stages
+    are never re-entered for it -- with one block per task, that peek is the only
+    time the first stage runs at all. A timer installed after the chain is
+    assembled sees none of it, which is the missing half measured here.
     """
     sleep_s = 0.1
     num_blocks = 4

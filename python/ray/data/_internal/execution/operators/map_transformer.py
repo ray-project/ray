@@ -204,9 +204,18 @@ class UDFTimeScope:
     creates one per task and threads it into ``apply_transform``, the same way it
     threads a :class:`CustomOpStatsReporter`.
 
-    ``attributed_s`` doubles as the nesting cursor. Each stage's timer records
-    how far it had advanced before its own call, so it can subtract whatever
-    upstream stages added in between.
+    ``attributed_s`` is a single running total that every timer in the chain adds
+    to, holding the time accumulated since the last :meth:`drain` (``_map_task``
+    drains after each output block). It covers the whole transform: input
+    batching, the UDF bodies, and output block building.
+
+    It is also the cursor each timer uses to find its own share. Stages are
+    chained behind lazy iterators, so a stage's ``next()`` runs everything
+    upstream of it before returning, and a timer can only measure inclusive
+    time. The change in ``attributed_s`` across that call is what the upstream
+    timers added during it, so subtracting it leaves this stage's own
+    contribution. Three fused UDFs sleeping 1s, 2s and 3s measure 1s, 3s and 6s
+    inclusive, subtract 0s, 1s and 3s, and add 1s, 2s and 3s.
     """
 
     __slots__ = ("attributed_s",)

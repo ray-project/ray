@@ -185,6 +185,9 @@ def test_chained_transforms_dont_double_count_udf_time():
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
     assert num_calls > 0
 
+    # The whole transform chain, not just the sleeps: for each stage it covers
+    # turning input blocks into batches, the UDF body, and building output
+    # blocks. The sleeps are therefore a floor on it, never an equality.
     reported_s = scope.attributed_s
     # Measured, not assumed: block shaping decides how many batches each stage sees.
     slept_s = num_calls * SLEEP_S
@@ -198,6 +201,69 @@ def test_chained_transforms_dont_double_count_udf_time():
     assert reported_s >= slept_s * 0.9, (
         f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across {num_calls} UDF calls"
+    )
+
+
+def test_chained_transforms_total_is_independent_of_distribution():
+    """The total must be right however unevenly the time is spread.
+
+    The test above gives every stage the same sleep, so a bug that shifted time
+    from one stage to another would leave the total intact and go unnoticed.
+    Uneven sleeps remove that cover: the subtraction has to land on the right
+    stage for the sum to come out.
+    """
+    SLEEPS_S = [0.05, 0.1, 0.15]
+    NUM_BATCHES = 2
+
+    calls_per_stage = [0] * len(SLEEPS_S)
+
+    def make_udf(stage_idx: int) -> "callable":
+        def udf(batch: DataBatch) -> DataBatch:
+            calls_per_stage[stage_idx] += 1
+            time.sleep(SLEEPS_S[stage_idx])
+            return pd.DataFrame({"id": batch["id"]})
+
+        return udf
+
+    transform_fns = [
+        BatchMapTransformFn(
+            _generate_transform_fn_for_map_batches(make_udf(i)),
+            is_udf=True,
+            batch_format="pandas",
+            batch_size=1,
+            output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
+        )
+        for i in range(len(SLEEPS_S))
+    ]
+    transformer = MapTransformer(transform_fns)
+    ctx = TaskContext(task_idx=0, op_name="test")
+
+    def make_input_blocks():
+        for i in range(NUM_BATCHES):
+            yield pd.DataFrame({"id": [i]})
+
+    scope = UDFTimeScope()
+    start_s = time.perf_counter()
+    blocks = list(
+        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
+    )
+    wall_s = time.perf_counter() - start_s
+
+    assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
+    assert all(n > 0 for n in calls_per_stage), calls_per_stage
+
+    reported_s = scope.attributed_s
+    slept_s = sum(n * s for n, s in zip(calls_per_stage, SLEEPS_S))
+
+    # Summing the stages' inclusive times would give 0.05 + 0.15 + 0.30 = 0.50s
+    # against 0.30s of real sleeping -- 1.7x. The subtraction has to cancel that
+    # exactly, not approximately.
+    assert (
+        reported_s <= wall_s * 1.05
+    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    assert reported_s >= slept_s * 0.9, (
+        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        f"across stages {calls_per_stage}"
     )
 
 
