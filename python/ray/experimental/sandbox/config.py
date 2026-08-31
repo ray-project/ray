@@ -2,8 +2,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
 
-# Sandbox network modes. All but "public" map directly to runsc --network;
-# "public" is host egress plus a generated, host-independent resolv.conf.
+# Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
+# --network; "public" runs runsc with host networking inside a per-sandbox
+# network namespace bridged by pasta (internet egress only; ports and
+# loopback are private to the sandbox) plus a generated, host-independent
+# resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
@@ -94,10 +97,17 @@ class SandboxConfig:
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode (default: "none" — no network access).
-            "public" (recommended for internet access) gives host egress with
-            a generated /etc/resolv.conf from ``dns``, inheriting nothing
-            from the host resolver. "host" gives full host network identity,
-            including the host's resolv.conf and internal networks.
+            "public" (recommended for internet access) gives internet egress
+            from a network namespace private to the sandbox, bridged by
+            pasta: ports and loopback are per-sandbox, nothing in the
+            sandbox is reachable from the host or from other sandboxes, and
+            /etc/resolv.conf is generated from ``dns``, inheriting nothing
+            from the host resolver. Requires the ``pasta`` binary on the
+            node; setting ``RAY_SANDBOX_PUBLIC_HOST_NETNS=1`` on workers
+            reverts "public" to the worker's shared namespace. "host" gives
+            full host network identity — the host's resolv.conf, internal
+            networks, and a port space shared with the worker and every
+            other host-mode sandbox.
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is

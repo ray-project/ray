@@ -369,6 +369,7 @@ def create_app(
             "max_output_bytes": settings.max_output_bytes,
             "max_exec_history": settings.max_exec_history,
             "auto_install_runsc": settings.auto_install_runsc,
+            "auto_install_pasta": settings.auto_install_pasta,
         }
         handle = resolver.create(
             sandbox_id,
