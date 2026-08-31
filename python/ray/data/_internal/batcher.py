@@ -34,11 +34,15 @@ SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 def _prepare_local_shuffle_arrow_table(
     table: pa.Table,
+    *,
+    expected_output_rows: Optional[int] = None,
 ) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTake]]:
     """Prepare an Arrow table for repeated local-shuffle row takes.
 
     Args:
         table: Arrow shuffle buffer to prepare.
+        expected_output_rows: Expected rows per shuffled batch, used by the
+            tensor take cost model. Omit for capability-only preparation.
 
     Returns:
         A table with unsupported multi-chunk columns combined and a mapping of
@@ -56,7 +60,10 @@ def _prepare_local_shuffle_arrow_table(
             continue
 
         prepared = (
-            try_prepare_chunked_tensor_take(column)
+            try_prepare_chunked_tensor_take(
+                column,
+                expected_output_rows=expected_output_rows,
+            )
             if fast_path_enabled and _is_multi_chunk_extension_column(column)
             else None
         )
@@ -67,6 +74,20 @@ def _prepare_local_shuffle_arrow_table(
 
         columns.append(transform_pyarrow.combine_chunked_array(column))
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
+
+
+def _combine_prepared_arrow_table(
+    table: pa.Table,
+    prepared_takes: Dict[int, PreparedChunkedTensorTake],
+) -> pa.Table:
+    """Materialize prepared columns once after a runtime fast-path fallback."""
+    columns = [
+        transform_pyarrow.combine_chunked_array(column)
+        if index in prepared_takes
+        else column
+        for index, column in enumerate(table.columns)
+    ]
+    return pa.Table.from_arrays(columns, schema=table.schema)
 
 
 def _take_prepared_arrow_table(
@@ -432,7 +453,10 @@ class ShufflingBatcher(BatcherInterface):
             (
                 self._shuffle_buffer,
                 prepared_takes,
-            ) = _prepare_local_shuffle_arrow_table(self._shuffle_buffer)
+            ) = _prepare_local_shuffle_arrow_table(
+                self._shuffle_buffer,
+                expected_output_rows=self._batch_size,
+            )
             accessor = BlockAccessor.for_block(self._shuffle_buffer)
 
         # Prepared tensor takes consume the same normalized native-int64 index
@@ -475,7 +499,12 @@ class ShufflingBatcher(BatcherInterface):
             if batch is not None:
                 return batch
             # A prepared take should remain valid for the lifetime of one immutable
-            # shuffle buffer. If it cannot serve a take, stop retrying it for every
-            # subsequent batch and release its zero-copy views.
+            # shuffle buffer. If it cannot serve a take, combine its columns once,
+            # cache that fallback representation, and stop retrying the plan for
+            # every subsequent batch.
+            self._shuffle_buffer = _combine_prepared_arrow_table(
+                self._shuffle_buffer,
+                self._prepared_tensor_takes,
+            )
             self._prepared_tensor_takes = {}
         return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)

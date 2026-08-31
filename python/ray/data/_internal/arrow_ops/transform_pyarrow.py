@@ -17,6 +17,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    is_chunked_tensor_take_candidate,
     is_chunked_tensor_take_enabled,
     try_take_chunked_tensor,
 )
@@ -286,7 +287,9 @@ def take_table(
     if any(_is_pa_extension_type(col.type) for col in table.columns):
         normalized_indices = None
         if is_chunked_tensor_take_enabled() and any(
-            _is_multi_chunk_extension_column(col) for col in table.columns
+            _is_multi_chunk_extension_column(col)
+            and is_chunked_tensor_take_candidate(col)
+            for col in table.columns
         ):
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
 

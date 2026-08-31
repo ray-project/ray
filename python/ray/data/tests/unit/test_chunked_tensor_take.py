@@ -135,6 +135,29 @@ def _tensor_with_child_offset():
     return pa.chunked_array([array.slice(0, 1), array.slice(1, 1)], type=tensor_type)
 
 
+def _tensor_with_raw_offsets(offsets, child):
+    width = 64
+    tensor_type = ArrowTensorTypeV2((width,), child.type)
+    raw_offsets = np.asarray(
+        offsets,
+        dtype=np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype()),
+    )
+    storage = pa.Array.from_buffers(
+        tensor_type.storage_type,
+        len(raw_offsets) - 1,
+        [None, pa.py_buffer(raw_offsets)],
+        children=[child],
+    )
+    array = tensor_type.wrap_array(storage)
+    return (
+        pa.chunked_array(
+            [array.slice(index, 1) for index in range(len(array))],
+            type=tensor_type,
+        ),
+        storage,
+    )
+
+
 def _zero_shape_chunked_tensor(rows, shape, tensor_cls):
     tensor_type = tensor_cls(shape, pa.float32())
     offsets = np.zeros(
@@ -226,7 +249,9 @@ def test_chunked_tensor_take_gather_strategy(monkeypatch, chunks, indices, strat
         return original(*args, **kwargs)
 
     monkeypatch.setattr(chunked_tensor_take, strategy, record_strategy)
-    output = try_take_chunked_tensor(column, indices)
+    plan = try_prepare_chunked_tensor_take(column)
+    assert plan is not None
+    output = plan.try_take(indices)
 
     assert calls == 1
     assert output is not None
@@ -246,11 +271,35 @@ def test_chunked_tensor_take_across_scratch_subbatches():
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
 
 
-def test_chunked_tensor_take_output_owns_source_lifetime():
-    column, values = _chunked_tensor(40, 64, 5)
-    expected = values[[39, 1, 20]].copy()
+def test_chunked_tensor_take_allows_one_row_to_exceed_scratch_cap():
+    shape = (2000, 1697)
+    column, _ = _chunked_tensor(2, math.prod(shape), 2)
+    tensor_type = ArrowTensorTypeV2(shape, pa.float32())
+    column = pa.chunked_array(
+        [tensor_type.wrap_array(chunk.storage) for chunk in column.chunks],
+        type=tensor_type,
+    )
 
-    output = try_take_chunked_tensor(column, np.array([39, 1, 20], dtype=np.int64))
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=1)
+
+    assert plan is not None
+    assert plan.subbatch_rows == 1
+    assert (
+        plan.values_per_row * plan.value_dtype.itemsize > TENSOR_TAKE_SCRATCH_CAP_BYTES
+    )
+    output = plan.try_take(np.array([1], dtype=np.int64))
+    assert output is not None
+    assert output.storage.values[0].as_py() == pytest.approx(math.prod(shape))
+
+
+def test_chunked_tensor_take_output_owns_source_lifetime():
+    column, values = _chunked_tensor(4096, 64, 5)
+    expected = values[[4095, 1, 2048]].copy()
+
+    output = try_take_chunked_tensor(
+        column,
+        np.array([4095, 1, 2048], dtype=np.int64),
+    )
 
     assert output is not None
     del column
@@ -286,9 +335,51 @@ def test_prepared_chunked_tensor_take_owns_source_lifetime():
 
 
 @pytest.mark.parametrize("rows", [64, 1024])
-def test_narrow_chunked_tensor_take_falls_back(rows):
+def test_small_narrow_chunked_tensor_take_falls_back(rows):
     narrow, _ = _chunked_tensor(rows, 8, 4)
-    assert try_prepare_chunked_tensor_take(narrow) is None
+    assert (
+        try_prepare_chunked_tensor_take(
+            narrow,
+            expected_output_rows=min(rows, 128),
+        )
+        is None
+    )
+
+
+def test_chunked_tensor_take_eligibility_uses_source_and_output_work():
+    narrow_large_source, _ = _chunked_tensor(100_000, 8, 32)
+    assert (
+        try_prepare_chunked_tensor_take(
+            narrow_large_source,
+            expected_output_rows=128,
+        )
+        is None
+    )
+
+    small_wide_source, _ = _chunked_tensor(1024, 64, 4)
+    assert (
+        try_prepare_chunked_tensor_take(
+            small_wide_source,
+            expected_output_rows=128,
+        )
+        is None
+    )
+
+    wide_large_source, _ = _chunked_tensor(100_000, 64, 32)
+    assert (
+        try_prepare_chunked_tensor_take(
+            wide_large_source,
+            expected_output_rows=128,
+        )
+        is not None
+    )
+    assert (
+        try_prepare_chunked_tensor_take(
+            wide_large_source,
+            expected_output_rows=100_000,
+        )
+        is None
+    )
 
 
 def test_chunked_tensor_take_can_be_disabled(monkeypatch):
@@ -323,6 +414,26 @@ def test_chunked_tensor_take_can_be_disabled(monkeypatch):
     prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(table)
     assert not prepared_takes
     assert prepared_table.column("tensor").num_chunks == 1
+
+
+def test_ineligible_chunked_tensor_skips_index_normalization(monkeypatch):
+    column, values = _chunked_tensor(40, 64, 4)
+    indices = np.array([39, 1, 20], dtype=np.int64)
+
+    def fail_normalization(*args, **kwargs):
+        raise AssertionError("Ineligible tensor take normalized indices")
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "_try_normalize_take_indices",
+        fail_normalization,
+    )
+    output = take_table(pa.table({"tensor": column}), indices)
+
+    np.testing.assert_array_equal(
+        output.column("tensor").combine_chunks().to_numpy(),
+        values[indices],
+    )
 
 
 def test_chunked_tensor_take_fallbacks():
@@ -371,6 +482,67 @@ def test_chunked_tensor_take_fallbacks():
         )
         native_chunked = pa.chunked_array([native.slice(0, 20), native.slice(20)])
         assert try_prepare_chunked_tensor_take(native_chunked) is None
+
+
+def test_chunked_tensor_take_respects_nonzero_logical_offsets():
+    width = 64
+    column, storage = _tensor_with_raw_offsets(
+        [width, 2 * width, 3 * width],
+        pa.array(np.arange(3 * width, dtype=np.int64)),
+    )
+
+    plan = try_prepare_chunked_tensor_take(column)
+
+    assert plan is not None
+    output = plan.try_take(np.array([0, 1], dtype=np.int64))
+    assert output is not None
+    assert output.storage.to_pylist() == storage.to_pylist()
+
+
+def test_chunked_tensor_take_rejects_invalid_logical_offsets():
+    width = 64
+    irregular, _ = _tensor_with_raw_offsets(
+        [0, width, 2 * width + 1],
+        pa.array(np.arange(2 * width + 1, dtype=np.int64)),
+    )
+    assert try_prepare_chunked_tensor_take(irregular) is None
+
+    column, _ = _chunked_tensor(40, width, 4)
+    chunk = next(chunk for chunk in column.chunks if len(chunk) > 0)
+
+    class PastEndStorage:
+        def __init__(self, storage):
+            self._storage = storage
+            self.values = storage.values
+            start = len(self.values) - width
+            self.offsets = pa.array(
+                start + np.arange(len(chunk) + 1) * width,
+                type=column.type.OFFSET_DTYPE,
+            )
+
+        def __getattr__(self, name):
+            return getattr(self._storage, name)
+
+    class PastEndChunk:
+        def __init__(self, array):
+            self._array = array
+            self.storage = PastEndStorage(array.storage)
+
+        def __getattr__(self, name):
+            return getattr(self._array, name)
+
+        def __len__(self):
+            return len(self._array)
+
+    assert (
+        chunked_tensor_take._try_get_zero_copy_chunk_view(
+            PastEndChunk(chunk),
+            column.type,
+            width,
+            np.dtype(np.float32),
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("tensor_cls", [ArrowTensorType, ArrowTensorTypeV2])
@@ -555,6 +727,11 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     monkeypatch.setattr(
         batcher_module, "get_total_obj_store_mem_on_node", lambda: 1 << 60
     )
+    monkeypatch.setattr(
+        chunked_tensor_take,
+        "_is_fast_take_worthwhile",
+        lambda **kwargs: True,
+    )
     tensor_table = _tensor_table(79, 64, 20)
     plain_table = tensor_table.select(["row_id"])
 
@@ -639,6 +816,54 @@ def test_chunked_tensor_take_falls_back_for_truncated_buffers():
     )
 
 
+def test_chunked_tensor_take_checks_view_pointer_range():
+    column, _ = _chunked_tensor(40, 64, 4)
+    chunk = next(chunk for chunk in reversed(column.chunks) if len(chunk) > 0)
+
+    class ShortDataBufferValues:
+        def __init__(self, values):
+            self._values = values
+
+        def __getattr__(self, name):
+            return getattr(self._values, name)
+
+        def __len__(self):
+            return len(self._values)
+
+        def buffers(self):
+            validity, data = self._values.buffers()
+            return validity, data.slice(0, data.size - 1)
+
+    class ShortDataBufferStorage:
+        def __init__(self, storage):
+            self._storage = storage
+            self.values = ShortDataBufferValues(storage.values)
+
+        def __getattr__(self, name):
+            return getattr(self._storage, name)
+
+    class ShortDataBufferChunk:
+        def __init__(self, array):
+            self._array = array
+            self.storage = ShortDataBufferStorage(array.storage)
+
+        def __getattr__(self, name):
+            return getattr(self._array, name)
+
+        def __len__(self):
+            return len(self._array)
+
+    assert (
+        chunked_tensor_take._try_get_zero_copy_chunk_view(
+            ShortDataBufferChunk(chunk),
+            column.type,
+            64,
+            np.dtype(np.float32),
+        )
+        is None
+    )
+
+
 def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
     zero_column_table = pa.table({"value": [1, 2]}).select([])
     prepared_empty, empty_takes = _prepare_local_shuffle_arrow_table(zero_column_table)
@@ -667,7 +892,8 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
 
     narrow, _ = _chunked_tensor(1024, 8, 4)
     prepared_narrow, narrow_takes = _prepare_local_shuffle_arrow_table(
-        pa.table({"tensor": narrow})
+        pa.table({"tensor": narrow}),
+        expected_output_rows=128,
     )
     assert not narrow_takes
     assert prepared_narrow.column("tensor").num_chunks == 1
@@ -707,6 +933,24 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
     monkeypatch.setattr(
         batcher_module, "get_total_obj_store_mem_on_node", lambda: 1 << 60
     )
+    monkeypatch.setattr(
+        chunked_tensor_take,
+        "_is_fast_take_worthwhile",
+        lambda **kwargs: True,
+    )
+    original_combine = batcher_module.transform_pyarrow.combine_chunked_array
+    combine_calls = 0
+
+    def record_combine(column):
+        nonlocal combine_calls
+        combine_calls += 1
+        return original_combine(column)
+
+    monkeypatch.setattr(
+        batcher_module.transform_pyarrow,
+        "combine_chunked_array",
+        record_combine,
+    )
     batcher = ShufflingBatcher(
         batch_size=10,
         shuffle_buffer_min_size=10,
@@ -731,9 +975,12 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
     assert len(batcher.next_batch()) == 10
     assert calls == 1
     assert not batcher._prepared_tensor_takes
+    assert batcher._shuffle_buffer.column("tensor").num_chunks == 1
+    assert combine_calls == 1
 
     assert len(batcher.next_batch()) == 10
     assert calls == 1
+    assert combine_calls == 1
 
 
 if __name__ == "__main__":

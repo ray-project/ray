@@ -18,10 +18,16 @@ ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
 
 # Cap for simultaneously allocated per-subbatch NumPy gather/index buffers.
 # The final output, Arrow offsets, and zero-copy chunk-view metadata are excluded.
+# A source row is the gather's irreducible unit, so one row may exceed this soft
+# cap; in that case subbatching still limits scratch to exactly one row.
 TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
-# Narrow columns stay on Ray's native path because grouping can cost more than
-# the full-column copy it avoids.
+# Narrow rows do not copy enough payload per grouped NumPy operation, while a
+# small source column does not amortize preparation even when its rows are wide.
+# These gates are combined with the output/chunk-aware estimate below; no one
+# dimension alone decides eligibility.
 _MIN_FAST_ROW_BYTES = 256
+_MIN_FAST_SOURCE_BYTES = 1024 * 1024
+_MIN_COPY_TO_INDEX_WORK_RATIO = 2
 # Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
 # the number of chunks makes repeated full-subbatch masks expensive.
 _MAX_MASK_GROUP_CHUNKS = 16
@@ -33,6 +39,24 @@ _INDEX_SCRATCH_BYTES_PER_ROW = 64
 def is_chunked_tensor_take_enabled() -> bool:
     """Return whether callers should use the chunked tensor take fast path."""
     return ENABLE_CHUNKED_TENSOR_TAKE
+
+
+def is_chunked_tensor_take_candidate(column: pa.ChunkedArray) -> bool:
+    """Return whether source-copy savings can justify index normalization.
+
+    This intentionally cheap preflight uses only source metadata. Full layout,
+    logical-offset, output-size, and output-work checks remain in preparation.
+    """
+    if column.num_chunks <= 1 or column.null_count > 0:
+        return False
+    layout = _try_get_tensor_layout(column.type)
+    if layout is None:
+        return False
+    _, row_bytes, _ = layout
+    return (
+        row_bytes >= _MIN_FAST_ROW_BYTES
+        and len(column) * row_bytes >= _MIN_FAST_SOURCE_BYTES
+    )
 
 
 class PreparedChunkedTensorTake(NamedTuple):
@@ -77,11 +101,16 @@ class PreparedChunkedTensorTake(NamedTuple):
 
 def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
+    *,
+    expected_output_rows: Optional[int] = None,
 ) -> Optional[PreparedChunkedTensorTake]:
     """Prepare an immutable chunked tensor source for repeated row takes.
 
     Args:
         column: Source chunked tensor column.
+        expected_output_rows: Rows expected in each take. When provided, the
+            fast path is used only when its source-copy savings are expected to
+            amortize chunk grouping. Omit this for a capability-only plan.
 
     Returns:
         Validated source metadata when the fast path supports the column.
@@ -102,14 +131,22 @@ def try_prepare_chunked_tensor_take(
     if layout is None:
         return None
     values_per_row, row_bytes, value_dtype = layout
-    if row_bytes < _MIN_FAST_ROW_BYTES:
+
+    nonempty_chunks = sum(len(chunk) > 0 for chunk in column.chunks)
+    if nonempty_chunks <= 1:
+        return None
+    if expected_output_rows is not None and not _is_fast_take_worthwhile(
+        source_rows=len(column),
+        output_rows=expected_output_rows,
+        row_bytes=row_bytes,
+        num_chunks=nonempty_chunks,
+    ):
         return None
 
-    subbatch_rows = TENSOR_TAKE_SCRATCH_CAP_BYTES // (
-        row_bytes + _INDEX_SCRATCH_BYTES_PER_ROW
+    subbatch_rows = max(
+        1,
+        TENSOR_TAKE_SCRATCH_CAP_BYTES // (row_bytes + _INDEX_SCRATCH_BYTES_PER_ROW),
     )
-    if subbatch_rows == 0:
-        return None
 
     offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
     max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
@@ -164,8 +201,44 @@ def try_take_chunked_tensor(
     one output buffer in bounded subbatches. Unexpected allocation and internal
     errors propagate.
     """
-    prepared = try_prepare_chunked_tensor_take(column)
+    prepared = try_prepare_chunked_tensor_take(
+        column,
+        expected_output_rows=len(indices),
+    )
     return prepared.try_take(indices) if prepared is not None else None
+
+
+def _is_fast_take_worthwhile(
+    *,
+    source_rows: int,
+    output_rows: int,
+    row_bytes: int,
+    num_chunks: int,
+) -> bool:
+    """Estimate whether avoiding a full source-column copy is worthwhile.
+
+    Both paths allocate the selected tensor output, so that common cost is not
+    part of the comparison. The native path additionally copies the complete
+    source column while combining chunks. The fast path instead groups output
+    indices by chunk: repeated scans for at most 16 chunks, or a sort for more
+    chunks. Treating that index work as bytes gives a deliberately conservative
+    and monotonic eligibility rule in addition to the two cheap metadata gates.
+    """
+    if output_rows < 0:
+        return False
+
+    source_copy_bytes = source_rows * row_bytes
+    if row_bytes < _MIN_FAST_ROW_BYTES or source_copy_bytes < _MIN_FAST_SOURCE_BYTES:
+        return False
+    if output_rows == 0:
+        return True
+
+    if num_chunks <= _MAX_MASK_GROUP_CHUNKS:
+        grouping_passes = min(num_chunks, output_rows)
+    else:
+        grouping_passes = max(1, math.ceil(math.log2(max(2, output_rows))))
+    estimated_index_work = output_rows * grouping_passes * _INDEX_SCRATCH_BYTES_PER_ROW
+    return source_copy_bytes >= _MIN_COPY_TO_INDEX_WORK_RATIO * estimated_index_work
 
 
 def _try_get_tensor_layout(tensor_type):
@@ -210,8 +283,10 @@ def _try_get_zero_copy_chunk_view(
     """Return a safe zero-copy tensor view, or ``None`` for column fallback.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,
-    contiguity, ownership, and pointer bounds explicit. NumPy rejects truncated
-    buffers instead of letting an invalid view reach the gather kernel.
+    contiguity, ownership, and pointer bounds explicit. The logical list
+    offsets are authoritative: a legal array may start after child element 0,
+    while malformed or variable-stride offsets cannot represent the declared
+    fixed tensor shape and must fall back.
     """
     values = chunk.storage.values
     # Preserve the existing fallback for child arrays whose logical data starts
@@ -219,15 +294,43 @@ def _try_get_zero_copy_chunk_view(
     if values.offset != 0 or values.null_count > 0:
         return None
 
+    storage = chunk.storage
+    try:
+        offsets = storage.offsets.to_numpy(zero_copy_only=True)
+    except (AttributeError, pa.ArrowException, TypeError, ValueError):
+        return None
+    if offsets.ndim != 1 or len(offsets) != len(chunk) + 1:
+        return None
+
+    first_value = int(offsets[0])
+    last_value = first_value + len(chunk) * values_per_row
+    if np.any(offsets < 0) or np.any(offsets > len(values)):
+        return None
+    if int(offsets[-1]) != last_value or not np.all(
+        np.diff(offsets.astype(np.int64, copy=False)) == values_per_row
+    ):
+        return None
+
     buffers = values.buffers()
     if len(buffers) < 2 or buffers[1] is None:
         return None
-    byte_offset = chunk.offset * values_per_row * value_dtype.itemsize
+    data_buffer = buffers[1]
+    byte_offset = first_value * value_dtype.itemsize
+    view_nbytes = len(chunk) * values_per_row * value_dtype.itemsize
+    try:
+        buffer_start = data_buffer.address
+        buffer_end = buffer_start + data_buffer.size
+    except (AttributeError, TypeError):
+        return None
+    view_start = buffer_start + byte_offset
+    view_end = view_start + view_nbytes
+    if not (buffer_start <= view_start <= view_end <= buffer_end):
+        return None
     try:
         return np.ndarray(
             (len(chunk), *tensor_type.shape),
             dtype=value_dtype,
-            buffer=buffers[1],
+            buffer=data_buffer,
             offset=byte_offset,
         )
     except (TypeError, ValueError):
