@@ -353,7 +353,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': N",
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -443,7 +442,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': None",
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -594,7 +592,9 @@ def canonicalize(
     filter_global_stats: bool = True,
 ) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"(dataset_uuid=)[^,\n]+", r"\g<1>N", stats)
+    # Other UUID expressions.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", canonicalized_stats)
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -633,11 +633,6 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    canonicalized_stats = re.sub(
-        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
-        r"\g<1> H",
-        canonicalized_stats,
-    )
     # Percentile values in DistributionTracker dicts can be None (when datasketches
     # is not installed) or a number (canonicalized to N). Normalize to P.
     canonicalized_stats = re.sub(
@@ -930,7 +925,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1095,7 +1089,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1213,7 +1206,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_outputs_per_task: N,\n"
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
-        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
@@ -2225,7 +2217,6 @@ import ray
 
 ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
 ds.set_name("train")
-ds._set_uuid("1234")
 
 split = ds.streaming_split(1)[0]
 
@@ -2236,8 +2227,15 @@ for epoch in range({num_epochs}):
     # Need to run the code as s sub process, because the executor
     # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
+    match = re.search(
+        r"Starting execution of Dataset (train_[A-Za-z0-9]+)_0",
+        out,
+    )
+    assert match is not None
+    dataset_id_prefix = match.group(1)
+
     for i in range(num_epochs):
-        dataset_id = f"train_1234_{i}"
+        dataset_id = f"{dataset_id_prefix}_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 

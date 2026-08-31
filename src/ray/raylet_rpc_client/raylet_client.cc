@@ -559,17 +559,22 @@ void RayletClient::CancelLocalTask(
                             /*method_timeout_ms*/ -1);
 }
 
-void RayletClient::FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) {
+void RayletClient::FreeLocalObjects(
+    const rpc::FreeLocalObjectsRequest &request,
+    const rpc::ClientCallback<rpc::FreeLocalObjectsReply> &callback) {
   INVOKE_RETRYABLE_RPC_CALL(
       retryable_grpc_client_,
       NodeManagerService,
       FreeLocalObjects,
       request,
-      [](const Status &status, rpc::FreeLocalObjectsReply &&reply /*unused*/) {
+      [callback](const Status &status, rpc::FreeLocalObjectsReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error freeing local objects from raylet, the raylet may have died: "
               << status;
+        }
+        if (callback != nullptr) {
+          callback(status, std::move(reply));
         }
       },
       grpc_client_,

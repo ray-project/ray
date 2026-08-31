@@ -1,3 +1,6 @@
+.. meta::
+   :description: Validate checkpoints asynchronously so training continues while validation runs, with TorchTrainer and Ray Data approaches and subcluster isolation.
+
 .. _train-validating-checkpoints:
 
 Validating checkpoints asynchronously
@@ -221,7 +224,7 @@ redundant:
         with ray.data.DataContext.current(ctx):
             train_dataset = ray.data.read_parquet(...)
 
-        # (2) Pin per-worker ingest — Train replaces ds.context options
+        # (2) Pin per-worker ingest. Train replaces ds.context options
         # wholesale, so the selector must be restated here.
         trainer = ray.train.torch.TorchTrainer(
             ...,
