@@ -3908,11 +3908,6 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
     return;
   }
   RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
-  if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
-    reply->set_status(rpc::GetObjectStatusReply::FREED);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
-  }
   // Send the reply once the value has become available. The value is
   // guaranteed to become available eventually because we own the object and
   // its ref count is > 0.
