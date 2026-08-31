@@ -1,0 +1,13 @@
+# Single-fat-node analog of the m5.2xlarge CPU fleets, for the arrow-rs 2x2
+# topology axis (arrow_rs_probe/gen_2x2_release_tests.py). One m5.24xlarge
+# (96 vCPU / 384 GiB) meets or exceeds every CPU fleet it stands in for:
+# fixed/autoscaling_cpu = 10x m5.2xlarge (80 vCPU / 320 GiB), mix's
+# compute_8_cpu = 8x (64 / 256). Head-only: the point is that every task,
+# and every long-lived worker, lands on ONE node.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.24xlarge

@@ -333,6 +333,7 @@ def collect_task_distribution(case_start_unix_ms: float) -> Dict[str, Any]:
         per_worker: Dict[str, List[Tuple[float, float]]] = {}
         nodes = set()
         durations = []
+        recs = []
         n = 0
         for t in tasks:
             if not t.start_time_ms or t.start_time_ms < case_start_unix_ms:
@@ -346,6 +347,16 @@ def collect_task_distribution(case_start_unix_ms: float) -> Dict[str, Any]:
             if t.node_id:
                 nodes.add((t.node_id, t.worker_id))
             durations.append((t.end_time_ms - t.start_time_ms) / 1000.0)
+            recs.append(
+                (
+                    t.name,
+                    t.start_time_ms,
+                    t.end_time_ms,
+                    t.node_id,
+                    t.worker_id,
+                    t.worker_pid,
+                )
+            )
 
         out["task_dist_num_tasks"] = n
         out["task_dist_truncated"] = len(tasks) >= 10_000
@@ -393,9 +404,67 @@ def collect_task_distribution(case_start_unix_ms: float) -> Dict[str, Any]:
         out["task_dist_worker_busy_frac_min"] = (
             round(busy_fracs[0], 4) if busy_fracs else None
         )
+
+        # Per-task spawn timeline (the 2x2 topology probe wants WHEN and WHERE
+        # tasks ran, not just the aggregates above). Compact legend-indexed
+        # rows keep this a few hundred KB inside result.json -- loose files do
+        # not survive a release run. RAY_DATA_BENCH_TASK_TIMELINE=0 disables.
+        if os.environ.get("RAY_DATA_BENCH_TASK_TIMELINE", "1") != "0":
+            out["task_timeline"] = _build_task_timeline(recs, case_start_unix_ms)
     except Exception:
         logger.warning("collect_task_distribution failed", exc_info=True)
     return out
+
+
+_TASK_TIMELINE_CAP = 6000
+
+
+def _build_task_timeline(recs, t0_ms):
+    """Legend-indexed task timeline: each row is
+    [name_idx, start_ms_rel, dur_ms, node_idx, worker_idx].
+
+    When the cap bites, read tasks are kept preferentially (they are what the
+    2x2 experiment is about), earliest-first within each class, and
+    ``truncated`` is set. Node/worker ids are truncated to 16 hex chars in the
+    legends; ``worker_pids`` aligns with ``workers`` so rows can be joined
+    against node_memory_monitor's per-pid USS samples.
+    """
+    recs.sort(key=lambda r: ("Read" not in (r[0] or ""), r[1]))
+    truncated = len(recs) > _TASK_TIMELINE_CAP
+    recs = recs[:_TASK_TIMELINE_CAP]
+    recs.sort(key=lambda r: r[1])
+    names, nodes, workers, worker_pids, rows = [], [], [], [], []
+    name_idx, node_idx, worker_idx = {}, {}, {}
+    for name, start, end, node, worker, pid in recs:
+        name, node, worker = name or "", (node or "")[:16], (worker or "")[:16]
+        if name not in name_idx:
+            name_idx[name] = len(names)
+            names.append(name)
+        if node not in node_idx:
+            node_idx[node] = len(nodes)
+            nodes.append(node)
+        if worker not in worker_idx:
+            worker_idx[worker] = len(workers)
+            workers.append(worker)
+            worker_pids.append(pid)
+        rows.append(
+            [
+                name_idx[name],
+                int(start - t0_ms),
+                int(end - start),
+                node_idx[node],
+                worker_idx[worker],
+            ]
+        )
+    return {
+        "t0_unix_ms": t0_ms,
+        "names": names,
+        "nodes": nodes,
+        "workers": workers,
+        "worker_pids": worker_pids,
+        "rows": rows,
+        "truncated": truncated,
+    }
 
 
 class RuntimeEnvSetupTracker:
