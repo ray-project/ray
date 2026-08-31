@@ -1756,6 +1756,134 @@ def test_udf_time_is_not_shared_across_concurrent_actor_tasks(
     )
 
 
+def _phase_components(op):
+    """The four figures that decompose an operator's UDF time."""
+    return {
+        "input_prep": op.input_prep_time,
+        "udf_body": op.udf_body_time,
+        "output_build": op.output_build_time,
+        "other": op.other_stage_time,
+    }
+
+
+def test_udf_time_phases_sum_to_the_total(ray_start_regular_shared):
+    """The phase breakdown must account for the whole of ``udf_time``.
+
+    ``udf_time`` keeps meaning the whole map transform, so anything already
+    charting it is unaffected; the components only say where inside it the time
+    went. That is only true if they add up.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow, batch_size=None)
+        .map_batches(slow, batch_size=None)
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    parts = _phase_components(op)
+    assert all(p is not None for p in parts.values())
+
+    component_sum = sum(p.sum for p in parts.values())
+    assert component_sum == pytest.approx(op.udf_time.sum, rel=1e-6), (
+        f"components {component_sum:.6f}s do not add up to udf_time "
+        f"{op.udf_time.sum:.6f}s: "
+        + ", ".join(f"{k}={v.sum:.6f}s" for k, v in parts.items())
+    )
+    # The UDF bodies are the sleeps, so they should dominate this pipeline.
+    assert op.udf_body_time.sum >= 2 * num_blocks * sleep_s * 0.9
+
+
+def test_udf_time_phases_separate_object_serde(ray_start_regular_shared):
+    """Batch formatting and block building must be visible, not folded into the body.
+
+    The UDF here never reads the column of Python objects, so every second it is
+    charged for unpickling one is a second the old single figure attributed to
+    user code.
+    """
+    num_blocks = 2
+    rows_per_block = 200
+
+    class Payload:
+        def __init__(self, i):
+            self.blob = [{"k": "x" * 64, "v": float(i)} for _ in range(200)]
+
+    source = (
+        ray.data.range(num_blocks * rows_per_block, override_num_blocks=num_blocks)
+        .map_batches(
+            lambda b: {
+                "id": b["id"],
+                "obj": [Payload(i) for i in range(len(b["id"]))],
+            },
+            batch_size=None,
+        )
+        .materialize()
+    )
+
+    def untouched(batch):
+        # Reads only `id`; never looks at `obj`.
+        return {"n": [len(batch["id"])]}
+
+    ds = source.map_batches(untouched, batch_size=None).materialize()
+    # `name_pattern` is a regex, so match the bare function name rather than
+    # the parenthesised operator name.
+    op = get_operator(ds.get_stats_summary(), name_pattern="untouched")
+
+    assert op.input_prep_time.sum > op.udf_body_time.sum, (
+        f"input prep {op.input_prep_time.sum:.4f}s should dominate the body "
+        f"{op.udf_body_time.sum:.4f}s for a UDF that only counts rows"
+    )
+    parts = _phase_components(op)
+    assert sum(p.sum for p in parts.values()) == pytest.approx(
+        op.udf_time.sum, rel=1e-6
+    )
+
+
+def test_row_transform_phases_are_opt_in(
+    ray_start_regular_shared, restore_data_context
+):
+    """Row transforms report only a total unless asked, and the total is the same.
+
+    Splitting a stage into phases costs a Python frame per item, which a row
+    transform pays per row. Flipping the flag must buy the breakdown without
+    moving the headline figure.
+    """
+    sleep_s = 0.02
+    num_rows = 40
+
+    def slow_row(row):
+        time.sleep(sleep_s)
+        return row
+
+    def run():
+        ds = (
+            ray.data.range(num_rows, override_num_blocks=4)
+            .map(slow_row)
+            .map(slow_row)
+            .materialize()
+        )
+        op = get_operator(ds.get_stats_summary(), name_pattern="Map")
+        return op, sum(p.sum for p in _phase_components(op).values())
+
+    DataContext.get_current().accurate_map_phase_timing = False
+    op_off, parts_off = run()
+    assert parts_off == 0.0, "row transforms should not be decomposed by default"
+    assert op_off.udf_time.sum >= 2 * num_rows * sleep_s * 0.9
+
+    DataContext.get_current().accurate_map_phase_timing = True
+    op_on, parts_on = run()
+    assert parts_on == pytest.approx(op_on.udf_time.sum, rel=1e-6)
+    # Same pipeline, same headline number; the flag only adds detail.
+    assert op_on.udf_time.sum == pytest.approx(op_off.udf_time.sum, rel=0.25)
+
+
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Test 1: Basic write_parquet - stats stored in _write_ds
     ds1 = ray.data.range(100, override_num_blocks=100)
