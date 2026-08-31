@@ -76,6 +76,12 @@ import ray
 # reservations consume the whole ~14.4GiB budget and upstream tasks starve
 # (seen on tpch q2 sf10, PyArrow arm too).
 ray.init(address="local", **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}))
+# The workspace's own Ray (:6379) coexists with this cell's local instance, and
+# the state API's address autodetection dies on "multiple active Ray instances"
+# — which silently emptied every per-task stats dist. Pin it to this cell.
+import os
+
+os.environ["RAY_ADDRESS"] = ray.get_runtime_context().gcs_address
 t0 = time.monotonic()
 mod.main(mod.parse_args())
 wall = time.monotonic() - t0

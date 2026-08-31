@@ -64,6 +64,12 @@ import ray
 # two JoinOperators each reserve num_partitions x ~450MB of the ~14.4GiB budget
 # and upstream shuffle tasks starve forever (seen on q2 sf10, PyArrow arm too).
 ray.init(address="local", **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}))
+# The workspace's own Ray (:6379) coexists with this cell's local instance, and
+# the state API's address autodetection dies on "multiple active Ray instances"
+# — which silently emptied every per-task stats dist. Pin it to this cell.
+import os
+
+os.environ["RAY_ADDRESS"] = ray.get_runtime_context().gcs_address
 t0 = time.monotonic()
 mod.main(SimpleNamespace(sf=sf))
 wall = time.monotonic() - t0
@@ -86,6 +92,7 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run, timeout_s, sched_mem_
         TPCH_DIR + os.pathsep + DATASET_DIR + os.pathsep + env.get("PYTHONPATH", "")
     )
     env["RAY_DATA_DEFAULT_SHUFFLE_STRATEGY"] = strategy
+    env["RAY_DATA_BENCH_NODE_MEM_MONITOR"] = "1"
     # Anyscale pins RAY_OVERRIDE_RESOURCES (memory=14.4GiB on this box) and it
     # beats ray.init(_memory=...): that budget deadlocks multi-join hash_shuffle
     # cells (two JoinOperators' aggregator reservations consume all of it).
