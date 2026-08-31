@@ -237,6 +237,30 @@ print(result.stdout)
 ray.get(sb.delete.remote())
 ```
 
+## Container images
+
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API — anonymously, with no Docker daemon and no credentials — extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and reuses that cache for every later sandbox on the node that names the same image.
+
+### Route Docker Hub pulls through a mirror
+
+Because the pulls are anonymous, every node's Docker Hub pull counts against Docker Hub's anonymous rate limits and crosses the WAN. A cluster whose nodes concurrently pull distinct multi-GB images — a benchmark sweep, a fleet of RL rollout workers — runs into both at once, and image pulls start failing under concurrency that they survive one at a time.
+
+Set `RAY_SANDBOX_REGISTRY_MIRROR` on the worker nodes to a registry that mirrors Docker Hub, and Ray rewrites Docker Hub pulls to it. Pulls from any other registry, such as GHCR or a private registry, pass through untouched.
+
+The value is `host[:port][/repo-prefix]`. Ray prepends the repository prefix to the repository path, which is the form pull-through caches expect:
+
+| Mirror | Example value | `python:3.10-slim` resolves to |
+| --- | --- | --- |
+| [ECR pull-through cache](https://docs.aws.amazon.com/AmazonECR/latest/userguide/pull-through-cache.html) | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub` | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub/library/python` |
+| [Artifact Registry remote repository](https://cloud.google.com/artifact-registry/docs/repositories/remote-repo) | `<region>-docker.pkg.dev/<project>/<repo>` | `<region>-docker.pkg.dev/<project>/<repo>/library/python` |
+| In-cluster [`registry:2`](https://distribution.github.io/distribution/recipes/mirror/) proxy | `http://registry.default.svc.cluster.local:5000` | `http://registry.default.svc.cluster.local:5000/library/python` |
+
+Keep the following in mind:
+
+* **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
+* **The mirror is authoritative.** This setting follows Docker's own `registry-mirrors` semantics minus the fallback: when it's set, a mirror that's unreachable or missing the image fails the pull rather than falling back to Docker Hub.
+* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow, and never sends credentials. Reach a mirror that requires a login through network-level access instead, such as a VPC endpoint or a cluster-internal service.
+
 ## Networking and DNS
 
 Sandboxes support four network modes. The default is `none`, which follows the safe-defaults principle. Use `public` when a sandbox needs internet access.
@@ -331,7 +355,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
-* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`.
+* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 
 ## Next steps
 
