@@ -798,49 +798,30 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               bool fetch_local);
 
   /**
-   * Asynchronously wait for objects to become ready without blocking the
-   * calling thread. Invokes ``callback`` once ``num_objects`` are ready or
-   * ``timeout_ms`` elapses (``timeout_ms < 0`` waits forever).
+   * Asynchronously wait for one object to become ready without blocking the
+   * calling thread. Invokes ``callback`` once when it is ready.
    *
    * An object is ready when it is in the in-process memory store or a plasma
-   * marker is present (exists somewhere in the cluster). This does not pull
-   * plasma objects locally.
+   * marker is present. This does not pull plasma objects locally.
    *
-   * ``timeout_ms == 0`` only reports objects already present in the
-   * in-process memory store (including plasma markers) and does not start
-   * plasma pulls (``Wait`` may begin fetches even on a zero timeout).
+   * The callback is invoked at most once. It may run on the calling thread
+   * or on ``io_service_``. ``Status::OK`` means the object is ready.
    *
-   * The callback is invoked at most once. ``ready`` is a byte array of length
-   * ``n`` with 1 for ready and 0 otherwise (parallel to ``object_ids``).
-   *
-   * Threading: validation errors, the ``timeout_ms == 0`` fast path, and
-   * synchronous pre-pass completions invoke ``callback`` on the calling
-   * thread. Other success / timeout completions run on ``io_service_``.
-   *
-   * \param[in] object_ids IDs of the objects to wait for. Must be unique.
-   * \param[in] num_objects Number of objects that should become ready.
-   * \param[in] timeout_ms Timeout in milliseconds; wait forever if negative.
-   * ``timeout_ms == 0`` only reports in-process memory hits (no timer).
-   * \param[in] callback Invoked with status, ready bit array, length, and
-   * ``user``.
+   * \param[in] object_id ID of the object to wait for.
+   * \param[in] callback Invoked with status and ``user``.
    * \param[in] user Opaque pointer passed through to ``callback``.
    * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
    * already invoked synchronously (validation error or immediate completion).
    */
-  uint64_t WaitAsync(
-      const std::vector<ObjectID> &object_ids,
-      int num_objects,
-      int64_t timeout_ms,
-      void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
-      void *user);
+  uint64_t WaitAsync(const ObjectID &object_id,
+                     void (*callback)(Status status, void *user),
+                     void *user);
 
   /**
    * Cancel an in-flight ``WaitAsync`` identified by its handle.
    *
-   * If the request is still pending, completes it (invoking the callback at
-   * most once with ``Status::OK`` and whatever ready bits are set so far) so
-   * resources such as the Python callback can be released. No-op if ``handle``
-   * is 0 or the request already completed.
+   * Completes a pending request (callback once with a cancelled status).
+   * No-op if ``handle`` is 0 or the request already completed.
    *
    * \param[in] handle Value returned by ``WaitAsync``.
    */
@@ -849,16 +830,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /**
    * Complete every in-flight ``WaitAsync`` with a shutdown error.
    *
-   * Invokes each pending callback once so Python can ``Py_DECREF`` the
-   * user callback and awaiting ``_wait_async`` futures can unblock.
-   * Safe to call more than once (later calls are no-ops).
-   *
-   * Call this ONLY while the embedding runtime is still alive — the callback
-   * re-enters Python. Graceful shutdown calls it before ``io_service_`` is
-   * stopped. ``~CoreWorker`` deliberately does NOT: it can run from a
-   * ``std::atexit`` handler, after ``Py_Finalize()``, where re-entering
-   * Python is a fatal abort. The destructor drops the same state without
-   * invoking callbacks instead.
+   * Invokes each pending callback once. Safe to call more than once.
+   * The embedding runtime must still be alive — see ``~CoreWorker``.
    */
   void CancelAllWaitAsync();
 
@@ -2193,11 +2166,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   mutable absl::Mutex plasma_mutex_;
 
   // Callbacks for when when a plasma object becomes ready.
-  absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // In-flight WaitAsync requests for this worker. Keyed by opaque handle
-  // (never by Python object address) so cancellation is ABA-safe.
+  // In-flight WaitAsync requests, keyed by handle.
   absl::Mutex wait_async_mu_;
   uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
   absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>> wait_async_requests_

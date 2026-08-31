@@ -290,33 +290,52 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
-async def test_streaming_rejection_consumes_before_iteration(setup_fake_replica):
-    """Streaming+rejection must not register a constructor wait_async consume.
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize("is_streaming", [False, True])
+async def test_rejection_does_not_wait_async_until_accepted(
+    setup_fake_replica, accepted: bool, is_streaming: bool
+):
+    """Rejection peeks only the system ref; wait_async starts after accept.
 
-    A background consume races with get_rejection_response() and can either
-    leak the rejection payload as item 0 or skip the first user chunk.
+    Constructor must not wait_async-consume: that races get_rejection_response
+    (streaming) or waits for a user ref that is never written (rejected unary).
     """
     actor_handle = setup_fake_replica.get_actor_handle()
     replica = RunningReplica(setup_fake_replica)
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
-            ReplicaQueueLengthInfo(accepted=True, num_ongoing_requests=10),
+            ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
         )
     )
     pr = PendingRequest(
         args=["Hello"],
-        kwargs={"is_streaming": True},
+        kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            is_streaming=True,
+            is_streaming=is_streaming,
         ),
     )
     replica_result = replica.try_send_request(pr, with_rejection=True)
     assert replica_result._consume_wait_handle == 0
+    if not is_streaming:
+        with pytest.raises(RuntimeError, match="get_rejection_response"):
+            replica_result.to_object_ref()
+        with pytest.raises(RuntimeError, match="get_rejection_response"):
+            await replica_result.to_object_ref_async()
+
     info = await replica_result.get_rejection_response()
-    assert info.accepted
-    assert await replica_result.__anext__() == "Hello-0"
+    assert info.accepted == accepted
+    if not accepted:
+        assert replica_result._consume_wait_handle == 0
+    elif is_streaming:
+        assert replica_result._consume_wait_handle == 0
+        assert await replica_result.__anext__() == "Hello-0"
+    else:
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
+        # wait_async consume is posted to the io thread; wait until it runs.
+        await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
 
 
 @pytest.mark.asyncio

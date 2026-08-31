@@ -44,7 +44,6 @@ from libc.stdint cimport (
     uint64_t,
     uint8_t,
 )
-from libc.stddef cimport size_t
 from libcpp cimport bool as c_bool, nullptr
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -215,12 +214,10 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
-    GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEndOfStreamError,
     RayChannelError,
     RayChannelTimeoutError,
 )
@@ -3768,58 +3765,37 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def wait_async(self,
-                   object_refs_or_generators,
-                   int num_returns,
-                   int64_t timeout_ms,
-                   callback: Callable):
+    def wait_async(self, object_ref, callback: Callable):
         """Register an async wait that invokes ``callback`` once.
 
         An object is ready when it exists anywhere in the cluster (memory
         store or plasma marker). This does not pull plasma objects locally.
 
         Args:
-            object_refs_or_generators: List of ObjectRef or ObjectRefGenerator
-                to wait on.
-            num_returns: Number of waitables that should become ready.
-            timeout_ms: Timeout in milliseconds; negative means wait forever.
-            callback: Called as ``callback(exc, ready_bits)``. ``ready_bits``
-                is a list[bool] parallel to ``object_refs_or_generators``.
-                On error, ``exc`` is set and ``ready_bits`` is None.
+            object_ref: ObjectRef to wait on.
+            callback: Called as ``callback(exc)``. ``exc`` is None when the
+                object is ready; otherwise an exception.
 
         Returns:
             A non-zero handle for ``cancel_wait_async``, or 0 if ``callback``
             already ran synchronously (validation error / immediate completion).
         """
         cdef:
-            c_vector[CObjectID] wait_ids
+            CObjectID wait_id
             uint64_t handle = 0
 
-        for ref_or_generator in object_refs_or_generators:
-            if isinstance(ref_or_generator, ObjectRef):
-                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
-            elif isinstance(ref_or_generator, ObjectRefGenerator):
-                wait_ids.push_back(
-                    CObjectID.FromBinary(
-                        ref_or_generator._get_next_object_id_binary()))
-            else:
-                raise TypeError(
-                    "wait_async() expected a list of ray.ObjectRef "
-                    "or ObjectRefGenerator, "
-                    f"got list containing {type(ref_or_generator)}"
-                )
+        if not isinstance(object_ref, ObjectRef):
+            raise TypeError(
+                f"wait_async() expected a ray.ObjectRef, got {type(object_ref)}"
+            )
+        wait_id = (<ObjectRef>object_ref).native()
 
-        # Keep the callback alive until the C++ side invokes it (or cancel).
-        # WaitAsync invokes the callback exactly once on every path (including
-        # sync validation / immediate completion); the callback's finally
-        # DECREFs. Do not DECREF again if WaitAsync returns or throws after
-        # that invocation — that would underflow the refcount.
+        # INCREF until the C++ callback's finally DECREFs. Do not DECREF on
+        # this return path — WaitAsync may already have invoked it.
         cpython.Py_INCREF(callback)
         with nogil:
             handle = CCoreWorkerProcess.GetCoreWorker().WaitAsync(
-                wait_ids,
-                num_returns,
-                timeout_ms,
+                wait_id,
                 wait_async_callback_impl,
                 <void*>callback,
             )
@@ -5500,51 +5476,22 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 
 cdef void wait_async_callback_impl(CRayStatus status,
-                                   const uint8_t *ready,
-                                   size_t n,
                                    void *user_callback_ptr) with gil:
     user_callback = <object>user_callback_ptr
     try:
         exc = None
-        ready_bits = None
-        # Translating the result must never cost us the callback invocation:
-        # the caller's waiter only ever unblocks from this call, so
-        # bailing out here would hang it forever. Report the failure through
-        # the callback instead of letting it escape.
-        try:
-            if not status.ok():
-                # Mirror check_status exception types without calling
-                # check_status (nogil raises across this C++ callback boundary
-                # are unsafe). Notably Status::Invalid falls through to
-                # RaySystemError there, not ValueError — keep the same here.
-                # Decode leniently; a malformed status message must not cost
-                # us the invocation either.
-                message = status.message().decode("utf-8", "replace")
-                if (status.IsInvalidArgument() or status.IsNotFound() or
-                        status.IsObjectNotFound() or
-                        status.IsObjectUnknownOwner()):
-                    exc = ValueError(message)
-                elif status.IsTimedOut():
-                    exc = GetTimeoutError(message)
-                elif status.IsObjectRefEndOfStream():
-                    exc = ObjectRefStreamEndOfStreamError(message)
-                elif status.IsIOError():
-                    exc = IOError(message)
-                else:
-                    # Includes Status::Invalid (duplicate ids, bad
-                    # num_objects) and Status::UnknownError (shutdown).
-                    exc = RaySystemError(message)
+        if not status.ok():
+            # Do not call check_status (unsafe across this C++ boundary).
+            # WaitAsync only produces ObjectUnknownOwner, Invalid (cancel),
+            # and UnknownError (shutdown). Invalid maps to RaySystemError,
+            # not ValueError.
+            message = status.message().decode("utf-8", "replace")
+            if status.IsObjectUnknownOwner():
+                exc = ValueError(message)
             else:
-                ready_bits = [ready[i] != 0 for i in range(n)]
-        except BaseException as translate_error:
-            logger.exception("failed to translate wait_async result")
-            exc = RaySystemError(
-                "failed to translate wait_async result: "
-                f"{translate_error!r}")
-            ready_bits = None
-        user_callback(exc, ready_bits)
+                exc = RaySystemError(message)
+        user_callback(exc)
     except BaseException:
-        # Must not skip DECREF or leave the awaiting future hung.
         logger.exception("failed to run wait_async callback (user func)")
     finally:
         cpython.Py_DECREF(user_callback)

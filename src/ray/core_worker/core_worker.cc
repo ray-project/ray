@@ -38,7 +38,6 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "ray/asio/asio_util.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -63,27 +62,17 @@ namespace ray::core {
 //
 // Lock order: wait_async_mu_ -> mu -> CoreWorkerMemoryStore::mu_. `mu` is
 // held across memory_store_->GetAsync() so that registering a callback and
-// recording its cancellation token cannot interleave with completion. The
-// reverse order must never happen; it does not today because the memory
-// store only ever *posts* its callbacks. `unregister` and
-// `cancel_pending_callbacks` are both invoked with `mu` released.
+// recording its cancellation token cannot interleave with completion.
+// `unregister` and `cancel_pending_callbacks` run with `mu` released.
 struct WaitAsyncState {
   uint64_t handle = 0;
-  // Unregisters this request from CoreWorker::wait_async_requests_. Must run
-  // before the user callback: the callback may DECREF a Python closure, and
-  // completing waits must not remain pinned in the map.
+  // Erase from wait_async_requests_. Run before the user callback.
   std::function<void(uint64_t)> unregister;
-  std::vector<bool> ready;
-  int num_objects = 0;
-  int num_ready = 0;
   bool done = false;
-  void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
+  void (*callback)(Status status, void *user) = nullptr;
   void *user = nullptr;
-  std::shared_ptr<boost::asio::deadline_timer> timer;
-  std::vector<std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>>
-      memory_callbacks;
-  // Runs after completion to unregister callback registrations that would otherwise wait
-  // forever for an object that never arrives. It is invoked without mu held.
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+  // Cancel queued GetAsync callbacks. Invoked without mu held.
   std::function<void()> cancel_pending_callbacks;
   absl::Mutex mu;
 };
@@ -621,28 +610,17 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
-  // Drop any still-registered WaitAsync state WITHOUT invoking callbacks.
-  //
-  // Do not call CancelAllWaitAsync() here. That is deliberate and load-bearing:
-  // this destructor can run from the std::atexit handler registered in
-  // core_worker_process.cc, which the C runtime runs after main() returns —
-  // i.e. after Py_Finalize(). The callback is a Python trampoline that does
-  // PyGILState_Ensure(), which is a fatal abort on a finalized interpreter.
-  // Graceful shutdown already ran CancelAllWaitAsync() while the interpreter
-  // was alive, so anything reaching here is a path Python can no longer
-  // observe; leaking the callback's Py_INCREF as the process exits is fine.
+  // Do not invoke WaitAsync callbacks: this can run after Py_Finalize().
+  // Graceful shutdown already cancelled pending waits. Leaking on process
+  // exit is fine.
   {
     absl::MutexLock lock(&wait_async_mu_);
     for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
          wait_async_requests_) {
       absl::MutexLock state_lock(&entry.second->mu);
-      // Setting done stops in-flight GetAsync / plasma callbacks from touching
+      // Setting done stops in-flight GetAsync callbacks from touching
       // `this` after the worker is gone.
       entry.second->done = true;
-      if (entry.second->timer) {
-        boost::system::error_code ec;
-        entry.second->timer->cancel(ec);
-      }
       entry.second->callback = nullptr;
       entry.second->user = nullptr;
       entry.second->unregister = nullptr;
@@ -1786,21 +1764,18 @@ namespace {
 
 /// Everything a completing WaitAsync request must act on outside ``state->mu``.
 struct WaitAsyncCompletion {
-  void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
+  void (*callback)(Status status, void *user) = nullptr;
   void *user = nullptr;
   uint64_t handle = 0;
   std::function<void(uint64_t)> unregister;
   std::function<void()> cancel_pending_callbacks;
-  std::vector<uint8_t> ready_bytes;
 };
 
 /**
  * Mark ``state`` done and take everything needed to complete it.
  *
  * The caller must hold ``state.mu`` and must have already checked
- * ``state.done``. Snapshotting the ready bits under the same lock that sets
- * ``done`` is what stops a concurrent marker from pushing the reported set
- * past ``num_objects``.
+ * ``state.done``.
  *
  * \param[in,out] state Wait state to complete. Callback fields are cleared.
  * \return The pieces to hand to RunWaitAsyncCompletion once the lock is
@@ -1808,19 +1783,6 @@ struct WaitAsyncCompletion {
  */
 WaitAsyncCompletion TakeWaitAsyncCompletion(WaitAsyncState &state) {
   state.done = true;
-  if (state.timer) {
-    boost::system::error_code ec;
-    state.timer->cancel(ec);
-    // Eager release. Not required -- the state -> timer -> handler -> state
-    // cycle already breaks when asio destroys the aborted handler -- but it
-    // frees the timer one hop sooner.
-    //
-    // This cannot drop the last reference to the state (which would destroy
-    // the mutex the caller holds): a pending handler owns `timer`, so the
-    // timer survives; an already-destroyed handler released its state
-    // reference then. Either way no handler is destroyed here.
-    state.timer.reset();
-  }
   WaitAsyncCompletion completion;
   completion.callback = state.callback;
   completion.user = state.user;
@@ -1829,10 +1791,6 @@ WaitAsyncCompletion TakeWaitAsyncCompletion(WaitAsyncState &state) {
   completion.cancel_pending_callbacks = std::move(state.cancel_pending_callbacks);
   state.callback = nullptr;
   state.user = nullptr;
-  completion.ready_bytes.resize(state.ready.size());
-  for (size_t i = 0; i < state.ready.size(); i++) {
-    completion.ready_bytes[i] = state.ready[i] ? 1 : 0;
-  }
   return completion;
 }
 
@@ -1843,9 +1801,7 @@ WaitAsyncCompletion TakeWaitAsyncCompletion(WaitAsyncState &state) {
  * \param[in] status Status passed to the user callback.
  */
 void RunWaitAsyncCompletion(WaitAsyncCompletion completion, Status status) {
-  // Unregister before invoking the callback so a Python DECREF cannot recycle
-  // an address into a live registry key (handle-based keys make this moot for
-  // CancelWaitAsync, but it still keeps the map from pinning completed waits).
+  // Unregister before the callback so completed waits do not stay in the map.
   if (completion.unregister) {
     completion.unregister(completion.handle);
   }
@@ -1853,10 +1809,7 @@ void RunWaitAsyncCompletion(WaitAsyncCompletion completion, Status status) {
     completion.cancel_pending_callbacks();
   }
   if (completion.callback != nullptr) {
-    completion.callback(std::move(status),
-                        completion.ready_bytes.data(),
-                        completion.ready_bytes.size(),
-                        completion.user);
+    completion.callback(std::move(status), completion.user);
   }
 }
 
@@ -1878,143 +1831,41 @@ void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status
   RunWaitAsyncCompletion(std::move(completion), std::move(status));
 }
 
-/**
- * Mark one object as ready for a WaitAsync request.
- *
- * Completes the request when ``num_objects`` objects are ready.
- *
- * \param[in] state Shared wait state for the request.
- * \param[in] index Index of the object within the wait request.
- */
-void MarkWaitAsyncReady(const std::shared_ptr<WaitAsyncState> &state, size_t index) {
-  WaitAsyncCompletion completion;
-  {
-    absl::MutexLock lock(&state->mu);
-    if (state->done || state->ready[index]) {
-      return;
-    }
-    state->ready[index] = true;
-    state->num_ready += 1;
-    if (state->num_ready < state->num_objects) {
-      return;
-    }
-    // Complete under the same lock that decided we reached num_objects.
-    completion = TakeWaitAsyncCompletion(*state);
-  }
-  RunWaitAsyncCompletion(std::move(completion), Status::OK());
-}
-
-/**
- * Invoke a WaitAsync callback immediately with an error status.
- *
- * Invoked synchronously on the calling thread (validation errors).
- *
- * \param[in] callback User callback to invoke.
- * \param[in] user Opaque pointer passed through to ``callback``.
- * \param[in] status Error status to report.
- * \param[in] n Length of the ready bit array (all zeros).
- */
-void InvokeWaitAsyncError(
-    void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
-    void *user,
-    Status status,
-    size_t n) {
-  std::vector<uint8_t> ready_bytes(n, 0);
-  callback(std::move(status), ready_bytes.data(), ready_bytes.size(), user);
-}
-
-bool IsWaitAsyncDone(const std::shared_ptr<WaitAsyncState> &state) {
-  absl::MutexLock lock(&state->mu);
-  return state->done;
-}
-
 }  // namespace
 
-uint64_t CoreWorker::WaitAsync(
-    const std::vector<ObjectID> &ids,
-    int num_objects,
-    int64_t timeout_ms,
-    void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
-    void *user) {
-  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
-    InvokeWaitAsyncError(
-        callback,
-        user,
-        Status::Invalid(
-            "Number of objects to wait for must be between 1 and the number of ids."),
-        ids.size());
+uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
+                               void (*callback)(Status status, void *user),
+                               void *user) {
+  rpc::Address owner_address;
+  Status owner_status = GetOwnerAddress(object_id, &owner_address);
+  if (!owner_status.ok()) {
+    callback(std::move(owner_status), user);
     return 0;
-  }
-
-  absl::flat_hash_set<ObjectID> unique_ids(ids.begin(), ids.end());
-  if (unique_ids.size() != ids.size()) {
-    InvokeWaitAsyncError(callback,
-                         user,
-                         Status::Invalid("Duplicate object IDs not supported in wait."),
-                         ids.size());
-    return 0;
-  }
-
-  size_t objs_without_owners = 0;
-  size_t objs_with_owners = 0;
-  std::ostringstream ids_stream;
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (!HasOwner(ids[i])) {
-      ids_stream << ids[i] << " ";
-      ++objs_without_owners;
-    } else {
-      ++objs_with_owners;
-    }
-    if (objs_with_owners == static_cast<size_t>(num_objects)) {
-      break;
-    }
-    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
-      std::ostringstream stream;
-      stream << "An application is trying to access a Ray object whose owner is unknown"
-             << "(" << ids_stream.str()
-             << "). "
-                "Please make sure that all Ray objects you are trying to access are part"
-                " of the current Ray session. Note that "
-                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-                " Ray does not know which task created them. "
-                "If this was not how your object ID was generated, please file an issue "
-                "at https://github.com/ray-project/ray/issues/";
-      InvokeWaitAsyncError(
-          callback, user, Status::ObjectUnknownOwner(stream.str()), ids.size());
-      return 0;
-    }
   }
 
   std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
-  state->ready.assign(ids.size(), false);
-  state->num_objects = num_objects;
   state->callback = callback;
   state->user = user;
   state->unregister = [this](uint64_t handle) {
     absl::MutexLock lock(&wait_async_mu_);
     wait_async_requests_.erase(handle);
   };
-  // Weak, not raw: this lambda is stored inside the state (a strong capture
-  // would cycle), but it also outlives the state's registry entry -- the
-  // completion path runs `unregister` first. Locking makes it a no-op rather
-  // than a dangling read if it ever runs after the state is gone.
+  // Weak capture to avoid a cycle with the state that stores this lambda.
   state->cancel_pending_callbacks =
-      [this, weak_state = std::weak_ptr<WaitAsyncState>(state)]() {
+      [this, weak_state = std::weak_ptr<WaitAsyncState>(state), object_id]() {
         std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
         if (wait_state == nullptr) {
           return;
         }
-        std::vector<std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>>
-            memory_callbacks;
+        CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = 0;
         {
           absl::MutexLock lock(&wait_state->mu);
-          memory_callbacks.swap(wait_state->memory_callbacks);
+          callback_id = wait_state->memory_callback_id;
+          wait_state->memory_callback_id = 0;
         }
         // Runs with state->mu released; see the lock-order note on WaitAsyncState.
-        for (const std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>
-                 &registration : memory_callbacks) {
-          memory_store_->CancelGetAsync(registration.first, registration.second);
+        if (callback_id != 0) {
+          memory_store_->CancelGetAsync(object_id, callback_id);
         }
       };
 
@@ -2031,75 +1882,37 @@ uint64_t CoreWorker::WaitAsync(
   }
 
   // In-process pre-pass only (GetIfExists). Do not call Contains() here — that
-  // is a blocking raylet IPC and would stall the caller's event loop when
-  // invoked from _wait_async.
-  for (size_t i = 0; i < ids.size(); i++) {
-    if (IsWaitAsyncDone(state)) {
-      break;
-    }
-    std::shared_ptr<RayObject> ray_object = memory_store_->GetIfExists(ids[i]);
-    if (ray_object == nullptr) {
-      continue;
-    }
-    // In-memory values and plasma markers both count as ready.
-    MarkWaitAsyncReady(state, i);
-  }
-  // Synchronous completion → return 0 (callback already ran; handle unregistered).
-  if (IsWaitAsyncDone(state)) {
-    return 0;
-  }
-
-  // timeout_ms == 0: report whatever the in-process pre-pass found. Sync Wait
-  // may start plasma pulls on a zero timeout; this API does not.
-  if (timeout_ms == 0) {
+  // is a blocking raylet IPC and would stall an async/event-loop caller.
+  // In-memory values and plasma markers both count as ready.
+  if (memory_store_->GetIfExists(object_id) != nullptr) {
     FinishWaitAsync(state, Status::OK());
     return 0;
   }
 
-  for (size_t i = 0; i < ids.size(); i++) {
-    const ObjectID object_id = ids[i];
-    std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
-        [weak_state = std::weak_ptr<WaitAsyncState>(state),
-         i](std::shared_ptr<RayObject>) {
-          std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
-          if (wait_state == nullptr) {
-            return;
-          }
-          // Memory values and plasma markers both mean the object exists.
-          MarkWaitAsyncReady(wait_state, i);
-        };
+  std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
+      [weak_state = std::weak_ptr<WaitAsyncState>(state)](std::shared_ptr<RayObject>) {
+        std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
+        if (wait_state == nullptr) {
+          return;
+        }
+        FinishWaitAsync(wait_state, Status::OK());
+      };
 
-    // Register and record the cancellation token under one acquisition of
-    // state->mu, so completion cannot slip between them and leave an orphan
-    // registration behind. GetAsync returns 0 when the object was already
-    // present: the callback is posted rather than queued, so there is nothing
-    // to cancel.
+  // Register and record the cancellation token under one acquisition of
+  // state->mu, so completion cannot slip between them and leave an orphan
+  // registration behind. GetAsync returns 0 when the object was already
+  // present: the callback is posted rather than queued, so there is nothing
+  // to cancel.
+  {
     absl::MutexLock lock(&state->mu);
     if (state->done) {
       return 0;
     }
-    if (state->ready[i]) {
-      continue;
-    }
     CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
         memory_store_->GetAsync(object_id, on_memory_object);
     if (callback_id != 0) {
-      state->memory_callbacks.emplace_back(object_id, callback_id);
+      state->memory_callback_id = callback_id;
     }
-  }
-
-  if (timeout_ms > 0) {
-    // Assign under mu so FinishWaitAsync cannot race with the shared_ptr write.
-    absl::MutexLock lock(&state->mu);
-    if (!state->done) {
-      state->timer = execute_after(
-          io_service_,
-          [state]() { FinishWaitAsync(state, Status::OK()); },
-          std::chrono::milliseconds(timeout_ms));
-    }
-  }
-  if (IsWaitAsyncDone(state)) {
-    return 0;
   }
   return handle;
 }
@@ -2118,7 +1931,8 @@ void CoreWorker::CancelWaitAsync(uint64_t handle) {
     }
     state = it->second;
   }
-  FinishWaitAsync(state, Status::OK());
+  // No Status::Cancelled; Invalid uniquely means this wait was cancelled.
+  FinishWaitAsync(state, Status::Invalid("WaitAsync cancelled"));
 }
 
 void CoreWorker::CancelAllWaitAsync() {

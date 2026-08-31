@@ -70,9 +70,9 @@ async def test_wait_for_object_ref_ready(monkeypatch):
     recorded_waits = []
 
     class FakeCoreWorker:
-        def wait_async(self, refs, num_returns, timeout_ms, callback):
-            recorded_waits.append((refs, num_returns, timeout_ms))
-            callback(None, [True])
+        def wait_async(self, ref, callback):
+            recorded_waits.append(ref)
+            callback(None)
             return 0
 
         def cancel_wait_async(self, handle):
@@ -84,7 +84,7 @@ async def test_wait_for_object_ref_ready(monkeypatch):
 
     obj_ref = object()
     await _wait_for_object_ref_ready(obj_ref)
-    assert recorded_waits == [([obj_ref], 1, -1)]
+    assert recorded_waits == [obj_ref]
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_wait_for_object_ref_ready_cancels_core_wait(monkeypatch):
     cancelled_handles = []
 
     class FakeCoreWorker:
-        def wait_async(self, refs, num_returns, timeout_ms, callback):
+        def wait_async(self, ref, callback):
             callbacks.append(callback)
             return 42
 
@@ -111,7 +111,7 @@ async def test_wait_for_object_ref_ready_cancels_core_wait(monkeypatch):
         await wait_task
 
     assert cancelled_handles == [42]
-    callbacks[0](None, [False])
+    callbacks[0](None)
 
 
 class FakeReplicaResult(ReplicaResult):

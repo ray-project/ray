@@ -29,61 +29,40 @@ from ray.serve.generated.serve_pb2 import ASGIResponse
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _consume_generator_refs_when_ready(
+def _consume_generator_ref_when_ready(
     obj_ref_gen: "ray.ObjectRefGenerator",
-    refs: list[ray.ObjectRef],
-    num_to_consume: int,
+    ref: ray.ObjectRef,
 ) -> int:
-    """Advance a peeked generator stream once ``refs`` are ready.
+    """Advance a peeked generator stream once ``ref`` is ready.
 
-    Uses ``wait_async`` so readiness does not pull or deserialize object
-    payloads. Registers a single completion that consumes
-    ``num_to_consume`` refs to avoid out-of-order partial consumes.
-
-    The wait_async callback closes over ``obj_ref_gen`` and is Py_INCREF'd by
-    the core worker until completion/cancel — that keeps
-    ``ObjectRefGenerator.__del__`` from destroying the stream before consume.
-    If peeked refs never materialize, this wait (and the generator) stay alive
-    until ``cancel_wait_async`` or process shutdown.
+    Uses ``wait_async`` so readiness does not pull or deserialize the
+    payload. The wait keeps the generator alive until consume or cancel.
 
     Args:
         obj_ref_gen: Generator whose stream cursor should be advanced.
-        refs: Peeked refs that must all become ready before consuming.
-        num_to_consume: Number of stream indices to consume once ready.
+        ref: Peeked ref that must become ready before consuming.
 
     Returns:
         Wait handle for ``cancel_wait_async`` (0 if already completed).
     """
 
-    def _on_complete(exc, ready_bits):
+    def _on_complete(exc):
         if exc is not None:
-            logger.error(
-                "wait_async failed while waiting to consume generator refs: %s", exc
+            logger.debug(
+                "wait_async failed while waiting to consume a generator ref: %s", exc
             )
             return
-        # Cancel/timeout can complete with partial ready bits. Only consume when
-        # every waited ref is ready; otherwise _consume_next_ref_n raises
-        # ValueError for unwritten indices. Stream teardown safety comes from
-        # the closure keeping obj_ref_gen alive (see docstring), not from this
-        # check — a destroyed stream would RAY_CHECK-abort, which is uncatchable.
-        if ready_bits is None or not all(ready_bits):
-            return
         try:
-            obj_ref_gen._consume_next_ref_n(num_to_consume)
+            obj_ref_gen._consume_next_ref_n(1)
         except ValueError:
             logger.exception(
                 "refusing to advance generator cursor after wait_async; "
-                "refs were not ready or the stream was already advanced"
+                "the ref was not ready or the stream was already advanced"
             )
         except Exception:
-            logger.exception("failed to consume generator refs after wait_async")
+            logger.exception("failed to consume generator ref after wait_async")
 
-    return get_core_worker().wait_async(
-        refs,
-        len(refs),
-        -1,  # timeout_ms: wait forever
-        _on_complete,
-    )
+    return get_core_worker().wait_async(ref, _on_complete)
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -160,39 +139,15 @@ class ActorReplicaResult(ReplicaResult):
         else:
             self._obj_ref = obj_ref_or_gen
 
-        # Peek generator refs without consuming so to_object_ref* can return
-        # immediately. For unary, advance the stream (backpressure) only after
-        # the peeked refs are ready, via wait_async so we do not pull or
-        # deserialize payloads just to move the cursor. For
-        # rejection+unary we wait for both refs then consume 2 once —
-        # independent per-ref consumes can race if reports are unordered.
-        # Streaming+rejection does not use wait_async: the router always
-        # awaits get_rejection_response() before iteration, and that method
-        # consumes index 0 after the peeked ref is ready. A background
-        # consume would race with __anext__ / to_object_ref_gen.
         if self._is_streaming:
-            if self._obj_ref_gen is None:
-                raise ValueError(
-                    "An ObjectRefGenerator must be passed for streaming requests."
-                )
+            assert (
+                self._obj_ref_gen is not None
+            ), "An ObjectRefGenerator must be passed for streaming requests."
 
-            if self._with_rejection:
-                [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
-        elif self._obj_ref_gen is not None:
-            obj_ref_gen = self._obj_ref_gen
-            if self._with_rejection:
-                rejection_ref, obj_ref = obj_ref_gen._get_next_ref_n(2)
-                self._rejection_response_ref = rejection_ref
-                self._obj_ref = obj_ref
-                self._consume_wait_handle = _consume_generator_refs_when_ready(
-                    obj_ref_gen, [rejection_ref, obj_ref], 2
-                )
-            else:
-                [obj_ref] = obj_ref_gen._get_next_ref_n(1)
-                self._obj_ref = obj_ref
-                self._consume_wait_handle = _consume_generator_refs_when_ready(
-                    obj_ref_gen, [obj_ref], 1
-                )
+        # Peek without consuming so to_object_ref* can return immediately.
+        # Unary without rejection is a plain ObjectRef, not a generator.
+        if self._with_rejection and self._obj_ref_gen is not None:
+            [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
 
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.cancel_on_parent_request_cancel:
@@ -230,11 +185,9 @@ class ActorReplicaResult(ReplicaResult):
     @_process_response
     async def get_rejection_response(self) -> Optional[ReplicaQueueLengthInfo]:
         """Get the queue length info from the replica to handle rejection."""
-        if not self._with_rejection or self._obj_ref_gen is None:
-            raise RuntimeError(
-                "get_rejection_response() can only be called when request "
-                "rejection is enabled."
-            )
+        assert (
+            self._with_rejection and self._obj_ref_gen is not None
+        ), "get_rejection_response() can only be called when request rejection is enabled."
 
         try:
             if self._rejection_response is None:
@@ -243,13 +196,24 @@ class ActorReplicaResult(ReplicaResult):
                         "Rejection-enabled ActorReplicaResult has no rejection ref."
                     )
                 response = await self._rejection_response_ref
-                # Unpickle into a local, consume, then publish. If loads
-                # fails, a retry must still see index 0. If consume fails,
-                # _rejection_response stays unset so a retry still consumes.
+                # Publish after consume. If either fails, retry still sees index 0.
                 rejection_response = pickle.loads(response)
-                if self._is_streaming:
-                    self._obj_ref_gen._consume_next_ref_n(1)
+                self._obj_ref_gen._consume_next_ref_n(1)
                 self._rejection_response = rejection_response
+
+            # Rejected unary never writes a user result; do not wait on it.
+            # Own guard so a failed peek/wait retries without re-consuming.
+            if (
+                self._rejection_response is not None
+                and not self._is_streaming
+                and self._rejection_response.accepted
+                and self._obj_ref is None
+            ):
+                [obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
+                self._obj_ref = obj_ref
+                self._consume_wait_handle = _consume_generator_ref_when_ready(
+                    self._obj_ref_gen, obj_ref
+                )
 
             return self._rejection_response
         except asyncio.CancelledError as e:
@@ -293,8 +257,6 @@ class ActorReplicaResult(ReplicaResult):
 
         # Streaming invariant (asserted in the constructor).
         assert self._obj_ref_gen is not None
-        # With rejection, get_rejection_response() consumes index 0 before
-        # returning. The router awaits that before returning the result.
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
@@ -306,7 +268,6 @@ class ActorReplicaResult(ReplicaResult):
 
         # Streaming invariant (asserted in the constructor).
         assert self._obj_ref_gen is not None
-        # See __next__: get_rejection_response() consumes the rejection ref.
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
@@ -330,13 +291,16 @@ class ActorReplicaResult(ReplicaResult):
     ) -> ray.ObjectRef:
         """Return the peeked unary ObjectRef.
 
-        ``timeout_s`` is accepted for API compatibility with callers that
-        previously blocked resolving the generator; the ref is available
-        immediately after construction so the timeout is unused.
+        ``timeout_s`` is unused. The ref is available after construction
+        (no rejection) or after ``get_rejection_response()`` (rejection).
         """
-        if self._is_streaming:
+        assert (
+            not self._is_streaming
+        ), "to_object_ref can only be called on a unary ReplicaActorResult."
+        if self._with_rejection and self._rejection_response is None:
             raise RuntimeError(
-                "to_object_ref can only be called on a unary ReplicaActorResult."
+                "get_rejection_response() must be awaited before "
+                "to_object_ref() when request rejection is enabled."
             )
         if self._obj_ref is None:
             raise RuntimeError("Unary ActorReplicaResult has no ObjectRef.")
@@ -344,9 +308,13 @@ class ActorReplicaResult(ReplicaResult):
         return self._obj_ref
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
-        if self._is_streaming:
+        assert (
+            not self._is_streaming
+        ), "to_object_ref_async can only be called on a unary ReplicaActorResult."
+        if self._with_rejection and self._rejection_response is None:
             raise RuntimeError(
-                "to_object_ref_async can only be called on a unary ReplicaActorResult."
+                "get_rejection_response() must be awaited before "
+                "to_object_ref_async() when request rejection is enabled."
             )
         if self._obj_ref is None:
             raise RuntimeError("Unary ActorReplicaResult has no ObjectRef.")
@@ -354,17 +322,13 @@ class ActorReplicaResult(ReplicaResult):
         return self._obj_ref
 
     def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
-        if not self._is_streaming:
-            raise RuntimeError(
-                "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
-            )
+        assert (
+            self._is_streaming
+        ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
         if self._obj_ref_gen is None:
             raise RuntimeError(
                 "Streaming ActorReplicaResult has no ObjectRefGenerator."
             )
-        # With rejection, index 0 is the system rejection payload.
-        # get_rejection_response() consumes it; iterating before that
-        # returns the rejection message as stream item 0.
         if self._with_rejection and self._rejection_response is None:
             raise RuntimeError(
                 "get_rejection_response() must be awaited before "

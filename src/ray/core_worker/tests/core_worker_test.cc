@@ -1741,14 +1741,12 @@ namespace {
 
 struct WaitAsyncCallbackResult {
   Status status = Status::OK();
-  std::vector<uint8_t> ready;
   int calls = 0;
 };
 
-void OnWaitAsyncDone(Status status, const uint8_t *ready, size_t n, void *user) {
+void OnWaitAsyncDone(Status status, void *user) {
   WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(user);
   result->status = std::move(status);
-  result->ready.assign(ready, ready + n);
   result->calls += 1;
 }
 
@@ -1776,59 +1774,13 @@ void DrainIoUntilWaitAsyncDone(instrumented_io_context &io_service,
 
 }  // namespace
 
-TEST_F(CoreWorkerTest, WaitAsyncInvalidNumObjects) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-
-  WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/0,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsInvalid());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 0);
-
-  result = WaitAsyncCallbackResult();
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/2,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsInvalid());
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncDuplicateObjectIds) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-
-  WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id, object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsInvalid());
-  ASSERT_EQ(result.ready.size(), 2);
-}
-
 TEST_F(CoreWorkerTest, WaitAsyncUnknownOwner) {
   ObjectID object_id = ObjectID::FromRandom();
 
   WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.IsObjectUnknownOwner());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 0);
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
@@ -1840,16 +1792,10 @@ TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
 
   WaitAsyncCallbackResult result;
   // Already-present memory objects complete in the synchronous pre-pass.
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/-1,
-                                            OnWaitAsyncDone,
-                                            &result);
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_EQ(handle, 0u);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 1);
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
@@ -1857,11 +1803,7 @@ TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
   WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_EQ(result.calls, 0);
   ASSERT_FALSE(io_service_.poll_one());
 
@@ -1872,10 +1814,9 @@ TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
 
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready[0], 1);
 }
 
-TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReadyWithoutFetchLocal) {
+TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReady) {
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
   memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
@@ -1883,89 +1824,10 @@ TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReadyWithoutFetchLocal) {
                      reference_counter_->HasReference(object_id));
 
   WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/-1,
-                                            OnWaitAsyncDone,
-                                            &result);
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_EQ(handle, 0u);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 1);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncNumObjects) {
-  std::vector<ObjectID> object_ids = {
-      ObjectID::FromRandom(), ObjectID::FromRandom(), ObjectID::FromRandom()};
-  for (const ObjectID &object_id : object_ids) {
-    AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-  }
-
-  WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync(object_ids,
-                          /*num_objects=*/2,
-                          /*timeout_ms=*/-1,
-                          OnWaitAsyncDone,
-                          &result);
-  ASSERT_EQ(result.calls, 0);
-
-  memory_store_->Put(*MakeRayObject("a", "m"),
-                     object_ids[0],
-                     reference_counter_->HasReference(object_ids[0]));
-  ASSERT_EQ(io_service_.run_one(), 1);
-  ASSERT_EQ(result.calls, 0);
-
-  memory_store_->Put(*MakeRayObject("b", "m"),
-                     object_ids[1],
-                     reference_counter_->HasReference(object_ids[1]));
-  DrainIoUntilWaitAsyncDone(io_service_, result);
-
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready.size(), 3);
-  ASSERT_EQ(result.ready[0], 1);
-  ASSERT_EQ(result.ready[1], 1);
-  ASSERT_EQ(result.ready[2], 0);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncTimeout) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-
-  WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/50,
-                          OnWaitAsyncDone,
-                          &result);
-  DrainIoUntilWaitAsyncDone(io_service_, result);
-
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 0);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncTimeoutZeroReportsAlreadyReady) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-  memory_store_->Put(*MakeRayObject("data", "meta"),
-                     object_id,
-                     reference_counter_->HasReference(object_id));
-
-  WaitAsyncCallbackResult result;
-  // Pre-pass completes synchronously; return 0 (no cancellable handle).
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/0,
-                                            OnWaitAsyncDone,
-                                            &result);
-  ASSERT_EQ(handle, 0u);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 1);
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCancel) {
@@ -1973,18 +1835,13 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
   WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/-1,
-                                            OnWaitAsyncDone,
-                                            &result);
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_NE(handle, 0u);
   ASSERT_EQ(result.calls, 0);
 
   core_worker_->CancelWaitAsync(handle);
   ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.ok());
-  ASSERT_EQ(result.ready[0], 0);
+  ASSERT_TRUE(result.status.IsInvalid());
 
   // Second cancel is a no-op.
   core_worker_->CancelWaitAsync(handle);
@@ -1995,14 +1852,10 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   memory_store_->Put(*MakeRayObject("data", "meta"),
                      object_id,
                      reference_counter_->HasReference(object_id));
-  uint64_t handle2 = core_worker_->WaitAsync({object_id},
-                                             /*num_objects=*/1,
-                                             /*timeout_ms=*/0,
-                                             OnWaitAsyncDone,
-                                             &result2);
+  uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
   ASSERT_EQ(handle2, 0u);
   ASSERT_EQ(result2.calls, 1);
-  ASSERT_EQ(result2.ready[0], 1);
+  ASSERT_TRUE(result2.status.ok());
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
@@ -2010,19 +1863,13 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
   WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/-1,
-                                            OnWaitAsyncDone,
-                                            &result);
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_NE(handle, 0u);
   ASSERT_EQ(result.calls, 0);
 
   core_worker_->CancelAllWaitAsync();
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.IsUnknownError());
-  ASSERT_EQ(result.ready.size(), 1);
-  ASSERT_EQ(result.ready[0], 0);
 
   // Second shutdown is a no-op (callback already ran; map is empty).
   core_worker_->CancelAllWaitAsync();
@@ -2033,14 +1880,10 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   memory_store_->Put(*MakeRayObject("data", "meta"),
                      object_id,
                      reference_counter_->HasReference(object_id));
-  uint64_t handle2 = core_worker_->WaitAsync({object_id},
-                                             /*num_objects=*/1,
-                                             /*timeout_ms=*/0,
-                                             OnWaitAsyncDone,
-                                             &result2);
+  uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
   ASSERT_EQ(handle2, 0u);
   ASSERT_EQ(result2.calls, 1);
-  ASSERT_EQ(result2.ready[0], 1);
+  ASSERT_TRUE(result2.status.ok());
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
@@ -2051,11 +1894,7 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
   WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync({object_id},
-                                            /*num_objects=*/1,
-                                            /*timeout_ms=*/-1,
-                                            OnWaitAsyncDone,
-                                            &result);
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_NE(handle, 0u);
   {
     absl::MutexLock lock(&memory_store_->mu_);
@@ -2073,30 +1912,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   memory_store_->Put(*MakeRayObject("data", "meta"),
                      object_id,
                      reference_counter_->HasReference(object_id));
-  while (io_service_.poll_one() > 0) {
-  }
-  ASSERT_EQ(result.calls, 1);
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
-  ObjectID object_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
-
-  WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/50,
-                          OnWaitAsyncDone,
-                          &result);
-  DrainIoUntilWaitAsyncDone(io_service_, result);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_EQ(result.ready[0], 0);
-
-  memory_store_->Put(*MakeRayObject("data", "meta"),
-                     object_id,
-                     reference_counter_->HasReference(object_id));
-  // The GetAsync callback may still run after timeout, but must not re-invoke the user
-  // callback.
   while (io_service_.poll_one() > 0) {
   }
   ASSERT_EQ(result.calls, 1);

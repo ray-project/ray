@@ -796,7 +796,7 @@ async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
     loop = asyncio.get_running_loop()
     future = loop.create_future()
 
-    def _on_complete(exc, _ready_bits):
+    def _on_complete(exc):
         if future.done():
             return
 
@@ -811,7 +811,7 @@ async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
         loop.call_soon_threadsafe(_set_result)
 
     core_worker = get_core_worker()
-    handle = core_worker.wait_async([obj_ref], 1, -1, _on_complete)
+    handle = core_worker.wait_async(obj_ref, _on_complete)
     try:
         await future
     except asyncio.CancelledError:
@@ -834,7 +834,7 @@ async def deployment_response_to_object_ref(deployment_response: Any) -> ray.Obj
         The underlying ObjectRef after its value is ready in the cluster.
     """
     obj_ref = await deployment_response._to_object_ref()
-    # fetch_local=False: forward by reference; downstream fetches the value.
+    # Do not fetch: forward by reference; downstream pulls the value.
     await _wait_for_object_ref_ready(obj_ref)
     return obj_ref
 
