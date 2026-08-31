@@ -14,9 +14,6 @@ import ray
 from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
     FooterFileIndexer,
 )
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
@@ -126,22 +123,6 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
-
-
-def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-
-    restore_ctx.use_datasource_v2 = True
-    original = restore_ctx.read_op_min_num_blocks
-    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
-
-    # The override should drive the ListFiles partitioner's bucket count
-    # for this read only — the global DataContext must not be mutated.
-    list_files_op = ds._logical_plan.dag.input_dependencies[0]
-    assert isinstance(list_files_op, ListFiles)
-    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
-    assert list_files_op.file_partitioner.num_buckets == 7
-    assert restore_ctx.read_op_min_num_blocks == original
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -317,9 +298,7 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
-def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(
-    tmp_path, restore_ctx, monkeypatch
-):
+def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_ctx):
     """With the footer indexer on, ``ListFiles`` pairs it with the bin packer.
 
     The packer sizes read units from footer stats, so ``override_num_blocks``
@@ -331,7 +310,6 @@ def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(
     )
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
 
     restore_ctx.use_datasource_v2 = True
     original = restore_ctx.read_op_min_num_blocks
@@ -381,7 +359,7 @@ def _walk(op):
         yield from _walk(child)
 
 
-def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypatch):
+def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     """``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
@@ -395,7 +373,6 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypat
     )
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -420,10 +397,7 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypat
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )
-def test_count_pushdown_preserves_list_files_fields(
-    tmp_path, restore_ctx, read_kwargs, monkeypatch
-):
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_kwargs):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -442,13 +416,10 @@ def test_count_pushdown_preserves_list_files_fields(
 
 
 @pytest.mark.parametrize("case", ["predicate", "limit"])
-def test_count_pushdown_declines_row_reducing_reads(
-    tmp_path, restore_ctx, case, monkeypatch
-):
+def test_count_pushdown_declines_row_reducing_reads(tmp_path, restore_ctx, case):
     """A row-reducing pushdown makes footer ``num_rows`` an overcount."""
     from ray.data.expressions import col
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -464,7 +435,7 @@ def test_count_pushdown_declines_row_reducing_reads(
     ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
 )
 def test_count_matches_rows(
-    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size, monkeypatch
+    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
 ):
     """End-to-end count correctness, including multi-row-group files.
 
@@ -472,7 +443,6 @@ def test_count_matches_rows(
     row per row-group run, so a multi-row-group file would otherwise be counted
     once per run.
     """
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write_row_groups(
         tmp_path,
         num_files=num_files,
@@ -485,10 +455,9 @@ def test_count_matches_rows(
     assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
 
 
-def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx, monkeypatch):
+def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     """The rebuilt indexer must keep ``skip_paths``, or the skipped file's rows
     are counted even though reading the dataset excludes them."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     a = tmp_path / "a.parquet"
     b = tmp_path / "b.parquet"
     _write(a, pa.table({"a": [1, 2]}))
@@ -500,12 +469,9 @@ def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx, monkeypatch):
     assert ds.count() == 2
 
 
-def test_count_pushdown_skip_paths_tolerates_missing_path(
-    tmp_path, restore_ctx, monkeypatch
-):
+def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx):
     """``skip_paths`` drops a named path before the existence check, so a
     skipped-but-missing path must not fail a pushed-down ``count()``."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     a = tmp_path / "a.parquet"
     _write(a, pa.table({"a": [1, 2]}))
     missing = str(tmp_path / "gone.parquet")

@@ -17,7 +17,6 @@ from ray.data._internal.datasource.parquet_datasource import (
     _row_group_uncompressed_size,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _fragments_from_chunk_metadata,
     _fragments_from_row_group_ids,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -368,18 +367,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 fragments.append((fragment, 0))
-            elif "row_group_ids" in chunk_metadata:
+            else:
                 fragments.extend(
                     _fragments_from_row_group_ids(
                         fragment,
                         chunk_metadata["row_group_ids"],
                         per_row_group_offsets=self._include_row_hash,
                     )
-                )
-            else:
-                # Size-based ``ParquetFileChunkMetadata`` from the blind chunker.
-                fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
                 )
         return fragments
 
