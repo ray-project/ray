@@ -22,6 +22,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.block import BlockAccessor
+from ray.data.datatype import DataType
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -1446,16 +1447,16 @@ def _is_series_composed_of_lists(series: pd.Series) -> bool:
     # An Arrow-backed column states its element type in its dtype, so it can be
     # recognised without inspecting a value. The `is_object_dtype` check below
     # is False for such a column -- its dtype is `list<item: string>[pyarrow]`,
-    # not `object` -- so without this branch a list column would be treated as
+    # not `object` -- so without this check a list column would be treated as
     # scalar. That sends it to `value_counts`, which has no pyarrow kernel for
     # list types and raises `ArrowNotImplementedError`.
-    if isinstance(series.dtype, pd.ArrowDtype):
-        arrow_type = series.dtype.pyarrow_dtype
-        return (
-            pa.types.is_list(arrow_type)
-            or pa.types.is_large_list(arrow_type)
-            or pa.types.is_fixed_size_list(arrow_type)
-        )
+    #
+    # `from_dtype` returns None for a dtype it cannot model and `is_list_type`
+    # is False for a NumPy-backed one, so an object column of lists still falls
+    # through to the check below.
+    dtype = DataType.from_dtype(series.dtype)
+    if dtype is not None and dtype.is_list_type():
+        return True
 
     # we assume that all elements are a list here
     first_not_none_element = next(
