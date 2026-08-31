@@ -44,7 +44,6 @@ THIRD_PARTY_MOCK_MODULES = [
     "lightgbm_ray",
     "mlflow",
     "nevergrad",
-    "pandas",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
