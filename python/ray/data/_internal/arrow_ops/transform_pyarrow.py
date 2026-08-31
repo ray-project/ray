@@ -266,8 +266,8 @@ def take_table(
     """Select rows from the table.
 
     This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. This is exposed as a static method for easier use on
-    intermediate tables, not underlying an ArrowBlockAccessor.
+    extension arrays. Keeping the operation at table level also allows callers
+    to use it on intermediate tables without constructing an ArrowBlockAccessor.
 
     When the operational fast path is enabled and an eligible multi-chunk
     tensor column is present, indices are normalized and validated once before

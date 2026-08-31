@@ -20,9 +20,9 @@ import time
 import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.arrow_ops.transform_pyarrow import take_table
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data.extensions import take_table
 
 
 def _tensor_array(tensor_type, values):

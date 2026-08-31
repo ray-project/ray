@@ -10,7 +10,6 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _try_normalize_take_indices,
     hash_partition,
-    take_table,
 )
 from ray.data._internal.batcher import (
     ShufflingBatcher,
@@ -28,6 +27,7 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     try_prepare_chunked_tensor_take,
     try_take_chunked_tensor,
 )
+from ray.data.extensions import take_table
 
 
 def _tensor_array(tensor_type, values):

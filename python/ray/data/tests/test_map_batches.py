@@ -18,6 +18,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
+from ray.data.extensions import take_table
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -134,6 +135,20 @@ def test_map_batches_basic(
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow"
         ).take()
+
+
+def test_map_batches_can_use_public_take_table(ray_start_regular_shared):
+    def reverse_batch(table: pa.Table) -> pa.Table:
+        indices = np.arange(table.num_rows - 1, -1, -1, dtype=np.int64)
+        return take_table(table, indices)
+
+    result = (
+        ray.data.range(6, override_num_blocks=1)
+        .map_batches(reverse_batch, batch_size=None, batch_format="pyarrow")
+        .take_all()
+    )
+
+    assert [row["id"] for row in result] == [5, 4, 3, 2, 1, 0]
 
 
 def test_map_batches_extra_args(
