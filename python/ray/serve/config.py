@@ -962,11 +962,17 @@ class gRPCOptions(BaseModel):
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
         request_timeout_s: End-to-end timeout for gRPC requests.
+        enable_reflection (bool):
+            Enable the gRPC server reflection protocol on Serve's gRPC proxy so
+            tools such as grpcurl and grpcui can discover and call the registered
+            gRPC services. Requires the `grpcio-reflection` package to be
+            installed. Default to False.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
     request_timeout_s: Optional[float] = None
+    enable_reflection: bool = False
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

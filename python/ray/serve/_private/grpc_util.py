@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Set, Tuple
 from unittest.mock import Mock
 
 import grpc
@@ -20,6 +20,7 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     gRPCStatusError,
 )
+from ray.serve.generated.serve_pb2 import DESCRIPTOR as SERVE_DESCRIPTOR
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 
 # Maximum length for gRPC status details to avoid hitting HTTP/2 trailer limits.
@@ -52,13 +53,26 @@ class gRPCGenericServer(Server):
         )
         self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
         self.service_handler_factory = service_handler_factory
+        self._passthrough_service_names: Set[str] = set()
+
+    def add_passthrough_service(self, service_name: str):
+        """Mark a service whose handlers should execute on this server directly.
+
+        Handlers for a passthrough service (e.g., gRPC server reflection) are
+        registered unmodified instead of being overridden to route to replicas.
+        NOTE: passthrough handlers bypass the service handler factory, so any
+        logic implemented inside the factory (e.g., auth) does not apply to
+        them; server interceptors would.
+        """
+        self._passthrough_service_names.add(service_name)
 
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
     ):
         """Override generic_rpc_handlers before adding to the gRPC server.
 
-        This function will override all user defined handlers to have
+        Handlers for passthrough services are added unmodified. All other
+        handlers are overridden to have
             1. None `response_serializer` so the server can pass back the
             raw protobuf bytes to the user.
             2. `unary_unary` is always calling the unary function generated via
@@ -68,32 +82,79 @@ class gRPCGenericServer(Server):
             4. `stream_unary` for client streaming requests
             5. `stream_stream` for bidirectional streaming requests
         """
-        serve_rpc_handlers = {}
         rpc_handler = generic_rpc_handlers[0]
-        for service_method, method_handler in rpc_handler._method_handlers.items():
-            serve_method_handler = method_handler._replace(
-                response_serializer=None,
-                unary_unary=self.service_handler_factory(
-                    service_method=service_method,
-                    streaming_type=gRPCStreamingType.UNARY_UNARY,
-                ),
-                unary_stream=self.service_handler_factory(
-                    service_method=service_method,
-                    streaming_type=gRPCStreamingType.UNARY_STREAM,
-                ),
-                stream_unary=self.service_handler_factory(
-                    service_method=service_method,
-                    streaming_type=gRPCStreamingType.STREAM_UNARY,
-                ),
-                stream_stream=self.service_handler_factory(
-                    service_method=service_method,
-                    streaming_type=gRPCStreamingType.STREAM_STREAM,
-                ),
-            )
-            serve_rpc_handlers[service_method] = serve_method_handler
-        generic_rpc_handlers[0]._method_handlers = serve_rpc_handlers
+        if not self._passthrough_service_names.intersection(
+            get_service_names([generic_rpc_handlers])
+        ):
+            serve_rpc_handlers = {}
+            for service_method, method_handler in rpc_handler._method_handlers.items():
+                serve_method_handler = method_handler._replace(
+                    response_serializer=None,
+                    unary_unary=self.service_handler_factory(
+                        service_method=service_method,
+                        streaming_type=gRPCStreamingType.UNARY_UNARY,
+                    ),
+                    unary_stream=self.service_handler_factory(
+                        service_method=service_method,
+                        streaming_type=gRPCStreamingType.UNARY_STREAM,
+                    ),
+                    stream_unary=self.service_handler_factory(
+                        service_method=service_method,
+                        streaming_type=gRPCStreamingType.STREAM_UNARY,
+                    ),
+                    stream_stream=self.service_handler_factory(
+                        service_method=service_method,
+                        streaming_type=gRPCStreamingType.STREAM_STREAM,
+                    ),
+                )
+                serve_rpc_handlers[service_method] = serve_method_handler
+            rpc_handler._method_handlers = serve_rpc_handlers
         self.generic_rpc_handlers.append(generic_rpc_handlers)
         super().add_generic_rpc_handlers(generic_rpc_handlers)
+
+
+def get_service_names(
+    generic_rpc_handlers: Sequence[Sequence[grpc.GenericRpcHandler]],
+) -> Set[str]:
+    """Get fully qualified service names from registered method handlers.
+
+    Method handler keys are of the form "/pkg.Service/Method".
+    """
+    return {
+        service_method.split("/")[1]
+        for rpc_handlers in generic_rpc_handlers
+        for service_method in rpc_handlers[0]._method_handlers
+    }
+
+
+def enable_server_reflection(server: gRPCGenericServer):
+    """Enable the gRPC server reflection protocol on the server.
+
+    The reflection service is registered as a passthrough service so it
+    executes on the server itself instead of being routed to replicas.
+    """
+    try:
+        from grpc_reflection.v1alpha import reflection
+    except ImportError:
+        raise ImportError(
+            "`enable_reflection` is set in gRPC options, but the "
+            "`grpcio-reflection` package is not installed. Install it with "
+            "`pip install grpcio-reflection`, matching the installed "
+            "`grpcio` version."
+        ) from None
+
+    service_names = get_service_names(server.generic_rpc_handlers)
+    # Advertise only user-defined services, not Serve's built-in API service.
+    service_names.discard(
+        SERVE_DESCRIPTOR.services_by_name["RayServeAPIService"].full_name
+    )
+    advertised_service_names = sorted(service_names) + [reflection.SERVICE_NAME]
+    server.add_passthrough_service(reflection.SERVICE_NAME)
+    reflection.enable_server_reflection(advertised_service_names, server)
+    logger.info(
+        "Enabled gRPC server reflection. "
+        f"Advertised services: {advertised_service_names}"
+    )
 
 
 async def start_grpc_server(
@@ -124,6 +185,9 @@ async def start_grpc_server(
         add_RayServeAPIServiceServicer_to_server
     ] + grpc_options.grpc_servicer_func_callable:
         servicer_fn(mock_servicer, server)
+
+    if grpc_options.enable_reflection:
+        enable_server_reflection(server)
 
     await server.start()
     return event_loop.create_task(server.wait_for_termination()), server
