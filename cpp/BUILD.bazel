@@ -10,9 +10,7 @@ load("//bazel:ray.bzl", "COPTS")
 
 # These tests start their own cluster with `ray start --head` as a subprocess, so
 # the head and the driver only agree on a token when both read it from the
-# environment. Pin one: without it the head auto-enables token auth from whatever
-# ~/.ray/auth_token a concurrently running target happened to leave behind, and
-# the driver, which knows nothing about it, is rejected as unauthenticated.
+# environment.
 RAY_TOKEN_AUTH_TEST_ENV = {
     "RAY_AUTH_MODE": "token",
     "RAY_AUTH_TOKEN": "test_token_12345678901234567890123456789012",

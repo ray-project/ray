@@ -1617,19 +1617,13 @@ def clean_token_sources(cleanup_auth_token_env):
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_token_auth_state():
-    """Isolate token-authentication state across test sessions (bazel targets).
+    """Isolate token-auth state across bazel targets, which share HOME.
 
-    A local cluster enables token auth by default and writes a token to
-    ``~/.ray/auth_token``. Under ``bazel test`` HOME is unset, so every target
-    resolves the same home, and a token left by one target would enable auth on a
-    later target's cluster whose other processes can't authenticate.
-
-    Clear a leftover token once at session start so each target starts clean, and
-    restore the original at session end so a developer's existing
-    ``~/.ray/auth_token`` is never modified by a test run. This is session-scoped
-    on purpose: removing the token between tests would break module- or
-    session-scoped cluster fixtures that keep an authenticated cluster alive
-    across tests.
+    A default-on cluster writes ``~/.ray/auth_token``; with HOME shared, a token
+    from one target would enable auth on another whose processes can't
+    authenticate. Clear it at session start, restore it at end (never clobbering
+    a developer's token). Session-scoped: clearing mid-session would break
+    module/session-scoped cluster fixtures holding an authenticated cluster.
     """
     default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
     original_token = None
@@ -1641,10 +1635,8 @@ def _isolate_token_auth_state():
     try:
         yield
     finally:
-        # Turn auth off in this process before the token file changes underneath
-        # it. Ray threads that are still winding down (the GCS log subscriber,
-        # for one) reload the token on their next RPC, and fatally CHECK-fail
-        # when auth is still enabled and the token has gone.
+        # Turn auth off before the token file changes: a still-draining Ray
+        # thread reloads the token on its next RPC and CHECK-fails if it's gone.
         os.environ.pop("RAY_AUTH_MODE", None)
         reset_auth_token_state()
         if original_token is None:
@@ -1670,17 +1662,12 @@ def _token_auth_env_baseline():
 def _restore_token_auth_env(_token_auth_env_baseline):
     """Restore the auth env vars to the session baseline after each test.
 
-    A new local cluster started by ``ray.init`` enables token auth by default: it
-    sets ``RAY_AUTH_MODE=token`` in ``os.environ`` and writes ``~/.ray/auth_token``.
-    Left in place, they make later tests spawn auth-enabled clusters they don't
-    expect (dashboard HTTP without a token gets 401) or auto-enable auth from the
-    leftover token in ``ray start --head``.
-
-    Only clean up when no cluster is live (``ray.is_initialized()`` is False). A
-    module- or session-scoped cluster keeps Ray initialized across its tests and
-    its processes and subprocess drivers still need both the env var (to connect)
-    and the token file (their token value), so leave everything in place while it
-    runs and only reset between independent tests.
+    A default-on ``ray.init`` sets ``RAY_AUTH_MODE=token`` and writes
+    ``~/.ray/auth_token``; left in place they make later tests hit unexpected auth
+    (401s, or ``ray start --head`` auto-enabling auth). Skip cleanup while a
+    cluster is live (``ray.is_initialized()``): a module/session-scoped cluster's
+    processes still need the env var and token file, so only reset between
+    independent tests.
     """
     yield
     if ray.is_initialized():

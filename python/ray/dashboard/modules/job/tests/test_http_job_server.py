@@ -47,8 +47,6 @@ DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_s
 
 @pytest.fixture(scope="module")
 def headers():
-    # No Authorization header: the client attaches the cluster's real token when
-    # auth is on. A hard-coded placeholder would be rejected as invalid.
     return {"Connection": "keep-alive"}
 
 
@@ -644,8 +642,6 @@ def test_request_headers(job_sdk_client):
     from ray._raylet import AuthenticationTokenLoader
 
     client = job_sdk_client
-    # The client attaches the cluster's auth token on top of the caller's headers
-    # when auth is on, so expect both here.
     expected_headers = {"Connection": "keep-alive"}
     expected_headers.update(
         AuthenticationTokenLoader.instance().get_token_for_http_header(

@@ -77,12 +77,7 @@ def _auth_token_header():
 
 
 def request_with_auth_token(method, url, **kwargs):
-    """Like ``requests.request`` but attaches the cluster's auth token.
-
-    Test code that talks to the dashboard over raw HTTP must carry the token
-    when auth is on, or the request gets a 401. Nothing is added when no token
-    is available (auth disabled); an explicit ``Authorization`` header is kept.
-    """
+    """Like ``requests.request`` but attaches the cluster's auth token."""
     kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
     return requests.request(method, url, **kwargs)
 
@@ -93,12 +88,7 @@ def get_with_auth_token(url, **kwargs):
 
 
 def auth_token_grpc_metadata():
-    """gRPC metadata carrying the cluster's auth token, empty when there is none.
-
-    Test code that reaches a raylet or the GCS over a raw ``grpc`` channel has
-    no client interceptor, so it has to send the token itself or the call is
-    rejected as unauthenticated.
-    """
+    """gRPC metadata carrying the cluster's auth token, empty when there is none."""
     return tuple(_auth_token_header().items())
 
 

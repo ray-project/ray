@@ -40,8 +40,7 @@ def set_env_var(key: str, val: Optional[str] = None):
 
 
 # Fixed token so the `ray start --head` and `ray job submit` subprocesses share
-# the same credential. Set via env (not a file) so it takes precedence over any
-# token left in ~/.ray by an earlier test and keeps auth on for these tests.
+# the same credential.
 _TEST_AUTH_TOKEN = "test_token_12345678901234567890123456789012"
 
 

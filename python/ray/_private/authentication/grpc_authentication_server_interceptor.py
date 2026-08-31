@@ -93,10 +93,8 @@ def _wrap_sync_behavior(behavior):
 class _AuthenticatedHandler:
     """Wraps an ``RpcMethodHandler`` so every call authenticates first.
 
-    Lives at module level on purpose. gRPC calls ``intercept_service`` once per
-    RPC, so a class defined inside it would build a fresh type object per
-    request; a type is only reachable through a reference cycle, so refcounting
-    reclaims none of it and it accumulates until the cyclic collector runs.
+    Module level on purpose: ``intercept_service`` runs once per RPC, so a class
+    nested in it would leak a fresh type object per request until gc runs.
     """
 
     def __init__(self, original_handler, unary_wrapper_func, stream_wrapper_func):

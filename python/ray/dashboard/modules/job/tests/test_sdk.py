@@ -172,8 +172,6 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
     # We can't use a fixture with a shared Ray runtime because we need to set the
     # expiration_s env var before Ray starts.
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        # No Authorization header: the client attaches the cluster's real token
-        # when auth is on. A hard-coded placeholder would be rejected as invalid.
         headers = {"Connection": "keep-alive"}
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
@@ -359,9 +357,6 @@ async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
     from ray._raylet import AuthenticationTokenLoader
 
     dashboard_url = ray_start_regular.dashboard_url
-    # Use the cluster's real token so the connection check and job submission
-    # succeed under token auth; fall back to a placeholder when auth is off.
-    # Either way we assert the exact headers reach ws_connect.
     test_headers = AuthenticationTokenLoader.instance().get_token_for_http_header(
         ignore_auth_mode=True
     ) or {"Authorization": "Bearer test-token"}
