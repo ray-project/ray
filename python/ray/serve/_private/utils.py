@@ -22,7 +22,7 @@ import ray.util.serialization_addons
 from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.worker import _wait_async
+from ray._private.worker import get_core_worker
 from ray._raylet import MessagePackSerializer  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
@@ -791,6 +791,35 @@ async def await_deployment_response(deployment_response):
     return await deployment_response
 
 
+async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
+    """Wait for an ObjectRef without fetching or deserializing its value."""
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    def _on_complete(exc, _ready_bits):
+        if future.done():
+            return
+
+        def _set_result():
+            if future.done():
+                return
+            if exc is not None:
+                future.set_exception(exc)
+            else:
+                future.set_result(None)
+
+        loop.call_soon_threadsafe(_set_result)
+
+    core_worker = get_core_worker()
+    handle = core_worker.wait_async([obj_ref], 1, -1, _on_complete)
+    try:
+        await future
+    except asyncio.CancelledError:
+        if handle != 0:
+            core_worker.cancel_wait_async(handle)
+        raise
+
+
 async def deployment_response_to_object_ref(deployment_response: Any) -> ray.ObjectRef:
     """Convert a DeploymentResponse to an ObjectRef and wait until it is ready.
 
@@ -806,7 +835,7 @@ async def deployment_response_to_object_ref(deployment_response: Any) -> ray.Obj
     """
     obj_ref = await deployment_response._to_object_ref()
     # fetch_local=False: forward by reference; downstream fetches the value.
-    await _wait_async([obj_ref], fetch_local=False)
+    await _wait_for_object_ref_ready(obj_ref)
     return obj_ref
 
 

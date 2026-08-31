@@ -53,6 +53,7 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import (
     Semaphore,
+    _wait_for_object_ref_ready,
     decompress_metric_report,
     get_random_string,
 )
@@ -62,6 +63,55 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
+
+
+@pytest.mark.asyncio
+async def test_wait_for_object_ref_ready(monkeypatch):
+    recorded_waits = []
+
+    class FakeCoreWorker:
+        def wait_async(self, refs, num_returns, timeout_ms, callback):
+            recorded_waits.append((refs, num_returns, timeout_ms))
+            callback(None, [True])
+            return 0
+
+        def cancel_wait_async(self, handle):
+            raise AssertionError(f"unexpected cancellation: {handle}")
+
+    monkeypatch.setattr(
+        "ray.serve._private.utils.get_core_worker", lambda: FakeCoreWorker()
+    )
+
+    obj_ref = object()
+    await _wait_for_object_ref_ready(obj_ref)
+    assert recorded_waits == [([obj_ref], 1, -1)]
+
+
+@pytest.mark.asyncio
+async def test_wait_for_object_ref_ready_cancels_core_wait(monkeypatch):
+    callbacks = []
+    cancelled_handles = []
+
+    class FakeCoreWorker:
+        def wait_async(self, refs, num_returns, timeout_ms, callback):
+            callbacks.append(callback)
+            return 42
+
+        def cancel_wait_async(self, handle):
+            cancelled_handles.append(handle)
+
+    monkeypatch.setattr(
+        "ray.serve._private.utils.get_core_worker", lambda: FakeCoreWorker()
+    )
+
+    wait_task = asyncio.create_task(_wait_for_object_ref_ready(object()))
+    await asyncio.sleep(0)
+    wait_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await wait_task
+
+    assert cancelled_handles == [42]
+    callbacks[0](None, [False])
 
 
 class FakeReplicaResult(ReplicaResult):

@@ -2012,7 +2012,8 @@ uint64_t CoreWorker::WaitAsync(
           memory_callbacks.swap(wait_state->memory_callbacks);
         }
         // Runs with state->mu released; see the lock-order note on WaitAsyncState.
-        for (const auto &registration : memory_callbacks) {
+        for (const std::pair<ObjectID, CoreWorkerMemoryStore::AsyncGetCallbackId>
+                 &registration : memory_callbacks) {
           memory_store_->CancelGetAsync(registration.first, registration.second);
         }
       };
@@ -2031,7 +2032,7 @@ uint64_t CoreWorker::WaitAsync(
 
   // In-process pre-pass only (GetIfExists). Do not call Contains() here — that
   // is a blocking raylet IPC and would stall the caller's event loop when
-  // invoked from _wait_async. Plasma locality is resolved on io_service_.
+  // invoked from _wait_async.
   for (size_t i = 0; i < ids.size(); i++) {
     if (IsWaitAsyncDone(state)) {
       break;
@@ -2040,8 +2041,7 @@ uint64_t CoreWorker::WaitAsync(
     if (ray_object == nullptr) {
       continue;
     }
-    // In-memory values and plasma markers both mean the object exists in the
-    // cluster. WaitAsync does not pull plasma objects locally.
+    // In-memory values and plasma markers both count as ready.
     MarkWaitAsyncReady(state, i);
   }
   // Synchronous completion → return 0 (callback already ran; handle unregistered).
@@ -2058,15 +2058,16 @@ uint64_t CoreWorker::WaitAsync(
 
   for (size_t i = 0; i < ids.size(); i++) {
     const ObjectID object_id = ids[i];
-    const auto on_memory_object = [weak_state = std::weak_ptr<WaitAsyncState>(state),
-                                   i](std::shared_ptr<RayObject>) {
-      std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
-      if (wait_state == nullptr) {
-        return;
-      }
-      // Memory values and plasma markers both mean the object exists.
-      MarkWaitAsyncReady(wait_state, i);
-    };
+    std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
+        [weak_state = std::weak_ptr<WaitAsyncState>(state),
+         i](std::shared_ptr<RayObject>) {
+          std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
+          if (wait_state == nullptr) {
+            return;
+          }
+          // Memory values and plasma markers both mean the object exists.
+          MarkWaitAsyncReady(wait_state, i);
+        };
 
     // Register and record the cancellation token under one acquisition of
     // state->mu, so completion cannot slip between them and leave an orphan
@@ -2080,7 +2081,8 @@ uint64_t CoreWorker::WaitAsync(
     if (state->ready[i]) {
       continue;
     }
-    const auto callback_id = memory_store_->GetAsync(object_id, on_memory_object);
+    CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
+        memory_store_->GetAsync(object_id, on_memory_object);
     if (callback_id != 0) {
       state->memory_callbacks.emplace_back(object_id, callback_id);
     }
@@ -5183,7 +5185,8 @@ void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
     // immediately for an already-local object, so two subscriptions for one
     // object yield two notifications while the first drains every callback.
     const ObjectID object_id = ObjectID::FromBinary(request.object_id());
-    auto it = async_plasma_callbacks_.find(object_id);
+    absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>::iterator it =
+        async_plasma_callbacks_.find(object_id);
     if (it != async_plasma_callbacks_.end()) {
       callbacks = std::move(it->second);
       async_plasma_callbacks_.erase(it);

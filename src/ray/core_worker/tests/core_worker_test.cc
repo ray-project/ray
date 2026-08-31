@@ -119,7 +119,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
     local_raylet_client_ = fake_local_raylet_rpc_client;
 
-    fake_raylet_ipc_client_ = std::make_shared<ipc::FakeRayletIpcClient>();
+    auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
     auto worker_context = std::make_unique<WorkerContext>(
@@ -279,7 +279,7 @@ class CoreWorkerTest : public ::testing::Test {
         std::move(core_worker_server),
         std::move(rpc_address_),
         mock_gcs_client_,
-        fake_raylet_ipc_client_,
+        std::move(fake_raylet_ipc_client),
         std::move(fake_local_raylet_rpc_client),
         io_thread_,
         object_freed_callback_thread_,
@@ -335,7 +335,6 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ActorCreator> actor_creator_;
   std::shared_ptr<CoreWorker> core_worker_;
-  std::shared_ptr<ipc::FakeRayletIpcClient> fake_raylet_ipc_client_;
   ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
@@ -2109,11 +2108,11 @@ TEST_F(CoreWorkerTest, HandlePlasmaObjectReadyIgnoresDuplicateNotifications) {
   request.set_object_id(object_id.Binary());
   rpc::PlasmaObjectReadyReply reply;
   int reply_count = 0;
-  auto send_reply = [&reply_count](
-                        Status status, std::function<void()>, std::function<void()>) {
-    ASSERT_TRUE(status.ok());
-    ++reply_count;
-  };
+  rpc::SendReplyCallback send_reply =
+      [&reply_count](Status status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+        ++reply_count;
+      };
 
   // The raylet may emit a duplicate notification if an object becomes local
   // between the core worker's Contains() and SubscribePlasmaReady(). Both

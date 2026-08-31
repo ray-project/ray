@@ -5508,7 +5508,7 @@ cdef void wait_async_callback_impl(CRayStatus status,
         exc = None
         ready_bits = None
         # Translating the result must never cost us the callback invocation:
-        # the waiter in _wait_async only ever unblocks from this call, so
+        # the caller's waiter only ever unblocks from this call, so
         # bailing out here would hang it forever. Report the failure through
         # the callback instead of letting it escape.
         try:
