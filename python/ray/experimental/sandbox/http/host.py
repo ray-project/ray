@@ -42,8 +42,10 @@ import urllib.request
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal.idmap import SINGLE_UID_ENV
 from ray.experimental.sandbox.exceptions import SandboxError, SandboxTimeoutError
 from ray.experimental.sandbox.http.schemas import DOCKER_DEFAULT_CAPABILITIES
 from ray.util.annotations import DeveloperAPI
@@ -133,6 +135,60 @@ def _ensure_pasta_installed() -> None:
         os.replace(tmp_path, pasta_path)
     if shared_bin not in os.environ.get("PATH", "").split(os.pathsep):
         os.environ["PATH"] = f"{shared_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+def _ensure_idmap() -> None:
+    """Best-effort /etc/subuid + /etc/subgid entries for multi-uid sandboxes.
+
+    network="public" sandboxes map a subordinate id range into their user
+    namespace so in-sandbox files can be owned by distinct uids. The setuid
+    newuidmap/newgidmap helpers come from the uidmap package, which cannot
+    be installed at boot — warn only. Missing subid entries are appended via
+    passwordless sudo (standard on Anyscale node images), including the
+    own-id insurance line older shadow versions require for the root
+    mapping. Every failure is a warning: detect_idmap() falls back to
+    single-uid namespaces.
+    """
+    if sys.platform != "linux" or os.environ.get(SINGLE_UID_ENV) == "1":
+        return
+    missing = [b for b in ("newuidmap", "newgidmap") if not shutil.which(b)]
+    if missing:
+        logger.warning(
+            "%s not found; multi-uid sandbox user namespaces are disabled "
+            "(install the uidmap package on the node image).",
+            ", ".join(missing),
+        )
+        return
+    try:
+        import pwd
+
+        user = pwd.getpwuid(os.geteuid()).pw_name
+    except (KeyError, OSError):
+        user = str(os.geteuid())
+    for path, own_id in (("/etc/subuid", os.geteuid()), ("/etc/subgid", os.getegid())):
+        try:
+            content = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            content = ""
+        if any(
+            line.split(":")[0] in (user, str(own_id))
+            for line in content.splitlines()
+            if line.strip()
+        ):
+            continue
+        entries = f"{user}:{own_id}:1\\n{user}:100000:65536\\n"
+        res = subprocess.run(
+            ["sudo", "-n", "sh", "-c", f"printf '{entries}' >> {path}"],
+            capture_output=True,
+        )
+        if res.returncode != 0:
+            logger.warning(
+                "Could not append subordinate id entries to %s (%s); "
+                "multi-uid sandbox user namespaces are disabled.",
+                path,
+                res.stderr.decode(errors="replace").strip(),
+            )
+            return
 
 
 def _ensure_tun_device() -> None:
@@ -262,6 +318,7 @@ class SandboxHost:
                 await asyncio.to_thread(_ensure_pasta_installed)
             if self._spec.get("network") == "public":
                 await asyncio.to_thread(_ensure_tun_device)
+                await asyncio.to_thread(_ensure_idmap)
             factory = self._runtime_factory
             if factory is None:
                 from ray.experimental.sandbox.runtime import SandboxRuntime

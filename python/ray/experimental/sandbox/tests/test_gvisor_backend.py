@@ -360,6 +360,64 @@ def test_build_run_command_public_wraps_with_pasta(monkeypatch):
     assert script.endswith("run --bundle /tmp/rd sb-1")
 
 
+def test_build_run_command_public_multiuid_script(monkeypatch):
+    """With an IdMap, the holder is mapped via newuidmap/newgidmap.
+
+    Pin the whole chain: unmapped holder (no --map-root-user), both map
+    lines with the exact ranges (container root onto the worker's ids,
+    1..count onto the subordinate range), maps written before pasta
+    attaches, runsc still entered as mapped root without --rootless.
+    """
+    from ray.experimental.sandbox._internal.idmap import IdMap
+
+    monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(image="busybox:latest", network="public")
+    idmap = IdMap(
+        euid=1000,
+        egid=1001,
+        subuid_base=100000,
+        subuid_count=65536,
+        subgid_base=200000,
+        subgid_count=65536,
+    )
+    cmd = backend._build_run_command(
+        cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1", idmap=idmap
+    )
+
+    assert cmd[:2] == ["bash", "-c"]
+    script = cmd[2]
+    assert script.startswith("unshare --user --net --fork --kill-child ")
+    assert "--map-root-user" not in script
+    assert (
+        "newuidmap $NSPID 0 1000 1 1 100000 65536 && "
+        "newgidmap $NSPID 0 1001 1 1 200000 65536 && "
+        "pasta " in script
+    )
+    assert "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc" in script
+    assert "--rootless" not in script
+    assert script.endswith("run --bundle /tmp/rd sb-1")
+
+    # On nodes whose setuid helpers don't elevate, the maps are written
+    # directly as root instead.
+    from dataclasses import replace
+
+    cmd = backend._build_run_command(
+        cfg,
+        "/tmp/rd",
+        "/tmp/rd/overlay",
+        "sb-1",
+        idmap=replace(idmap, sudo_mapfile=True),
+    )
+    assert (
+        'sudo -n sh -c "'
+        "printf '0 1000 1\n1 100000 65536\n' > /proc/$NSPID/uid_map"
+        " && printf '0 1001 1\n1 200000 65536\n' > /proc/$NSPID/gid_map"
+        '" && ' in cmd[2]
+    )
+    assert "newuidmap" not in cmd[2]
+
+
 def test_build_run_command_other_modes_unwrapped(monkeypatch):
     """Modes other than "public" keep today's bare runsc invocation."""
     monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
@@ -506,8 +564,201 @@ def test_netns_teardown_reaps_pasta(ensure_pasta):
     assert sb not in backend._sandbox_metadata
 
 
+def test_multiuid_runtime_chown(ensure_pasta, ensure_idmap_node):
+    """With a mapped subordinate range, in-sandbox chown to arbitrary uids
+    works — on the overlay rootfs, and host-visibly on a workdir bind."""
+    from ray.experimental.sandbox.config import DOCKER_DEFAULT_CAPABILITIES
+
+    idmap = ensure_idmap_node
+    backend = GVisorSandboxBackend()
+
+    # Overlay rootfs path (readonly=False) plus /tmp control.
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            readonly=False,
+            capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
+        )
+    )
+    try:
+        res = backend.exec_command(
+            sb,
+            "touch /probe && chown 38:38 /probe && stat -c %u:%g /probe && "
+            "touch /tmp/probe && chown 101:104 /tmp/probe && "
+            "stat -c %u:%g /tmp/probe",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == ["38:38", "101:104"]
+    finally:
+        backend.delete_sandbox(sb)
+
+    # Workdir bind: the chown must materialize host-side at the subordinate
+    # ids (the overlay upper is a sentry filestore, so the bind is the only
+    # host-visible surface).
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            workdir="/data",
+            capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
+        )
+    )
+    try:
+        meta = backend._sandbox_metadata[sb]
+        res = backend.exec_command(
+            sb,
+            "touch /data/f && chown 101:104 /data/f && stat -c %u:%g /data/f",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.strip() == "101:104"
+        host_stat = os.stat(os.path.join(meta["workdir"], "f"))
+        assert host_stat.st_uid == idmap.subuid_base + 100
+        assert host_stat.st_gid == idmap.subgid_base + 103
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def _owned_busybox_tar(tar_path: str) -> None:
+    """A busybox-based local image tar shipping baked non-root ownership,
+    modeled on the mailman image (0700 uid=101 spool, 02710 setgid dir)."""
+    import io
+    import tarfile
+
+    from ray.experimental.sandbox.image_manager import ImageManager
+
+    busybox_rootfs = os.path.join(ImageManager().pull_image("busybox:latest"), "rootfs")
+
+    def _as_root(ti):
+        ti.uid = ti.gid = 0
+        ti.uname = ti.gname = ""
+        return ti
+
+    with tarfile.open(tar_path, "w") as tar:
+        tar.add(busybox_rootfs, arcname=".", filter=_as_root)
+        spool = tarfile.TarInfo("./var/spool/testq")
+        spool.type = tarfile.DIRTYPE
+        spool.uid, spool.gid, spool.mode = 101, 0, 0o700
+        tar.addfile(spool)
+        inner = tarfile.TarInfo("./var/spool/testq/inner.txt")
+        data = b"queued\n"
+        inner.size = len(data)
+        inner.uid, inner.gid, inner.mode = 101, 0, 0o600
+        tar.addfile(inner, io.BytesIO(data))
+        public = tarfile.TarInfo("./var/spool/public")
+        public.type = tarfile.DIRTYPE
+        public.uid, public.gid, public.mode = 101, 104, 0o2710
+        tar.addfile(public)
+
+
+def test_multiuid_image_baked_ownership(ensure_pasta, ensure_idmap_node, tmp_path):
+    """Ownership baked into image layers survives into the sandbox: distinct
+    uids stat correctly, root traverses 0700 dirs it doesn't own (needs
+    CAP_DAC_OVERRIDE — Docker's default set, not the far narrower
+    ``runsc spec`` default), and the setgid bit rides through extraction."""
+    from ray.experimental.sandbox.config import DOCKER_DEFAULT_CAPABILITIES
+
+    tar_path = str(tmp_path / "owned-busybox.tar")
+    _owned_busybox_tar(tar_path)
+
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image=tar_path,
+            shell="/bin/sh",
+            network="public",
+            capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
+            # A tar-path image has no image config, hence no baked PATH.
+            env={"PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+        )
+    )
+    try:
+        res = backend.exec_command(
+            sb,
+            "stat -c %u:%g:%a /var/spool/testq && cat /var/spool/testq/inner.txt "
+            "&& stat -c %u:%g:%a /var/spool/public",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
+        lines = res.stdout.split()
+        assert lines[0] == "101:0:700"
+        assert lines[1] == "queued"
+        assert lines[2] == "101:104:2710"
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_multiuid_mailman_mini(ensure_pasta, ensure_idmap_node):
+    """The mailman shape in miniature: create a user at runtime, chown -R a
+    tree to it, and get setgid-directory group inheritance."""
+    from ray.experimental.sandbox.config import DOCKER_DEFAULT_CAPABILITIES
+
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            readonly=False,
+            capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
+        )
+    )
+    try:
+        res = backend.exec_command(
+            sb,
+            "adduser -D -u 1234 alice && "
+            "mkdir -p /srv/lists && touch /srv/lists/cfg && "
+            "chown -R alice:alice /srv/lists && "
+            "stat -c %u:%g /srv/lists /srv/lists/cfg && "
+            "mkdir /srv/shared && chown 0:104 /srv/shared && "
+            "chmod 2770 /srv/shared && touch /srv/shared/post && "
+            "stat -c %g:%a /srv/shared /srv/shared/post | head -1",
+            timeout=60,
+        )
+        assert res.exit_code == 0, res.stderr
+        lines = res.stdout.split()
+        assert lines[0] == "1234:1234"
+        assert lines[1] == "1234:1234"
+        assert lines[2] == "104:2770"
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_multiuid_none_mode_unaffected(ensure_pasta, ensure_idmap_node):
+    """A single-uid (network="none") sandbox keeps working on an image whose
+    idmapped variant exists — the shared rootfs stays worker-owned."""
+    backend = GVisorSandboxBackend()
+    # Materialize the idmapped variant for busybox.
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="public")
+    )
+    backend.delete_sandbox(sb)
+
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="none")
+    )
+    try:
+        res = backend.exec_command(
+            sb, "stat -c %u /bin/busybox && echo alive", timeout=30
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == ["0", "alive"]
+    finally:
+        backend.delete_sandbox(sb)
+
+
 def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
-    """A failed create (bad image) leaves no pasta process behind."""
+    """A failed create (bad image) leaves no pasta process behind.
+
+    pasta daemonizes and self-exits asynchronously once its target
+    namespaces empty, so both snapshots wait for the pid set to settle
+    (an earlier test's teardown may still be winding down).
+    """
+    import time
 
     def _pasta_pids():
         pids = set()
@@ -522,7 +773,18 @@ def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
                 pids.add(pid)
         return pids
 
-    before = _pasta_pids()
+    def _settled_pasta_pids(timeout: float = 10.0):
+        last = _pasta_pids()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            time.sleep(0.3)
+            cur = _pasta_pids()
+            if cur == last:
+                return cur
+            last = cur
+        return last
+
+    before = _settled_pasta_pids()
     backend = GVisorSandboxBackend()
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(
@@ -530,6 +792,9 @@ def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
                 image="nonexistent_invalid_image_12345:latest", network="public"
             )
         )
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline and _pasta_pids() != before:
+        time.sleep(0.3)
     assert _pasta_pids() == before
 
 

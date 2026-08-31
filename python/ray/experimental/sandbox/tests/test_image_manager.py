@@ -706,5 +706,20 @@ def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
     os.chmod(dest / "locked", 0o700)
 
 
+def test_create_oci_spec_rootfs_path_override(tmp_path):
+    """rootfs_path mounts a variant (e.g. the idmapped tree) instead of the
+    image's shared rootfs; the default stays <image_dir>/rootfs."""
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+    assert spec["root"]["path"] == os.path.join(str(tmp_path), "rootfs")
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        rootfs_path="/elsewhere/rootfs-idmap",
+    )
+    assert spec["root"]["path"] == "/elsewhere/rootfs-idmap"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

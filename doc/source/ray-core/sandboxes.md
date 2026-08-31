@@ -38,6 +38,7 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **pasta (`network="public"` only)**: The [passt](https://passt.top) package's `pasta` binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. pasta bridges each sandbox's private network namespace to the node.
+* **uidmap (`network="public"` multi-uid ownership)**: The `uidmap` package's setuid `newuidmap`/`newgidmap` helpers plus `/etc/subuid` and `/etc/subgid` ranges for the worker user (e.g. `ray:100000:65536`). With them, each sandbox's user namespace maps a subordinate id range, so in-sandbox files can be owned by distinct uids (images and workloads that spread ownership across users, like postfix or mailman, behave as under Docker). Without them, sandboxes fall back to a single-uid namespace where every file reads as root and chown to other users fails.
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `pasta` ships as the `passt` package on Debian 12+/Ubuntu 23.04+ and Fedora, or as a [static build](https://passt.top/builds/latest/) (x86_64 only; on arm64 use the distro package or build from source — passt has no build dependencies).
 
@@ -269,7 +270,7 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 | Mode | Network access | `/etc/resolv.conf` | Security property |
 | --- | --- | --- | --- |
 | `none` *(default)* | None | untouched | No egress. |
-| `public` | Internet egress from a network namespace private to the sandbox, bridged by [pasta](https://passt.top) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox also inherits nothing from the host's resolver configuration — no internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. Requires `pasta` on the node; setting `RAY_SANDBOX_PUBLIC_HOST_NETNS=1` on workers reverts `public` to the worker's shared namespace. |
+| `public` | Internet egress from a network namespace private to the sandbox, bridged by [pasta](https://passt.top) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox also inherits nothing from the host's resolver configuration — no internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. When the node provides subordinate id ranges (see Requirements), the namespace maps them so files can be owned by distinct uids — image-baked ownership included; `RAY_SANDBOX_SINGLE_UID=1` forces the single-uid fallback. Requires `pasta` on the node; setting `RAY_SANDBOX_PUBLIC_HOST_NETNS=1` on workers reverts `public` to the worker's shared namespace. |
 | `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
 
@@ -416,7 +417,12 @@ RUN ARCH=$(uname -m | sed 's/arm64/aarch64/') && \
     chmod +x /usr/local/bin/runsc /usr/local/bin/pasta
 ```
 
-The `pasta` binary is only needed for `network="public"`; passt.top publishes static builds for x86_64 only, so on arm64 nodes install the distro's `passt` package instead.
+The `pasta` binary is only needed for `network="public"`; passt.top publishes static builds for x86_64 only, so on arm64 nodes install the distro's `passt` package instead. For multi-uid ownership, additionally install `uidmap` and allocate subordinate ranges:
+
+```dockerfile
+RUN sudo apt-get update && sudo apt-get install -y uidmap && \
+    echo "ray:100000:65536" | sudo tee -a /etc/subuid /etc/subgid
+```
 
 Then deploy the builder as the service's application:
 
@@ -466,6 +472,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 * **`pasta` not found for `network="public"`**: Install the passt package (or a [static build](https://passt.top/builds/latest/)) on worker nodes, enable the HTTP API's `auto_install_pasta` setting, or set `RAY_SANDBOX_PUBLIC_HOST_NETNS=1` on workers to run `public` sandboxes in the worker's shared network namespace (the pre-namespace behavior, without port isolation).
 * **`public` sandboxes fail to start with a tap or namespace error**: pasta needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The pasta error appears in the sandbox's `runsc.stderr.log` and in the creation error message; fall back to the kill switch or `network="host"` until the node environment provides both.
+* **Files all appear owned by root, or `chown` fails with "Invalid argument"**: The node lacks multi-uid prerequisites (uidmap package, `/etc/subuid`/`/etc/subgid` ranges), the pod runs with `allowPrivilegeEscalation: false` (disables the setuid `newuidmap`/`newgidmap` helpers), or the pod itself runs under a sandboxed runtime such as gVisor (GKE Sandbox), whose kernel accepts only single-entry self-maps — even privileged writes to a child `uid_map` fail there, so multi-uid needs regular runc-backed nodes. The service probes at boot, logs the fallback reason once, and runs single-uid. Also note gVisor's own `runsc spec` capability default is far narrower than Docker's: traversing another user's `0700` directory as root needs `CAP_DAC_OVERRIDE`, so pass `DOCKER_DEFAULT_CAPABILITIES` for Docker-like behavior. `RAY_SANDBOX_SINGLE_UID=1` on workers forces the single-uid behavior fleet-wide.
 
 ## Next steps
 
