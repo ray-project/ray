@@ -106,7 +106,7 @@ class PreparedChunkedTensorTake(NamedTuple):
 def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
     *,
-    expected_output_rows: Optional[int] = None,
+    expected_output_rows: Optional[int],
 ) -> Optional[PreparedChunkedTensorTake]:
     """Prepare an immutable chunked tensor source for repeated row takes.
 
@@ -114,7 +114,8 @@ def try_prepare_chunked_tensor_take(
         column: Source chunked tensor column.
         expected_output_rows: Rows expected in each take. When provided,
             operational source-size gates are applied and Arrow output offset
-            capacity is checked. Omit this for a capability-only plan.
+            capacity is checked. Pass ``None`` explicitly for a capability-only
+            plan.
 
     Returns:
         Validated source metadata when the fast path supports the column.

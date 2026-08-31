@@ -185,7 +185,7 @@ def test_chunked_tensor_take(tensor_cls, chunks):
     column, values = _chunked_tensor(rows, 64, chunks, tensor_cls)
     indices = np.array([rows - 1, 0, rows // 2, rows // 2, 3], dtype=np.int64)
 
-    plan = try_prepare_chunked_tensor_take(column)
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
 
     assert plan is not None
     row_bytes = math.prod(column.type.shape) * np.dtype(np.float32).itemsize
@@ -206,6 +206,36 @@ def test_chunked_tensor_take(tensor_cls, chunks):
 
     limited_plan = plan._replace(max_supported_output_rows=2)
     assert limited_plan.try_take(np.array([0, 1, 2], dtype=np.int64)) is None
+
+
+@pytest.mark.parametrize("tensor_cls", [ArrowTensorType, ArrowTensorTypeV2])
+@pytest.mark.parametrize(
+    "arrow_type,numpy_dtype",
+    [
+        (pa.int8(), np.int8),
+        (pa.uint64(), np.uint64),
+        (pa.float16(), np.float16),
+        (pa.float64(), np.float64),
+    ],
+)
+def test_chunked_tensor_take_numeric_dtypes(tensor_cls, arrow_type, numpy_dtype):
+    shape = (2, 3)
+    tensor_type = tensor_cls(shape, arrow_type)
+    values = np.arange(9 * math.prod(shape), dtype=numpy_dtype).reshape(9, *shape)
+    array = _tensor_array(tensor_type, values)
+    column = pa.chunked_array(
+        [array.slice(0, 2), array.slice(2, 3), array.slice(5)],
+        type=tensor_type,
+    )
+    indices = np.array([8, 0, 4, 4, 1], dtype=np.int64)
+
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
+
+    assert plan is not None
+    output = plan.try_take(indices)
+    assert output is not None
+    assert output.type == tensor_type
+    np.testing.assert_array_equal(output.to_numpy(), values[indices])
 
 
 @pytest.mark.parametrize(
@@ -249,7 +279,7 @@ def test_chunked_tensor_take_gather_strategy(monkeypatch, chunks, indices, strat
         return original(*args, **kwargs)
 
     monkeypatch.setattr(chunked_tensor_take, strategy, record_strategy)
-    plan = try_prepare_chunked_tensor_take(column)
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
     assert plan is not None
     output = plan.try_take(indices)
 
@@ -262,7 +292,7 @@ def test_chunked_tensor_take_across_scratch_subbatches():
     rows = 1000
     column, values = _chunked_tensor(rows, 3000, 17)
     indices = np.random.default_rng(42).permutation(rows).astype(np.int64)
-    plan = try_prepare_chunked_tensor_take(column)
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
 
     assert plan is not None
     assert 0 < plan.subbatch_rows < rows
@@ -322,7 +352,7 @@ def test_prepared_chunked_tensor_take_owns_source_lifetime():
     column, values = _chunked_tensor(40, 64, 5)
     indices = np.array([39, 1, 20], dtype=np.int64)
     expected = values[indices].copy()
-    plan = try_prepare_chunked_tensor_take(column)
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
 
     assert plan is not None
     del column
@@ -420,7 +450,9 @@ def test_chunked_tensor_take_can_be_disabled(monkeypatch):
     monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
 
     # Column preparation is a feature-flag-independent capability check.
-    assert try_prepare_chunked_tensor_take(column) is not None
+    assert (
+        try_prepare_chunked_tensor_take(column, expected_output_rows=None) is not None
+    )
 
     def fail_fast_path(*args, **kwargs):
         raise AssertionError("Disabled chunked tensor fast path was entered")
@@ -443,7 +475,9 @@ def test_chunked_tensor_take_can_be_disabled(monkeypatch):
         values[indices],
     )
 
-    prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(table)
+    prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(
+        table, expected_output_rows=None
+    )
     assert not prepared_takes
     assert prepared_table.column("tensor").num_chunks == 1
 
@@ -470,16 +504,19 @@ def test_ineligible_chunked_tensor_skips_index_normalization(monkeypatch):
 
 def test_chunked_tensor_take_fallbacks():
     single = pa.chunked_array([_chunked_tensor(20, 64, 2)[0].combine_chunks()])
-    assert try_prepare_chunked_tensor_take(single) is None
+    assert try_prepare_chunked_tensor_take(single, expected_output_rows=None) is None
 
     nullable = _tensor_with_null(child_null=False)
     assert nullable.null_count == 1
-    assert try_prepare_chunked_tensor_take(nullable) is None
+    assert try_prepare_chunked_tensor_take(nullable, expected_output_rows=None) is None
 
     child_nullable = _tensor_with_null(child_null=True)
     assert child_nullable.null_count == 0
     assert child_nullable.chunk(0).storage.values.null_count == 1
-    assert try_prepare_chunked_tensor_take(child_nullable) is None
+    assert (
+        try_prepare_chunked_tensor_take(child_nullable, expected_output_rows=None)
+        is None
+    )
 
     variable_type = ArrowVariableShapedTensorType(pa.float32(), ndim=1)
     variable_storage = pa.array(
@@ -493,11 +530,16 @@ def test_chunked_tensor_take_fallbacks():
     variable_chunked = pa.chunked_array(
         [variable.slice(0, 1), variable.slice(1)], type=variable_type
     )
-    assert try_prepare_chunked_tensor_take(variable_chunked) is None
+    assert (
+        try_prepare_chunked_tensor_take(variable_chunked, expected_output_rows=None)
+        is None
+    )
 
     child_offset = _tensor_with_child_offset()
     assert child_offset.chunk(0).storage.values.offset == 10
-    assert try_prepare_chunked_tensor_take(child_offset) is None
+    assert (
+        try_prepare_chunked_tensor_take(child_offset, expected_output_rows=None) is None
+    )
     child_offset_output = (
         take_table(pa.table({"tensor": child_offset}), np.array([0, 1], dtype=np.int64))
         .column("tensor")
@@ -513,7 +555,10 @@ def test_chunked_tensor_take_fallbacks():
             np.arange(40 * 64, dtype=np.float32).reshape(40, 64)
         )
         native_chunked = pa.chunked_array([native.slice(0, 20), native.slice(20)])
-        assert try_prepare_chunked_tensor_take(native_chunked) is None
+        assert (
+            try_prepare_chunked_tensor_take(native_chunked, expected_output_rows=None)
+            is None
+        )
 
 
 def test_chunked_tensor_take_respects_nonzero_logical_offsets():
@@ -523,7 +568,7 @@ def test_chunked_tensor_take_respects_nonzero_logical_offsets():
         pa.array(np.arange(3 * width, dtype=np.int64)),
     )
 
-    plan = try_prepare_chunked_tensor_take(column)
+    plan = try_prepare_chunked_tensor_take(column, expected_output_rows=None)
 
     assert plan is not None
     output = plan.try_take(np.array([0, 1], dtype=np.int64))
@@ -537,7 +582,7 @@ def test_chunked_tensor_take_rejects_invalid_logical_offsets():
         [0, width, 2 * width + 1],
         pa.array(np.arange(2 * width + 1, dtype=np.int64)),
     )
-    assert try_prepare_chunked_tensor_take(irregular) is None
+    assert try_prepare_chunked_tensor_take(irregular, expected_output_rows=None) is None
 
     column, _ = _chunked_tensor(40, width, 4)
     chunk = next(chunk for chunk in column.chunks if len(chunk) > 0)
@@ -590,6 +635,11 @@ def test_hash_partition_preserves_multichunk_tensor(tensor_cls):
     )
 
     partitions = hash_partition(table, hash_cols=["key"], num_partitions=7)
+    for partition in partitions.values():
+        partition_row_ids = partition.column("row_id").to_numpy()
+        # The previous per-partition ``np.where`` take preserved source order.
+        # The one-sort implementation must retain that observable behavior.
+        assert np.all(partition_row_ids[1:] > partition_row_ids[:-1])
     combined = pa.concat_tables(list(partitions.values()))
     row_ids = combined.column("row_id").combine_chunks().to_numpy()
     order = np.argsort(row_ids)
@@ -608,7 +658,7 @@ def test_zero_shape_tensor_falls_back(tensor_cls, rows, shape):
     reference = pa.table({"tensor": tensor.combine_chunks()})
     indices = np.arange(rows, dtype=np.int64)
 
-    assert try_prepare_chunked_tensor_take(tensor) is None
+    assert try_prepare_chunked_tensor_take(tensor, expected_output_rows=None) is None
     actual = take_table(table, indices)
     expected = take_table(reference, indices)
 
@@ -781,6 +831,17 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
         "_passes_source_size_gates",
         lambda *args, **kwargs: True,
     )
+
+    def fail_generic_tensor_take(*args, **kwargs):
+        raise AssertionError("Prepared shuffle buffer entered generic tensor take")
+
+    # Both normal batches and rows carried through a later compaction must use
+    # the plan owned by their immutable buffer, never re-enter table preparation.
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "try_take_chunked_tensor",
+        fail_generic_tensor_take,
+    )
     tensor_table = _tensor_table(79, 64, 20)
     plain_table = tensor_table.select(["row_id"])
 
@@ -822,7 +883,7 @@ def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch):
         chunked_tensor_take, "_try_get_zero_copy_chunk_view", raise_prepare
     )
     with pytest.raises(RuntimeError, match="injected prepare failure"):
-        try_prepare_chunked_tensor_take(column)
+        try_prepare_chunked_tensor_take(column, expected_output_rows=None)
 
 
 def test_chunked_tensor_take_falls_back_for_truncated_buffers():
@@ -915,12 +976,16 @@ def test_chunked_tensor_take_checks_view_pointer_range():
 
 def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
     zero_column_table = pa.table({"value": [1, 2]}).select([])
-    prepared_empty, empty_takes = _prepare_local_shuffle_arrow_table(zero_column_table)
+    prepared_empty, empty_takes = _prepare_local_shuffle_arrow_table(
+        zero_column_table, expected_output_rows=None
+    )
     assert prepared_empty.num_rows == zero_column_table.num_rows
     assert not empty_takes
 
     single_chunk = pa.table({"value": [1, 2]})
-    prepared_single, single_takes = _prepare_local_shuffle_arrow_table(single_chunk)
+    prepared_single, single_takes = _prepare_local_shuffle_arrow_table(
+        single_chunk, expected_output_rows=None
+    )
     assert prepared_single is single_chunk
     assert not single_takes
 
@@ -935,7 +1000,9 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
             "try_prepare_chunked_tensor_take",
             fail_plain_tensor_prepare,
         )
-        prepared_plain, plain_takes = _prepare_local_shuffle_arrow_table(plain)
+        prepared_plain, plain_takes = _prepare_local_shuffle_arrow_table(
+            plain, expected_output_rows=None
+        )
     assert not plain_takes
     assert prepared_plain.column("value").num_chunks == 1
 
@@ -949,13 +1016,15 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
 
     nullable = _tensor_with_null(child_null=False)
     fallback_table, fallback_takes = _prepare_local_shuffle_arrow_table(
-        pa.table({"tensor": nullable})
+        pa.table({"tensor": nullable}), expected_output_rows=None
     )
     assert not fallback_takes
     assert fallback_table.column("tensor").num_chunks == 1
 
     table = _tensor_table(40, 64, 4)
-    prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(table)
+    prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(
+        table, expected_output_rows=None
+    )
     assert prepared_takes
     indices = np.arange(10, dtype=np.int64)
 
