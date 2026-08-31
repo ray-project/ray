@@ -367,6 +367,7 @@ ray_cc_binary(
         ":local_object_manager_interface",
         ":metrics",
         ":raylet_lib",
+        ":worker_pool",
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/asio:periodical_runner",
         "//src/ray/common:lease",

@@ -15,6 +15,7 @@ general-debugging
 debug-memory
 debug-hangs
 debug-failures
+debug-worker-thread-count
 optimize-performance
 ../../ray-distributed-debugger
 ray-debugging
@@ -25,6 +26,7 @@ These guides help you perform common debugging or optimization tasks for your di
 * {ref}`ray-core-mem-profiling`
 * {ref}`observability-debug-hangs`
 * {ref}`observability-debug-failures`
+* {ref}`debug-worker-thread-count`
 * {ref}`observability-optimize-performance`
 * {ref}`ray-distributed-debugger`
 * {ref}`ray-debugger` (deprecated)

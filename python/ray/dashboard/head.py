@@ -325,6 +325,10 @@ class DashboardHead:
                 cls for cls in subprocess_cls_list if cls.__name__ in modules_to_load
             ]
 
+        SubprocessModuleHandle.preload_in_forkserver(
+            [cls for cls in subprocess_cls_list if cls.is_enabled()]
+        )
+
         for cls in subprocess_cls_list:
             if not cls.is_enabled():
                 logger.info(f"Skipping {SubprocessModule.__name__}: {cls} (disabled).")
