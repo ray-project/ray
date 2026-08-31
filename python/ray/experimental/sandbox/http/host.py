@@ -36,6 +36,8 @@ import logging
 import os
 import platform
 import shutil
+import subprocess
+import sys
 import urllib.request
 import uuid
 from collections import OrderedDict
@@ -98,6 +100,69 @@ def _ensure_runsc_installed() -> None:
         os.environ["PATH"] = f"{shared_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
+def _ensure_pasta_installed() -> None:
+    """Download a static pasta (passt) build onto this node.
+
+    Opt-in via the ``auto_install_pasta`` server setting. pasta provides the
+    per-sandbox network namespaces behind ``network="public"``. passt.top
+    publishes static builds for x86_64 only, and only an unversioned
+    "latest" (same trust posture as the runsc "latest" URL above); prefer
+    baking the distro's passt package into the node image for production.
+    ``RAY_SANDBOX_PASTA_URL`` overrides the download URL, e.g. for a
+    mirrored, pinned, or non-x86_64 build.
+    """
+    if shutil.which("pasta"):
+        return
+    shared_bin = "/tmp/ray-sandbox-pasta"
+    pasta_path = os.path.join(shared_bin, "pasta")
+    if not os.path.exists(pasta_path):
+        url = os.environ.get("RAY_SANDBOX_PASTA_URL")
+        if not url:
+            if platform.machine().lower() not in ("x86_64", "amd64"):
+                raise RuntimeError(
+                    "auto_install_pasta: no static pasta build is published "
+                    f"for {platform.machine()}; install the distro's passt "
+                    "package on the node image or set RAY_SANDBOX_PASTA_URL."
+                )
+            url = "https://passt.top/builds/latest/x86_64/pasta"
+        os.makedirs(shared_bin, mode=0o755, exist_ok=True)
+        logger.info("pasta not found on this node; downloading from %s", url)
+        tmp_path = f"{pasta_path}.tmp.{os.getpid()}"
+        urllib.request.urlretrieve(url, tmp_path)
+        os.chmod(tmp_path, 0o755)
+        os.replace(tmp_path, pasta_path)
+    if shared_bin not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = f"{shared_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+def _ensure_tun_device() -> None:
+    """Best-effort creation of /dev/net/tun for pasta.
+
+    Kubernetes gives each container a fresh minimal /dev without the tun
+    device, and pasta needs it to build the per-sandbox tap. Creating the
+    node takes CAP_MKNOD (via passwordless sudo, standard on Anyscale node
+    images); *opening* it is allowed by the default device cgroup, so no
+    securityContext change is needed. No-op when the node already exists;
+    on failure pasta reports the missing device itself.
+    """
+    if sys.platform != "linux" or os.path.exists("/dev/net/tun"):
+        return
+    for cmd in (
+        ["sudo", "-n", "mkdir", "-p", "/dev/net"],
+        ["sudo", "-n", "mknod", "/dev/net/tun", "c", "10", "200"],
+        ["sudo", "-n", "chmod", "0666", "/dev/net/tun"],
+    ):
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode != 0:
+            logger.warning(
+                "Could not create /dev/net/tun (%s: %s); network='public' "
+                "sandboxes need it for pasta.",
+                " ".join(cmd),
+                res.stderr.decode(errors="replace").strip(),
+            )
+            return
+
+
 class _ExecJob:
     """One submitted command and its (eventual) result."""
 
@@ -155,6 +220,7 @@ class SandboxHost:
         self._max_output_bytes = int(settings.get("max_output_bytes", 10 * 1024**2))
         self._max_exec_history = int(settings.get("max_exec_history", 256))
         self._auto_install_runsc = bool(settings.get("auto_install_runsc", False))
+        self._auto_install_pasta = bool(settings.get("auto_install_pasta", False))
         self._runtime_factory = runtime_factory
         self._runtime: Optional[Any] = None
         self._instance_id: Optional[str] = None
@@ -192,6 +258,10 @@ class SandboxHost:
         try:
             if self._auto_install_runsc:
                 await asyncio.to_thread(_ensure_runsc_installed)
+            if self._auto_install_pasta:
+                await asyncio.to_thread(_ensure_pasta_installed)
+            if self._spec.get("network") == "public":
+                await asyncio.to_thread(_ensure_tun_device)
             factory = self._runtime_factory
             if factory is None:
                 from ray.experimental.sandbox.runtime import SandboxRuntime

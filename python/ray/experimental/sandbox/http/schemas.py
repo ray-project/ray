@@ -90,7 +90,10 @@ class CreateSandboxRequest(BaseModel):
     network: str = Field(
         default="none",
         description=(
-            "runsc network mode; one of " f"{', '.join(VALID_NETWORK_MODES)}."
+            "Sandbox network mode; one of "
+            f"{', '.join(VALID_NETWORK_MODES)}. 'public' gives internet "
+            "egress from a network namespace private to the sandbox "
+            "(per-sandbox ports and loopback)."
         ),
     )
     dns: Optional[List[str]] = Field(
@@ -302,5 +305,15 @@ class SandboxAPISettings(BaseModel):
             "run on stock images (e.g. an unmodified Anyscale cluster image) "
             "at the cost of a one-time ~40MB download per node. Prefer "
             "baking runsc into the node image for production."
+        ),
+    )
+    auto_install_pasta: bool = Field(
+        default=False,
+        description=(
+            "Download a static pasta (passt) build from passt.top onto any "
+            "node that lacks it, at first sandbox boot. pasta provides the "
+            "per-sandbox network namespaces of network='public'. Prefer "
+            "baking the distro's passt package into the node image for "
+            "production."
         ),
     )
