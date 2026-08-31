@@ -395,6 +395,13 @@ def gen_expected_metrics(
             f"'num_tasks_task_locality_miss': {'Z' if task_locality_hit else 'N'}",
             "'block_generation_time': N",
             "'block_serialization_time_s': N",
+            # The UDF time breakdown, exported per operator alongside the
+            # existing task metrics.
+            "'udf_time_s': A",
+            "'input_prep_time_s': A",
+            "'udf_body_time_s': A",
+            "'output_build_time_s': A",
+            "'other_stage_time_s': A",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -525,6 +532,23 @@ def gen_extra_metrics_str(metrics: str, verbose: bool):
     return f"* Extra metrics: {metrics}" + "\n" if verbose else ""
 
 
+def gen_udf_time_breakdown_str(verbose: bool) -> str:
+    """The phase breakdown under "UDF time", which is verbose-only.
+
+    Batch-based operators are decomposed; row-based ones report only a
+    total unless `DataContext.accurate_map_phase_timing` is set, so they
+    print nothing here even when verbose.
+    """
+    if not verbose:
+        return ""
+    return (
+        "    * Input prep: T min, T max, T mean, T total\n"
+        "    * Function body: T min, T max, T mean, T total\n"
+        "    * Output block build: T min, T max, T mean, T total\n"
+        "    * Built-in stages: T min, T max, T mean, T total\n"
+    )
+
+
 def gen_runtime_metrics_str(op_names: List[str], verbose: bool) -> str:
     if not verbose:
         return ""
@@ -611,6 +635,16 @@ def canonicalize(
     )
     canonicalized_stats = re.sub(
         r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
+    )
+    # The UDF time breakdown measures sub-microsecond work for a trivial UDF, so
+    # each figure rounds to zero or not depending on the run. Replace with A to
+    # avoid flakiness; `test_row_transform_phases_are_opt_in` asserts the
+    # measured-vs-not distinction directly instead.
+    canonicalized_stats = re.sub(
+        r"('?(?:udf_time_s|input_prep_time_s|udf_body_time_s|output_build_time_s"
+        r"|other_stage_time_s)'?: )\d+(?:\.\d+)?(?:[eE][-+]?\d+)?",
+        r"\g<1>A",
+        canonicalized_stats,
     )
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
@@ -745,7 +779,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Output num rows per block: N min, N max, N mean, N total
+{gen_udf_time_breakdown_str(True)}* Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -804,6 +838,7 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
+                f"{gen_udf_time_breakdown_str(verbose_stats_logs)}"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -967,6 +1002,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_task_locality_miss: N,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
+        # The UDF time breakdown, exported per map operator.
+        "      udf_time_s: A,\n"
+        "      input_prep_time_s: A,\n"
+        "      udf_body_time_s: A,\n"
+        "      output_build_time_s: A,\n"
+        "      other_stage_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -1131,6 +1172,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_task_locality_miss: Z,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
+        # The UDF time breakdown, exported per map operator.
+        "      udf_time_s: A,\n"
+        "      input_prep_time_s: A,\n"
+        "      udf_body_time_s: A,\n"
+        "      output_build_time_s: A,\n"
+        "      other_stage_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -1248,6 +1295,12 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_task_locality_miss: N,\n"
         "            block_generation_time: N,\n"
         "            block_serialization_time_s: N,\n"
+        # The UDF time breakdown, exported per map operator.
+        "            udf_time_s: A,\n"
+        "            input_prep_time_s: A,\n"
+        "            udf_body_time_s: A,\n"
+        "            output_build_time_s: A,\n"
+        "            other_stage_time_s: A,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_s: N,\n"
@@ -1870,11 +1923,16 @@ def test_row_transform_phases_are_opt_in(
             .materialize()
         )
         op = get_operator(ds.get_stats_summary(), name_pattern="Map")
-        return op, sum(p.sum for p in _phase_components(op).values())
+        parts = _phase_components(op).values()
+        return op, sum(p.sum for p in parts if p is not None)
 
     DataContext.get_current().accurate_map_phase_timing = False
     op_off, parts_off = run()
-    assert parts_off == 0.0, "row transforms should not be decomposed by default"
+    # Not measured at all, rather than measured as zero.
+    assert all(
+        p is None for p in _phase_components(op_off).values()
+    ), "row transforms should not be decomposed by default"
+    assert parts_off == 0.0
     assert op_off.udf_time.sum >= 2 * num_rows * sleep_s * 0.9
 
     DataContext.get_current().accurate_map_phase_timing = True

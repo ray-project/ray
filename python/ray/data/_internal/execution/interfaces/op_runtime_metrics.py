@@ -412,6 +412,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "UDF body, output build and other-stage metrics decompose this."
         ),
         metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
     )
     input_prep_time_s: float = metric_field(
         default=0,
@@ -420,6 +422,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "operator's UDFs consume."
         ),
         metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
     )
     udf_body_time_s: float = metric_field(
         default=0,
@@ -428,6 +432,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "formatting and block building around them."
         ),
         metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
     )
     output_build_time_s: float = metric_field(
         default=0,
@@ -436,6 +442,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "materializing Python objects into Arrow."
         ),
         metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
     )
     other_stage_time_s: float = metric_field(
         default=0,
@@ -444,6 +452,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             "chain, such as a read or a write."
         ),
         metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
     )
     task_submission_backpressure_time: float = metric_field(
         default=0,

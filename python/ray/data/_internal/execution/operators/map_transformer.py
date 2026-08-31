@@ -235,16 +235,18 @@ class MapTransformPhaseTimes:
 
     ``total_s`` is the whole chain, which is what Ray Data has always reported as
     "UDF time". The rest decompose it and sum back to it, saying where inside the
-    chain the time went; they are all zero when the chain measured only its
+    chain the time went; they are all ``None`` when the chain measured only its
     total. Each is summed over every stage of a (possibly fused) chain, so a
     fused operator reports one figure per phase rather than one per stage.
     """
 
     total_s: float = 0.0
-    input_prep_s: float = 0.0
-    udf_body_s: float = 0.0
-    output_build_s: float = 0.0
-    other_s: float = 0.0
+    # None, not zero, when the chain measured only its total: a consumer has to
+    # be able to tell "not measured" from "measured as zero".
+    input_prep_s: Optional[float] = None
+    udf_body_s: Optional[float] = None
+    output_build_s: Optional[float] = None
+    other_s: Optional[float] = None
 
 
 class UDFTimeScope:

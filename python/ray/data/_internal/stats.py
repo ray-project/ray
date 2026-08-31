@@ -1840,10 +1840,16 @@ class OperatorStatsSummary:
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
         udf_stats = udf_time_acc.get()
-        input_prep_stats = input_prep_time_acc.get()
-        udf_body_stats = udf_body_time_acc.get()
-        output_build_stats = output_build_time_acc.get()
-        other_stage_stats = other_stage_time_acc.get()
+        # A chain that measured only its total leaves the phase accumulators
+        # empty. Report that as None rather than a zero-valued summary, so a
+        # consumer can tell "not measured" from "measured as zero" -- the phases
+        # are absent for row-based transforms unless
+        # `DataContext.accurate_map_phase_timing` is set.
+        phases_measured = input_prep_time_acc.count > 0
+        input_prep_stats = input_prep_time_acc.get() if phases_measured else None
+        udf_body_stats = udf_body_time_acc.get() if phases_measured else None
+        output_build_stats = output_build_time_acc.get() if phases_measured else None
+        other_stage_stats = other_stage_time_acc.get() if phases_measured else None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1920,18 +1926,26 @@ class OperatorStatsSummary:
             )
             # Breakdown of the line above, in execution order: input blocks
             # become batches or rows, the UDF runs, output goes back into
-            # blocks. These sum to the total. Absent for row-based transforms
-            # unless `DataContext.accurate_map_phase_timing` is set, since
-            # measuring them per row costs more than it reports.
+            # blocks. These sum to the total.
+            #
+            # Verbose-only, like `extra_metrics`: the figures are always on the
+            # summary for anyone reading it programmatically, but adding four
+            # lines to everyone's default `ds.stats()` is a bigger change than
+            # the detail warrants. They are absent altogether for row-based
+            # transforms unless `DataContext.accurate_map_phase_timing` is set,
+            # since measuring them per row costs more than it reports.
             breakdown = [
                 ("Input prep", self.input_prep_time),
                 ("Function body", self.udf_body_time),
                 ("Output block build", self.output_build_time),
-                # Only non-zero when a non-UDF stage (a read, a write) is fused
-                # into the same chain.
-                ("Other stages", self.other_stage_time),
+                # Bodies of the stages Ray Data supplies -- reads, writes,
+                # downloads, file listing -- as opposed to the function you
+                # passed. Only non-zero when one is fused into this operator.
+                ("Built-in stages", self.other_stage_time),
             ]
-            if any(s is not None and s.sum for _, s in breakdown):
+            if DataContext.get_current().verbose_stats_logs and any(
+                s is not None and s.sum for _, s in breakdown
+            ):
                 for label, stats in breakdown:
                     if stats is None or not stats.sum:
                         continue
