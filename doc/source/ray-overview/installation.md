@@ -188,23 +188,11 @@ There are minor variations to the format of the wheel filename; it's best to mat
 
 Ray supports machines running Apple Silicon (such as M1 macs). Multi-node clusters are untested. To get started with local Ray development:
 
-1. Install [miniforge](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh).
+Install Ray the same way described above, for example:
 
-   * `wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh`
-
-   * `bash Miniforge3-MacOSX-arm64.sh`
-
-   * `rm Miniforge3-MacOSX-arm64.sh # Cleanup.`
-
-2. Ensure you're using the miniforge environment (you should see (base) in your terminal).
-
-   * `source ~/.bash_profile`
-
-   * `conda activate`
-
-3. Install Ray as you normally would.
-
-   * `pip install ray`
+```shell
+pip install -U "ray[default]"
+```
 
 (windows-support)=
 
