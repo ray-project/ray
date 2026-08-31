@@ -1,23 +1,49 @@
 build_arg_sets:
+  py311_cuda128:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+    CUDA_CODE: cu128
   py314_cuda128:
     PYTHON_VERSION: "3.14"
     PYTHON_SHORT: "314"
     CUDA_CODE: cu128
 
+# TODO(elliot-barn): Unify these two depset definitions once the py3.11 and
+# py3.14 images can share one constraints source. They are split only because
+# requirements_compiled_py3.14.txt pins torch 2.7.0, which has no cp314 wheels,
+# so the py3.14 image cannot be constrained by Ray's compiled requirements the
+# way the py3.11 one is.
+.ray_torch_base: &ray_torch_base
+  operation: expand
+  depsets:
+    - ray_img_depset_${PYTHON_SHORT}
+  requirements:
+    - docker/ray-torch/torch-requirements.txt
+    - docker/base-deps/requirements.in
+    - docker/base-extra/requirements.in
+  output: python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+  append_flags:
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
+    - --unsafe-package ray
+    - --python-version=${PYTHON_VERSION}
+    - --python-platform=linux
+
 depsets:
+  # py3.11 follows Ray's own compiled requirements, the same constraints source
+  # the CI depsets use.
   - name: ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
-    operation: expand
-    depsets:
-      - ray_img_depset_${PYTHON_SHORT}
-    requirements:
-      - docker/ray-torch/torch-requirements.txt
-      - docker/base-deps/requirements.in
-      - docker/base-extra/requirements.in
-    output: python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
-    append_flags:
-      - --index https://download.pytorch.org/whl/${CUDA_CODE}
-      - --unsafe-package ray
-      - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
+    <<: *ray_torch_base
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
+    build_arg_sets:
+      - py311_cuda128
+
+  # py3.14 pins torch directly; see docker/ray-torch/torch-constraints-py3.14.txt.
+  - name: ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    <<: *ray_torch_base
+    constraints:
+      - docker/ray-torch/torch-constraints-py${PYTHON_VERSION}.txt
     build_arg_sets:
       - py314_cuda128
