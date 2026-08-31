@@ -312,8 +312,9 @@ class SandboxAPISettings(BaseModel):
         description=(
             "Download a static pasta (passt) build from passt.top onto any "
             "node that lacks it, at first sandbox boot. pasta provides the "
-            "per-sandbox network namespaces of network='public'. Prefer "
-            "baking the distro's passt package into the node image for "
-            "production."
+            "per-sandbox network namespaces of network='public'. Static "
+            "builds exist for x86_64 only (RAY_SANDBOX_PASTA_URL overrides "
+            "the source); prefer baking the distro's passt package into the "
+            "node image for production."
         ),
     )
