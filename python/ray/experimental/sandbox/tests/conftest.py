@@ -8,6 +8,11 @@ import pytest
 
 from ray._private.test_utils import sandbox_test_enabled
 
+_RUNSC_URL = (
+    "https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
+)
+_PASTA_URL = "https://passt.top/builds/latest/x86_64/pasta"
+
 
 def pytest_runtest_setup(item):
     if not sandbox_test_enabled():
@@ -15,54 +20,40 @@ def pytest_runtest_setup(item):
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
 
 
+def _install_on_path(name: str, url: str) -> None:
+    """Fetch a static binary into a temp dir prepended to PATH, or skip."""
+    if shutil.which(name):
+        return
+    bin_dir = tempfile.mkdtemp()
+    os.chmod(bin_dir, 0o755)
+    binary = os.path.join(bin_dir, name)
+    try:
+        urllib.request.urlretrieve(url, binary)
+    except Exception as e:
+        pytest.skip(f"Failed to install {name} for sandbox tests: {e}")
+    os.chmod(binary, 0o755)
+    os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def ensure_runsc():
     if not sandbox_test_enabled():
         return
-
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
-
-    if not shutil.which("runsc"):
-        temp_bin = tempfile.mkdtemp()
-        os.chmod(temp_bin, 0o755)
-        runsc_path = os.path.join(temp_bin, "runsc")
-        arch = (
-            "aarch64"
-            if platform.machine().lower() in ("aarch64", "arm64")
-            else "x86_64"
-        )
-        url = f"https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
-        try:
-            urllib.request.urlretrieve(url, runsc_path)
-            os.chmod(runsc_path, 0o755)
-            os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
-        except Exception as e:
-            pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
+    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+    _install_on_path("runsc", _RUNSC_URL.format(arch=arch))
 
 
 @pytest.fixture(scope="session")
 def ensure_pasta():
-    """Provide pasta for the per-sandbox-netns tests (network="public").
+    """pasta for the network="public" tests.
 
-    Requested (not autouse) so only tests that exercise the pasta wrapper
-    skip when a static build cannot be fetched.
+    Requested rather than autouse, so only those tests skip when no build is
+    available.
     """
-    if shutil.which("pasta"):
-        return
-
-    if platform.machine().lower() not in ("x86_64", "amd64"):
-        pytest.skip(
-            "no static pasta build for this arch; install passt to run "
-            "the netns tests"
-        )
-
-    temp_bin = tempfile.mkdtemp()
-    os.chmod(temp_bin, 0o755)
-    pasta_path = os.path.join(temp_bin, "pasta")
-    url = "https://passt.top/builds/latest/x86_64/pasta"
-    try:
-        urllib.request.urlretrieve(url, pasta_path)
-        os.chmod(pasta_path, 0o755)
-        os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
-    except Exception as e:
-        pytest.skip(f"Failed to install pasta for netns tests: {e}")
+    if not shutil.which("pasta") and platform.machine().lower() not in (
+        "x86_64",
+        "amd64",
+    ):
+        pytest.skip("no static pasta build for this arch; install passt")
+    _install_on_path("pasta", _PASTA_URL)

@@ -1,5 +1,4 @@
 import os
-import shutil
 import socket
 import sys
 from pathlib import Path
@@ -329,123 +328,134 @@ def test_resolve_exec_user(tmp_path, monkeypatch):
         backend._resolve_exec_user("nosuch", "img")
 
 
-def test_build_run_command_public_wraps_with_pasta(monkeypatch):
-    """network="public" builds the holder + pasta-attach + nsenter chain.
+_PUBLIC_HOST_NETNS_ENV = "RAY_SANDBOX_PUBLIC_HOST_NETNS"
 
-    The pasta flag list is the isolation property (no pod-side port
-    republishing, no loopback splicing, no gateway mapping) and the
-    chain's shape is the topology (holder namespaces pinned first; pasta
-    attached from the pod side so its uplink is the pod's interface;
-    runsc entered as mapped root, never --rootless) — pin both.
-    """
-    monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
-    backend = GVisorSandboxBackend()
-    cfg = GVisorSandboxConfig(image="busybox:latest", network="public")
-    cmd = backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
 
+@pytest.fixture
+def no_host_netns(monkeypatch):
+    """Default posture: the shared-host-network kill switch is unset."""
+    monkeypatch.delenv(_PUBLIC_HOST_NETNS_ENV, raising=False)
+
+
+def _public_config() -> GVisorSandboxConfig:
+    return GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", network="public"
+    )
+
+
+def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
+    """`_build_run_command` over fixed paths — pure argv, no side effects."""
+    backend = GVisorSandboxBackend(**backend_kwargs)
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest", network=network, rootless=rootless
+    )
+    return backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
+
+
+def _host_ip() -> str:
+    """The worker's primary IPv4, which pasta copies onto each sandbox's tap."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+
+
+def _pasta_pids() -> set:
+    """PIDs of running pasta processes."""
+    pids = set()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv0 = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        if os.path.basename(argv0) == b"pasta":
+            pids.add(entry.name)
+    return pids
+
+
+def test_build_run_command_public_wraps_with_pasta(no_host_netns):
+    """The pasta flags are the isolation property and the chain's shape is the
+    topology, so pin both: holder namespaces first, pasta attached from the pod
+    side, runsc entered as mapped root (never --rootless)."""
+    cmd = _run_argv("public")
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
+
     assert script.startswith(
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert "/tmp/rd/netns.pid" in script
-    assert (
-        "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
-        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user" in script
-    )
-    assert "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc" in script
-    assert "--rootless" not in script
-    assert "--network host" in script
-    assert "--overlay2=root:dir=/tmp/rd/overlay" in script
     assert script.endswith("run --bundle /tmp/rd sb-1")
+    for fragment in (
+        "/tmp/rd/netns.pid",
+        "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
+        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user",
+        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
+        "--network host",
+        "--overlay2=root:dir=/tmp/rd/overlay",
+    ):
+        assert fragment in script, fragment
+    assert "--rootless" not in script
 
 
-def test_build_run_command_other_modes_unwrapped(monkeypatch):
-    """Modes other than "public" keep today's bare runsc invocation."""
-    monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
-    backend = GVisorSandboxBackend()
-    for network, rootless in (("none", True), ("host", True), ("sandbox", False)):
-        cfg = GVisorSandboxConfig(
-            image="busybox:latest", network=network, rootless=rootless
-        )
-        cmd = backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
-        assert cmd[0] == "runsc"
-        assert "pasta" not in cmd
-        assert cmd[cmd.index("--network") + 1] == network
-        assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+@pytest.mark.parametrize(
+    "network,rootless", [("none", True), ("host", True), ("sandbox", False)]
+)
+def test_build_run_command_other_modes_unwrapped(no_host_netns, network, rootless):
+    """Every mode but "public" keeps today's bare runsc invocation."""
+    cmd = _run_argv(network, rootless=rootless)
+    assert cmd[0] == "runsc"
+    assert "pasta" not in cmd
+    assert cmd[cmd.index("--network") + 1] == network
+    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
 
 
 def test_public_host_netns_kill_switch(monkeypatch):
     """The env kill switch restores the pre-netns shared-host behavior."""
-    monkeypatch.setenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", "1")
-    backend = GVisorSandboxBackend()
-    cfg = GVisorSandboxConfig(image="busybox:latest", network="public")
-    cmd = backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
+    monkeypatch.setenv(_PUBLIC_HOST_NETNS_ENV, "1")
+    cmd = _run_argv("public")
     assert cmd[0] == "runsc"
     assert "pasta" not in cmd
     assert cmd[cmd.index("--network") + 1] == "host"
 
 
-def test_create_sandbox_requires_pasta(monkeypatch):
+def test_create_sandbox_requires_pasta(no_host_netns, monkeypatch):
     """A missing pasta fails fast — before the image pull — with remediation."""
-    import ray.experimental.sandbox.backend.gvisor as gvisor_mod
 
     class _NoPullImageManager:
         def pull_image(self, *args, **kwargs):
             raise AssertionError("image pull must not run when pasta is missing")
 
-    monkeypatch.delenv("RAY_SANDBOX_PUBLIC_HOST_NETNS", raising=False)
-    real_which = shutil.which
     monkeypatch.setattr(
-        gvisor_mod.shutil,
-        "which",
-        lambda name: None
-        if name == "pasta"
-        else (real_which(name) or f"/usr/bin/{name}"),
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: None if name == "pasta" else f"/usr/bin/{name}",
     )
     backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
-    cfg = GVisorSandboxConfig(image="busybox:latest", network="public")
     with pytest.raises(SandboxCreationError) as err:
-        backend.create_sandbox(cfg)
-    msg = str(err.value)
-    assert "pasta" in msg
-    assert "auto_install_pasta" in msg
-    assert "RAY_SANDBOX_PUBLIC_HOST_NETNS" in msg
-
-
-def _host_primary_ip() -> str:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    finally:
-        s.close()
+        backend.create_sandbox(_public_config())
+    assert all(
+        hint in str(err.value)
+        for hint in ("pasta", "auto_install_pasta", _PUBLIC_HOST_NETNS_ENV)
+    )
 
 
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
-    hostfwd contract): each reaches its own listener on localhost, the bind
-    never appears in the worker's namespace, and no sandbox can reach the
-    other's listener."""
+    hostfwd contract): each reaches its own listener, the bind never surfaces in
+    the worker's namespace, and neither sandbox can reach the other's."""
     backend = GVisorSandboxBackend()
-
-    def _cfg():
-        return GVisorSandboxConfig(
-            image="busybox:latest", shell="/bin/sh", network="public"
-        )
-
-    sb1 = backend.create_sandbox(_cfg())
-    sb2 = backend.create_sandbox(_cfg())
+    sb1, sb2 = (backend.create_sandbox(_public_config()) for _ in range(2))
+    tokens = {sb1: "SB1-TOKEN", sb2: "SB2-TOKEN"}
     try:
-        for sb, token in ((sb1, "SB1-TOKEN"), (sb2, "SB2-TOKEN")):
+        for sb, token in tokens.items():
             # /tmp stays a writable tmpfs on the readonly rootfs.
             backend.write_file(sb, "/tmp/www/token", token)
-            # busybox httpd daemonizes; under a shared netns the second bind
+            # busybox httpd daemonizes; sharing one netns, the second bind
             # would fail with EADDRINUSE.
             res = backend.exec_command(sb, "httpd -p 2222 -h /tmp/www", timeout=30)
             assert res.exit_code == 0, res.stderr
 
-        for sb, token in ((sb1, "SB1-TOKEN"), (sb2, "SB2-TOKEN")):
+        for sb, token in tokens.items():
             res = backend.exec_command(
                 sb, "wget -q -T 5 -O - http://127.0.0.1:2222/token", timeout=30
             )
@@ -453,32 +463,27 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
             assert token in res.stdout
 
         # The worker's own namespace must see nothing on 2222.
-        for target in ("127.0.0.1", _host_primary_ip()):
+        host_ip = _host_ip()
+        for target in ("127.0.0.1", host_ip):
             with pytest.raises(OSError):
                 socket.create_connection((target, 2222), timeout=3).close()
 
-        # No address names one sandbox from another: pasta --config-net
-        # gives every sandbox the worker's own IP, so from sb2 that IP is
-        # sb2 itself — the fetch must never reach sb1's listener.
+        # No address names one sandbox from another: pasta --config-net gives
+        # every sandbox the worker's own IP, so from sb2 that IP is sb2 itself.
         res = backend.exec_command(
-            sb2,
-            f"wget -q -T 3 -O - http://{_host_primary_ip()}:2222/token",
-            timeout=30,
+            sb2, f"wget -q -T 3 -O - http://{host_ip}:2222/token", timeout=30
         )
-        assert "SB1-TOKEN" not in res.stdout
-        if res.exit_code == 0:
-            assert "SB2-TOKEN" in res.stdout
+        assert tokens[sb1] not in res.stdout
+        assert res.exit_code != 0 or tokens[sb2] in res.stdout
     finally:
-        backend.delete_sandbox(sb1)
-        backend.delete_sandbox(sb2)
+        for sb in (sb1, sb2):
+            backend.delete_sandbox(sb)
 
 
 def test_netns_egress_and_dns(ensure_pasta):
     """Egress and the generated resolv.conf work from inside the netns."""
     backend = GVisorSandboxBackend()
-    sb = backend.create_sandbox(
-        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="public")
-    )
+    sb = backend.create_sandbox(_public_config())
     try:
         res = backend.exec_command(
             sb, "wget -q -T 15 -O - http://example.com", timeout=60
@@ -492,36 +497,18 @@ def test_netns_egress_and_dns(ensure_pasta):
 def test_netns_teardown_reaps_pasta(ensure_pasta):
     """delete_sandbox ends the pasta process tree and removes all state."""
     backend = GVisorSandboxBackend()
-    sb = backend.create_sandbox(
-        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="public")
-    )
+    sb = backend.create_sandbox(_public_config())
     meta = backend._sandbox_metadata[sb]
-    proc = meta["proc"]
-    root_dir = meta["root_dir"]
-    assert proc.poll() is None
+    assert meta["proc"].poll() is None
 
     backend.delete_sandbox(sb)
-    assert proc.poll() is not None
-    assert not os.path.exists(root_dir)
+    assert meta["proc"].poll() is not None
+    assert not os.path.exists(meta["root_dir"])
     assert sb not in backend._sandbox_metadata
 
 
 def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
     """A failed create (bad image) leaves no pasta process behind."""
-
-    def _pasta_pids():
-        pids = set()
-        for pid in os.listdir("/proc"):
-            if not pid.isdigit():
-                continue
-            try:
-                cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0", 1)[0]
-            except OSError:
-                continue
-            if os.path.basename(cmdline.decode(errors="replace")) == "pasta":
-                pids.add(pid)
-        return pids
-
     before = _pasta_pids()
     backend = GVisorSandboxBackend()
     with pytest.raises(SandboxCreationError):
