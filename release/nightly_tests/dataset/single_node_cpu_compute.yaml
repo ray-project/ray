@@ -4,10 +4,21 @@
 # fixed/autoscaling_cpu = 10x m5.2xlarge (80 vCPU / 320 GiB), mix's
 # compute_8_cpu = 8x (64 / 256). Head-only: the point is that every task,
 # and every long-lived worker, lands on ONE node.
+#
+# 512 GiB disk: the generated single-node cells run with
+# RAYTEST_FAIL_ON_SPILLING=0 because one node absorbs spill a fleet spreads,
+# and Ray spills to the root volume -- so provision for it (worst case is the
+# whole ~115 GiB object store spilling). Matches the per-node volume the
+# all-to-all fleet gives its workers.
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 advanced_instance_config:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 512
 
 head_node:
     instance_type: m5.24xlarge
