@@ -188,7 +188,7 @@ def test_chained_transforms_dont_double_count_udf_time():
     slept_s = num_calls * SLEEP_S
 
     # Can't exceed the wall time of the chain that produced it. The headroom
-    # absorbs timing noise; the bug inflated this by ~2x at 3 stages.
+    # absorbs timing noise; double counting shows up at ~2x for 3 stages.
     assert (
         reported_s <= wall_s * 1.05
     ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"

@@ -1648,7 +1648,7 @@ def test_fused_udf_time_within_wall_time(ray_start_regular_shared):
     # Both stages must actually have fused, otherwise this asserts nothing.
     assert "MapBatches(slow)->MapBatches(slow)" in op.operator_name
 
-    # The headroom absorbs timing noise; the bug inflated this to ~1.5x.
+    # The headroom absorbs timing noise; double counting shows up at ~1.5x.
     assert op.udf_time.sum <= op.wall_time.sum * 1.05, (
         f"UDF time {op.udf_time.sum:.4f}s exceeds remote wall time "
         f"{op.wall_time.sum:.4f}s"
@@ -1663,8 +1663,9 @@ def test_fused_udf_time_survives_auto_batch_size(ray_start_regular_shared):
     ``MapTransformFn.__call__`` runs ``_pre_process`` eagerly, so with
     ``batch_size="auto"`` the second stage peeks at a real block to size its
     batches while the chain is still being built. That peek runs the first
-    stage's UDF, so any timer installed after the chain is assembled misses it
-    entirely -- half the work here.
+    stage's UDF, and with one block per task it is the only time that stage
+    ever runs -- so a chain whose timers aren't in place by then loses half
+    the work measured here.
     """
     sleep_s = 0.1
     num_blocks = 4
@@ -1709,7 +1710,7 @@ def test_udf_time_is_not_shared_across_concurrent_actor_tasks(
 
     Every block here does exactly one ``sleep``, so the total and the mean stay
     plausible even when attribution is broken -- only the per-block spread shows
-    it. Before this was fixed the same run reported min=0.000s and max=0.767s.
+    it. A shared total reports min=0.000s and max=0.767s on this workload.
     """
     sleep_s = 0.25
     num_blocks = 8

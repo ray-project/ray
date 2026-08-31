@@ -197,13 +197,12 @@ class MapTransformFn(ABC):
 class UDFTimeScope:
     """Running total of UDF time for one task, and the nesting state to get it.
 
-    ``_map_task`` creates one per task and threads it into ``apply_transform``,
-    the same way it threads a :class:`CustomOpStatsReporter`. Keeping it per
-    task rather than on the :class:`MapTransformer` matters because an actor
-    pool reuses one transformer across every task the actor runs, and with
-    ``max_concurrent_calls_per_actor > 1`` several of those run concurrently:
-    a total living on the transformer would mix their timings together and let
-    one task's reset discard another's work.
+    Must stay per task, not per :class:`MapTransformer`: an actor pool reuses one
+    transformer for every task the actor runs, and ``max_concurrent_calls_per_actor
+    > 1`` runs several of those at once, so a shared total would mix their
+    timings and let one task's :meth:`drain` discard another's. ``_map_task``
+    creates one per task and threads it into ``apply_transform``, the same way it
+    threads a :class:`CustomOpStatsReporter`.
 
     ``attributed_s`` doubles as the nesting cursor. Each stage's timer records
     how far it had advanced before its own call, so it can subtract whatever
@@ -237,9 +236,8 @@ class MapTransformer:
         ``__next__`` can only measure inclusive time: the stages are chained
         behind lazy iterators, so pulling one item also runs every stage
         upstream. Subtracting what upstream stages credited to ``scope`` during
-        the same window leaves this stage's own time, so the scope's running
-        total is the time actually spent in UDFs rather than a sum that counts
-        each stage once per stage downstream of it.
+        the same window leaves this stage's own time, which is what keeps
+        ``scope``'s total from counting a stage once per stage below it.
         """
 
         def __init__(
@@ -357,14 +355,10 @@ class MapTransformer:
             udf_time_scope = UDFTimeScope()
 
         iter = input_blocks
-        # Every UDF stage is timed, as it is built. Timing only the last one
-        # would be cheaper and would still cover the others -- but only if
-        # nothing pulls data before the chain is finished, and something does:
+        # Each stage's timer has to be installed before the next stage is built:
         # `MapTransformFn.__call__` runs `_pre_process` eagerly, and with
-        # `batch_size="auto"` that peeks at a real block to size batches,
-        # dragging every upstream stage's work in ahead of any timer installed
-        # later. Installing each stage's timer before the next stage is built
-        # keeps that peek inside a timed window.
+        # `batch_size="auto"` that peeks at a real block to size batches, which
+        # pulls data through the stages already in the chain.
         for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx, report_custom_op_stats)
             if transform_fn._is_udf:
