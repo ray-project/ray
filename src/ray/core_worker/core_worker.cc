@@ -90,6 +90,9 @@ struct WaitAsyncRegistry {
 };
 
 namespace {
+thread_local int64_t actor_batch_depth = 0;
+thread_local std::vector<TaskSpecification> actor_batch_buffer;
+
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
 
@@ -2480,6 +2483,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       // Actor creation task retry happens on GCS not on core worker.
       /*max_retries=*/0);
 
+  if (actor_batch_depth > 0) {
+    actor_batch_buffer.push_back(std::move(task_spec));
+    return Status::OK();
+  }
+
   if (actor_name.empty()) {
     io_service_.post(
         [this, task_spec = std::move(task_spec)]() {
@@ -2516,6 +2524,38 @@ Status CoreWorker::CreateActor(const RayFunction &function,
         "CoreWorker.SubmitTask");
   }
   return Status::OK();
+}
+
+void CoreWorker::EnterActorBatch() { ++actor_batch_depth; }
+
+void CoreWorker::ExitActorBatch() {
+  if (actor_batch_depth > 0) {
+    --actor_batch_depth;
+  }
+  if (actor_batch_depth > 0) {
+    return;
+  }
+  if (actor_batch_buffer.empty()) {
+    return;
+  }
+  auto batch = std::move(actor_batch_buffer);
+  actor_batch_buffer.clear();
+  io_service_.post(
+      [this, batch = std::move(batch)]() {
+        actor_creator_->AsyncRegisterActorBatch(batch, [this, batch](Status status) {
+          for (const auto &task_spec : batch) {
+            if (!status.ok()) {
+              RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+                  << "Failed to register actor in batch. Error message: " << status;
+              task_manager_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+            } else {
+              actor_task_submitter_->SubmitActorCreationTask(task_spec);
+            }
+          }
+        });
+      },
+      "ActorCreator.AsyncRegisterActorBatch");
 }
 
 Status CoreWorker::CreatePlacementGroup(
