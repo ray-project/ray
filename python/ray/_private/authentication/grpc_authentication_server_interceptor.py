@@ -95,8 +95,9 @@ class _AuthenticatedHandler:
 
     Lives at module level on purpose. gRPC calls ``intercept_service`` once per
     RPC, so a class defined inside it would build a fresh type object per
-    request; a type is only reachable through a reference cycle, so refcounting
-    reclaims none of it and it accumulates until the cyclic collector runs.
+    request. A heap type references itself through its ``__mro__``, so its
+    CPython reference count never reaches zero and only the ``gc`` module's
+    cycle collector can reclaim it: the types pile up between collections.
     """
 
     def __init__(self, original_handler, unary_wrapper_func, stream_wrapper_func):
