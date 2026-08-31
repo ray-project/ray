@@ -188,7 +188,7 @@ There are minor variations to the format of the wheel filename; it's best to mat
 
 Ray supports machines running Apple Silicon (such as M1 macs). Multi-node clusters are untested. To get started with local Ray development:
 
-Install Ray the same way described above, for example:
+Install Ray the same way as described above, for example:
 
 ```shell
 pip install -U "ray[default]"
