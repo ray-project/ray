@@ -380,7 +380,9 @@ class ImageManager(BaseImageManager):
 
         # Docker parity: runsc mounts a private tmpfs over an *empty*
         # /tmp, breaking rename(2) from /tmp with EXDEV. The placeholder
-        # keeps /tmp on the rootfs; readonly sandboxes get a tmpfs below.
+        # keeps /tmp on the rootfs and stays visible in the sandbox (one
+        # empty dotfile in scratch space); readonly sandboxes get a tmpfs
+        # below, which hides it.
         tmp_dir = os.path.join(rootfs, "tmp")
         try:
             os.makedirs(tmp_dir, exist_ok=True)
