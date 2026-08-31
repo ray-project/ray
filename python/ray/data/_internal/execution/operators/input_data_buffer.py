@@ -1,4 +1,7 @@
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -45,7 +48,11 @@ class InputDataBuffer(PhysicalOperator):
         self._input_data_index = 0
         self.mark_execution_finished()
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(
                 self.target_max_block_size_override
@@ -57,7 +64,7 @@ class InputDataBuffer(PhysicalOperator):
         # so we record input metrics here
         for bundle in self._input_data:
             self._metrics.on_input_received(bundle)
-        super().start(options)
+        super().start(options, block_ref_counter)
 
     def has_next(self) -> bool:
         return self._input_data_index < len(self._input_data)

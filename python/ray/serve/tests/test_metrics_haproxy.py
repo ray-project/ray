@@ -30,6 +30,7 @@ import ray
 from ray import serve
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import (
+    PrometheusTimeseries,
     SignalActor,
     fetch_prometheus_metrics,
     wait_for_condition,
@@ -37,9 +38,17 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+    get_metric_dictionaries,
+)
 from ray.serve._private.utils import block_until_http_ready
-from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
+from ray.serve.tests.conftest import (
+    TEST_METRICS_EXPORT_PORT,
+    wait_for_metrics_endpoint,
+    wait_for_metrics_port_free,
+)
 from ray.util.state import list_actors
 
 
@@ -48,6 +57,7 @@ def metrics_start_shutdown(request):
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
+    wait_for_metrics_port_free()
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
@@ -55,15 +65,19 @@ def metrics_start_shutdown(request):
             "task_retry_delay_ms": 50,
         },
     )
-    yield serve.start(
-        http_options=HTTPOptions(
-            host="0.0.0.0",
-            request_timeout_s=request_timeout_s,
-        ),
-    )
-    serve.shutdown()
-    ray.shutdown()
-    reset_ray_address()
+    try:
+        session_name = ray._private.worker._global_node.session_name
+        wait_for_metrics_endpoint(session_name)
+        yield serve.start(
+            http_options=HTTPOptions(
+                host="0.0.0.0",
+                request_timeout_s=request_timeout_s,
+            ),
+        )
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -213,7 +227,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
         return True
 
     try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
+        wait_for_condition(verify_metrics, retry_interval_ms=500, timeout=40)
     except RuntimeError:
         verify_metrics(do_assert=True)
 
@@ -908,23 +922,27 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["application"],
     ) == expected_output
 
-    wait_for_condition(
-        lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+    expected_deployments = {("f", "app1"), ("g", "app2"), ("h", "app3")}
+    health_timeseries = PrometheusTimeseries()
+
+    def _check_replica_healthy():
+        metrics = get_metric_dictionaries(
+            "ray_serve_deployment_replica_healthy",
+            wait=False,
+            timeseries=health_timeseries,
         )
-        == 3,
-        timeout=40,
+        return {
+            (m["deployment"], m["application"]) for m in metrics
+        } >= expected_deployments
+
+    wait_for_condition(_check_replica_healthy, timeout=40)
+    health_metrics = get_metric_dictionaries(
+        "ray_serve_deployment_replica_healthy", timeseries=health_timeseries
     )
-    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
-    expected_output = {
-        ("f", "app1"),
-        ("g", "app2"),
-        ("h", "app3"),
-    }
     assert {
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
-    } == expected_output
+    } >= expected_deployments
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
@@ -941,7 +959,18 @@ def test_multiplexed_metrics(metrics_start_shutdown):
             await self.get_model(model_id)
             return
 
-    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    # Multiplexing is not supported on the ingress deployment when direct ingress /
+    # HAProxy is enabled, so keep the multiplexed deployment downstream of a plain
+    # ingress.
+    @serve.deployment
+    class Ingress:
+        def __init__(self, model):
+            self._model = model
+
+        async def __call__(self, model_id: str):
+            await self._model.remote(model_id)
+
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
@@ -1037,7 +1066,7 @@ def test_actor_summary(serve_instance):
     actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HAProxyManager", "ServeReplica:app:f"}
+        {"ServeController", *expected_proxy_actors(), "ServeReplica:app:f"}
     )
 
 

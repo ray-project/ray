@@ -39,7 +39,8 @@ class CgroupManagerFactory {
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
     for system processes. The cgroup for all other processes (including workers) gets
     10000 - system_reserved_cpu_weight.
-    @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
+    @param system_reserved_memory_bytes used to reserve memory for the system cgroup
+    protecting the ray system processes.
     @param system_pids a comma-separated list of pids of ray system processes to move into
     the system cgroup.
 

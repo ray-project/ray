@@ -447,14 +447,15 @@ async def _main(
     # Handle
     if run_handle:
         if run_latency:
-            for payload, name in [
-                (None, "handle"),
-                (payload_1mb, "handle_1mb"),
-                (payload_10mb, "handle_10mb"),
+            for payload, name, mode in [
+                (None, "handle", "remote"),
+                (payload_1mb, "handle_1mb", "remote"),
+                (payload_10mb, "handle_10mb", "remote"),
+                (None, "handle_choose_dispatch", "choose_dispatch"),
             ]:
                 h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
                 latencies = await h.run_latency_benchmark.remote(
-                    num_requests=NUM_REQUESTS, payload=payload
+                    num_requests=NUM_REQUESTS, payload=payload, mode=mode
                 )
                 perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
                 await serve.shutdown_async()

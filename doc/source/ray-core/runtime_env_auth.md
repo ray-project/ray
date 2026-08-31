@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Authenticate private remote URIs in runtime_env with a netrc file or HTTPS bearer tokens, on VMs and with KubeRay secrets."
+---
+
 (runtime-env-auth)=
 # Authenticating Remote URIs in runtime_env
 
@@ -51,8 +57,7 @@ password personal_access_token
 In this example, the `machine github.com` line specifies that any access to `github.com` should be authenticated using the provided `login` and `password`.
 
 :::{note}
-On Unix, name the `netrc` file as `.netrc`. On Windows, name the
-file as `_netrc`.
+On Unix, name the `netrc` file as `.netrc`. On Windows, name the file as `_netrc`.
 :::
 
 The `netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
@@ -84,7 +89,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -102,7 +107,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -157,7 +162,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN
@@ -170,7 +175,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN

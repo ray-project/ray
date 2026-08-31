@@ -202,11 +202,13 @@ class TestgRPCProxyRequest:
         application = "fake-application"
         request_id = "fake-request_id"
         multiplexed_model_id = "fake-multiplexed_model_id"
+        session_id = "fake-session_id"
         metadata = (
             ("foo", "bar"),
             ("application", application),
             ("request_id", request_id),
             ("multiplexed_model_id", multiplexed_model_id),
+            ("session_id", session_id),
         )
         context = MagicMock()
         context.invocation_metadata.return_value = metadata
@@ -225,6 +227,7 @@ class TestgRPCProxyRequest:
         assert proxy_request.app_name == application
         assert proxy_request.request_id == request_id
         assert proxy_request.multiplexed_model_id == multiplexed_model_id
+        assert proxy_request.session_id == session_id
         assert proxy_request.is_route_request is False
         assert proxy_request.is_health_request is False
 

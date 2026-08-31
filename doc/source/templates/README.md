@@ -2,9 +2,7 @@
 
 These templates are a set of minimal examples that are quick and easy to run and customize.
 
-Although the templates may include some machine learning framework-specific code,
-the individual code blocks are meant to be swapped in with your own application logic.
-The templates just serve as skeletons that showcase popular applications of Ray.
+Although the templates may include some machine learning framework-specific code, the individual code blocks are meant to be swapped in with your own application logic. The templates just serve as skeletons that showcase popular applications of Ray.
 
 ## Running on a Ray Cluster
 
@@ -29,17 +27,13 @@ To add a template:
             templates.yaml
     ```
 
-    Your template does not need to be a Jupyter notebook. It can also be presented as a
-    Python script with `README` instructions of how to run.
+    Your template does not need to be a Jupyter notebook. It can also be presented as a Python script with `README` instructions of how to run.
 
 2. Add a release test for the template in `release/release_tests.yaml` (for both AWS and GCE). For Data tests, use `release/release_data_tests.yaml` instead.
 
-    See the section on workspace templates for an example. Note that the cluster env and
-    compute config are a little different for release tests. Use the files in the
-    `doc/source/templates/testing/release` folder.
+    See the section on workspace templates for an example. Note that the cluster env and compute config are a little different for release tests. Use the files in the `doc/source/templates/testing/release` folder.
 
-    The release test compute configs contain placeholders for regions and cloud ids that our CI infra will fill in.
-    The cluster env builds a nightly docker image with all the required dependencies.
+    The release test compute configs contain placeholders for regions and cloud ids that our CI infra will fill in. The cluster env builds a nightly docker image with all the required dependencies.
 
 3. Add an entry to `doc/source/templates/templates.yaml` that links to your template.
 
@@ -49,13 +43,9 @@ To add a template:
 
     For handling dependencies:
 
-    - If your template requires any special dependencies that are not included in a
-      base image that you chose, be sure to list and provide instructions to install
-      the necessary dependencies within the notebook.
-      See `02_many_model_training` for an example.
+    - If your template requires any special dependencies that are not included in a base image that you chose, be sure to list and provide instructions to install the necessary dependencies within the notebook. See `02_many_model_training` for an example.
 
-    - If your template requires a custom docker image, be sure to mention this in the
-      `README` and link the docker image URL somewhere. See `03_serving_stable_diffusion` for an example.
+    - If your template requires a custom docker image, be sure to mention this in the `README` and link the docker image URL somewhere. See `03_serving_stable_diffusion` for an example.
 
 4. Run a validation script on `templates.yaml` to make sure that the paths you specified are all valid and all yamls are properly formatted.
 
@@ -70,8 +60,7 @@ To add a template:
 
 <!-- 2. Add another copy of the template that includes test-specific code and a smoke-test version if applicable.
 
-    **Note:** The need for a second test copy is temporary. Only one notebook will be needed
-    from 2.5 onward, since the test-specific code will be filtered out.
+    **Note:** The need for a second test copy is temporary. Only one notebook will be needed from 2.5 onward, since the test-specific code will be filtered out.
 
     **Label all test-specific code with the `remove-cell` Jupyter notebook tag.**
 
@@ -79,12 +68,9 @@ To add a template:
 
 3. List the smoke-test version of the template in `doc/BUILD` under the templates section. This will configure the smoke-test version to run in pre-merge CI.
 
-    Set the `SMOKE_TEST` environment variable, which should be used in your template to
-    **to make the template work for a single CI instance.**
-    This environment variable can also be used to conditionally set certain smoke test parameters (like limiting dataset size).
+    Set the `SMOKE_TEST` environment variable, which should be used in your template to **to make the template work for a single CI instance.** This environment variable can also be used to conditionally set certain smoke test parameters (like limiting dataset size).
 
-    **Make sure that you tag the test with `"gpu"` if required, and any other tags
-    needed for special dependencies.**
+    **Make sure that you tag the test with `"gpu"` if required, and any other tags needed for special dependencies.**
 
     ```python
     py_test_run_all_notebooks(

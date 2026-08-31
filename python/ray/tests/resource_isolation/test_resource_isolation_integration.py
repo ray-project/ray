@@ -74,8 +74,10 @@ _MOUNT_FILE_PATH = "/proc/mounts"
 # The names are here to help debug test failures. Tests should
 # only use the size of this list. These processes are expected to be moved
 # into the the system cgroup.
-_EXPECTED_DASHBOARD_MODULES = [
-    "ray.dashboard.modules.usage_stats.usage_stats_head.UsageStatsHead",
+#
+# UsageStatsHead is deliberately absent: it is a DashboardHeadModule, so it runs inside
+# the dashboard head process, which _EXPECTED_SYSTEM_PROCESSES_* already counts.
+_EXPECTED_DASHBOARD_SUBPROCESS_MODULES = [
     "ray.dashboard.modules.metrics.metrics_head.MetricsHead",
     "ray.dashboard.modules.data.data_head.DataHead",
     "ray.dashboard.modules.event.event_head.EventHead",
@@ -86,6 +88,18 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.state.state_head.StateHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
+# TaskEventsHead only runs as a subprocess when the migration flag is on. Mirror the
+# loader (is_enabled reads the same flag) so the expected count tracks the flag rather
+# than assuming a fixed default.
+if ray._config.enable_task_events_to_dashboard_head():
+    _EXPECTED_DASHBOARD_SUBPROCESS_MODULES.append(
+        "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead"
+    )
+
+# multiprocessing leaves two of its own processes under the dashboard head, and the
+# system cgroup picks them up alongside the modules: the forkserver, and the
+# resource_tracker that the forkserver starts.
+_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = 2
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -326,8 +340,14 @@ def assert_cgroup_hierarchy_exists_for_node(
     assert non_ray_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
-    with open(system_cgroup / "memory.min", "r") as memory_min_file:
-        contents = memory_min_file.read().strip()
+    total_memory = ray._common.utils.get_system_memory()
+    with open(user_cgroup / "memory.high", "r") as memory_high_file:
+        contents = memory_high_file.read().strip()
+        assert contents == str(
+            total_memory - resource_isolation_config.system_reserved_memory
+        )
+    with open(system_cgroup / "memory.low", "r") as memory_low_file:
+        contents = memory_low_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_memory)
     with open(system_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()
@@ -392,7 +412,7 @@ def assert_system_processes_are_in_system_cgroup(
         lines = cgroup_procs_file.readlines()
         assert (
             len(lines) == expected_count
-        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard module in which case you need to update _EXPECTED_DASHBOARD_MODULES"
+        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard subprocess module in which case you need to update _EXPECTED_DASHBOARD_SUBPROCESS_MODULES"
 
 
 def assert_worker_processes_are_in_workers_cgroup(
@@ -487,7 +507,6 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         enable_resource_isolation=True,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
     node_id = ray.NodeID.from_random().hex()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
@@ -533,7 +552,9 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
     assert_system_processes_are_in_system_cgroup(
         node_id,
         resource_isolation_config,
-        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START) + len(_EXPECTED_DASHBOARD_MODULES),
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
+        + len(_EXPECTED_DASHBOARD_SUBPROCESS_MODULES)
+        + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
@@ -570,7 +591,6 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
     node_id = generate_node_id()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
@@ -603,7 +623,9 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     assert_system_processes_are_in_system_cgroup(
         node_id,
         resource_isolation_config,
-        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT) + len(_EXPECTED_DASHBOARD_MODULES),
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
+        + len(_EXPECTED_DASHBOARD_SUBPROCESS_MODULES)
+        + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids

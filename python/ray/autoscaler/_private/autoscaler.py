@@ -207,6 +207,8 @@ class StandardAutoscaler:
             config_reader: Path to a Ray Autoscaler YAML, or a function to read
                 and return the latest config.
             load_metrics: Provides metrics for the Ray cluster.
+            gcs_client: client for interactions with the GCS. Used to drain nodes
+                before termination.
             session_name: The current Ray session name when this autoscaler
                 is deployed.
             max_launch_batch: Max number of nodes to launch in one request.
@@ -220,8 +222,6 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
-            gcs_client: client for interactions with the GCS. Used to drain nodes
-                before termination.
         """
 
         if isinstance(config_reader, str):
@@ -1014,8 +1014,10 @@ class StandardAutoscaler:
         Return KeepOrTerminate.decide_later otherwise.
 
         Args:
-            node_type_counts(Dict[NodeType, int]): The non_terminated node
+            node_id: The id of the worker node to consider.
+            node_type_counts: The non_terminated node
                 types counted so far.
+
         Returns:
             KeepOrTerminate: keep if the node should be kept, terminate if the
             node should be terminated, decide_later if we are allowed

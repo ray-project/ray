@@ -3,5 +3,150 @@
 # to run the llm sglang release tests
 
 set -exo pipefail
-pip3 uninstall -y vllm
-pip3 install "sglang[all]==0.5.9"
+# Remove flashinfer along with vllm. vllm and sglang may have conflicting flashinfer versions.
+pip3 uninstall -y vllm flashinfer-python flashinfer-cubin flashinfer-jit-cache
+# 0.5.15 is the first release carrying the Ray metric backend wrappers
+# (sglang#26252) that SGLangServer's log_engine_metrics path relies on.
+pip3 install "sglang[all,ray]==0.5.15.post1"
+
+# Patch sglang's RayEngine to auto-wire the Ray metric backend for
+# log_engine_metrics. Canonical: python/requirements/llm/patches/sglang-ray-metrics-backend-patch
+# (inlined; the BYOD build context lacks the Ray source tree). Drop once upstreamed.
+SGLANG_SITE_PACKAGES="$(python3 -c 'import os, sglang; print(os.path.dirname(os.path.dirname(os.path.abspath(sglang.__file__))))')"
+cat > /tmp/sglang-ray-metrics-backend.patch <<'SGLANG_RAY_METRICS_PATCH'
+diff --git a/sglang/srt/observability/metrics_collector.py b/sglang/srt/observability/metrics_collector.py
+--- a/sglang/srt/observability/metrics_collector.py
++++ b/sglang/srt/observability/metrics_collector.py
+@@ -1689,6 +1689,10 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
+         self.histogram_time_to_first_token.labels(**labels).observe(value)
+
+     def check_time_to_first_token_straggler(self, value: float) -> bool:
++        # Injected backends (e.g. Ray) route metrics out of process and can't
++        # introspect prometheus_client buckets here.
++        if self._histogram_cls is not None:
++            return False
+         his = self.histogram_time_to_first_token.labels(**self.labels)
+         total_observations = sum(bucket._value for bucket in his._buckets)
+         if total_observations < 100:
+@@ -1705,10 +1709,17 @@ class TokenizerMetricsCollector(_StatLoggerDIMixin):
+         self, labels: Dict[str, str], internval: float, num_new_tokens: int
+     ):
+         adjusted_interval = internval / num_new_tokens
++        his = self.histogram_inter_token_latency.labels(**labels)
++
++        if self._histogram_cls is not None:
++            # Injected backend (e.g. Ray): the bucket internals below don't
++            # exist, so use the public observe() API.
++            for _ in range(num_new_tokens):
++                his.observe(adjusted_interval)
++            return
+
+         # A faster version of the Histogram::observe which observes multiple values at the same time.
+         # reference: https://github.com/prometheus/client_python/blob/v0.21.1/prometheus_client/metrics.py#L639
+-        his = self.histogram_inter_token_latency.labels(**labels)
+         his._sum.inc(internval)
+
+         for i, bound in enumerate(his._upper_bounds):
+diff --git a/sglang/srt/observability/ray_wrappers.py b/sglang/srt/observability/ray_wrappers.py
+--- a/sglang/srt/observability/ray_wrappers.py
++++ b/sglang/srt/observability/ray_wrappers.py
+@@ -142,6 +142,18 @@ class RayPrometheusMetric:
+         """
+         return re.sub(r"[^a-zA-Z0-9_]", "_", name)
+
++    @staticmethod
++    def _get_ascii_documentation(documentation: Optional[str]) -> str:
++        """ASCII-coerce a description; Ray's metric backend rejects non-ASCII."""
++        if not documentation:
++            return documentation or ""
++        return (
++            documentation.replace("—", "-")
++            .replace("–", "-")
++            .encode("ascii", "ignore")
++            .decode("ascii")
++        )
++
+
+ class RayCounterWrapper(RayPrometheusMetric):
+     """``prometheus_client.Counter`` compatible wrapper."""
+@@ -157,7 +169,7 @@ class RayCounterWrapper(RayPrometheusMetric):
+         name = self._get_sanitized_opentelemetry_name(name)
+         self.metric = ray_metrics.Counter(
+             name=name,
+-            description=documentation,
++            description=self._get_ascii_documentation(documentation),
+             tag_keys=tag_keys,
+         )
+
+@@ -186,7 +198,7 @@ class RayGaugeWrapper(RayPrometheusMetric):
+         name = self._get_sanitized_opentelemetry_name(name)
+         self.metric = ray_metrics.Gauge(
+             name=name,
+-            description=documentation,
++            description=self._get_ascii_documentation(documentation),
+             tag_keys=tag_keys,
+         )
+
+@@ -212,7 +224,7 @@ class RayHistogramWrapper(RayPrometheusMetric):
+         name = self._get_sanitized_opentelemetry_name(name)
+         self.metric = ray_metrics.Histogram(
+             name=name,
+-            description=documentation,
++            description=self._get_ascii_documentation(documentation),
+             tag_keys=tag_keys,
+             boundaries=self._coerce_positive_boundaries(buckets),
+         )
+@@ -254,7 +266,7 @@ class RaySummaryWrapper(RayPrometheusMetric):
+         name = self._get_sanitized_opentelemetry_name(name)
+         self.metric = ray_metrics.Histogram(
+             name=name,
+-            description=documentation,
++            description=self._get_ascii_documentation(documentation),
+             tag_keys=tag_keys,
+             boundaries=self._coerce_positive_boundaries(self.DEFAULT_BOUNDARIES),
+         )
+@@ -305,3 +317,22 @@ class RayExpertDispatchCollector(ExpertDispatchCollector):
+     """``ExpertDispatchCollector`` that emits via Ray's metric system."""
+
+     _histogram_cls = RayHistogramWrapper
++
++
++def build_ray_stat_loggers() -> dict:
++    """Build the ``ServerArgs.stat_loggers`` map of role -> Ray-backed collector."""
++    from sglang.srt.observability.metrics_collector import (
++        STAT_LOGGER_ROLE_EXPERT_DISPATCH,
++        STAT_LOGGER_ROLE_RADIX_CACHE,
++        STAT_LOGGER_ROLE_SCHEDULER,
++        STAT_LOGGER_ROLE_STORAGE,
++        STAT_LOGGER_ROLE_TOKENIZER,
++    )
++
++    return {
++        STAT_LOGGER_ROLE_SCHEDULER: RaySchedulerMetricsCollector,
++        STAT_LOGGER_ROLE_TOKENIZER: RayTokenizerMetricsCollector,
++        STAT_LOGGER_ROLE_STORAGE: RayStorageMetricsCollector,
++        STAT_LOGGER_ROLE_RADIX_CACHE: RayRadixCacheMetricsCollector,
++        STAT_LOGGER_ROLE_EXPERT_DISPATCH: RayExpertDispatchCollector,
++    }
+diff --git a/sglang/srt/ray/engine.py b/sglang/srt/ray/engine.py
+--- a/sglang/srt/ray/engine.py
++++ b/sglang/srt/ray/engine.py
+@@ -233,6 +233,12 @@ class RayEngine(Engine):
+         placement_group = kwargs.pop("placement_group", None)
+         if "log_level" not in kwargs:
+             kwargs["log_level"] = "error"
++        # Schedulers are separate Ray actors; default to the Ray-backed
++        # collectors so enable_metrics reaches Ray's Prometheus endpoint.
++        if kwargs.get("enable_metrics") and kwargs.get("stat_loggers") is None:
++            from sglang.srt.observability.ray_wrappers import build_ray_stat_loggers
++
++            kwargs["stat_loggers"] = build_ray_stat_loggers()
+         server_args = ServerArgs(**kwargs)
+         server_args.placement_group = placement_group
+         super().__init__(server_args=server_args)
+SGLANG_RAY_METRICS_PATCH
+( cd "${SGLANG_SITE_PACKAGES}" && git apply /tmp/sglang-ray-metrics-backend.patch )
+# Reinstall opentelemetry-proto to regenerate _pb2.py files compatible with
+# the protobuf version that sglang pulls in (protobuf 4.x+ removed old-style
+# descriptor creation, causing Ray dashboard to crash on startup).
+pip3 install --upgrade opentelemetry-proto opentelemetry-sdk opentelemetry-exporter-prometheus

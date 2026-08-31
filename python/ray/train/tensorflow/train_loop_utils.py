@@ -13,7 +13,7 @@ def prepare_dataset_shard(tf_dataset_shard: tf.data.Dataset):
     been sharded across the workers.
 
     Args:
-        tf_dataset_shard (tf.data.Dataset): A TensorFlow Dataset.
+        tf_dataset_shard: A TensorFlow Dataset.
 
     Returns:
         A TensorFlow Dataset with:

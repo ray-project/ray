@@ -23,9 +23,33 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
 namespace raylet {
+
+namespace {
+
+bool HasHardNodeAffinity(const LabelSelector &label_selector) {
+  const std::optional<absl::flat_hash_set<std::string>> hard_node_affinity_values =
+      GetHardNodeAffinityValues(label_selector);
+  return hard_node_affinity_values.has_value() && !hard_node_affinity_values->empty();
+}
+
+bool AllLabelSelectorsAreHardNodeAffinity(
+    const SchedulingClassDescriptor &scheduling_class_descriptor) {
+  if (!HasHardNodeAffinity(scheduling_class_descriptor.label_selector)) {
+    return false;
+  }
+  for (const auto &fallback : scheduling_class_descriptor.fallback_strategy) {
+    if (!HasHardNodeAffinity(fallback.label_selector)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
 
 SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<SchedulingClass,
@@ -79,16 +103,21 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         break;
       }
 
-      const auto &scheduling_class_descriptor =
+      const auto &scheduling_class_descriptor_ptr =
           SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
-      if ((scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
-           rpc::SchedulingStrategy::SchedulingStrategyCase::
-               kNodeAffinitySchedulingStrategy) &&
+      const auto &scheduling_class_descriptor = *scheduling_class_descriptor_ptr;
+      const auto &label_selectors = scheduling_class_descriptor.label_selector;
+      const bool is_node_affinity_scheduling_strategy =
+          scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
+          rpc::SchedulingStrategy::SchedulingStrategyCase::
+              kNodeAffinitySchedulingStrategy;
+      if ((is_node_affinity_scheduling_strategy ||
+           AllLabelSelectorsAreHardNodeAffinity(scheduling_class_descriptor)) &&
           !is_infeasible) {
-        // Resource demands from tasks with node affinity scheduling strategy shouldn't
-        // create new nodes since those tasks are intended to run with existing nodes. The
-        // exception is when soft is False and there is no feasible node. In this case, we
-        // should report so autoscaler can launch new nodes to unblock the tasks.
+        // Resource demands from hard node affinity constraints shouldn't create new
+        // nodes since those tasks are intended to run with existing nodes. The
+        // exception is when there is no feasible node, in which case we should report
+        // so autoscaler can launch new nodes to unblock the tasks.
         // TODO(Alex): ideally we should report everything to autoscaler and autoscaler
         // can decide whether or not to launch new nodes based on scheduling strategies.
         // However currently scheduling strategies are not part of resource load report
@@ -98,7 +127,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
-      const auto &label_selectors = scheduling_class_descriptor.label_selector;
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -115,6 +143,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
 
       // Add label selectors
       label_selectors.ToProto(by_shape_entry->add_label_selectors());
+      for (const auto &fallback : scheduling_class_descriptor.fallback_strategy) {
+        fallback.label_selector.ToProto(by_shape_entry->add_label_selectors());
+      }
 
       if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);
@@ -184,9 +215,9 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
         data.mutable_resource_load_by_shape()->mutable_resource_demands();
     for (const auto &shape_entry : pending_count_by_shape) {
       auto by_shape_entry = resource_load_by_shape->Add();
-      for (const auto &resource_entry :
-           SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first)
-               .resource_set.GetResourceMap()) {
+      const auto &descriptor =
+          SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first);
+      for (const auto &resource_entry : descriptor->resource_set.GetResourceMap()) {
         (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
       }
       by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);

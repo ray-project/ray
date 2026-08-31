@@ -192,9 +192,7 @@ def _configure_resource_group(config):
 
     # Get or create an MSI name and resource group.
     # Defaults to current resource group if not provided.
-    use_existing_msi = (
-        "msi_name" in config["provider"] and "msi_resource_group" in config["provider"]
-    )
+    use_existing_msi = _is_shared_msi(config["provider"])
     msi_resource_group = config["provider"].get("msi_resource_group", resource_group)
     msi_name = config["provider"].get("msi_name", f"ray-{cluster_id}-msi")
     logger.info(
@@ -578,3 +576,11 @@ def _generate_arm_guid(*values: Any) -> str:
 
     concatenated = "".join(str(v) for v in values)
     return str(UUID(md5(concatenated.encode("utf-8")).hexdigest()))
+
+
+def _is_shared_msi(provider_config: dict) -> bool:
+    """Checks if the provider config specifies a shared/pre-existing MSI."""
+    return (
+        provider_config.get("msi_name") is not None
+        and provider_config.get("msi_resource_group") is not None
+    )

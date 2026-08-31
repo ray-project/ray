@@ -6,9 +6,24 @@
   frequency: manual
   team: data
 
+  cluster:
+    byod:
+      runtime_env:
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Ray Data attempts to limit cluster-wide object store usage of primary copies
+        # to 50% with its `ResourceBudget` backpressure policy. Since Ray Data doesn't
+        # keep track of secondary copies, the worst case utilization is 50% * 2 copies
+        # = 100%. If we exceed this amount on a linear pipeline, it means backpressure
+        # is very broken.
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+
 - name: image_classification
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_classification/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -30,6 +45,7 @@
 - name: large_image_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: large_image_embedding/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -51,6 +67,7 @@
 - name: document_embedding
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: document_embedding/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
@@ -73,6 +90,7 @@
 - name: audio_transcription
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: audio_transcription/compute.yaml
     byod:
       type: gpu
@@ -95,6 +113,7 @@
 - name: video_object_detection
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: video_object_detection/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh

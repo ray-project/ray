@@ -65,6 +65,103 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
     def _set_tmpdir(self, tmpdir):
         self._tmpdir = tmpdir
 
+    def _make_local_provider(self, head_ip=None, worker_ips=None):
+        """Helper to create a LocalNodeProvider with a temp RAY_TMPDIR."""
+        self._monkeypatch.setenv("RAY_TMPDIR", self._tmpdir)
+        if head_ip is None:
+            head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
+        if worker_ips is None:
+            worker_ips = ["0.0.0.0:1"]
+        provider_config = {
+            "type": "local",
+            "head_ip": head_ip,
+            "worker_ips": worker_ips,
+            "external_head_ip": "1.2.3.4",
+        }
+        cluster_name = "random_name"
+        node_provider = _get_node_provider(
+            provider_config, cluster_name, use_cache=False
+        )
+        return node_provider, head_ip, provider_config, cluster_name
+
+    def testNodesForTeardownIncludesTerminated(self):
+        """nodes_for_teardown must return every known IP regardless of state.
+
+        This is the crux of the docker-stop-on-teardown fix: the invoking
+        machine's state file shows workers as terminated (the head's
+        autoscaler never updates it), so non_terminated_nodes returns an
+        empty worker list and ``ray down`` skips their docker containers.
+        nodes_for_teardown closes that gap.
+        """
+        worker_ips = ["10.0.0.1", "10.0.0.2"]
+        provider, head_ip, _, _ = self._make_local_provider(
+            worker_ips=worker_ips,
+        )
+
+        # Initially everything is terminated (mirrors the local-machine state
+        # file that was never updated by the head's autoscaler).
+        assert provider.non_terminated_nodes({}) == []
+        all_ids = provider.nodes_for_teardown({})
+        assert set(all_ids) == {head_ip} | set(worker_ips)
+
+        # Tag-filtered queries should also work.
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        ) == set(worker_ips)
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+        ) == {head_ip}
+
+        # Mark head as running; workers stay terminated.
+        record_local_head_state_if_needed(provider)
+        assert provider.non_terminated_nodes({}) == [head_ip]
+        # nodes_for_teardown still returns all three.
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        ) == set(worker_ips)
+
+        # After creating one worker (simulating what the head autoscaler does),
+        # both methods should include it, but nodes_for_teardown also includes
+        # the still-terminated worker.
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1)
+        running_workers = provider.non_terminated_nodes(
+            {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+        )
+        assert len(running_workers) == 1
+        all_workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        assert set(all_workers) == set(worker_ips)
+
+    def testNodesForTeardownExcludesAfterTerminateNode(self):
+        """nodes_for_teardown excludes nodes after terminate_node is called.
+
+        Once terminate_node sets teardown_complete, the node should no longer
+        appear in nodes_for_teardown so it is not targeted on subsequent
+        teardown passes.  Re-creating the node (via create_node) must clear
+        the flag so it can be torn down again in a future cycle.
+        """
+        worker_ips = ["10.0.0.1", "10.0.0.2"]
+        provider, head_ip, _, _ = self._make_local_provider(
+            worker_ips=worker_ips,
+        )
+
+        # Bring all nodes to running state.
+        record_local_head_state_if_needed(provider)
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 2)
+        assert len(provider.non_terminated_nodes({})) == 3
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
+
+        # Terminate one worker — it should disappear from nodes_for_teardown.
+        provider.terminate_node("10.0.0.1")
+        assert set(provider.nodes_for_teardown({})) == {head_ip, "10.0.0.2"}
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        ) == {"10.0.0.2"}
+
+        # Re-create the terminated worker — teardown_complete should be cleared.
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1)
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
+
     def testClusterStateInit(self):
         """Check ClusterState __init__ func generates correct state file.
 

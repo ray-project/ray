@@ -1,5 +1,5 @@
-load("@py_deps_py310//:requirements.bzl", bk_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("//bazel:ci_require.bzl", bk_require = "ci_require")
 
 exports_files(
     [
@@ -571,6 +571,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_anyscale_job_runner",
+    size = "small",
+    srcs = ["ray_release/tests/test_anyscale_job_runner.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
 py_library(
     name = "bisect_lib",
     srcs = ["ray_release/scripts/ray_bisect.py"],
@@ -677,6 +692,7 @@ py_test(
     srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
@@ -698,6 +714,7 @@ py_test(
         "ray_release/configs/oss_config.yaml",
         "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
@@ -814,6 +831,26 @@ py_test(
 )
 
 py_test(
+    name = "test_new_sdk_compute_configs",
+    size = "small",
+    srcs = ["ray_release/tests/test_new_sdk_compute_configs.py"],
+    data = glob(
+        ["**/*.yaml"],
+        exclude = ["ray_release/**/*.yaml"],
+    ),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("anyscale"),
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_result",
     size = "small",
     srcs = ["ray_release/tests/test_result.py"],
@@ -853,6 +890,9 @@ py_test(
     name = "test_state_machine",
     size = "small",
     srcs = ["ray_release/tests/test_state_machine.py"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "release_unit",

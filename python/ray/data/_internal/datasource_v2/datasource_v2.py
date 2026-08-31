@@ -33,6 +33,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+        FilePartitioner,
+    )
     from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
         InMemorySizeEstimator,
     )
@@ -71,7 +74,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     4. Scanner creation
 
     Subclasses should implement the abstract methods and can optionally
-    override _get_file_indexer() and get_size_estimator() for file-based sources.
+    override _get_file_indexer(), get_size_estimator(), and optionally
+    get_file_partitioner() for file-based sources.
 
     Example::
 
@@ -97,6 +101,12 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         self._name = name
         self._category = category
+        # File-based subclasses set this to ``False`` in their ``__init__``
+        # when the user-supplied paths are in the ``local://`` scheme —
+        # the driver node is the only one that can read those files.
+        # ``_read_datasource_v2`` consults the flag to decide whether to
+        # pin read tasks via a ``label_selector``.
+        self._supports_distributed_reads: bool = True
 
     @property
     def name(self) -> str:
@@ -108,6 +118,18 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """Category of this datasource."""
         return self._category
 
+    @property
+    def supports_distributed_reads(self) -> bool:
+        """Whether read tasks may run on any cluster node.
+
+        Defaults to ``True``. File-based subclasses (e.g.
+        :class:`ParquetDatasourceV2`) flip this to ``False`` when the
+        user supplies ``local://``-scheme paths so ``_read_datasource_v2``
+        can pin reads to the driver node via a ``ray.io/node-id``
+        label selector. Mirrors V1 ``Datasource.supports_distributed_reads``.
+        """
+        return self._supports_distributed_reads
+
     def _get_file_indexer(self) -> Optional[FileIndexer]:
         """Return FileIndexer component if applicable.
 
@@ -117,6 +139,19 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             FileIndexer instance, or None for non-file-based sources.
         """
         return None
+
+    def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
+        """Partitioner that groups this source's listing rows into read units.
+
+        Defaults to the size-estimating ``RoundRobinPartitioner``. Override when
+        the indexer emits rows carrying richer metadata (e.g. Parquet row-group
+        stats) that a different grouping strategy can exploit.
+        """
+        from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (  # noqa: E501
+            RoundRobinPartitioner,
+        )
+
+        return RoundRobinPartitioner(**kwargs)
 
     def get_size_estimator(self) -> Optional[InMemorySizeEstimator]:
         """Return size estimator for this datasource.
@@ -161,3 +196,13 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             Configured Scanner instance.
         """
         ...
+
+    def resolve_partitioning(self, sample: InputSplit) -> Optional[Any]:
+        """Return a partitioning descriptor derived from ``sample``, or ``None``.
+
+        Override this for file-based sources whose partition keys must be
+        discovered from a sample path (e.g. hive layouts where field names
+        are not known up front). The resolved descriptor is passed into
+        :meth:`create_scanner`.
+        """
+        return None

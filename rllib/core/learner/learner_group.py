@@ -181,6 +181,7 @@ class LearnerGroup(Checkpointable):
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
+                **(self.config.custom_resources_per_learner or {}),
             }
 
             backend_executor = RLlibBackendExecutor(
@@ -701,6 +702,8 @@ class LearnerGroup(Checkpointable):
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
+        if self.is_local and self._learner is not None:
+            self._learner.shutdown()
         if self.is_remote and hasattr(self, "_backend_executor"):
             self._backend_executor.shutdown(graceful_termination=True)
         self._is_shut_down = True

@@ -285,6 +285,13 @@ class BaseTrainer(abc.ABC):
         ``<Framework>Trainer(resume_from_checkpoint)`` API instead, passing in a
         checkpoint from the previous run to start with.
 
+        .. warning::
+
+            The ``path`` must point to a **trusted** experiment directory.
+            Restoring from an untrusted path executes arbitrary Python code
+            (the experiment state uses pickle serialization). Never restore
+            from a path that other parties can write to.
+
         .. note::
 
             Restoring an experiment from a path that's pointing to a *different*
@@ -435,6 +442,8 @@ class BaseTrainer(abc.ABC):
             path: The path to the experiment directory of the Train experiment.
                 This can be either a local directory (e.g., ~/ray_results/exp_name)
                 or a remote URI (e.g., s3://bucket/exp_name).
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem`` to use. If not
+                provided, the filesystem is auto-resolved from ``path``.
 
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
@@ -931,13 +940,14 @@ def format_datasets_for_repr(datasets: Optional[Dict[str, GenDataset]]) -> str:
     need to special-case datasets.
     """
     from ray.data import Dataset
+    from ray.data._internal.dataset_repr import build_dataset_summary_repr
 
     assert datasets is not None, "Expected caller to pass in non-None argument"
 
     formatted = {}
     for key, dataset in datasets.items():
         if isinstance(dataset, Dataset):
-            formatted[key] = dataset._plan.get_plan_as_string(type(dataset))
+            formatted[key] = build_dataset_summary_repr(dataset)
         else:
             formatted[key] = dataset
 

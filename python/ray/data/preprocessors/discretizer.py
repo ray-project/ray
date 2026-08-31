@@ -138,8 +138,8 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         0      0.0        0
         1      1.0        0
         2      1.0        0
-        3      NaN        0
-        4      NaN        1
+        3     <NA>        0
+        4     <NA>        1
         5      1.0        1
 
 

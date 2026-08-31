@@ -16,6 +16,7 @@ from fastapi import (
     Query,
     Request,
     Response,
+    params as fastapi_params,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -29,10 +30,12 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.http_util import make_fastapi_class_based_view
+from ray.serve._private.http_util import (
+    _walk_fastapi_routes,
+    make_fastapi_class_based_view,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -124,39 +127,65 @@ def test_class_based_view(serve_instance):
     assert handle.other.remote("world").result() == "world"
 
 
+def _find_route(app, endpoint):
+    """Return the route whose endpoint is ``endpoint``, searching nested routers.
+
+    FastAPI >= 0.137 nests routes registered via ``include_router`` under
+    ``_IncludedRouter`` nodes, so we can't rely on flat ``app.routes`` indexing.
+    """
+    for route, _parent, _prefix in _walk_fastapi_routes(app):
+        if route.endpoint == endpoint:
+            return route
+    raise AssertionError(f"route for {endpoint} not found")
+
+
 @pytest.mark.parametrize("websocket", [False, True])
-def test_make_fastapi_class_based_view(websocket: bool):
+@pytest.mark.parametrize("via_router", [False, True])
+def test_make_fastapi_class_based_view(websocket: bool, via_router: bool):
     app = FastAPI()
+    router = APIRouter(prefix="/prefix")
+    # When `via_router` is set, register the endpoint through `include_router`.
+    # On FastAPI >= 0.137 such routes are nested under an `_IncludedRouter`,
+    # which previously hid them from the class-based-view transform (#64475).
+    target = router if via_router else app
 
     if websocket:
 
         class A:
-            @app.get("/{i}")
+            @target.websocket("/{i}")
             def b(self, i: int):
                 pass
 
     else:
 
         class A:
-            @app.websocket("/{i}")
+            @target.get("/{i}")
             def b(self, i: int):
                 pass
 
-    # before, "self" is treated as a query params
-    assert app.routes[-1].endpoint == A.b
-    assert app.routes[-1].dependant.query_params[0].name == "self"
-    assert len(app.routes[-1].dependant.dependencies) == 0
+    if via_router:
+        app.include_router(router)
+
+    # before, "self" is treated as a query param.
+    route = _find_route(app, A.b)
+    assert route.dependant.query_params[0].name == "self"
+    assert len(route.dependant.dependencies) == 0
 
     make_fastapi_class_based_view(app, A)
 
-    # after, "self" is treated as a dependency instead of query params
-    assert app.routes[-1].endpoint == A.b
-    assert len(app.routes[-1].dependant.query_params) == 0
-    assert len(app.routes[-1].dependant.dependencies) == 1
-    self_dep = app.routes[-1].dependant.dependencies[0]
-    assert self_dep.name == "self"
-    assert inspect.isfunction(self_dep.call)
-    assert "get_current_servable" in str(self_dep.call)
+    # After the transform "self" is injected via a dependency. We assert on the
+    # endpoint signature (which the transform rewrites directly) rather than on
+    # `route.dependant`: FastAPI >= 0.137 recomputes the dependant lazily at
+    # request time for routes registered via `include_router`, so the route
+    # object's cached `dependant` may still reflect the pre-transform signature.
+    params = list(inspect.signature(A.b).parameters.values())
+    assert params[0].name == "self"
+    assert isinstance(params[0].default, fastapi_params.Depends)
+    assert "get_current_servable" in str(params[0].default.dependency)
+    # Remaining params become keyword-only since `self` is no longer positional.
+    assert all(p.kind == inspect.Parameter.KEYWORD_ONLY for p in params[1:]), [
+        (p.name, p.kind) for p in params[1:]
+    ]
 
 
 class Nested(BaseModel):
@@ -1227,105 +1256,70 @@ def test_ingress_direct_inheritance(serve_instance):
     assert resp.json() == {"level": "direct"}
 
 
-@pytest.mark.parametrize(
-    "app_root_path,serve_root_path,expected_params_1,expected_params_2",
-    [
-        ("", "", ["/hello", "", "/hello"], []),
-        (
-            "/app_root_path",
-            "",
-            ["/hello", "/app_root_path", "/hello"],
-            ["/app_root_path/hello", "/app_root_path", "/app_root_path/hello"],
-        ),
-        (
-            "",
-            "/serve_root_path",
-            ["/hello", "/serve_root_path", "/serve_root_path/hello"],
-            [],
-        ),
-        ("/app_root_path", "/serve_root_path", [], []),
-        ("/root_path", "/root_path", ["/hello", "/root_path", "/root_path/hello"], []),
-    ],
-)
-def test_root_path(
-    ray_shutdown, app_root_path, serve_root_path, expected_params_1, expected_params_2
-):
-    # serve_root_path is a proxy-dependent feature that doesn't apply to direct ingress
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip(
-            "serve_root_path is handled by proxy, not applicable for direct ingress"
-        )
+def test_ingress_include_router_with_self(serve_instance):
+    """Endpoints registered via ``include_router`` must strip ``self`` (#64475).
 
+    FastAPI >= 0.137 nests routes added through ``include_router`` under an
+    ``_IncludedRouter`` node instead of flattening them into ``app.routes``.
+    The class-based-view transform previously only scanned the flat list, so
+    ``self`` was left in the signature and treated as a required query param,
+    causing requests to fail with 'Field required at ('query', 'self')' (422).
     """
-    The test works across uvicorn versions (before and after uvicorn 0.26.0 version which introduces breaking changes for the scope root_path).
+    app = FastAPI()
+    # A router whose prefix is baked into the route path via `APIRouter(prefix=)`.
+    router = APIRouter(prefix="/prefix")
+    # A router whose prefix is supplied at `include_router(..., prefix=)` time.
+    # On FastAPI >= 0.137 this prefix lives on the `_IncludedRouter` node rather
+    # than in the route's own path, so the transform must fold it back in when
+    # re-mounting the route (otherwise the endpoint moves to the wrong path).
+    prefixed_router = APIRouter()
 
-    Reference: https://github.com/Kludex/uvicorn/pull/2213
+    class Ingress:
+        @router.get("/routed")
+        def routed_endpoint(self, name: str = "world"):
+            return {"source": "router", "name": name}
 
-    | Case | `app_root_path`  | `serve_root_path`  | Expected Working URL #1 (suffix) | `root_path` (req.scope) | `path` (req.scope)       | Expected Working URL #2 (suffix) | `root_path` #2   | `path` #2              |
-    | ---: | ---------------- | ------------------ | -------------------------------- | ----------------------- | ------------------------ | -------------------------------- | ---------------- | ---------------------- |
-    |    1 | `""`             | `""`               | `/hello`                         | `""`                    | `/hello`                 | —                                | —                | —                      |
-    |    2 | `/app_root_path` | `""`               | `/hello`                         | `/app_root_path`        | `/hello`                 | `/app_root_path/hello`           | `/app_root_path` | `/app_root_path/hello` |
-    |    3 | `""`             | `/serve_root_path` | `/hello`                         | `/serve_root_path`      | `/serve_root_path/hello` | —                                | —                | —                      |
-    |    4 | `/app_root_path` | `/serve_root_path` | *(none)*                         | —                       | —                        | —                                | —                | —                      |
-    |    5 | `/root_path`     | `/root_path`       | `/hello`                         | `/root_path`            | `/root_path/hello`       | —                                | —                | —                      |
-    """
-    app = FastAPI(root_path=app_root_path)
+        @prefixed_router.get("/models/{model_id}")
+        def prefixed_endpoint(self, model_id: str):
+            return {"source": "prefixed", "model_id": model_id}
 
-    @app.get("/hello")
-    def func(request: Request):
-        return {
-            "root_path": request.scope.get("root_path"),
-            "path": request.scope.get("path"),
-        }
+        @app.get("/direct")
+        def direct_endpoint(self):
+            return {"source": "app"}
+
+    # Registered before the class is wrapped by `serve.ingress`, mirroring how
+    # applications (e.g. vLLM) compose their routers.
+    app.include_router(router)
+    app.include_router(prefixed_router, prefix="/api")
 
     @serve.deployment
     @serve.ingress(app)
-    class App:
+    class ServedIngress(Ingress):
         pass
 
-    serve.start(http_options={"root_path": serve_root_path})
-    serve.run(App.bind())
+    serve.run(ServedIngress.bind())
 
-    base = get_application_url("HTTP")
-    test_urls = [
-        f"{base}/hello",
-        f"{base}{app_root_path}/hello",
-        f"{base}{serve_root_path}/hello",
-        f"{base}{app_root_path}{serve_root_path}/hello",
-        f"{base}{serve_root_path}{app_root_path}/hello",
-        f"{base}{app_root_path}{app_root_path}/hello",
-        f"{base}{serve_root_path}{serve_root_path}/hello",
-    ]
+    url = get_application_url("HTTP")
 
-    tested = set()
-    working_url_params = []
-    for test_url in test_urls:
-        if test_url not in tested:
-            response = httpx.get(test_url)
-            if response.status_code == 200:
-                body = response.json()
-                params = {}
-                params["url"] = test_url
-                params["root_path"] = body["root_path"]
-                params["path"] = body["path"]
-                working_url_params.append(params)
-            tested.add(test_url)
-    if expected_params_1:
-        assert (
-            len(working_url_params) > 0
-        ), "working urls array is expected to have at least 1 item!"
-        assert working_url_params[0]["url"].endswith(expected_params_1[0])
-        assert working_url_params[0]["root_path"] == expected_params_1[1]
-        assert working_url_params[0]["path"] == expected_params_1[2]
-        if expected_params_2:
-            assert (
-                len(working_url_params) > 1
-            ), "working urls array is expected to have at least 2 items!"
-            assert working_url_params[1]["url"].endswith(expected_params_2[0])
-            assert working_url_params[1]["root_path"] == expected_params_2[1]
-            assert working_url_params[1]["path"] == expected_params_2[2]
-    else:
-        assert len(working_url_params) == 0
+    # The included route must resolve without a bogus `self` query param.
+    resp = httpx.get(f"{url}/prefix/routed")
+    assert resp.status_code == 200, f"Routed failed: {resp.text}"
+    assert resp.json() == {"source": "router", "name": "world"}
+
+    # Regular query params on the included route still work.
+    resp = httpx.get(f"{url}/prefix/routed", params={"name": "serve"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"source": "router", "name": "serve"}
+
+    # An include-time prefix must be preserved (route stays at /api/...).
+    resp = httpx.get(f"{url}/api/models/gpt")
+    assert resp.status_code == 200, f"Prefixed failed: {resp.text}"
+    assert resp.json() == {"source": "prefixed", "model_id": "gpt"}
+
+    # Directly decorated routes keep working too.
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"source": "app"}
 
 
 if __name__ == "__main__":

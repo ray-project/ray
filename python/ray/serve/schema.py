@@ -1,4 +1,5 @@
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
@@ -18,20 +19,23 @@ from pydantic import (
 )
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
-from ray._private.runtime_env.packaging import parse_uri
+from ray._common.runtime_env_uri import parse_uri
+from ray._private.label_utils import validate_label_selector
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
     RequestProtocol,
-    ServeDeployMode,
 )
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
+    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -39,6 +43,8 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    BackpressureConfig,
+    ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
     ProxyLocation,
@@ -50,7 +56,7 @@ from ray.util.annotations import PublicAPI
 TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
-        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "The target capacity percentage for all replicas across the "
         "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
         "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
@@ -217,6 +223,55 @@ class LoggingConfig(BaseModel):
         return self._compute_hash() == other._compute_hash()
 
 
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config schema for configuring distributed tracing on Serve components.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import TracingConfig
+
+            # Enable tracing with default exporter
+            serve.start(tracing_config=TracingConfig(enabled=True))
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "",
+        description=(
+            "Whether tracing is enabled. Defaults to True when the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable is set. "
+            "When enabled, spans will be exported using the configured exporter."
+        ),
+    )
+    exporter_import_path: str = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        description=(
+            "Import path to a custom tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
+            "If empty and tracing is enabled, the default file-based exporter is used."
+        ),
+    )
+    sampling_ratio: float = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_SAMPLING_RATIO,
+        description=(
+            "Sampling ratio for traces (0.0 to 1.0). Defaults to the "
+            "RAY_SERVE_TRACING_SAMPLING_RATIO environment variable (0.01, i.e. 1%)."
+        ),
+    )
+
+    @field_validator("sampling_ratio")
+    @classmethod
+    def validate_sampling_ratio(cls, v):
+        if v < 0.0 or v > 1.0:
+            raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
@@ -278,6 +333,15 @@ class RayActorOptionsSchema(BaseModel):
         ),
     )
 
+    @field_validator("label_selector")
+    @classmethod
+    def label_selector_is_valid(cls, v):
+        error_message = validate_label_selector(v)
+        if error_message:
+            raise ValueError(error_message)
+
+        return v
+
     @field_validator("runtime_env")
     @classmethod
     def runtime_env_contains_remote_uris(cls, v):
@@ -319,8 +383,7 @@ class DeploymentSchema(BaseModel):
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null. Can also be set to "
-            "`auto` for a default autoscaling configuration "
-            "(experimental)."
+            "`auto` for a default autoscaling configuration."
         ),
     )
     max_ongoing_requests: int = Field(
@@ -336,8 +399,21 @@ class DeploymentSchema(BaseModel):
     max_queued_requests: StrictInt = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+            "Maximum number of requests to this deployment that will be queued at "
+            "each caller (proxy or DeploymentHandle). Once this limit is reached, "
+            "subsequent requests will raise a BackPressureError (for handles) or "
+            "return an HTTP 503 status code by default (configurable via "
+            "`backpressure_config.status_code`) for HTTP requests. Defaults to -1 "
+            "(no limit)."
+        ),
+    )
+    backpressure_config: BackpressureConfig = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration of the HTTP response returned when a request to "
+            "this deployment is rejected due to backpressure "
+            "(`max_queued_requests` exceeded): the status code (503 by "
+            "default, or 429) and an optional `Retry-After` header."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -463,6 +539,17 @@ class DeploymentSchema(BaseModel):
             "init_kwargs, and actor_options."
         ),
     )
+    rolling_update_percentage: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "The fraction of replicas to update at a time during a "
+            "rolling update. Must be in (0.0, 1.0]. "
+            f"Defaults to {DEFAULT_ROLLING_UPDATE_PERCENTAGE} "
+            f"({int(DEFAULT_ROLLING_UPDATE_PERCENTAGE * 100)}%)."
+        ),
+        gt=0.0,
+        le=1.0,
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -504,16 +591,23 @@ class DeploymentSchema(BaseModel):
             # Validate autoscaling bounds are multiples of gang_size
             autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
-                min_replicas = autoscaling_config.get("min_replicas")
-                if min_replicas is not None and min_replicas == 0:
-                    raise ValueError(
-                        "Scale to zero isn't supported for gang scheduling."
+                # Since this is a "before" validator, autoscaling_config may be
+                # either a dict (from raw input) or an AutoscalingConfig instance
+                # (if already constructed). Normalize to a dict of only the
+                # user-set fields so that gang-size multiple validation is not
+                # triggered for default values the user never explicitly set.
+                # This matches how AutoscalingConfig is handled elsewhere in the
+                # codebase (see ray/serve/_private/config.py).
+                if isinstance(autoscaling_config, AutoscalingConfig):
+                    autoscaling_config = autoscaling_config.model_dump(
+                        exclude_unset=True
                     )
-                for field in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    val = autoscaling_config.get(field)
+
+                for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
                         raise ValueError(
-                            f"autoscaling_config.{field} ({val}) must be a "
+                            f"autoscaling_config.{field_name} ({val}) must be a "
                             f"multiple of gang_size ({gang_config.gang_size})."
                         )
             return values
@@ -619,9 +713,9 @@ class DeploymentSchema(BaseModel):
         """
 
         return {
-            field
-            for field in self.model_fields_set
-            if getattr(self, field) is not DEFAULT.VALUE
+            field_name
+            for field_name in self.model_fields_set
+            if getattr(self, field_name) is not DEFAULT.VALUE
         }
 
     def is_autoscaling_configured(self) -> bool:
@@ -638,6 +732,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         name=name,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
+        # Dump to a plain dict (like autoscaling_config below) so the details
+        # API always returns the full, stable shape regardless of which fields
+        # were explicitly set.
+        backpressure_config=info.deployment_config.backpressure_config.model_dump(),
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
@@ -647,6 +745,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
+        rolling_update_percentage=info.deployment_config.rolling_update_percentage,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -672,6 +771,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
             cfg_dict["init_args"] = list(cfg_dict["init_args"])
             deployment_actors.append(cfg_dict)
         schema.deployment_actors = deployment_actors
+
+    if info.replica_config.max_replicas_per_node is not None:
+        schema.max_replicas_per_node = info.replica_config.max_replicas_per_node
 
     return schema
 
@@ -721,9 +823,10 @@ class ServeApplicationSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "your Serve application has started running. The Serve application "
-            "must be shut down and restarted with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once your Serve application "
+            "has started running. The Serve application must be shut down and "
+            "restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -872,7 +975,7 @@ class ServeApplicationSchema(BaseModel):
         }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptionsSchema(BaseModel):
     """Options to start the gRPC Proxy with."""
 
@@ -912,9 +1015,9 @@ class HTTPOptionsSchema(BaseModel):
         default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "Serve has started running. Serve must be shut down and restarted "
-            "with the new host instead."
+            "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
+            "Serve publicly. Cannot be updated once Serve has started running. "
+            "Serve must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -996,9 +1099,22 @@ class ServeDeploySchema(BaseModel):
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
+    controller_options: Optional[ControllerOptions] = Field(
+        default=None,
+        description=(
+            "[EXPERIMENTAL] Options for the Serve controller actor. Currently "
+            "scoped to ``runtime_env.env_vars`` (other ``runtime_env`` keys are "
+            "rejected by the validator). Only applied on first controller "
+            "creation -- ignored if a Serve controller is already running."
+        ),
+    )
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
+    )
+    tracing_config: Optional[TracingConfig] = Field(
+        default=None,
+        description="Tracing config for configuring serve components tracing.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
@@ -1322,7 +1438,7 @@ class DeploymentDetails(BaseModel):
         description="The current status of the deployment."
     )
     status_trigger: DeploymentStatusTrigger = Field(
-        description="[EXPERIMENTAL] The trigger for the current status.",
+        description="The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -1349,6 +1465,13 @@ class DeploymentDetails(BaseModel):
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
+    )
+    recent_dead_replicas: List[ReplicaDetails] = Field(
+        default_factory=list,
+        description=(
+            "Recently-stopped replicas, retained so their logs stay accessible in "
+            "the dashboard after they die. Not part of `replicas` or the live count."
+        ),
     )
 
     autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
@@ -1521,6 +1644,153 @@ class TargetGroup(BaseModel):
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
     app_name: str = Field("", description="Name of the application.")
+    # Ingress request router targets for ingress bypass Lua routing. When
+    # populated, HAProxy Lua calls these targets to get routing decisions,
+    # then forwards data plane traffic to the main targets.
+    # Only HTTP target groups populate this; gRPC target groups always leave it empty.
+    ingress_request_router_targets: List[Target] = Field(
+        default_factory=list,
+        description=(
+            "List of HTTP ingress request router targets for Lua-based routing "
+            "decisions. Only populated on HTTP target groups; always empty for gRPC."
+        ),
+    )
+    # Name of the application's ingress deployment (the deployment that serves
+    # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
+    ingress_deployment_name: str = Field(
+        "",
+        description="Name of the application's ingress deployment.",
+    )
+
+
+@PublicAPI(stability="alpha")
+class DurationStats(BaseModel):
+    """Statistics for a collection of duration/latency measurements."""
+
+    mean: float = Field(default=0.0, description="Mean value over the rolling window.")
+    std: float = Field(
+        default=0.0, description="Standard deviation over the rolling window."
+    )
+    min: float = Field(
+        default=0.0, description="Minimum value over the rolling window."
+    )
+    max: float = Field(
+        default=0.0, description="Maximum value over the rolling window."
+    )
+
+    @classmethod
+    def from_values(cls, values: List[float]) -> "DurationStats":
+        """Compute statistics from a list of values."""
+        if not values:
+            return cls()
+
+        n = len(values)
+        mean = sum(values) / n
+        min_val = min(values)
+        max_val = max(values)
+
+        # Compute standard deviation
+        if n > 1:
+            variance = sum((x - mean) ** 2 for x in values) / n
+            std = math.sqrt(variance)
+        else:
+            std = 0.0
+
+        return cls(mean=mean, std=std, min=min_val, max=max_val)
+
+
+@PublicAPI(stability="alpha")
+class ControllerHealthMetrics(BaseModel):
+    """Health metrics for the Ray Serve controller.
+
+    These metrics help diagnose controller performance issues, especially
+    as cluster size increases.
+    """
+
+    # Timestamps
+    timestamp: float = Field(
+        default=0.0, description="When these metrics were collected (epoch seconds)."
+    )
+    controller_start_time: float = Field(
+        default=0.0, description="When the controller started (epoch seconds)."
+    )
+    uptime_s: float = Field(default=0.0, description="Controller uptime in seconds.")
+    last_control_loop_time: float = Field(
+        default=0.0,
+        description="Time of the last control loop execution (epoch seconds).",
+    )
+
+    # Control loop metrics
+    num_control_loops: int = Field(
+        default=0, description="Total number of control loops executed."
+    )
+    loop_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Control loop duration statistics over a rolling window.",
+    )
+    loops_per_second: float = Field(
+        default=0.0, description="Control loop iterations per second."
+    )
+
+    # Sleep/scheduling metrics
+    last_sleep_duration_s: float = Field(
+        default=0.0, description="Actual sleep duration of the last iteration."
+    )
+    expected_sleep_duration_s: float = Field(
+        default=0.0,
+        description="Expected sleep duration (CONTROL_LOOP_INTERVAL_S).",
+    )
+    event_loop_delay_s: float = Field(
+        default=0.0,
+        description=(
+            "Difference between actual and expected sleep duration. "
+            "Positive values indicate an overloaded event loop."
+        ),
+    )
+
+    # Event loop health
+    num_asyncio_tasks: int = Field(
+        default=0, description="Number of pending asyncio tasks."
+    )
+
+    # Component update durations (rolling window stats)
+    deployment_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Deployment state update duration statistics over a rolling window.",
+    )
+    application_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Application state update duration statistics over a rolling window.",
+    )
+    proxy_state_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Proxy state update duration statistics over a rolling window.",
+    )
+    node_update_duration_s: Optional[DurationStats] = Field(
+        default=None,
+        description="Node update duration statistics over a rolling window.",
+    )
+
+    # Autoscaling metrics latency tracking (rolling window stats)
+    handle_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when handle metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
+    replica_metrics_delay_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Delay between when replica metrics are generated and when they "
+            "reach the controller (rolling window, milliseconds)."
+        ),
+    )
+
+    # Memory usage
+    process_memory_mb: float = Field(
+        default=0.0, description="Controller process memory usage in MB."
+    )
 
 
 @PublicAPI(stability="stable")
@@ -1558,13 +1828,6 @@ class ServeInstanceDetails(BaseModel):
             "Mapping from node_id to details about the Proxy running on that node."
         )
     )
-    deploy_mode: ServeDeployMode = Field(
-        default=ServeDeployMode.MULTI_APP,
-        description=(
-            "[DEPRECATED]: single-app configs are removed, so this is always "
-            "MULTI_APP. This field will be removed in a future release."
-        ),
-    )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
@@ -1578,6 +1841,11 @@ class ServeInstanceDetails(BaseModel):
         ),
     )
 
+    controller_health_metrics: ControllerHealthMetrics = Field(
+        default_factory=ControllerHealthMetrics,
+        description="Health metrics for the Ray Serve controller.",
+    )
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Empty Serve instance details dictionary.
@@ -1586,7 +1854,6 @@ class ServeInstanceDetails(BaseModel):
         """
 
         return {
-            "deploy_mode": "MULTI_APP",
             "controller_info": {},
             "proxies": {},
             "applications": {},

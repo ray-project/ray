@@ -39,6 +39,10 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
+RUNTIME_ENV_AGENT_PIP_PACKAGES = [
+    "aiohttp==3.14.3",
+    "idna==3.15",
+]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -218,12 +222,23 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
+    pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 9.0.0",
+        "pyarrow >= 17.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
+    pydantic_deps = [
+        "pydantic>=2.5.0,<3; python_version < '3.14'",
+        "pydantic>=2.13.0,<3; python_version >= '3.14'",
+    ]
+    tune_base_deps = [
+        "pandas",
+        "tensorboardX>=1.9",
+        "requests",
+        *pyarrow_deps,
+        "fsspec",
+    ]
+
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -243,7 +258,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.13.3",
+            "aiohttp >= 3.14.1",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -254,7 +269,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
-            pydantic_dep,
+            *pydantic_deps,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -265,18 +280,16 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
-            "starlette",
-            "fastapi",
+            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
+            "mmh3",
+            "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
-            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
-            pydantic_dep,
-            "tensorboardX>=1.9",
-            "requests",
-            *pyarrow_deps,
-            "fsspec",
+            *tune_base_deps,
+            *pydantic_deps,
         ],
     }
 
@@ -323,7 +336,10 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
+    setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -366,8 +382,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.18.0",
-                "nixl>=0.6.1",
+                "vllm[audio]==0.27.0",
+                "nixl==1.3.1",
+                "nixl-cu13==1.3.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -566,7 +583,6 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
 
         # runtime env agent dependenceis
-        runtime_env_agent_pip_packages = ["aiohttp"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -577,7 +593,7 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "--target="
                 + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
             ]
-            + runtime_env_agent_pip_packages
+            + RUNTIME_ENV_AGENT_PIP_PACKAGES
         )
 
     bazel_targets = []
@@ -619,7 +635,7 @@ def build(build_python, build_java, build_cpp, build_redis):
 
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
-        bazel_flags.append(f"--local_cpu_resources={n}")
+        bazel_flags.append(f"--local_resources=cpu={n}")
         warnings.warn(
             "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
             " version. Please use BAZEL_ARGS instead.",
@@ -842,7 +858,7 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
-                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+                "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
         include_package_data=True,

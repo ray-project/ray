@@ -47,13 +47,17 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
     get_driver_jobs,
-    get_head_node_id,
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
+from ray.dashboard.utils import get_head_node_id
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -193,8 +197,16 @@ class JobAgentSubmissionClient:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 yield msg.data
             elif msg.type == aiohttp.WSMsgType.CLOSED:
+                logger.info(
+                    f"WebSocket to job agent closed for job {job_id} "
+                    f"with close code {ws.close_code}"
+                )
                 break
             elif msg.type == aiohttp.WSMsgType.ERROR:
+                logger.warning(
+                    f"WebSocket to job agent received an error message "
+                    f"while tailing logs for job {job_id}: {ws.exception()!r}. "
+                )
                 pass
 
     async def close(self, ignore_error=True):
@@ -203,6 +215,14 @@ class JobAgentSubmissionClient:
         except Exception:
             if not ignore_error:
                 raise
+
+
+def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
+    """Serialize `job` for an HTTP response, optionally redacting its runtime env."""
+    job_dict = job.dict()
+    if redact:
+        job_dict["runtime_env"] = redact_runtime_env(job_dict.get("runtime_env"))
+    return job_dict
 
 
 class JobHead(SubprocessModule):
@@ -398,16 +418,21 @@ class JobHead(SubprocessModule):
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out waiting for an available job agent to submit the job."
+            )
             return Response(
                 text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
+            logger.warning("Failed to submit job due to an invalid request.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
+            logger.exception("Failed to submit job due to unexpected exception.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
@@ -498,7 +523,7 @@ class JobHead(SubprocessModule):
             )
 
         return Response(
-            text=json.dumps(job.dict()),
+            text=json.dumps(_job_details_to_dict(job, should_redact_runtime_env(req))),
             content_type="application/json",
         )
 
@@ -523,11 +548,18 @@ class JobHead(SubprocessModule):
             )
             for submission_id, job in submission_jobs.items()
         ]
+        redact = should_redact_runtime_env(req)
         return Response(
             text=json.dumps(
                 [
-                    *[submission_job.dict() for submission_job in submission_jobs],
-                    *[job_info.dict() for job_info in driver_jobs.values()],
+                    *[
+                        _job_details_to_dict(submission_job, redact)
+                        for submission_job in submission_jobs
+                    ],
+                    *[
+                        _job_details_to_dict(job_info, redact)
+                        for job_info in driver_jobs.values()
+                    ],
                 ]
             ),
             content_type="application/json",

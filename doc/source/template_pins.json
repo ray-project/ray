@@ -1,0 +1,31 @@
+{
+  "_note": "Pinned templates.ci.ray.io build ids for the docs build. Managed by the auto-bump workflow in anyscale/docs; prefer bumping via that PR rather than hand-editing. Consumed by template_collections.py. 'pins' maps each template in _TEMPLATE_COLLECTIONS to a build id, fetched as /templates/<name>/<id>/build.zip.",
+  "pins": {
+    "asynchronous_inference": "20260818-014758",
+    "audio-dataset-curation-llm-judge": "20260818-222718",
+    "deepspeed_finetune": "20260818-024332",
+    "deployment-serve-llm": "20260818-021444",
+    "distributing-pytorch": "20260818-022428",
+    "e2e-rag-deepdive": "20260818-023327",
+    "e2e-timeseries-forecasting": "20260818-023238",
+    "entity-recognition-with-llms": "20260818-024759",
+    "image-search-and-classification": "20260818-022956",
+    "langchain-agent-ray-serve": "20260818-033527",
+    "llm_batch_inference_text": "20260818-040108",
+    "llm_batch_inference_vision": "20260818-033343",
+    "llm_finetuning": "20260818-023006",
+    "mcp-ray-serve": "20260818-034747",
+    "model-composition-recsys": "20260818-050359",
+    "model-multiplexing": "20260818-040628",
+    "multi_agent_a2a": "20260818-040809",
+    "object-detection-video-processing": "20260818-043754",
+    "pytorch-fsdp": "20260818-023026",
+    "pytorch-profiling": "20260818-041739",
+    "ray_train_workloads": "20260818-044531",
+    "tensor_parallel_autotp": "20260818-065055",
+    "tensor_parallel_dtensor": "20260818-045302",
+    "tune_pytorch_asha": "20260818-053811",
+    "unstructured_data_ingestion": "20260818-023030",
+    "xgboost-training-and-serving": "20260818-023305"
+  }
+}

@@ -16,6 +16,8 @@
 
 #include <string_view>
 
+#include "ray/util/network_util.h"
+
 namespace ray {
 namespace stats {
 
@@ -59,10 +61,10 @@ void OpenCensusProtoExporter::Connect(int port) {
       << "Cannot Connect without io_service. Use the lazy loading constructor.";
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       *io_service_, /*record_stats=*/true, /*local_address=*/"always local");
-  // The MetricsAgentClient is always started with 127.0.0.1 so we don't need to pass
+  // The MetricsAgentClient is always started with localhost so we don't need to pass
   // the local address to this client call manager to tell it's local.
   client_ = std::make_shared<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1", port, *io_service_, *client_call_manager_);
+      GetLocalhostIP(), port, *io_service_, *client_call_manager_);
 }
 
 /// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not

@@ -7,17 +7,15 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
+from pydantic import ValidationError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError as ValidationErrorV1
-
-# Import native Pydantic v2 ValidationError for schemas using native Pydantic
-try:
-    from pydantic import ValidationError as ValidationErrorV2
-except ImportError:
-    ValidationErrorV2 = ValidationErrorV1  # Fallback if only v1 is available
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env_deep,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
@@ -132,6 +130,11 @@ class ServeHead(SubprocessModule):
                     ),
                 )
 
+        if should_redact_runtime_env(req):
+            # A `runtime_env` can appear per application, per deployment under
+            # `ray_actor_options`, and on `controller_options`.
+            details = redact_runtime_env_deep(details)
+
         return Response(
             text=json.dumps(details),
             content_type="application/json",
@@ -153,29 +156,28 @@ class ServeHead(SubprocessModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
-        from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema
 
         try:
             config: ServeDeploySchema = ServeDeploySchema.model_validate(
                 await req.json()
             )
-        except (ValidationErrorV1, ValidationErrorV2) as e:
+        except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.model_dump()
-        location = ProxyLocation._to_deployment_mode(config.proxy_location)
-        full_http_options = dict({"location": location}, **config_http_options)
+        full_http_options = config.http_options.model_dump()
         grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
                 http_options=full_http_options,
+                proxy_location=config.proxy_location,
                 grpc_options=grpc_options,
                 global_logging_config=config.logging_config,
+                controller_options=config.controller_options,
             )
 
         # Serve ignores HTTP options if it was already running when
@@ -271,7 +273,7 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
-                    {"error": "Application or Deployment not found"}, 400
+                    {"error": "Application or Deployment not found"}, 404
                 )
             else:
                 logger.error(

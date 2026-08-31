@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
 _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
+# Largest integer magnitude float64 can represent exactly. Beyond this, integers
+# are not uniquely representable, so an "integral" float may not equal the
+# intended value.
+FLOAT64_MAX_INTEGER_VALUE = 2**53
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,139 @@ def lazy_import_pandas():
 
         _pandas = pandas
     return _pandas
+
+
+def _reconcile_arrow_backed_int_float_columns(
+    tables: List["pandas.DataFrame"],
+) -> List["pandas.DataFrame"]:
+    """Reconcile columns typed integer in some blocks and float in others.
+
+    Per-block pyarrow inference can type the same column as ``int64`` in some
+    blocks and ``double`` in others (e.g. a block whose values are all null infers
+    ``double``). ``pandas.concat`` then promotes to ``double`` with a *checked*
+    cast, which raises ``ArrowInvalid`` for ``int64`` values above ``2**53``. When
+    the float-typed blocks hold only null / integral values, cast them back to the
+    integer type so the concat stays lossless and cannot overflow. Blocks with
+    genuine fractional values are left untouched (pandas promotes as usual).
+
+    Reconciliation only happens when it is provably lossless (integral values
+    within both ``+-2**53`` and the target integer type's range). When it is not
+    lossless — e.g. a column mixes true ``int64`` values above ``2**53`` with
+    fractional float values — the blocks are left as-is and the subsequent
+    ``pandas.concat`` still raises ``ArrowInvalid`` on the checked ``int64`` ->
+    ``double`` promotion, exactly as before.
+
+    Only affects Arrow-backed (``pd.ArrowDtype``) columns; a no-op otherwise.
+    See https://github.com/ray-project/ray/issues/64765.
+    """
+    import pyarrow as pa
+
+    pandas = lazy_import_pandas()
+    if len(tables) < 2:
+        return tables
+
+    common_columns = set(tables[0].columns)
+    for table in tables[1:]:
+        common_columns &= set(table.columns)
+
+    # column -> integer ArrowDtype to cast the float-typed blocks to.
+    casts = {}
+    for column in common_columns:
+        dtypes = [table[column].dtype for table in tables]
+        if not all(isinstance(dtype, pandas.ArrowDtype) for dtype in dtypes):
+            continue
+        arrow_types = [dtype.pyarrow_dtype for dtype in dtypes]
+        int_types = [t for t in arrow_types if pa.types.is_integer(t)]
+        float_columns = [
+            table[column]
+            for table in tables
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        ]
+        if not int_types or not float_columns:
+            continue
+        # Downcast the float blocks to the widest integer type present among the
+        # int blocks, but only when every non-null float value can be recovered
+        # exactly as that integer type. A value must be:
+        #   - integral, and
+        #   - within +-2**53 (beyond that float64 cannot represent every integer,
+        #     so an "integral" float may not equal the intended value), and
+        #   - within the target type's range (bit width and signedness), so the
+        #     cast cannot overflow, wrap, or produce an invalid value.
+        # Otherwise leave the blocks for pandas' usual (float) promotion.
+        target_type = max(int_types, key=lambda t: t.bit_width)
+        if pa.types.is_unsigned_integer(target_type):
+            type_min, type_max = 0, 2**target_type.bit_width - 1
+        else:
+            type_min = -(2 ** (target_type.bit_width - 1))
+            type_max = 2 ** (target_type.bit_width - 1) - 1
+        lo = max(type_min, -FLOAT64_MAX_INTEGER_VALUE)
+        hi = min(type_max, FLOAT64_MAX_INTEGER_VALUE)
+        lossless = True
+        for column_values in float_columns:
+            non_null = column_values.dropna()
+            if non_null.empty:
+                continue
+            values = non_null.to_numpy(dtype="float64", na_value=np.nan)
+            is_integral = np.mod(values, 1) == 0
+            in_range = (values >= lo) & (values <= hi)
+            if not np.all(is_integral & in_range):
+                lossless = False
+                break
+        if lossless:
+            casts[column] = pandas.ArrowDtype(target_type)
+
+    if not casts:
+        return tables
+
+    reconciled = []
+    for table in tables:
+        replace = {
+            column: table[column].astype(target)
+            for column, target in casts.items()
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        }
+        reconciled.append(table.assign(**replace) if replace else table)
+    return reconciled
+
+
+def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
+    """Convert a pandas DataFrame to an Arrow table, handling object-dtype columns.
+
+    ``pa.Table.from_pandas`` infers Arrow types for object-dtype columns by inspecting
+    the first Python value, then calls ``pa.array()`` on the whole column. This fails
+    for values that PyArrow cannot convert natively — e.g. multi-dimensional numpy
+    arrays, PIL images, or mixed list/scalar content.
+
+    This function routes object-dtype columns through ``convert_to_pyarrow_array``,
+    which produces ``ArrowTensorArray`` for ndarray elements and falls back to
+    ``ArrowPythonObjectArray`` (pickle) for arbitrary Python objects. All other columns
+    go through ``pa.array(col, from_pandas=True)`` which handles nullable dtypes and
+    extension types via ``__arrow_array__``.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
+
+    # If no object-dtype columns, use fast path with regular from_pandas()
+    if not any(is_object_dtype(df[col].dtype) for col in df.columns):
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        return pa.Table.from_pandas(df, preserve_index=False)
+
+    # Convert column by column: object-dtype columns go through
+    # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
+    # all others go through pa.array() with from_pandas=True.
+    arrays = []
+    fields = []
+    for col_name in df.columns:
+        col = df[col_name]
+        if is_object_dtype(col.dtype):
+            arr = convert_to_pyarrow_array(col.values, col_name)
+        else:
+            arr = pa.array(col, from_pandas=True)
+        arrays.append(arr)
+        fields.append(pa.field(col_name, arr.type))
+
+    return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
 
 
 class PandasRow(Mapping):
@@ -301,7 +438,6 @@ class PandasBlockBuilder(TableBlockBuilder):
         from ray.data.extensions.tensor_extension import TensorArray
 
         pandas = lazy_import_pandas()
-
         return pandas.DataFrame(
             {
                 column_name: (
@@ -322,6 +458,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
         if len(tables) > 1:
+            tables = _reconcile_arrow_backed_int_float_columns(tables)
             df = pandas.concat(tables, ignore_index=True)
             df.reset_index(drop=True, inplace=True)
         else:
@@ -346,7 +483,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# NOTE: This has to be compatible with pyarrow.lib.schema
+# NOTE: This has to be compatible with Pyarrow ``Schema``
 @dataclass(frozen=True, init=False)
 class PandasBlockSchema:
     # Stored as tuples for hash-ability.
@@ -479,9 +616,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
-        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
-        # column to the resulting table.
-        arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
+        # _from_pandas_safe handles object-dtype columns that pa.Table.from_pandas
+        # cannot convert (e.g. multi-dimensional numpy arrays, PIL images), because Arrow cannot handle them natively.
+        arrow_table = _from_pandas_safe(self._table)
 
         # NOTE: Pandas by default coerces all-null column types (including None,
         #       NaN, etc) into "double" type by default, which is incorrect in a
@@ -498,7 +635,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(col.dtype, TensorDtype):
+            if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
                 continue
 
             if not col.notna().any():
@@ -593,8 +730,20 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Skip size calculation for empty columns
                 if sample_size == 0:
                     continue
-                # Following codes can also handel case that sample_size == total_size
-                sampled_data = self._table[column].sample(n=sample_size).values
+                if sample_size == total_size:
+                    # Sampling the whole column: read values directly to avoid the
+                    # permutation/copy overhead of .sample(). No randomness here, so
+                    # this is trivially deterministic.
+                    sampled_data = self._table[column].values
+                else:
+                    # Use a fixed random_state so size_bytes() is deterministic
+                    # across calls. Non-deterministic size estimation can cause
+                    # streaming generator tasks to produce different block counts
+                    # across replay attempts (e.g. lineage reconstruction), which
+                    # surfaces as a silent hang or silent data loss downstream.
+                    sampled_data = (
+                        self._table[column].sample(n=sample_size, random_state=0).values
+                    )
 
                 try:
                     if isinstance(sampled_data, TensorArray) and np.issubdtype(

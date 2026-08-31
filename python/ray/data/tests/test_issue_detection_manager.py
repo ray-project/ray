@@ -74,10 +74,6 @@ def test_report_issues():
             ),
         ]
     )
-    assert input_operator.metrics.issue_detector_hanging == 1
-    assert input_operator.metrics.issue_detector_high_memory == 0
-    assert map_operator.metrics.issue_detector_hanging == 0
-    assert map_operator.metrics.issue_detector_high_memory == 1
 
     data = _get_exported_data()
     assert len(data) == 2
@@ -95,6 +91,26 @@ def test_report_issues():
         IssueType.HIGH_MEMORY
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
+
+    # The manager stores raw (issue_type, operator) pairs
+    expected_issues = {
+        (IssueType.HANGING, input_operator),
+        (IssueType.HIGH_MEMORY, map_operator),
+    }
+    assert detector.get_detected_issues() == expected_issues
+
+    # Reporting the same issues again must not grow the deduplicated set.
+    detector._report_issues(
+        [
+            Issue(
+                dataset_name="dataset",
+                operator_id=input_operator.id,
+                issue_type=IssueType.HANGING,
+                message="Hanging detected",
+            ),
+        ]
+    )
+    assert detector.get_detected_issues() == expected_issues
 
 
 if __name__ == "__main__":

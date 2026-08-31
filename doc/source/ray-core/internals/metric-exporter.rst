@@ -1,3 +1,6 @@
+.. meta::
+   :description: Internals of Ray's metric exporter: C++ metric registration and recording, OTLP gRPC export, and OpenTelemetry SDK integration.
+
 .. _metric-exporter:
 
 Metric Exporter Infrastructure

@@ -3,6 +3,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.block_batching.block_batching import batch_blocks
 
 
@@ -25,8 +26,14 @@ class TestBatchBlocks:
         if batch_format == "pandas":
             assert isinstance(batches[0], pd.DataFrame)
             assert isinstance(batches[1], pd.DataFrame)
-            pd.testing.assert_frame_equal(batches[0], pd.DataFrame({"foo": [0, 1, 2]}))
-            pd.testing.assert_frame_equal(batches[1], pd.DataFrame({"foo": [3, 4, 5]}))
+            pd.testing.assert_frame_equal(
+                batches[0],
+                ArrowBlockAccessor(pa.table({"foo": [0, 1, 2]})).to_pandas(),
+            )
+            pd.testing.assert_frame_equal(
+                batches[1],
+                ArrowBlockAccessor(pa.table({"foo": [3, 4, 5]})).to_pandas(),
+            )
         elif batch_format == "numpy":
             assert isinstance(batches[0], dict)
             assert isinstance(batches[1], dict)

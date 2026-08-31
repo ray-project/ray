@@ -16,10 +16,14 @@
 # This file is copied and adapted from
 # http://github.com/modin-project/modin/master/modin/pandas/test/utils.py
 
+from typing import Any
+
 import modin.pandas as pd
 import numpy as np
 import pandas
-from modin.utils import to_pandas
+
+# to_pandas moved from modin.utils to modin.pandas.io in modin 0.26.0,
+from modin.pandas.io import to_pandas
 from pandas.testing import (
     assert_extension_array_equal,
     assert_frame_equal,
@@ -53,7 +57,7 @@ def df_categories_equals(df1, df2):
         )
 
 
-def df_equals(df1, df2):
+def df_equals(df1: Any, df2: Any) -> bool:
     """Tests if df1 and df2 are equal.
 
     Args:

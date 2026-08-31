@@ -13,6 +13,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -44,8 +45,13 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")
@@ -312,7 +318,14 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+@pytest.fixture(
+    params=[
+        s
+        for s in ShuffleStrategy
+        if s != ShuffleStrategy.GPU_SHUFFLE
+        or os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+    ]
+)
 def configure_shuffle_method(request):
     shuffle_strategy = request.param
 
@@ -320,19 +333,28 @@ def configure_shuffle_method(request):
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
 
     ctx.shuffle_strategy = shuffle_strategy
 
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [
+        ShuffleStrategy.HASH_SHUFFLE,
+        ShuffleStrategy.SHUFFLE_V2,
+        ShuffleStrategy.GPU_SHUFFLE,
+    ]:
         ctx.default_hash_shuffle_parallelism = 8
+
+    if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+        ctx.gpu_shuffle_num_actors = 1
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
 
 
 @pytest.fixture(params=[True, False])
@@ -475,7 +497,6 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -495,7 +516,6 @@ def op_two_block():
             cpu_time_s=block_params["cpu_time"][i],
             udf_time_s=block_params["udf_time"][i],
             node_id=block_params["node_id"][i],
-            max_uss_bytes=block_params["uss_bytes"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(
@@ -795,5 +815,5 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True

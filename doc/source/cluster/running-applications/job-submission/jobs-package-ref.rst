@@ -1,3 +1,6 @@
+.. meta::
+   :description: Python SDK reference for Ray Jobs: JobSubmissionClient, JobStatus, JobInfo, JobDetails, JobType, and DriverInfo.
+
 .. _ray-job-submission-sdk-ref:
 
 Python SDK API Reference
@@ -41,6 +44,7 @@ JobStatus
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    JobStatus
 
@@ -74,6 +78,7 @@ JobType
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    JobType
 

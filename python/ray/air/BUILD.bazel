@@ -53,22 +53,6 @@ py_test(
 )
 
 py_test(
-    name = "test_experiment_restore",
-    size = "large",
-    srcs = [
-        "tests/_test_experiment_restore_run.py",
-        "tests/test_experiment_restore.py",
-    ],
-    # NOTE: This tests Tune and Train V1 restoration.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
     name = "test_errors",
     size = "medium",
     srcs = ["tests/test_errors.py"],
@@ -124,7 +108,10 @@ py_test(
     name = "test_keras_callback",
     size = "medium",
     srcs = ["tests/test_keras_callback.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",

@@ -21,7 +21,7 @@
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
@@ -109,6 +109,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -200,6 +204,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_.reset(
@@ -439,6 +447,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool SubscribeToWorkerFailure(
+      const WorkerID &worker_id,
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
+    std::promise<bool> promise;
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailure(
+        worker_id, subscribe, [&promise](Status status) {
+          promise.set_value(status.ok());
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool ReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
@@ -496,6 +515,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
@@ -720,6 +741,44 @@ TEST_P(GcsClientTest, TestWorkerInfo) {
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitForExpectedCount(worker_failure_count, 2);
+}
+
+TEST_P(GcsClientTest, TestWorkerFailureKeyedSubscription) {
+  // A keyed subscription must only deliver failures of the subscribed
+  // worker, so a worker death fans out to the subscribers interested in that
+  // worker instead of every subscriber on the channel.
+  const auto owner_worker_id = WorkerID::FromRandom();
+  std::atomic<int> owner_failure_count(0);
+  auto on_owner_failure = [&owner_failure_count,
+                           owner_worker_id](const rpc::WorkerDeltaData &delta) {
+    // Any misrouted delivery of another worker's failure fails here.
+    EXPECT_EQ(WorkerID::FromBinary(delta.worker_id()), owner_worker_id);
+    ++owner_failure_count;
+  };
+  ASSERT_TRUE(SubscribeToWorkerFailure(owner_worker_id, on_owner_failure));
+
+  // Report failures of unrelated workers first, then the subscribed one.
+  // Publishes are processed in order, so once the subscribed worker's
+  // failure arrives, any (erroneous) delivery of the earlier unrelated
+  // failures would already have fired the EXPECT_EQ above.
+  for (int i = 0; i < 10; i++) {
+    auto worker_data = GenWorkerTableData();
+    worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+    ASSERT_TRUE(ReportWorkerFailure(worker_data));
+  }
+  auto owner_data = GenWorkerTableData();
+  owner_data->mutable_worker_address()->set_worker_id(owner_worker_id.Binary());
+  ASSERT_TRUE(ReportWorkerFailure(owner_data));
+  WaitForExpectedCount(owner_failure_count, 1);
+
+  // After unsubscribing and resubscribing, delivery resumes exactly once per
+  // failure. The unsubscribe and subsequent subscribe commands are sequenced
+  // through the same command queue, so this also verifies the unsubscribe
+  // path leaves the channel in a clean state.
+  gcs_client_->Workers().AsyncUnsubscribeFromWorkerFailure(owner_worker_id);
+  ASSERT_TRUE(SubscribeToWorkerFailure(owner_worker_id, on_owner_failure));
+  ASSERT_TRUE(ReportWorkerFailure(owner_data));
+  WaitForExpectedCount(owner_failure_count, 2);
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
@@ -1089,20 +1148,3 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

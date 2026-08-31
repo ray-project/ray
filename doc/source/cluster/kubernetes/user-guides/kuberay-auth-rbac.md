@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable Ray token authentication backed by Kubernetes RBAC, including external IAM access to the cluster."
+---
+
 (kuberay-auth-rbac)=
 
 # Configure Ray clusters to use Kubernetes RBAC authentication
@@ -5,6 +11,10 @@
 This guide demonstrates how to enable Ray token authentication using Kubernetes RBAC.
 
 Starting in Ray v2.55.0, you can configure Ray to delegate token authentication to Kubernetes RBAC. This allows you to use your existing Kubernetes credentials to authenticate to Ray clusters and use Kubernetes RBAC to manage access control. If your Kubernetes cluster is configured with external identity integrations, you can also use those external credentials to authenticate to Ray clusters (e.g., OIDC, IAM, etc.).
+
+:::{warning}
+It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
+:::
 
 ## Prerequisites
 
@@ -39,7 +49,7 @@ When enabled, the KubeRay operator will:
 * Automatically set the `RAY_ENABLE_K8S_TOKEN_AUTH` environment variable to `true` on all Ray containers.
 * Automatically mount a projected service account token to the Ray containers, for intra-cluster Ray process authentication.
 
-If you are using a KubeRay version older than v1.6.0, you can enable RBAC authentication by setting the `RAY_AUTH_MODE` and `RAY_ENABLE_K8S_TOKEN_AUTH` environment variables and manually mounting the projected service account token to the Ray containers. See the following example:
+If you are using a KubeRay version older than v1.7.0, you can enable RBAC authentication by setting the `RAY_AUTH_MODE` and `RAY_ENABLE_K8S_TOKEN_AUTH` environment variables and manually mounting the projected service account token to the Ray containers. See the following example:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth-manual.yaml

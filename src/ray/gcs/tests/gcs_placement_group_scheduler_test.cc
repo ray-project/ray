@@ -1,4 +1,3 @@
-
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +22,8 @@
 #include <vector>
 
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -32,8 +32,11 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -59,14 +62,17 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-        io_service_,
+        PeriodicalRunner::Create(io_service_),
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_resource_usage_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
     gcs_node_manager_ =
         std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
@@ -75,7 +81,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                          raylet_client_pool_.get(),
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
-                                         /*session_name=*/"");
+                                         /*session_name=*/"",
+                                         observability_publisher_.get(),
+                                         clock_);
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
@@ -153,7 +161,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
     ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
     auto request = GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+    auto placement_group =
+        std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
 
     // Schedule the placement_group with zero node.
     scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
@@ -181,7 +190,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
     auto request = GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+    auto placement_group =
+        std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
 
     // Schedule the placement_group with 1 available node, and the lease request should be
     // send to the node.
@@ -220,7 +230,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
     // Failed to schedule the placement group, because the node resources is not enough.
     auto request = GenCreatePlacementGroupRequest("", strategy);
-    auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+    auto placement_group =
+        std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
     scheduler_->ScheduleUnplacedBundles(
         SchedulePgRequest{placement_group, failure_handler, success_handler});
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
@@ -234,13 +245,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
-  }
-
-  void AddTwoNodes() {
-    auto node0 = GenNodeInfo(0);
-    auto node1 = GenNodeInfo(1);
-    AddNode(node0);
-    AddNode(node1);
   }
 
   bool EnsureClusterResourcesAreNotInUse() {
@@ -291,6 +295,33 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(grant1));
   }
 
+  // Apply a raylet ray-syncer ResourceView broadcast through the same entrypoint
+  // ConsumeSyncMessage uses, updating GCS's view of the node to match the
+  // raylet's reported state.
+  void ApplyRayletResourceView(const NodeID &node_id,
+                               double available_cpu,
+                               double total_cpu) {
+    rpc::syncer::ResourceViewSyncMessage msg;
+    (*msg.mutable_resources_available())["CPU"] = available_cpu;
+    (*msg.mutable_resources_total())["CPU"] = total_cpu;
+    gcs_resource_manager_->UpdateFromResourceView(node_id, msg);
+  }
+
+  double GcsAvailableCpu(const NodeID &node_id) {
+    auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
+                         .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                         .available.GetResourceMap();
+    auto it = resources.find("CPU");
+    return it != resources.end() ? it->second : 0.0;
+  }
+
+  std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,
+                                                                  double cpu_per_bundle) {
+    auto request = GenCreatePlacementGroupRequest(
+        /*name=*/"", rpc::PlacementStrategy::STRICT_PACK, bundles_count, cpu_per_bundle);
+    return std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+  }
+
  protected:
   const std::chrono::milliseconds timeout_ms_{6000};
   absl::Mutex placement_group_requests_mutex_;
@@ -300,6 +331,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
@@ -310,6 +342,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<GcsPlacementGroup>> failure_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
@@ -349,7 +382,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReplyFailure) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto request = GenCreatePlacementGroupRequest();
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -388,7 +422,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadStrategyResourceCheck) {
     success_placement_groups_.emplace_back(std::move(placement_group));
   };
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 3, 2);
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
 
@@ -408,7 +443,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto request = GenCreatePlacementGroupRequest();
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -427,7 +463,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(1, raylet_clients_[0]->lease_callbacks.size());
   // Failed to create these two bundles.
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources(false));
-  ASSERT_EQ(0, raylet_clients_[0]->num_return_requested);
+  ASSERT_EQ(0, raylet_clients_[0]->num_remove_pg_bundles_requested);
   // Reply the placement_group creation request, then the placement_group should be
   // scheduled successfully.
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
@@ -455,7 +491,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
   for (int index = 0; index < 10; ++index) {
     auto request =
         GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
-    auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+    auto placement_group =
+        std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
     scheduler_->ScheduleUnplacedBundles(
         SchedulePgRequest{placement_group, failure_handler, success_handler});
 
@@ -494,7 +531,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
     success_placement_groups_.emplace_back(std::move(placement_group));
   };
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
@@ -508,8 +546,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   AddNode(node1, 1);
   auto create_placement_group_request2 =
       GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
-  auto placement_group2 =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request2, "", counter_);
+  auto placement_group2 = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request2, "", counter_, clock_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group2, failure_handler, success_handler});
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
@@ -524,8 +562,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -546,12 +584,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  // Both bundles land on the same node, so GCS sends a single batched Cancel
+  // RPC carrying both bundle specs.
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[0]->num_bundles_removed, 2);
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
@@ -562,8 +601,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
   // Schedule the placement_group with 1 available node, and the lease request should be
@@ -583,8 +622,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -596,8 +635,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
   // Schedule the placement_group with 1 available node, and the lease request should be
@@ -622,8 +661,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -638,8 +677,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringPreparedPut)
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -665,8 +704,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringPreparedPut)
   ASSERT_EQ(raylet_clients_[1]->commit_callbacks.size(), 0);
 
   // Raylet receives the cancel request.
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
 
   // Make sure there's no more bundles on nodes.
   auto bundles_on_node0 =
@@ -697,7 +736,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   // Schedule placement group which has large bundles.
   // One node does not have enough resources, so we will divide bundles to two nodes.
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
   // Prepared resource is batched!
@@ -725,8 +765,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
 
   auto create_placement_group_request =
       GenCreatePlacementGroupRequest("pg1", rpc::PlacementStrategy::STRICT_SPREAD);
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -809,7 +849,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   };
   auto request =
       GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD, 2, 2);
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   scheduler_->ScheduleUnplacedBundles(
       SchedulePgRequest{placement_group, failure_handler, success_handler});
 
@@ -919,8 +960,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -957,8 +998,8 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -999,8 +1040,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeCommittingResources) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -1038,8 +1079,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group.
   // One node is dead, so one bundle failed to schedule.
@@ -1075,8 +1116,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -1132,8 +1173,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -1191,8 +1232,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement group successfully.
   auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -1255,8 +1296,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
   placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
   placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
 
@@ -1281,15 +1322,17 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
-  // Add two nodes to the cluster.
-  AddTwoNodes();
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
 
   // Make sure the cluster resources are not in use.
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 
   // Create a placement group.
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
 
   // Schedule the unplaced bundles of the placement_group.
   ScheduleUnplacedBundles(placement_group);
@@ -1303,49 +1346,23 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
   GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
                               /*grant1=*/{false, Status::IOError("")});
 
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
-  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
-}
-
-TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromNodeWithInsufficientResources) {
-  // Add two nodes to the cluster.
-  AddTwoNodes();
-
-  // Make sure the cluster resources are not in use.
-  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
-
-  // Create a placement group.
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
-
-  // Schedule the unplaced bundles of the placement_group.
-  ScheduleUnplacedBundles(placement_group);
-
-  // Make sure the cluster resources are acquired at the GCS side.
-  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
-
-  // Grant the prepare of bundle resources.
-  // node0 grants the schedule request with success=true and status=Status::OK()
-  // node1 grants the schedule request with success=false and status=Status::OK()
-  GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
-                              /*grant1=*/{false, Status::OK()});
-
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
-  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+  // Mark the IO-error node dead and verify the placement group is failed.
+  RemoveNode(node1);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
-  // Add two nodes to the cluster.
-  AddTwoNodes();
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
 
   // Make sure the cluster resources are not in use.
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 
   // Create a placement group.
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(GenCreatePlacementGroupRequest(), "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
 
   // Schedule the unplaced bundles of the placement_group.
   ScheduleUnplacedBundles(placement_group);
@@ -1364,16 +1381,17 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   // node1 grants the schedule request status=Status::IOError("")
   GrantCommitBundleResources(Status::IOError(""), Status::IOError(""));
 
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
-  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+  // Mark both IO-error nodes dead and verify the placement group is failed.
+  RemoveNode(node0);
+  RemoveNode(node1);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
   auto create_placement_group_request = GenCreatePlacementGroupRequest(
       /*name=*/"", /*strategy=*/rpc::PlacementStrategy::SPREAD, /*bundles_count=*/1);
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
   int wildcard_resource_count = 0;
   for (const auto &bundle_spec : placement_group->GetBundles()) {
     for (const auto &resource_entry : bundle_spec->GetFormattedResources()) {
@@ -1393,8 +1411,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group =
-      std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
@@ -1417,13 +1435,95 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
   // Remove the node.
   RemoveNode(node);
 
-  // Remove the placement group.
+  // Remove the placement group. With the node already dead, the Cancel RPCs are
+  // no-ops (CancelResourceReserve short-circuits when the node isn't alive).
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 0);
+}
 
-  // There shouldn't be any remaining bundles to be removed since the node is
-  // already removed. The bundles are already removed when the node is removed.
-  ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 0);
+// When a placement group's Prepare RPC fails, GCS leaves the optimistic
+// subtraction it applied during scheduling in place. The view stays divergent
+// from the raylets' actual state until each raylet's next ResourceView sync
+// reconciles it.
+TEST_F(GcsPlacementGroupSchedulerTest, FailedPrepareDueToStaleResourceViewTest) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  const NodeID node0_id = NodeID::FromBinary(node0->node_id());
+  const NodeID node1_id = NodeID::FromBinary(node1->node_id());
+
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+
+  // 1. Schedule a placement group across both nodes.
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  ScheduleUnplacedBundles(placement_group);
+
+  // 2. GCS subtracts the bundle resources locally before sending Prepare.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // 3. Prepare RPC fails on node1.
+  GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
+                              /*grant1=*/{false, Status::OK()});
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // 4. GCS keeps the optimistic subtraction; the view is still divergent from
+  //    the raylets' actual state.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // 5. Each raylet's next ResourceView sync reports the actual state (no
+  //    bundles were committed on either node).
+  ApplyRayletResourceView(node0_id, /*available_cpu=*/10, /*total_cpu=*/10);
+  ApplyRayletResourceView(node1_id, /*available_cpu=*/10, /*total_cpu=*/10);
+
+  // 6. GCS's view now matches the raylets' reported state.
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+}
+
+// Upon removing a committed placement group, the GCS should receive an updated
+// ResourceView sync from the Raylet and then be able to reschedule to that node.
+TEST_F(GcsPlacementGroupSchedulerTest,
+       PendingPlacementGroupScheduledAfterRemovalAndResourceViewUpdate) {
+  auto node_a = GenNodeInfo(0);
+  AddNode(node_a, /*cpu_num=*/8);
+  const NodeID node_a_id = NodeID::FromBinary(node_a->node_id());
+
+  // 1. PG_1 commits on A.
+  auto pg_1 = MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/8);
+  ScheduleUnplacedBundles(pg_1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+  ASSERT_EQ(GcsAvailableCpu(node_a_id), 0);
+
+  // 2. PG_2 (same shape) is submitted while A is fully occupied -> infeasible.
+  auto pg_2 = MakeStrictPackPlacementGroup(1, 8);
+  ScheduleUnplacedBundles(pg_2);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // 3. Remove PG_1.
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(pg_1->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(GcsAvailableCpu(node_a_id), 0);
+
+  // 4. Retry PG_2 before any syncer message arrives -> still infeasible.
+  ScheduleUnplacedBundles(pg_2);
+  WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::FAILURE);
+  ASSERT_EQ(GcsAvailableCpu(node_a_id), 0);
+
+  // 5. Raylet broadcasts the post-removal view: available = 8.
+  ApplyRayletResourceView(node_a_id, /*available_cpu=*/8, /*total_cpu=*/8);
+  ASSERT_EQ(GcsAvailableCpu(node_a_id), 8);
+
+  // 6. Retry PG_2 -> now schedules onto A successfully.
+  ScheduleUnplacedBundles(pg_2);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
 }
 
 }  // namespace gcs

@@ -1,9 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Choose between async def and def in Serve deployments, size the threadpool, and avoid blocking I/O behind a FastAPI ingress."
+---
+
 (serve-asyncio-best-practices)=
 
 # Asyncio and concurrency best practices in Ray Serve
 
-The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop.
-Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
+The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop. Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
 
 This guide explains:
 
@@ -95,11 +100,9 @@ Important differences:
 
 ## Threadpool sizing and overrides
 
-Serve sets a default threadpool size for user code that mirrors Python's
-`ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
+Serve sets a default threadpool size for user code that mirrors Python's `ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
 
-In most cases, the default is fine. If you need to tune it, you can override the default
-executor inside your deployment:
+In most cases, the default is fine. If you need to tune it, you can override the default executor inside your deployment:
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __threadpool_override_begin__
@@ -128,6 +131,8 @@ Blocking I/O example:
 ```
 
 Even though the method is `async def`, `requests.get` blocks the loop. No other requests can run on this replica during the request call. Blocking in `async def` is still blocking.
+
+If the blocking call hangs and you've configured a request timeout, Ray Serve cancels the request when that timeout expires, but that cancellation is best-effort. Python only delivers `asyncio` cancellation when the task cooperates and yields control back to the event loop. A synchronous call such as `requests.get` doesn't do that, so one hung request can stall the replica's event loop and prevent later requests from running on that replica.
 
 Non-blocking equivalent with async HTTP client:
 

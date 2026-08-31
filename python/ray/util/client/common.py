@@ -268,12 +268,11 @@ class ClientRemoteFunc(ClientStub):
     This class is allowed to be passed around between remote functions.
 
     Args:
-        _func: The actual function to execute remotely
-        _name: The original name of the function
-        _ref: The ClientObjectRef of the pickled code of the function, _func
+        f: The actual function to execute remotely.
+        options: Optional ``ray.remote`` options applied to this function.
     """
 
-    def __init__(self, f, options=None):
+    def __init__(self, f: Callable, options: Optional[Dict[str, Any]] = None):
         self._lock = threading.Lock()
         self._func = f
         self._name = f.__name__
@@ -348,12 +347,11 @@ class ClientActorClass(ClientStub):
     It is wrapped by ray.remote and can be executed on the cluster.
 
     Args:
-        actor_cls: The actual class to execute remotely
-        _name: The original name of the class
-        _ref: The ClientObjectRef of the pickled `actor_cls`
+        actor_cls: The actual class to execute remotely.
+        options: Optional ``ray.remote`` options applied to this actor class.
     """
 
-    def __init__(self, actor_cls, options=None):
+    def __init__(self, actor_cls: type, options: Optional[Dict[str, Any]] = None):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
@@ -434,6 +432,8 @@ class ClientActorHandle(ClientStub):
     Args:
         actor_ref: A reference to the running actor given to the client. This
           is a serialized version of the actual handle as an opaque token.
+        actor_class: Optional ``ClientActorClass`` used to populate method
+          signatures and ``num_returns`` metadata without a server round-trip.
     """
 
     def __init__(
@@ -532,7 +532,10 @@ class ClientRemoteMethod(ClientStub):
     Args:
         actor_handle: A reference to the ClientActorHandle that generated
           this method and will have this method called upon it.
-        method_name: The name of this method
+        method_name: The name of this method.
+        num_returns: Number of object refs returned by invocations of this
+          method.
+        signature: The method's bound signature, used to validate call args.
     """
 
     def __init__(

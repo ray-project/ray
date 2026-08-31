@@ -542,6 +542,73 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_dst[0], tensor)
 
 
+def test_set_tensor_transport_metadata_before_ref_registered(ray_start_regular):
+    """Regression test for the race where the set_direct_transport_metadata
+    callback runs before the owner registers the ref via add_rdt_ref.
+
+    set_tensor_transport_metadata_and_trigger_queued_operations is invoked from
+    a nogil C++ callback that is not ordered against add_rdt_ref. If it arrives
+    first the object is not yet in _managed_rdt_metadata; the metadata must be
+    stashed and applied when the ref is later registered, rather than raising a
+    KeyError (which escapes the nogil callback as a SIGSEGV). This mirrors
+    test_trigger_out_of_band_tensor_transfer but sets the metadata before the
+    ref is registered.
+    """
+    world_size = 2
+    actors = [GPUTestActor.remote() for _ in range(world_size)]
+    create_collective_group(actors, backend="gloo")
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    tensor = torch.tensor([1, 2, 3])
+    rdt_ref = src_actor.echo.remote(tensor)
+    rdt_ref_id = rdt_ref.hex()
+
+    # Check src_actor has the GPU object
+    ret_val_src = ray.get(src_actor.get_out_of_band_tensors.remote(rdt_ref_id))
+    assert ret_val_src is not None
+    assert len(ret_val_src) == 1
+    assert torch.equal(ret_val_src[0], tensor)
+
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+
+    # echo.remote() already auto-registered the ref on the driver (actor.py calls
+    # add_rdt_ref at submission time). Undo that so we can drive the raced ordering
+    # where the metadata callback arrives before the owner registers the ref.
+    assert rdt_manager.is_managed_object(rdt_ref_id)
+    rdt_manager._managed_rdt_metadata.pop(rdt_ref_id)
+
+    # The metadata callback races ahead of ref registration. Before the fix this
+    # indexed _managed_rdt_metadata for an unregistered obj_id and crashed; now it
+    # must stash the metadata without raising.
+    rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+        rdt_ref_id,
+        CollectiveTransportMetadata(
+            tensor_meta=[(tensor.shape, tensor.dtype)],
+            tensor_device=tensor.device.type,
+        ),
+    )
+    assert not rdt_manager.is_managed_object(rdt_ref_id)
+    assert rdt_ref_id in rdt_manager._pending_tensor_transport_meta
+
+    # The owner registers the ref. The stashed metadata should be applied now.
+    rdt_manager.add_rdt_ref(rdt_ref, src_actor, "GLOO")
+    assert rdt_ref_id not in rdt_manager._pending_tensor_transport_meta
+    assert rdt_manager.get_rdt_metadata(rdt_ref_id).tensor_transport_meta is not None
+
+    # With the metadata already available, the transfer triggers immediately.
+    task_args = (rdt_ref,)
+    rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, task_args)
+
+    # Check dst_actor has the GPU object
+    ret_val_dst = ray.get(
+        dst_actor.get_out_of_band_tensors.remote(rdt_ref_id, timeout=10)
+    )
+    assert ret_val_dst is not None
+    assert len(ret_val_dst) == 1
+    assert torch.equal(ret_val_dst[0], tensor)
+
+
 def test_fetch_rdt_object_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="gloo")
@@ -752,6 +819,77 @@ def test_app_error_fetch_to_driver(ray_start_regular):
     small_tensor = torch.tensor([1, 2, 3])
     ref = actor.echo.remote(small_tensor)
     assert torch.equal(ray.get(ref, _use_object_store=True), small_tensor)
+
+
+@ray.remote
+class FailingRDTActor:
+    def __init__(self):
+        self.attempts = 0
+
+    @ray.method(
+        tensor_transport="gloo", max_task_retries=1, retry_exceptions=[ValueError]
+    )
+    def fail_first_attempt(self):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise ValueError("first-attempt failure")
+        return torch.tensor([1, 2, 3])
+
+    @ray.method(
+        tensor_transport="gloo", max_task_retries=1, retry_exceptions=[ValueError]
+    )
+    def rdt_obj_always_fails(self):
+        self.attempts += 1
+        raise ValueError("permanent failure")
+
+    def consume(self, tensor):
+        return tensor
+
+    def get_num_rdt_objects(self):
+        return ray._private.worker.global_worker.rdt_manager.rdt_store.get_num_objects()
+
+
+def test_rdt_retry_then_succeeds(ray_start_regular):
+    """
+    Retryable exception on first attempt, success on second
+    Only one entry should be in the RDTStore.
+    """
+    sender = FailingRDTActor.remote()
+    receiver = FailingRDTActor.remote()
+    create_collective_group([sender, receiver], backend="gloo")
+
+    ref = sender.fail_first_attempt.remote()
+    result = ray.get(receiver.consume.remote(ref))
+    assert torch.equal(result, torch.tensor([1, 2, 3]))
+
+    # Sender should hold one primary entry for this ref
+    assert ray.get(sender.get_num_rdt_objects.remote()) == 1
+
+
+def test_rdt_retry_fetch_through_obj_store(ray_start_regular):
+    """
+    Retryable exception on first attempt, successful fetch to driver on second
+    """
+    sender = FailingRDTActor.remote()
+    create_collective_group([sender], backend="gloo")
+
+    ref = sender.fail_first_attempt.remote()
+    assert torch.equal(ray.get(ref, _use_object_store=True), torch.tensor([1, 2, 3]))
+
+
+def test_rdt_retries_exhausted_raises(ray_start_regular):
+    """
+    When all retries fail, the user's exception must propagate to the
+    consumer via the CPU path (no direct_transport_metadata is set on the
+    final reply, so the consumer sees the error when deserializing the arg).
+    """
+    sender = FailingRDTActor.remote()
+    receiver = FailingRDTActor.remote()
+    create_collective_group([sender, receiver], backend="gloo")
+
+    ref = sender.rdt_obj_always_fails.remote()
+    with pytest.raises(Exception, match="permanent failure"):
+        ray.get(receiver.consume.remote(ref))
 
 
 def test_write_after_save(ray_start_regular):

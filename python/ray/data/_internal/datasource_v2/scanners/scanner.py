@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Generic, List, Optional
+from typing import Generic
 
 import pyarrow as pa
 
 from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
@@ -20,8 +19,12 @@ class Scanner(ABC, Generic[InputSplit]):
 
     The Scanner is responsible for:
     1. Determining the output schema after all projections
-    2. Planning input partitions for parallel execution
-    3. Creating Reader instances configured with all pushdowns
+    2. Creating Reader instances configured with all pushdowns
+
+    Splitting the input into parallel work units used to live here as a
+    ``plan()`` method. That responsibility now belongs to the listing-side
+    pipeline (``ListFiles`` + ``FilePartitioner``); scanners only
+    need to answer "what schema?" and "give me a reader."
     """
 
     @abstractmethod
@@ -32,28 +35,6 @@ class Scanner(ABC, Generic[InputSplit]):
 
         Returns:
             PyArrow Schema describing the output data.
-        """
-        ...
-
-    @abstractmethod
-    def plan(
-        self,
-        manifest: InputSplit,
-        parallelism: int,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[InputSplit]:
-        """Split the input into parallel work units.
-
-        This method determines how to divide the work for parallel execution.
-        The resulting partitions should be roughly balanced in terms of work.
-
-        Args:
-            manifest: The full input to partition.
-            parallelism: Target number of parallel tasks.
-            data_context: Optional data context for configuration.
-
-        Returns:
-            List of InputSplit objects, one per parallel task.
         """
         ...
 

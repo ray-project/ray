@@ -3,38 +3,46 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 
+import asyncio
 import logging
 import os
 import random
+import shutil
 import socket
 import sys
 import time
 
 import httpx
 import pytest
+from opentelemetry import trace
 
 import ray
+import ray._private.state as state
 from ray import serve
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
-    SERVE_CONTROLLER_NAME,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import expected_proxy_actors, get_application_url
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
-    DeploymentMode,
+    ControllerOptions,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
+from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
 
 
@@ -80,306 +88,6 @@ def lower_slow_startup_threshold_and_reset():
         os.environ[
             "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
         ] = original_slow_startup_warning_period_s
-
-
-def test_shutdown(ray_shutdown):
-    ray.init(num_cpus=8)
-    serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
-    cluster_node_info_cache.update()
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    actor_names = [
-        SERVE_CONTROLLER_NAME,
-        format_actor_name(
-            SERVE_PROXY_NAME,
-            cluster_node_info_cache.get_alive_nodes()[0][0],
-        ),
-    ]
-
-    def check_alive():
-        alive = True
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                alive = False
-        return alive
-
-    wait_for_condition(check_alive)
-
-    serve.shutdown()
-
-    def check_dead():
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_shutdown_async(ray_shutdown):
-    ray.init(num_cpus=8)
-    serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
-    cluster_node_info_cache.update()
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    actor_names = [
-        SERVE_CONTROLLER_NAME,
-        format_actor_name(
-            SERVE_PROXY_NAME,
-            cluster_node_info_cache.get_alive_nodes()[0][0],
-        ),
-    ]
-
-    def check_alive():
-        alive = True
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                alive = False
-        return alive
-
-    wait_for_condition(check_alive)
-
-    await serve.shutdown_async()
-
-    def check_dead():
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
-
-
-def test_single_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in single-app case
-
-    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_single_app_shutdown_actors_async(ray_shutdown):
-    """Tests serve.shutdown_async() works correctly in single-app case
-
-    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown_async()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    await serve.shutdown_async()
-    wait_for_condition(check_dead)
-
-
-def test_multi_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in multi-app case.
-
-    Ensures that after deploying multiple distinct applications, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    serve.run(f.bind(), name="app2", route_prefix="/app2")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app1:f",
-        "ServeReplica:app2:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_multi_app_shutdown_actors_async(ray_shutdown):
-    """Tests serve.shutdown_async() works correctly in multi-app case.
-
-    Ensures that after deploying multiple distinct applications, serve.shutdown_async()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    serve.run(f.bind(), name="app2", route_prefix="/app2")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app1:f",
-        "ServeReplica:app2:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    await serve.shutdown_async()
-    wait_for_condition(check_dead)
-
-
-def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
-    """Test that actors registered via _register_shutdown_cleanup_actor are killed.
-
-    This tests the internal actor registration API that allows deployments to register
-    auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
-    """
-    ray.init(num_cpus=4)
-    serve.start()
-
-    # Create a detached actor that we'll register for cleanup
-    @ray.remote
-    class DummyActor:
-        def ping(self):
-            return "pong"
-
-    dummy_actor_name = "test_registered_cleanup_dummy"
-    dummy = DummyActor.options(
-        name=dummy_actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
-    ).remote()
-
-    # Verify actor is alive
-    assert ray.get(dummy.ping.remote()) == "pong"
-
-    # Register the actor with the controller for cleanup
-    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    ray.get(controller._register_shutdown_cleanup_actor.remote(dummy))
-
-    # Shutdown serve
-    serve.shutdown()
-
-    # Verify the registered actor is killed
-    def check_actor_dead():
-        try:
-            ray.get_actor(dummy_actor_name, namespace=SERVE_NAMESPACE)
-            return False
-        except ValueError:
-            return True
-
-    wait_for_condition(check_actor_dead)
 
 
 def test_deployment(ray_cluster):
@@ -556,40 +264,28 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy ingress: user HTTP middleware runs on the replica, but the "
+    "/-/routes endpoint is served by HAProxy, so middleware-injected headers "
+    "are absent there.",
+)
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
     port = _get_random_port()
-    serve.start(
-        http_options=dict(
-            port=port,
-            middlewares=[
-                Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-            ],
+    # `middlewares` in HTTPOptions has been removed; passing it raises an error.
+    # Use Serve's FastAPI integration to configure middlewares instead.
+    with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
+        serve.start(
+            http_options=dict(
+                port=port,
+                middlewares=[
+                    Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+                ],
+            )
         )
-    )
-
-    @serve.deployment
-    class Dummy:
-        pass
-
-    serve.run(Dummy.bind())
-    ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
-
-    # Snatched several test cases from Starlette
-    # https://github.com/encode/starlette/blob/master/tests/
-    # middleware/test_cors.py
-    headers = {
-        "Origin": "https://example.org",
-        "Access-Control-Request-Method": "GET",
-    }
-    root = f"http://localhost:{port}"
-    resp = httpx.options(root, headers=headers)
-    assert resp.headers["access-control-allow-origin"] == "*"
-
-    resp = httpx.get(f"{root}/-/routes", headers=headers)
-    assert resp.headers["access-control-allow-origin"] == "*"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -623,10 +319,11 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
+    # All of these should disable the HTTP proxy.
     options = [
         {"http_options": {"host": None}},
-        {"http_options": {"location": None}},
-        {"http_options": {"location": "NoServer"}},
+        {"proxy_location": "Disabled"},
+        {"http_options": {"location": "NoServer"}},  # deprecated override
     ]
 
     address = ray.init(num_cpus=8)["address"]
@@ -662,59 +359,21 @@ def test_http_head_only(ray_cluster):
     ray.init(head_node.address)
     assert len(ray.nodes()) == 2
 
-    serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
+    serve.start(proxy_location="HeadOnly", http_options={"port": _get_random_port()})
 
-    # Only the controller and head node proxy should be started, both on the head node.
-    actors = list_actors(address=head_node.address)
-    assert len(actors) == 2
-    assert all([actor.node_id == head_node.node_id for actor in actors])
+    # Controller and proxy on the head node. Under HAProxy the proxy is the
+    # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", *expected_proxy_actors()}
 
+    def check_head_only_actors():
+        actors = list_actors(
+            address=head_node.address, filters=[("state", "=", "ALIVE")]
+        )
+        assert {actor.class_name for actor in actors} == expected_classes
+        assert all(actor.node_id == head_node.node_id for actor in actors)
+        return True
 
-def test_serve_shutdown(ray_shutdown):
-    ray.init(namespace="serve")
-    serve.start()
-
-    @serve.deployment
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-    serve.shutdown()
-    serve.start()
-
-    assert len(serve.status().applications) == 0
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-
-@pytest.mark.asyncio
-async def test_serve_shutdown_async(ray_shutdown):
-    ray.init(namespace="serve")
-    serve.start()
-
-    @serve.deployment
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-    await serve.shutdown_async()
-    serve.start()
-
-    assert len(serve.status().applications) == 0
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
+    wait_for_condition(check_head_only_actors)
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -935,87 +594,291 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
     ray.shutdown()
 
 
+def _deploy_flaky_app(counter_file, fail_count: int):
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = str(fail_count)
+    counter_file.write_text("0")
+    ray.init(num_cpus=1)
+    serve.start()
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="flaky_app",
+                    route_prefix="/flaky",
+                    import_path="ray.serve.tests.test_config_files.flaky_build.node",
+                )
+            ]
+        )
+    )
+
+
+def test_build_app_retries_until_success(ray_shutdown, tmp_path):
+    """A flaky build that succeeds on the 4th attempt deploys cleanly."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=3)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "RUNNING",
+            timeout=60,
+        )
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
+def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
+    """If the build keeps failing, the app status surfaces the user error."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=10)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
+            timeout=60,
+        )
+        assert "flaky build failure" in serve.status().applications["flaky_app"].message
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
 @pytest.mark.parametrize(
     "options",
     [
+        # No proxy_location and no location -> default EveryNode.
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": ProxyLocation.EveryNode,
         },
         {
             "proxy_location": None,
-            "http_options": {"test": "test"},  # location is not specified
-            "expected": HTTPOptions(
-                location=DeploymentMode.EveryNode
-            ),  # using default proxy_location (to align with the case when `http_options` are None)
+            "http_options": {"test": "test"},
+            "expected": ProxyLocation.EveryNode,
         },
-        {
-            "proxy_location": None,
-            "http_options": {
-                "location": "NoServer"
-            },  # `location` is specified, but `proxy_location` is not
-            "expected": HTTPOptions(
-                location=DeploymentMode.NoServer
-            ),  # using `location` value
-        },
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(location=None),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
-        },
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
-        },  # using default location from HTTPOptions
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
-        },
+        # Explicit (deprecated) `location` is a back-compat override.
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": ProxyLocation.Disabled,
+        },
+        # location=None now means "unset" -> defers to proxy_location (EveryNode),
+        # NOT Disabled (the old None-means-Disabled overload is gone).
+        {
+            "proxy_location": None,
+            "http_options": {"location": None},
+            "expected": ProxyLocation.EveryNode,
+        },
+        # Bare HTTPOptions() defers to proxy_location -> EveryNode (was HeadOnly).
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(),
+            "expected": ProxyLocation.EveryNode,
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": ProxyLocation.Disabled,
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
-        },
-        {
-            "proxy_location": "Disabled",
-            "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": ProxyLocation.Disabled,
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": ProxyLocation.Disabled,
         },
+        # Explicit `location` overrides `proxy_location`.
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
-        },
-        {
-            "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": ProxyLocation.HeadOnly,
         },
     ],
 )
 def test_serve_start_proxy_location(ray_shutdown, options):
-    expected_options = options.pop("expected")
+    expected = options.pop("expected")
     serve.start(**options)
     client = _get_global_client()
-    assert ray.get(client._controller.get_http_config.remote()) == expected_options
+    assert client.get_serve_details()["proxy_location"] == expected
+
+
+def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
+    """Tracing config passed to ``serve.start()`` reaches the controller and is
+    applied to replicas (the imperative flow).
+
+    Verifies that the controller stores the config and that, after a request,
+    a tracing span file is produced for the replica -- proving the config
+    propagated from serve.start() through the controller to the replica.
+
+    Note: proxy tracing is not wired via this path (proxies start before the
+    controller is queryable); that is handled separately via long poll.
+    """
+    tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=tracing_config,
+    )
+
+    # The controller received the tracing config from serve.start().
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()) == tracing_config
+
+    @serve.deployment
+    class Model:
+        def __call__(self, request):
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ):
+                return "hello"
+
+    serve.run(Model.bind())
+
+    url = get_application_url("HTTP")
+    assert httpx.post(f"{url}/").text == "hello"
+
+    serve.shutdown()
+
+    # Tracing was set up on the replica, so a replica span file exists.
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    span_files = os.listdir(spans_dir)
+    try:
+        assert any("replica" in f for f in span_files), span_files
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    "controller_options",
+    [
+        ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        ),
+        # Same options passed as a plain dict -- the API coerces it
+        # through ``ControllerOptions.model_validate``.
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        },
+    ],
+)
+def test_serve_start_controller_options(ray_shutdown, controller_options):
+    """``ControllerOptions.runtime_env.env_vars`` lands on the controller actor.
+
+    Uses a custom RAY_SERVE_TEST_CONTROLLER_ENV var (not a real Serve knob)
+    so the assertion is decoupled from whatever the Anyscale env hook
+    auto-injects. The merge semantics are the env_hook's contract; this
+    test only asserts that *our* requested env_vars made it through.
+    """
+    serve.start(controller_options=controller_options)
+    client = _get_global_client()
+
+    # Reach into the controller actor to read its own os.environ; the
+    # controller is a singleton named actor on the head node, so a remote
+    # task on the same handle runs in the same process.
+    def _read_env(self, *, keys):
+        import os as _os
+
+        return {k: _os.environ.get(k) for k in keys}
+
+    env_seen = ray.get(
+        client._controller.__ray_call__.remote(
+            _read_env,
+            keys=[
+                "RAY_SERVE_TEST_CONTROLLER_ENV",
+                "RAY_SERVE_TEST_CONTROLLER_ENV_2",
+            ],
+        )
+    )
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV"] == "from-model"
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV_2"] == "second"
+
+
+def test_serve_start_controller_options_rejects_disallowed_runtime_env(
+    ray_shutdown,
+):
+    """Bad runtime_env fails at the caller, not from a Ray task."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        serve.start(controller_options={"runtime_env": {"pip": ["numpy"]}})
+    assert "only supports ['env_vars']" in str(exc.value)
+
+
+def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
+    """Regression test for #63596 / PR #63597.
+
+    Before the fix, ``serve_start_async`` ran ``_start_controller`` as a remote
+    Ray task and returned the controller ``ActorHandle`` cross-process to the
+    caller (the Dashboard Agent). That transfer inserted the handle's
+    ObjectRefs into the executor worker's ``stored_in_objects``, pinning the
+    worker IDLE forever (it could never drain). Accumulated across calls in a
+    long-lived caller, this eventually OOM'd the head node.
+
+    With the inline fix, controller creation runs in the caller process — there
+    is no executor worker to pin. This test drives ``serve_start_async`` (the
+    exact #63596 path the Dashboard Agent uses) and asserts the symptom.
+
+    ``ray._private.state.workers()`` reports all WORKER-type processes, which
+    includes the actor-hosting workers for the controller and HTTP proxies.
+    Those are created on ``serve_start_async`` and reaped on ``serve.shutdown()``
+    each cycle, so they do not accumulate. The leaked ``_start_controller``
+    executor, by contrast, was pinned IDLE and SURVIVED ``serve.shutdown()``
+    (its ``object_id_refs_`` never drained) — so it accumulated across cycles
+    and grew the count. The non-growth assertion below catches exactly that.
+    """
+
+    def _worker_count() -> int:
+        return len(state.workers())
+
+    def _settled_worker_count() -> int:
+        # ``state.workers()`` reflects the GCS worker table, which updates
+        # asynchronously after processes exit and the raylet deregisters them.
+        # A fixed sleep is unsafe under CI contention: a not-yet-deregistered
+        # worker would false-fail the fixed code. Settle by polling until two
+        # consecutive reads agree, so reaping of the controller/proxy workers
+        # is complete before sampling. After shutdown only a leaked (pinned)
+        # executor survives.
+        seen = {"prev": None, "stable": False}
+
+        def _stable() -> bool:
+            cur = _worker_count()
+            if seen["prev"] is not None and cur == seen["prev"]:
+                seen["stable"] = True
+            seen["prev"] = cur
+            return seen["stable"]
+
+        wait_for_condition(_stable, timeout=30)
+        return _worker_count()
+
+    cycles = 3
+    counts = []
+    for _ in range(cycles):
+        asyncio.run(serve_start_async())
+        serve.shutdown()
+        counts.append(_settled_worker_count())
+
+    # The count must not grow across cycles — that growth was the leak.
+    # Allow equal-or-fewer (reaping may reduce it); forbid growth.
+    assert counts[-1] <= counts[0], (
+        f"Idle WORKER count grew across {cycles} serve_start_async()/shutdown() "
+        f"cycles: {counts}. Growth indicates a pinned (leaked) executor worker "
+        f"— the #63596 regression."
+    )
 
 
 if __name__ == "__main__":

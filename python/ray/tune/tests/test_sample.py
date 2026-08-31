@@ -437,6 +437,47 @@ class SearchSpaceTest(unittest.TestCase):
         samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testQuantizedQOne(self):
+        # https://github.com/ray-project/ray/issues/45494
+        # Seeded because assertIn below needs both endpoints actually drawn;
+        # RandomState, not default_rng, is the generator with a frozen stream.
+        random_state = np.random.RandomState(1000)
+
+        samples = tune.quniform(-10, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(-10 <= s <= 10 for s in samples))
+        self.assertIn(-10.0, samples)
+        self.assertIn(10.0, samples)
+
+        samples = tune.qrandn(0, 5, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+
+        samples = tune.qloguniform(1, 100, 1).sample(
+            size=1000, random_state=random_state
+        )
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(1 <= s <= 100 for s in samples))
+
+        samples = tune.qrandint(1, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(isinstance(s, int) for s in samples))
+        self.assertTrue(all(1 <= s <= 10 for s in samples))
+
+    def testQuantizedSampleRespectsDomainType(self):
+        for q in (1, 2):
+            scalar = tune.qrandint(1, 10, q).sample()
+            self.assertIsInstance(scalar, int, msg=f"qrandint scalar, q={q}")
+            array = tune.qrandint(1, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, int) for s in array), msg=f"qrandint array, q={q}"
+            )
+
+            scalar = tune.quniform(-10, 10, q).sample()
+            self.assertIsInstance(scalar, float, msg=f"quniform scalar, q={q}")
+            array = tune.quniform(-10, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, float) for s in array), msg=f"quniform array, q={q}"
+            )
+
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
 
@@ -473,7 +514,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -503,15 +544,17 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ]
 
-        client1 = AxClient(random_seed=1234)
+        client1 = AxClient(random_seed=42)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
-        client2 = AxClient(random_seed=1234)
+        client2 = AxClient(random_seed=42)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -539,12 +582,19 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.service.ax_client import AxClient
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax import Models
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -564,16 +614,20 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
         try:
             generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                steps=[GenerationStep(generator=Models.UNIFORM, num_trials=-1)]
             )
         except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
-            )
+            try:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
+                )
+            except TypeError:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,
@@ -582,8 +636,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
@@ -715,7 +768,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),
@@ -762,7 +815,13 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
+            "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
+            "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
 
         config = self.config.copy()
@@ -1011,6 +1070,34 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    def testConvertHyperOptChoiceOfConstantDicts(self):
+        # https://github.com/ray-project/ray/issues/49507
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        choices = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
+        config = {"space": tune.choice(choices)}
+
+        searcher = HyperOptSearch(space=config, metric="a", mode="max")
+        suggestion = searcher.suggest("0")
+
+        # The constant dict categories must survive conversion instead of
+        # being replaced by empty dicts.
+        self.assertIn(suggestion["space"], choices)
+
+    def testConvertHyperOptChoiceOfMixedConstantAndVariableDicts(self):
+        # A choice category that mixes a constant and a search-space value
+        # must keep its constant key, not just the variable one.
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        config = {"space": tune.choice([{"const": 5, "var": tune.uniform(0.0, 1.0)}])}
+
+        searcher = HyperOptSearch(space=config, metric="m", mode="max")
+        suggestion = searcher.suggest("0")
+
+        self.assertEqual(suggestion["space"]["const"], 5)
+        self.assertGreaterEqual(suggestion["space"]["var"], 0.0)
+        self.assertLessEqual(suggestion["space"]["var"], 1.0)
+
     def testConvertHyperOptConstant(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -1181,18 +1268,18 @@ class SearchSpaceTest(unittest.TestCase):
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
 
         def optuna_define_by_run_with_constants(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return {"constant": 1}
 
         def optuna_define_by_run_invalid(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return 1
 

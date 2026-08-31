@@ -230,7 +230,15 @@ class _DummyOp:
         return 1
 
     def get_actor_info(self):
-        return SimpleNamespace(running=0, restarting=0, pending=0)
+        return SimpleNamespace(
+            running=0,
+            restarting=0,
+            pending=0,
+            active=0,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
 
 @pytest.mark.parametrize("enforce_schemas", [False, True])

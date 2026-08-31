@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a Stable Diffusion text-to-image model on a GPU Kubernetes cluster with RayService."
+---
+
 (kuberay-stable-diffusion-rayservice-example)=
 
 # Serve a StableDiffusion text-to-image model on Kubernetes
@@ -11,8 +17,7 @@ See [aws-eks-gpu-cluster.md](kuberay-eks-gpu-cluster-setup) or [gcp-gke-gpu-clus
 
 ## Step 2: Install KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository.
-Note that the YAML file in this example uses `serveConfigV2`. This feature requires KubeRay v0.6.0 or later.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository. Note that the YAML file in this example uses `serveConfigV2`. This feature requires KubeRay v0.6.0 or later.
 
 ## Step 3: Install a RayService
 

@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Build Learner ConnectorV2 pipelines that compile train batches from episodes, with examples for reward shaping and stacking recent observations.
 
 .. _learner-pipeline-docs:
 

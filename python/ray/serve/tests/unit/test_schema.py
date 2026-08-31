@@ -14,6 +14,7 @@ from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -21,12 +22,14 @@ from ray.serve.config import (
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
+    ControllerHealthMetrics,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TracingConfig,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -138,6 +141,10 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         RayActorOptionsSchema.model_validate(ray_actor_options_schema)
+
+    def test_invalid_label_selector(self):
+        with pytest.raises(ValidationError, match="Invalid label key name"):
+            RayActorOptionsSchema.model_validate({"label_selector": {"-bad-key-": "v"}})
 
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -301,6 +308,34 @@ class TestDeploymentSchema:
             DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_validate_backpressure_config(self):
+        # Dict inputs are coerced into `BackpressureConfig` so invalid values
+        # fail at config parse time, not at deploy time.
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["backpressure_config"] = {
+            "status_code": 429,
+            "retry_after_s": 7,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert isinstance(schema.backpressure_config, BackpressureConfig)
+        assert schema.backpressure_config.status_code == 429
+        assert schema.backpressure_config.retry_after_s == 7
+
+        deployment_schema["backpressure_config"] = {"status_code": 404}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["backpressure_config"] = {"retry_after_s": float("inf")}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        # Unknown keys (e.g. typos) are rejected rather than silently dropped.
+        deployment_schema["backpressure_config"] = {"retry_after": 5}
         with pytest.raises(ValidationError):
             DeploymentSchema.model_validate(deployment_schema)
 
@@ -502,7 +537,7 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
-    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+    def test_gang_scheduling_config_scale_to_zero(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
@@ -510,11 +545,9 @@ class TestDeploymentSchema:
             "min_replicas": 0,
             "max_replicas": 9,
         }
-        with pytest.raises(
-            ValueError,
-            match="Scale to zero isn't supported for gang scheduling",
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.autoscaling_config["min_replicas"] == 0
+        assert schema.gang_scheduling_config.gang_size == 3
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -809,6 +842,56 @@ class TestServeApplicationSchema:
 
 
 class TestServeDeploySchema:
+    def test_controller_options_default_is_none(self):
+        cfg = ServeDeploySchema.model_validate({"applications": []})
+        assert cfg.controller_options is None
+
+    def test_controller_options_passthrough(self):
+        cfg = ServeDeploySchema.model_validate(
+            {
+                "applications": [],
+                "controller_options": {
+                    "runtime_env": {
+                        "env_vars": {
+                            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                        }
+                    }
+                },
+            }
+        )
+        assert (
+            cfg.controller_options.runtime_env["env_vars"][
+                "RAY_SERVE_HAPROXY_TCP_NODELAY"
+            ]
+            == "1"
+        )
+
+    def test_controller_options_rejects_disallowed_runtime_env_keys(self):
+        # The ControllerOptions validator runs through the nested schema,
+        # so bad runtime_env keys fail at YAML / JSON parse time -- not at
+        # controller-creation time.
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"pip": ["numpy"]}},
+                }
+            )
+        msg = str(e.value)
+        assert "only supports ['env_vars']" in msg
+        assert "pip" in msg
+
+    def test_controller_options_rejects_non_str_env_value(self):
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"env_vars": {"FOO": 1}}},
+                }
+            )
+        assert "must be str" in str(e.value)
+
     def test_deploy_config_duplicate_apps(self):
         deploy_config_dict = {
             "applications": [
@@ -1402,6 +1485,153 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_serve_instance_details_default_controller_health_metrics():
+    """ServeInstanceDetails.controller_health_metrics defaults to a
+    ControllerHealthMetrics instance with zeroed values."""
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+
+    assert isinstance(details.controller_health_metrics, ControllerHealthMetrics)
+    assert details.controller_health_metrics.timestamp == 0.0
+    assert details.controller_health_metrics.num_control_loops == 0
+    assert details.controller_health_metrics.last_control_loop_time == 0.0
+
+
+def test_serve_instance_details_includes_controller_health_metrics():
+    """When controller_health_metrics is explicitly set, it should appear in the
+    user-facing JSON-serializable representation."""
+    health_metrics = ControllerHealthMetrics(
+        timestamp=1000.0,
+        controller_start_time=900.0,
+        uptime_s=100.0,
+        num_control_loops=50,
+        last_control_loop_time=999.5,
+    )
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        controller_health_metrics=health_metrics,
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    assert "controller_health_metrics" in details
+    serialized = details["controller_health_metrics"]
+    assert serialized["timestamp"] == 1000.0
+    assert serialized["controller_start_time"] == 900.0
+    assert serialized["uptime_s"] == 100.0
+    assert serialized["num_control_loops"] == 50
+    assert serialized["last_control_loop_time"] == 999.5
+
+    # Should be JSON serializable end-to-end.
+    json.dumps(details)
+
+
+def test_deployment_info_to_schema_includes_max_replicas_per_node():
+    """_deployment_info_to_schema should propagate max_replicas_per_node
+    from ReplicaConfig into the resulting DeploymentSchema."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+        max_replicas_per_node=3,
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node == 3
+
+
+def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
+    """When max_replicas_per_node is None (default), the schema field should
+    remain at its default (DEFAULT.VALUE), i.e. unset."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
+class TestTracingConfig:
+    """Tests for the TracingConfig schema."""
+
+    def test_default_values(self):
+        """Test that default TracingConfig has sensible defaults."""
+        config = TracingConfig()
+        assert config.enabled is False
+        assert config.exporter_import_path == ""
+        assert config.sampling_ratio == 0.01
+
+    def test_enabled(self):
+        """Test creating an enabled tracing config."""
+        config = TracingConfig(enabled=True)
+        assert config.enabled is True
+
+    def test_disabled(self):
+        """Test creating an explicitly disabled tracing config."""
+        config = TracingConfig(enabled=False)
+        assert config.enabled is False
+
+    def test_custom_exporter(self):
+        """Test setting a custom exporter import path."""
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="my.module:custom_exporter",
+            sampling_ratio=0.5,
+        )
+        assert config.exporter_import_path == "my.module:custom_exporter"
+        assert config.sampling_ratio == 0.5
+
+    def test_sampling_ratio_validation(self):
+        """Test that sampling_ratio must be between 0.0 and 1.0."""
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=-0.1)
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=1.1)
+
+        # Boundary values should work
+        config = TracingConfig(sampling_ratio=0.0)
+        assert config.sampling_ratio == 0.0
+        config = TracingConfig(sampling_ratio=1.0)
+        assert config.sampling_ratio == 1.0
+
+    def test_extra_fields_forbidden(self):
+        """Test that extra fields are not allowed."""
+        with pytest.raises(ValidationError):
+            TracingConfig(enabled=True, unknown_field="value")
+
+    def test_enabled_with_empty_exporter(self):
+        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
+        config = TracingConfig(enabled=True, exporter_import_path="")
+        assert config.exporter_import_path == ""
 
 
 if __name__ == "__main__":

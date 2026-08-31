@@ -70,12 +70,27 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// Threshold when the node is beyond the memory capacity. If the memory is above the
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
+/// Note: when resource isolation is enabled, the memory usage threshold is set to
+/// total memory - system reserved memory (can be specified in ray start).
+/// Notice that the formula does not account for object store memory in system reserved
+/// memory. To configure the usage threshold when resource isolation is enabled,
+/// please adjust the system reserved memory in ray start command instead.
 /// Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
-/// Monitor is disabled when this value is 0.
+/// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
+
+/// When true, swap space is folded into the memory monitor's total/used
+/// accounting, the auto-computed Ray `memory` resource on each node, and the
+/// dashboard "Node Memory" graph. This lets tasks consume swap as overflow
+/// capacity before the OOM killer kicks in. Off by default because relying on
+/// swap can cause silent latency degradation (thrashing) rather than a loud
+/// failure, and most production deployments prefer the loud-failure mode.
+/// The Python `ray start` / `ray.init` paths also honor the
+/// `RAY_count_swap_in_memory_monitor` environment variable to set this.
+RAY_CONFIG(bool, count_swap_in_memory_monitor, false)
 
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold and free space is below min_memory_free_bytes then it
@@ -86,29 +101,60 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
+/// The maximum amount of memory to free under the memory usage threshold when
+/// killing workers via the worker killing policy. The system will by default
+/// free up to 5% of total memory under the threshold, capping at
+/// max_kill_memory_buffer_bytes.
+RAY_CONFIG(int64_t, max_kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GiB cap
+
+/// When true, use the legacy group-by-owner worker killing policy instead of the
+/// default time-based policy.
+RAY_CONFIG(bool, worker_killing_policy_by_group, false)
+
 /// The reserved memory bytes for system processes
-/// enforced via cgroup memory.low constraint which only
-/// reclaims the system processes' memory when nothing else can be reclaimed.
-/// Default is 0, meaning no memory.low constraint is applied.
-RAY_CONFIG(int64_t, system_memory_bytes_low, 0)
+/// enforced via cgroup memory.min constraint which guarantees
+/// that the system processes' memory will not be reclaimed under any conditions.
+/// Default is 0, meaning no memory.min constraint is applied.
+/// By default, if resource isolation is enabled, system reserved memory
+/// will be protected via memory.low instead. Only configure this value
+/// if you are certain that you want the min constraint protection.
+RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. If resource isolation is enabled, the user memory.high constraint
+/// will be set to the min of total memory - system reserved memory
+/// and user_memory_proportion_high * total memory.
+/// Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.max constraint which triggers the
-//. kernel OOM killer when the threshold is reached.
+/// kernel OOM killer when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 
 /// The TTL for when the task failure entry is considered
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
+
+/// The TTL for CancelWorkerLease tombstones on the raylet. Note that a tombstone only has
+/// to cover the message-reordering window between a CancelWorkerLease and its
+/// matching RequestWorkerLease, not the lifetime of the lease itself.
+RAY_CONFIG(uint64_t, cancelled_lease_tombstone_ttl_ms, 10 * 60 * 1000)
+
+/// Maximum number of CancelWorkerLease tombstones retained by a raylet. Each
+/// tombstone is a 32-byte LeaseID plus an 8-byte timestamp, so 100,000 entries
+/// is roughly 10MB including flat_hash_set / deque overhead. Oldest entries
+/// are dropped when the cap is hit.
+RAY_CONFIG(uint32_t, max_cancelled_lease_tombstones, 100000)
 
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
@@ -160,6 +206,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
+
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
+RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
+
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
+/// then again every 1024 objects.
+RAY_CONFIG(int64_t, free_local_objects_backlog_warn_objects_per_node, 500000)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -213,8 +267,10 @@ RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 /// will become eligible for removal in the autoscaler.
 RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
-// The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled/promoted to plasma.
+/// Maximum size in bytes of a task return value that may be returned inline
+/// in the task reply (and stored in the owner's in-memory store). Return
+/// values larger than this are stored in plasma instead. Applies to all task
+/// types (normal tasks, actor tasks, generators).
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
@@ -300,6 +356,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Maximum number of retries for pop worker before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 5.
+/// Retries indefinitely if the value is -1.
+RAY_CONFIG(int32_t, pop_worker_max_retries, 5)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
@@ -326,6 +387,20 @@ RAY_CONFIG(int, worker_niceness, 15)
 /// Allow at least 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
+
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
+/// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
+/// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
+/// DEL reclaims memory synchronously; Redis operators can configure DEL itself
+/// to reclaim memory lazily.
+/// UNLINK (Redis >= 4.0) removes the key from the keyspace immediately and frees
+/// the value in a background thread, so deleting a multi-GB GCS table hash does
+/// not stall the Redis main thread and does not add latency to other clients.
+/// When enabled, the Redis server must support UNLINK and the configured user must
+/// have permission to run it. Ray does not probe for support or fall back to DEL.
+RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
 
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
@@ -376,13 +451,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -397,11 +472,40 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
+/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+/// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
+/// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
+/// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+/// The storage backend to use for the GCS. It can be 'memory', 'redis', or
+/// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// Number of worker threads in the RocksDB I/O offload pool. RocksDB I/O
+/// (including the WAL fsync that dominates per-call latency) always runs
+/// on this pool so blocking ops do not stall the GCS event loop. RocksDB
+/// serializes WAL writes internally and batches concurrent in-flight
+/// writers into one fsync (group commit), so a small pool (~4) is enough
+/// to capture the aggregate-throughput benefit on the GCS metadata
+/// workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// Number of per-key strand buckets used for single-key op ordering on
+/// the RocksDB I/O offload pool. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4).
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -425,6 +529,13 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
 RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+
+/// The base retry delay for exponential backoff when an actor task fails with
+/// ACTOR_UNAVAILABLE (e.g., actor is restarting or network error).
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_delay_base_ms, 100)
+
+/// The maximum retry delay for ACTOR_UNAVAILABLE exponential backoff.
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_max_delay_ms, 5000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -530,6 +641,10 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 /// this duration for in-flight gRPC calls to complete before stopping the io_service.
 RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
+/// Interval in milliseconds at which the dashboard-head task-event store trims each job's
+/// tracked dropped-attempt set (GcJobSummary).
+RAY_CONFIG(int64_t, task_events_gc_job_summary_interval_ms, 5 * 1000)
+
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
@@ -584,6 +699,18 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// A probe task is only posted after a previous probe task has completed.
 RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
+/// How often to probe each io_context for loop latency and health.
+RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
+
+/// If a probe has been outstanding longer than this, the io_context is marked
+/// unhealthy.
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 30000)
+
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -628,6 +755,12 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+// The threshold of the memory usage in bytes for the idle worker
+// to be considered as a candidate for killing.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
 
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
@@ -735,6 +868,10 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
+/// Interval at which workers report their backlog of tasks with unresolved dependencies
+/// to the local raylet, used for autoscaling decisions.
+RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 1000)
+
 /// Starting timeout for core worker grpc server reconnection (will
 /// exponentially increase until the maximum timeout).
 RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_base_s, 1)
@@ -794,7 +931,9 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
+RAY_CONFIG(std::string,
+           custom_unit_instance_resources,
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -817,14 +956,15 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 /// grpc keepalive timeout.
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
-/// NOTE: we set a loose client keep alive because
-/// they have a failure model that considers network failures as component failures
-/// and this configuration break that assumption. We should apply to every other component
-/// after we change this failure assumption from code.
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive ping interval: how often a client pings the server to
+/// detect a dead connection. We keep it loose because the failure model treats
+/// network failures as component failures, which an aggressive value would break.
+/// NOTE: the GCS server derives its minimum accepted ping interval from this value
+/// (see grpc_server.cc), so it must be set consistently across the head and all nodes.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive timeout: how long to wait for a ping ack before treating
+/// the connection as dead.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
@@ -926,14 +1066,14 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max<int64_t>(1, ray::CpuMonitorUtils::GetCpuLimit() / 4));
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -969,8 +1109,10 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, fals
 
 // Enable per-worker process-group-based cleanup. When enabled, workers are
 // placed into their own process groups and can be cleaned up via killpg on
-// worker death. Cross-platform semantics on POSIX (no-op on Windows).
-RAY_CONFIG(bool, process_group_cleanup_enabled, false)
+// worker death. Cross-platform semantics on POSIX (no-op on Windows). Enabled by
+// default; this supersedes the deprecated subreaper-based cleanup
+// (kill_child_processes_on_worker_exit_with_raylet_subreaper).
+RAY_CONFIG(bool, process_group_cleanup_enabled, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
@@ -1016,11 +1158,28 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // migrated to the event aggregator.
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 
+// Whether to enable GCS active-passive leader election.
+// Uppercased so the overriding env var (RAY_ENABLE_GCS_LEADER_ELECTION) matches the name
+// Python reads (ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION), keeping the C++ and Python
+// views of leader election in sync.
+RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
+
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
+// Whether core-worker task events are sent to the event aggregator via the
+// RayTaskEventRecorder. When true (and enable_ray_event is also true),
+// the recorder is used.
+RAY_CONFIG(bool, enable_ray_task_event_recorder, false)
+
+// Flag for the migration of task events from GCS to dashboard head. When true: the
+// aggregator publishes task events to the dashboard head, the TaskEventsHead module is
+// loaded, and the state API (list tasks / ray.timeline) reads task events from the
+// dashboard head instead of GCS.
+RAY_CONFIG(bool, enable_task_events_to_dashboard_head, false)
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
@@ -1076,10 +1235,3 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
-
-// The threshold of the memory usage in bytes for the idle worker to be considered as
-// a candidate for killing.
-// TODO: We should clean it up after the memory monitor is revamped.
-RAY_CONFIG(int64_t,
-           idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB

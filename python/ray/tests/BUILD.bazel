@@ -9,6 +9,8 @@ py_library(
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
+        "//python/ray/experimental/sandbox:__pkg__",
+        "//python/ray/experimental/sandbox:__subpackages__",
         "//python/ray/tests:__subpackages__",
     ],
 )
@@ -36,6 +38,7 @@ py_test_module_list(
         "test_actor_group.py",
         "test_actor_lifetime.py",
         "test_actor_pool.py",
+        "test_actor_resources.py",
         "test_advanced.py",
         "test_advanced_2.py",
         "test_advanced_3.py",
@@ -47,16 +50,21 @@ py_test_module_list(
         "test_advanced_9.py",
         "test_async.py",
         "test_asyncio.py",
+        "test_autoscaler_drain_node_api.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
         "test_dashboard_profiler.py",
+        "test_dataclient_disconnect.py",
+        "test_debug_tools.py",
         "test_exit_observability.py",
         "test_experimental_collective.py",
         "test_failure_3.py",
+        "test_gcs_pubsub.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
         "test_get_or_create_actor.py",
         "test_healthcheck.py",
+        "test_iter.py",
         "test_metric_cardinality.py",
         "test_metrics_agent.py",
         "test_metrics_head.py",
@@ -64,16 +72,23 @@ py_test_module_list(
         "test_multiprocessing_standalone.py",
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
+        "test_placement_group.py",
         "test_ray_event_export_task_events.py",
+        "test_ray_event_export_worker_events.py",
+        "test_ray_get.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
         "test_runtime_env_agent_auth.py",
+        "test_state_api_2.py",
+        "test_state_api_summary.py",
+        "test_task_events_3.py",
+        "test_unavailable_actors.py",
         "test_util_helpers.py",
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_0",
         "team:core",
     ],
     deps = [
@@ -92,7 +107,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_0",
         "no_windows",
         "team:core",
     ],
@@ -109,7 +124,7 @@ py_test(
     data = ["mnist_784_100_samples.pkl"],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_0",
         "team:core",
     ],
     deps = [
@@ -146,6 +161,7 @@ py_test_module_list(
         "test_client_proxy.py",
         "test_client_references.py",
         "test_client_warnings.py",
+        "test_client_working_dir.py",
     ],
     tags = [
         "custom_setup",
@@ -205,6 +221,7 @@ py_test_module_list(
         "test_scheduling.py",
         "test_scheduling_2.py",
         "test_token_auth_integration.py",
+        "test_token_auth_integration_2.py",
         "test_wait.py",
     ],
     name_suffix = "_client_mode",
@@ -289,7 +306,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "no_main",
         "team:core",
     ],
@@ -320,13 +337,11 @@ py_test_module_list(
         "test_nested_task.py",
         "test_node_labels.py",
         "test_node_manager.py",
-        "test_object_assign_owner.py",
         "test_object_store_metrics.py",
         "test_placement_group_2.py",
         "test_placement_group_4.py",
         "test_placement_group_failover.py",
         "test_ray_debugger.py",
-        "test_ray_init.py",
         "test_ray_shutdown.py",
         "test_resize_raylet.py",
         "test_resource_metrics.py",
@@ -339,22 +354,21 @@ py_test_module_list(
         "test_scheduling.py",
         "test_shuffle.py",
         "test_state_api_log.py",
-        "test_streaming_generator.py",
         "test_streaming_generator_2.py",
         "test_streaming_generator_3.py",
         "test_streaming_generator_4.py",
-        "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
         "test_token_auth_integration.py",
+        "test_token_auth_integration_2.py",
         "test_traceback.py",
         "test_worker_capping.py",
         "test_worker_state.py",
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -371,7 +385,7 @@ py_test_module_list(
     tags = [
         "custom_setup",
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "needs_java",
         "team:core",
     ],
@@ -389,10 +403,11 @@ py_test_module_list(
         "test_resource_demand_scheduler.py",
         "test_stress.py",
         "test_stress_sharded.py",
+        "test_wait.py",
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "no_windows",
         "team:core",
     ],
@@ -467,6 +482,7 @@ py_test_module_list(
         "test_minimal_install.py",
         "test_path_utils.py",
         "test_runtime_env_ray_minimal.py",
+        "test_topology_strategy.py",
     ],
     tags = [
         "exclusive",
@@ -504,7 +520,9 @@ py_test_module_list(
     files = [
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
+        "accelerators/test_furiosa.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_mblt.py",
         "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
@@ -524,12 +542,10 @@ py_test_module_list(
         "test_core_worker_io_thread_stack_size.py",
         "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
-        "test_debug_tools.py",
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",
         "test_exceptions.py",
-        "test_gcs_pubsub.py",
         "test_grpc_client_credentials.py",
         "test_ids.py",
         "test_kill_raylet_signal_log.py",
@@ -546,6 +562,7 @@ py_test_module_list(
         "test_multinode_failures_2.py",
         "test_node_death.py",
         "test_numba.py",
+        "test_object_out_of_scope_callback.py",
         "test_object_spilling_no_asan.py",
         "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
@@ -559,15 +576,12 @@ py_test_module_list(
         "test_runtime_env_get_wheel_names.py",
         "test_runtime_env_py_executable.py",
         "test_state_api_manager.py",
-        "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
-        "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
-        "test_wait.py",
         "test_widgets.py",
         "test_worker_graceful_shutdown.py",
     ],
@@ -620,6 +634,8 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_backend_selection.py",
+        "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
     ],
@@ -641,8 +657,28 @@ py_test_module_list(
     files = [
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
-        "rdt/test_rdt_nixl.py",
+        "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "rdt/test_rdt_nixl.py",
     ],
     tags = [
         "custom_setup",
@@ -730,12 +766,12 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler_e2e.py",
-        "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+        "test_autoscaler_fake_multinode.py",
         "test_submission_client_auth.py",
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -802,6 +838,7 @@ py_test_module_list(
     files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
+        "kuberay/test_run_autoscaler_logging.py",
         "test_cli_logger.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
@@ -866,30 +903,6 @@ py_test(
 )
 
 py_test_module_list(
-    size = "medium",
-    files = [
-        "test_actor_resources.py",
-        "test_autoscaler_drain_node_api.py",
-        "test_dataclient_disconnect.py",
-        "test_iter.py",
-        "test_placement_group.py",
-        "test_ray_get.py",
-        "test_state_api_2.py",
-        "test_task_events_3.py",
-        "test_unavailable_actors.py",
-    ],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
     size = "large",
     files = [
         "test_actor.py",
@@ -904,6 +917,7 @@ py_test_module_list(
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_ray_init.py",
         "test_ray_init_2.py",
         "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",
@@ -912,8 +926,13 @@ py_test_module_list(
         "test_serialization.py",
         "test_state_api.py",
         "test_state_api_data_source_client_get.py",
+        # In the large shard for its timeout: passing Windows runs take ~296s,
+        # right at the moderate (300s) limit, so it flake-times-out there.
+        "test_streaming_generator.py",
+        "test_streaming_generator_backpressure.py",
         "test_task_events.py",
         "test_task_events_2.py",
+        "test_tpu.py",
     ],
     tags = [
         "exclusive",
@@ -1028,7 +1047,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_0",
         "team:core",
     ],
     deps = [
@@ -1047,7 +1066,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_0",
         "team:core",
     ],
     deps = [
@@ -1215,7 +1234,7 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
+    size = "medium",
     srcs = [
         "test_typing.py",
         "typing_files/check_typing_actor_async.py",
@@ -1226,8 +1245,8 @@ py_test(
     # (https://github.com/python/mypy/issues/17189)
     tags = [
         "exclusive",
+        "medium_size_python_tests_shard_0",
         "no_windows",
-        "small_size_python_tests",
         "team:core",
     ],
     deps = [
@@ -1243,7 +1262,7 @@ py_test(
     srcs = ["test_tracing.py"],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_1",
         "no_windows",
         "serve_tracing",
         "team:serve",

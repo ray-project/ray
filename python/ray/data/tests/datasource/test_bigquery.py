@@ -255,6 +255,28 @@ class TestWriteBigQuery:
             ),
         )
 
+    def test_write_empty_block(self, ray_get_mock):
+        """Test that writing a zero-sized block doesn't crash.
+
+        See https://github.com/ray-project/ray/issues/51892
+        """
+        bq_datasink = BigQueryDatasink(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+        )
+        # Create an empty block with schema but no rows
+        block = pa.Table.from_arrays([pa.array([], type=pa.int64())], names=["data"])
+        ctx = TaskContext(1, "")
+        # This should not raise an error - empty blocks should be skipped
+        bq_datasink.write(
+            blocks=[block],
+            ctx=ctx,
+        )
+
+        # write() always calls ray.get(), but with an empty list since the
+        # zero-row block is filtered out (no remote write tasks launched).
+        ray_get_mock.assert_called_once_with([])
+
 
 if __name__ == "__main__":
     import sys

@@ -8,10 +8,13 @@ from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock, patch
 
+import aiohttp
 import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -32,6 +35,14 @@ from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
 )
+from ray.dashboard.modules.reporter.reporter_head import (
+    MULTI_TASK_WARNING_HEADER,
+    SVG_STYLE,
+    WARNING_FOR_MULTI_TASK_IN_A_WORKER,
+    _query_duration,
+    _query_flag,
+    _task_cpu_profiling_response,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -51,6 +62,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
+    "swap": None,
     "shm": 456,
     "workers": [
         {
@@ -136,6 +148,8 @@ STATS_TEMPLATE = {
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
     "cmdline": ["fake raylet cmdline"],
+    "host_mem": (10737418240, 17179869184),
+    "cgroup_mem": None,
 }
 
 
@@ -195,6 +209,63 @@ def test_fix_grpc_metrics():
     assert metric == expected_fixed_metric
 
 
+def test_export_histogram_data_normalizes_mixed_attribute_sets():
+    metric = OTelMetric(name="test_histogram", description="Test Histogram")
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([0, 1, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_a"))
+    )
+    data_point.attributes.append(
+        KeyValue(key="SessionName", value=AnyValue(string_value="session_1"))
+    )
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([1, 0, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_b"))
+    )
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+
+    ReporterAgent._export_histogram_data(agent, metric)
+
+    agent._open_telemetry_metric_recorder.register_histogram_metric.assert_called_once_with(
+        "test_histogram", "Test Histogram", [1.0, 2.0]
+    )
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once()
+    (
+        _,
+        batch_data_points,
+    ) = (
+        agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.call_args.args
+    )
+
+    assert batch_data_points == [
+        {
+            "tags": {"Component": "worker_a", "SessionName": "session_1"},
+            "bucket_counts": [0, 1, 0],
+        },
+        {
+            "tags": {"Component": "worker_b", "SessionName": ""},
+            "bucket_counts": [1, 0, 0],
+        },
+    ]
+
+
+@pytest.fixture(autouse=True)
+def enable_profiling():
+    os.environ["RAY_DASHBOARD_ENABLE_PROFILING"] = "1"
+    yield
+    os.environ.pop("RAY_DASHBOARD_ENABLE_PROFILING", None)
+
+
 @pytest.fixture
 def enable_grpc_metrics_collection():
     os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"
@@ -222,9 +293,12 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_used" in metric_names,
             "ray_node_mem_available" in metric_names,
             "ray_node_mem_total" in metric_names,
-            "ray_node_mem_total" in metric_names,
+            "ray_node_mem_used_host" in metric_names,
+            "ray_node_mem_total_host" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
+            "ray_component_rss_bytes" in metric_names,
+            "ray_component_uss_bytes" in metric_names,
             "ray_component_num_fds" in metric_names,
             "ray_node_disk_io_read" in metric_names,
             "ray_node_disk_io_write" in metric_names,
@@ -291,6 +365,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",
             "ray_component_uss_mb",
+            "ray_component_rss_bytes",
+            "ray_component_uss_bytes",
             "ray_component_num_fds",
         ]
         for metric in expected_metrics:
@@ -330,7 +406,7 @@ def test_report_stats(tmp_path):
             assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 41
+    assert len(records) == 49
     # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -338,10 +414,51 @@ def test_report_stats(tmp_path):
             assert record.tags["RayNodeType"] == "head"
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
+    # Verify host memory metrics are reported
+    host_mem_used = [r for r in records if r.gauge.name == "node_mem_used_host"]
+    host_mem_total = [r for r in records if r.gauge.name == "node_mem_total_host"]
+    assert len(host_mem_used) == 1
+    assert host_mem_used[0].value == stats["host_mem"][0]
+    assert len(host_mem_total) == 1
+    assert host_mem_total[0].value == stats["host_mem"][1]
+    # Verify no cgroup records when cgroup_mem is None
+    assert not any(r.gauge.name == "node_cgroup_mem_used" for r in records)
+    assert not any(r.gauge.name == "node_cgroup_mem_total" for r in records)
+
+    # Test cgroup memory metrics when cgroup_mem is populated
+    stats["cgroup_mem"] = (5368709120, 10737418240)
+    records = agent._to_records(stats, cluster_stats)
+    cgroup_used = [r for r in records if r.gauge.name == "node_cgroup_mem_used"]
+    cgroup_total = [r for r in records if r.gauge.name == "node_cgroup_mem_total"]
+    assert len(cgroup_used) == 1
+    assert cgroup_used[0].value == 5368709120
+    assert len(cgroup_total) == 1
+    assert cgroup_total[0].value == 10737418240
+
+    # Swap gauges must NOT be emitted when swap_total == 0 (e.g. flag off, or
+    # no swap on the host). Otherwise dashboards see a constant-zero series.
+    assert not any(r.gauge.name == "node_swap_used" for r in records)
+    assert not any(r.gauge.name == "node_swap_total" for r in records)
+    assert not any(r.gauge.name == "node_swap_utilization" for r in records)
+
+    # When swap is reported (flag on + cgroup-aware lookup returned non-zero),
+    # all three swap gauges are emitted as a unit.
+    stats["swap"] = (2 * 1024**3, 512 * 1024**2, 25.0)
+    records = agent._to_records(stats, cluster_stats)
+    swap_used = [r for r in records if r.gauge.name == "node_swap_used"]
+    swap_total = [r for r in records if r.gauge.name == "node_swap_total"]
+    swap_util = [r for r in records if r.gauge.name == "node_swap_utilization"]
+    assert len(swap_used) == 1 and swap_used[0].value == 512 * 1024**2
+    assert len(swap_total) == 1 and swap_total[0].value == 2 * 1024**3
+    assert len(swap_util) == 1 and swap_util[0].value == 25.0
+    # Restore swap to None (the off/unreadable state) so the downstream
+    # record-count assertions still hold.
+    stats["swap"] = None
+
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 37
+    assert len(records) == 46
     # Test stats with gpus
     stats["gpus"] = [
         {
@@ -368,15 +485,44 @@ def test_report_stats(tmp_path):
         }
     ]
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 46
+    assert len(records) == 55
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 44
+    assert len(records) == 53
 
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
+
+
+def test_generate_stats_payload_normalizes_none_process_cmdline(tmp_path):
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+
+    if not PYDANTIC_INSTALLED:
+        pytest.skip("Pydantic is not installed")
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["workers"][0]["cmdline"] = None
+    stats["raylet"]["cmdline"] = None
+    stats["agent"]["cmdline"] = None
+    stats["gcs"]["cmdline"] = None
+    stats["cmdline"] = None
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+
+    assert stats_payload["workers"][0]["cmdline"] == []
+    assert stats_payload["raylet"]["cmdline"] == []
+    assert stats_payload["agent"]["cmdline"] == []
+    assert stats_payload["gcs"]["cmdline"] == []
+    assert stats_payload["cmdline"] == []
 
 
 def test_report_stats_gpu(tmp_path):
@@ -432,7 +578,7 @@ def test_report_stats_gpu(tmp_path):
         {
             "index": 3,
             "name": "NVIDIA A10G",
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b399",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
@@ -468,6 +614,7 @@ def test_report_stats_gpu(tmp_path):
                 # The tag value must be string for prometheus.
                 "GpuIndex": str(index),
                 "GpuDeviceName": "NVIDIA A10G",
+                "GpuUuid": f"GPU-36e1567d-37ed-051e-f8ff-df807517b39{6 + index}",
                 "RayNodeType": "head",
                 "IsHeadNode": "true",
             }
@@ -546,10 +693,12 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
     assert temp_by_index["0"] == 65
     assert temp_by_index["1"] == 72
 
-    # Tags should include GpuIndex and GpuDeviceName
+    # Tags should include GpuIndex, GpuDeviceName and GpuUuid
+    expected_uuids = {"0": "GPU-aaa", "1": "GPU-bbb"}
     for r in power_records + temp_records:
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+        assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):
@@ -622,7 +771,7 @@ def test_get_tpu_usage(tmp_path):
 
             expected_utilizations = [
                 TpuUtilizationInfo(
-                    index="0",
+                    index=0,
                     name="1234-0",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -633,7 +782,7 @@ def test_get_tpu_usage(tmp_path):
                     memory_total=4000,
                 ),
                 TpuUtilizationInfo(
-                    index="1",
+                    index=1,
                     name="1234-1",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -645,6 +794,57 @@ def test_get_tpu_usage(tmp_path):
                 ),
             ]
             assert tpu_utilizations == expected_utilizations
+
+
+def test_get_tpu_usage_idle_and_duplicates(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    # 4 TPUs, all idle (0.0 utilization)
+    # Utilization metrics use indices 0-3
+    # Other metrics use indices 10, 11, 14, 15
+    # Also includes duplicate samples for index 0 and 10 to test robustness.
+    fake_metrics_content = """
+    # Duplicate samples for duty_cycle index 10
+    duty_cycle{accelerator_id="1234-10",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Duplicate samples for tensorcore_utilization index 0
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-0",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-1",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-2",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-3",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Memory metrics
+    memory_total{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            # Should have 4 unique TPUs
+            assert len(tpu_utilizations) == 4
+            # Verify mapping (10 mapped to 0, 11 to 1, etc.)
+            assert tpu_utilizations[0]["index"] == 0
+            assert tpu_utilizations[0]["memory_total"] == 4000
+            assert tpu_utilizations[3]["index"] == 3
+            assert tpu_utilizations[3]["memory_total"] == 4000
 
 
 def test_report_stats_tpu(tmp_path):
@@ -844,14 +1044,14 @@ def test_report_per_component_stats(tmp_path):
     }
 
     def get_uss_and_cpu_and_num_fds_records(records):
-        component_uss_mb_records = defaultdict(list)
+        component_uss_bytes_records = defaultdict(list)
         component_cpu_percentage_records = defaultdict(list)
         component_num_fds_records = defaultdict(list)
         for record in records:
             name = record.gauge.name
-            if name == "component_uss_mb":
+            if name == "component_uss_bytes":
                 comp = record.tags["Component"]
-                component_uss_mb_records[comp].append(record)
+                component_uss_bytes_records[comp].append(record)
             if name == "component_cpu_percentage":
                 comp = record.tags["Component"]
                 component_cpu_percentage_records[comp].append(record)
@@ -859,7 +1059,7 @@ def test_report_per_component_stats(tmp_path):
                 comp = record.tags["Component"]
                 component_num_fds_records[comp].append(record)
         return (
-            component_uss_mb_records,
+            component_uss_bytes_records,
             component_cpu_percentage_records,
             component_num_fds_records,
         )
@@ -900,7 +1100,7 @@ def test_report_per_component_stats(tmp_path):
             cpu_records,
             num_fds_records,
             comp,
-            float(stats["memory_full_info"].uss) / 1.0e6,
+            float(stats["memory_full_info"].uss),
             stats["cpu_percent"],
             stats["num_fds"],
         )
@@ -920,7 +1120,7 @@ def test_report_per_component_stats(tmp_path):
         cpu_records,
         num_fds_records,
         "ray::IDLE",
-        float(idle_stats["memory_full_info"].uss) / 1.0e6,
+        float(idle_stats["memory_full_info"].uss),
         idle_stats["cpu_percent"],
         idle_stats["num_fds"],
     )
@@ -1470,6 +1670,244 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
         recs, node_type, active=1, pending=2, failed=1, idle_expected=2
     )
     agent._get_cluster_stats_v2.assert_called_once()
+
+
+class _FakeRequest:
+    """Minimal stand-in for aiohttp.web.Request exposing only `.query`."""
+
+    def __init__(self, query):
+        self.query = query
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default (either value).
+        ({}, False, False),
+        ({}, True, True),
+        # Param present -> the explicit value wins, ignoring the default.
+        ({"native": "1"}, False, True),
+        ({"native": "0"}, True, False),
+        # Any non-"1" value is treated as False (matches prior behavior).
+        ({"native": "true"}, True, False),
+    ],
+)
+def test_query_flag(query, default, expected):
+    assert _query_flag(_FakeRequest(query), "native", default) is expected
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default.
+        ({}, 5, 5),
+        ({}, 10, 10),
+        # Param present and in range -> parsed as int, ignoring the default.
+        ({"duration": "30"}, 5, 30),
+        # Boundary values are accepted (min is always 1; max is configurable).
+        ({"duration": "1"}, 5, 1),
+        (
+            {"duration": str(ray_constants.MAX_PROFILING_DURATION_S)},
+            5,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+    ],
+)
+def test_query_duration_valid(query, default, expected):
+    assert _query_duration(_FakeRequest(query), default) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "abc",  # not an integer
+        "0",  # below the minimum
+        "-5",  # negative
+        # just above the (operator-configurable) maximum
+        str(ray_constants.MAX_PROFILING_DURATION_S + 1),
+    ],
+)
+def test_query_duration_invalid_raises_bad_request(value):
+    # Invalid or out-of-range durations must surface as HTTP 400, not a bare
+    # ValueError (which would become a 500).
+    with pytest.raises(aiohttp.web.HTTPBadRequest):
+        _query_duration(_FakeRequest({"duration": value}), 5)
+
+
+@pytest.mark.parametrize(
+    "seconds, expected",
+    [
+        # In-range values pass through unchanged.
+        (1, 1),
+        (5, 5),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+        # Out-of-range env-configured values are clamped to the accepted bound,
+        # so a misconfigured head-node default can never bypass the endpoint cap.
+        (0, 1),
+        (-5, 1),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S + 1,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+        (10**9, ray_constants.MAX_PROFILING_DURATION_S),
+    ],
+)
+def test_clamp_profiling_duration(seconds, expected):
+    assert ray_constants._clamp_profiling_duration(seconds) == expected
+
+
+def test_clamp_profiling_duration_warns_and_names_the_env_var():
+    # A silently clamped value looks like the operator's setting took effect, so
+    # the warning must name the env var that was ignored and the bound applied.
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MAX_PROFILING_DURATION_S + 1, "RAY_TEST_PROFILING_DURATION"
+        )
+    assert mock_warning.call_count == 1
+    rendered = mock_warning.call_args.args[0] % mock_warning.call_args.args[1:]
+    assert "RAY_TEST_PROFILING_DURATION" in rendered
+    assert str(ray_constants.MAX_PROFILING_DURATION_S) in rendered
+
+
+def test_clamp_profiling_duration_silent_when_in_range():
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MIN_PROFILING_DURATION_S, "RAY_TEST_PROFILING_DURATION"
+        )
+    mock_warning.assert_not_called()
+
+
+# A speedscope profile is JSON, so any markup prepended to it makes it unparseable.
+_SPEEDSCOPE_OUTPUT = '{"version": "0.0.1", "profiles": []}'
+
+
+def test_task_cpu_profiling_response_wraps_flamegraph_in_html():
+    resp = _task_cpu_profiling_response("<svg></svg>", "flamegraph", ["task_1"])
+    assert resp.content_type == "text/html"
+    # SVG_STYLE sizes the flame graph to the viewport, so it must stay.
+    assert resp.text == SVG_STYLE + "<svg></svg>"
+    assert MULTI_TASK_WARNING_HEADER not in resp.headers
+
+
+def test_task_cpu_profiling_response_prepends_multi_task_warning_to_flamegraph():
+    resp = _task_cpu_profiling_response(
+        "<svg></svg>", "flamegraph", ["task_1", "task_2"]
+    )
+    assert resp.content_type == "text/html"
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.text
+    assert resp.text.endswith(SVG_STYLE + "<svg></svg>")
+
+
+@pytest.mark.parametrize(
+    "format, output",
+    [
+        ("raw", "frame_a;frame_b 10"),
+        ("speedscope", _SPEEDSCOPE_OUTPUT),
+    ],
+)
+def test_task_cpu_profiling_response_returns_non_flamegraph_verbatim(format, output):
+    # Only flamegraph output is an SVG. Wrapping `raw`/`speedscope` in HTML (as
+    # this endpoint used to do for every format) corrupts the payload.
+    resp = _task_cpu_profiling_response(output, format, ["task_1"])
+    assert resp.content_type == "text/plain"
+    assert resp.text == output
+    assert SVG_STYLE not in resp.text
+
+
+@pytest.mark.parametrize("format", ["raw", "speedscope"])
+def test_task_cpu_profiling_response_moves_multi_task_warning_to_header(format):
+    # The warning is an HTML fragment, so for non-HTML formats it has to travel
+    # out of band rather than be dropped or spliced into the body.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, format, ["task_1", "task_2"]
+    )
+    assert resp.text == _SPEEDSCOPE_OUTPUT
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.headers[MULTI_TASK_WARNING_HEADER]
+    assert "task_2" in resp.headers[MULTI_TASK_WARNING_HEADER]
+
+
+def test_task_cpu_profiling_response_keeps_speedscope_output_parseable():
+    # The regression this guards: speedscope output served as HTML with
+    # SVG_STYLE prepended is rejected by speedscope.app as invalid JSON.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, "speedscope", ["task_1", "task_2"]
+    )
+    assert json.loads(resp.text) == {"version": "0.0.1", "profiles": []}
+
+
+@pytest.mark.parametrize(
+    "env_value, valid_formats, expected",
+    [
+        # Valid values pass through unchanged.
+        ("flamegraph", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("speedscope", ray_constants.VALID_CPU_PROFILING_FORMATS, "speedscope"),
+        ("table", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "table"),
+        # Invalid values fall back to flamegraph.
+        ("bogus", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        # The valid sets differ by profiler: `speedscope` is a py-spy (CPU) format
+        # and must be rejected for memray (memory) profiling, and vice versa for
+        # `table`. This guards against a single shared format default.
+        ("speedscope", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "flamegraph"),
+        ("table", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+    ],
+)
+def test_validated_profiling_format(monkeypatch, env_value, valid_formats, expected):
+    monkeypatch.setenv("RAY_TEST_PROFILING_FORMAT", env_value)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", valid_formats
+        )
+        == expected
+    )
+
+
+def test_validated_profiling_format_absent_uses_fallback(monkeypatch):
+    monkeypatch.delenv("RAY_TEST_PROFILING_FORMAT", raising=False)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", ray_constants.VALID_CPU_PROFILING_FORMATS
+        )
+        == "flamegraph"
+    )
+
+
+def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
+    """`/api/profiling_enabled` exposes the profiling defaults (camelCased)."""
+    address_info = ray.init()
+    assert wait_until_server_available(address_info["webui_url"])
+    webui_url = format_web_url(address_info["webui_url"])
+
+    def verify():
+        resp = requests.get(f"{webui_url}/api/profiling_enabled")
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        assert data["profilingEnabled"] is True
+        defaults = data["profilingDefaults"]
+        # snake_case keys are google-style-cased in the response.
+        for key in (
+            "native",
+            "subprocesses",
+            "idle",
+            "leaks",
+            "tracePythonAllocators",
+            "cpuDuration",
+            "memoryDuration",
+            "maxDuration",
+            "cpuFormat",
+            "memoryFormat",
+            "pyspyNativeSupported",
+        ):
+            assert key in defaults, f"missing {key} in {defaults}"
+        # Spot-check defaults match the constants' shipped values.
+        assert defaults["cpuDuration"] == 5
+        assert defaults["memoryDuration"] == 10
+        assert defaults["cpuFormat"] == "flamegraph"
+        return True
+
+    wait_for_condition(verify, timeout=20)
 
 
 if __name__ == "__main__":

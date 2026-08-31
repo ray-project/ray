@@ -15,6 +15,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.test_utils import check_apps_running, get_node_id
 from ray.serve._private.utils import get_head_node_id
+from ray.serve.schema import DeploymentSchema, ServeApplicationSchema, ServeDeploySchema
 from ray.tests.conftest import *  # noqa
 
 
@@ -185,6 +186,22 @@ def A():
 app_A = A.bind()
 
 
+@serve.deployment
+class BuildTaskNodeReporter:
+    def __init__(self, build_task_node_id):
+        self._build_task_node_id = build_task_node_id
+
+    def get_node_ids(self):
+        return (
+            self._build_task_node_id,
+            ray.get_runtime_context().get_node_id(),
+        )
+
+
+def build_task_node_reporter_app(_):
+    return BuildTaskNodeReporter.bind(ray.get_runtime_context().get_node_id())
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
@@ -323,6 +340,124 @@ class TestPackScheduling:
         handle1 = serve.run(app, name="app1", route_prefix="/app1")
         refs = [handle1.remote() for _ in range(20)]
         assert all(ref.result() == worker1_node_id for ref in refs)
+
+        serve.shutdown()
+
+    def test_high_priority_memory_schedules_before_cpu_hogs(
+        self, ray_cluster, monkeypatch
+    ):
+        """Memory in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES overrides CPU priority.
+
+        Pack scheduling sorts pending replicas by ``Resources.__lt__``. By default
+        CPU is compared before memory, so a deployment with higher ``num_cpus``
+        is scheduled first when only one replica fits on the node.
+
+        Here each ``cpu_i`` requests ``replica_cpus`` CPUs while ``memory_hog``
+        requests ``replica_cpus - 1`` CPUs plus most of the node memory. Without
+        the env var, a ``cpu_i`` deployment would win; with
+        ``RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES=memory``, ``memory_hog`` must
+        be the only deployment that reaches RUNNING.
+        """
+        monkeypatch.setenv("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "memory")
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+
+        total_memory = int(ray.cluster_resources()["memory"])
+        high_memory = max(int(total_memory * 0.9), 1)
+
+        @serve.deployment
+        def replica_fn():
+            return "ok"
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class Ingress:
+            def __init__(self, *handles):
+                self.handles = handles
+
+            def __call__(self):
+                pass
+
+        # Reserve head/proxy CPU by measuring what Serve leaves available.
+        serve.start()
+        replica_cpus = int(ray.available_resources()["CPU"])
+        assert replica_cpus >= 2, "Need at least 2 CPUs for cpu vs memory_hog split"
+
+        memory_hog_cpus = replica_cpus - 1
+
+        deployments = []
+        for i in range(9):
+            deployments.append(
+                replica_fn.options(
+                    name=f"cpu_{i}",
+                    # Higher CPU than memory_hog: would sort first by default.
+                    ray_actor_options={"num_cpus": replica_cpus},
+                ).bind()
+            )
+        deployments.append(
+            replica_fn.options(
+                name="memory_hog",
+                ray_actor_options={
+                    "num_cpus": memory_hog_cpus,
+                    "memory": high_memory,
+                },
+            ).bind()
+        )
+
+        serve._run(Ingress.bind(*deployments), _blocking=False)
+
+        def check_only_memory_hog_running():
+            app_status = serve.status().applications["default"]
+            if app_status.status == "DEPLOY_FAILED":
+                raise AssertionError(f"App failed: {app_status.message}")
+
+            deployments_status = app_status.deployments
+            memory_hog = deployments_status["memory_hog"]
+            assert memory_hog.replica_states.get("RUNNING", 0) == 1, memory_hog
+
+            for i in range(9):
+                cpu_dep = deployments_status[f"cpu_{i}"]
+                running = cpu_dep.replica_states.get("RUNNING", 0)
+                assert running == 0, (f"cpu_{i}", cpu_dep.replica_states)
+
+            return True
+
+        wait_for_condition(check_only_memory_hog_running, timeout=60)
+
+        app_status = serve.status().applications["default"]
+        assert app_status.status == "DEPLOYING"
+
+        # Add a second node: pack logs should show a new schedule-order batch
+        # and one cpu_* replica placed on the new node while memory_hog stays up.
+        cluster.add_node(num_cpus=4)
+        cluster.wait_for_nodes()
+
+        def check_one_cpu_replica_after_scale_out():
+            app_status = serve.status().applications["default"]
+            if app_status.status == "DEPLOY_FAILED":
+                raise AssertionError(f"App failed: {app_status.message}")
+
+            deployments_status = app_status.deployments
+            assert (
+                deployments_status["memory_hog"].replica_states.get("RUNNING", 0) == 1
+            )
+
+            cpu_running = sum(
+                deployments_status[f"cpu_{i}"].replica_states.get("RUNNING", 0)
+                for i in range(9)
+            )
+            assert cpu_running == 1, {
+                f"cpu_{i}": deployments_status[f"cpu_{i}"].replica_states
+                for i in range(9)
+            }
+            return True
+
+        wait_for_condition(check_one_cpu_replica_after_scale_out, timeout=60)
+
+        app_status = serve.status().applications["default"]
+        assert app_status.status == "DEPLOYING"
 
         serve.shutdown()
 
@@ -545,6 +680,42 @@ async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
     handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
     assert await handle_spread.get_node_id.remote() == us_east_node_id
     serve.delete("pg_spread_app")
+
+
+def test_e2e_serve_build_app_task_label_selector(
+    serve_instance_with_labeled_nodes,
+):
+    """The application build task uses the deployment's shared label selector."""
+    client, us_west_node_id, _, _ = serve_instance_with_labeled_nodes
+    app_name = "build_task_label_selector_app"
+
+    client.deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name=app_name,
+                    route_prefix="/build-task-label-selector",
+                    import_path=(
+                        "ray.serve.tests.test_deployment_scheduler:"
+                        "build_task_node_reporter_app"
+                    ),
+                    deployments=[
+                        DeploymentSchema(
+                            name="BuildTaskNodeReporter",
+                            ray_actor_options={"label_selector": {"region": "us-west"}},
+                        )
+                    ],
+                )
+            ]
+        ),
+        _blocking=True,
+    )
+
+    handle = serve.get_app_handle(app_name)
+    build_task_node_id, replica_node_id = handle.get_node_ids.remote().result()
+    assert build_task_node_id == us_west_node_id
+    assert replica_node_id == us_west_node_id
+    serve.delete(app_name)
 
 
 @pytest.mark.asyncio

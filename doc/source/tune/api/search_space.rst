@@ -53,7 +53,8 @@ For a high-level overview, see this example:
 
         # Sample a random uniformly between -21 (inclusive) and 12 (inclusive (!))
         # rounding to multiples of 3 (includes 12)
-        # if q is 1, then randint is called instead with the upper bound exclusive
+        # with q=1 the upper bound stays exclusive: the quantization grid is
+        # every integer, so nothing rounds up to it
         "qrandint": tune.qrandint(-21, 12, 3),
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
@@ -62,7 +63,8 @@ For a high-level overview, see this example:
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
         # while sampling in log space and rounding to multiples of 2
-        # if q is 1, then lograndint is called instead with the upper bound exclusive
+        # with q=1 the upper bound stays exclusive: the quantization grid is
+        # every integer, so nothing rounds up to it
         "qlograndint": tune.qlograndint(1, 10, 2),
 
         # Sample an option uniformly from the specified choices
@@ -70,7 +72,7 @@ For a high-level overview, see this example:
 
         # Sample from a random function, in this case one that
         # depends on another value from the search space
-        "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
+        "func": tune.sample_from(lambda config: config["uniform"] * 0.01),
 
         # Do a grid search over these values. Every value will be sampled
         # ``num_samples`` times (``num_samples`` is the parameter you pass to ``tune.TuneConfig``,

@@ -1,22 +1,22 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: m5.4xlarge
-    resources:
-        cpu: 0
 
-worker_node_types:
+worker_nodes:
     - name: worker_node_gpu
       instance_type: g4dn.12xlarge
-      max_workers: 4
-      min_workers: 4
-      use_spot: false
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge), so we must
+      # include `GPU: 4` explicitly to preserve the g4dn.12xlarge's natural
+      # GPU count. CPU: 0 keeps this group reserved for GPU workloads only.
       resources:
-        cpu: 0
+        CPU: 0
+        GPU: 4
     - name: worker_node_cpu
       instance_type: m5.4xlarge
-      max_workers: 4
-      min_workers: 4
-      use_spot: false
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND

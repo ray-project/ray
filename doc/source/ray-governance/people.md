@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Directory of Ray project committers and maintainers, listing the people responsible for governance and ongoing development of the Ray open-source project."
+---
+
 (people)=
 
 # People
@@ -9,10 +15,12 @@ This page lists the key people involved in the governance and maintenance of the
 - Abrar Sheikh ([GitHub](https://github.com/abrarsheikh/))
 - Alan Guo ([GitHub](https://github.com/alanwguo/))
 - Alex Wu ([GitHub](https://github.com/wuisawesome/))
+- Alex Yang ([GitHub](https://github.com/akyang-anyscale/))
 - Alexey Kudinkin ([GitHub](https://github.com/alexeykudinkin/))
 - Alexey Tumanov ([GitHub](https://github.com/atumanov/))
 - Ameer Haj Ali ([GitHub](https://github.com/AmeerHajAli/))
 - Amog Kamsetty ([GitHub](https://github.com/amogkam/))
+- Andrew Sy Kim ([GitHub](https://github.com/andrewsykim/))
 - Angelina Le Grix ([GitHub](https://github.com/angelinalg/))
 - Antoni Baum ([GitHub](https://github.com/Yard1/))
 - Archit Kulkarni ([GitHub](https://github.com/archit-kulkarni/))
@@ -26,6 +34,7 @@ This page lists the key people involved in the governance and maintenance of the
 - Devin Petersohn ([GitHub](https://github.com/devin-petersohn/))
 - Dhyey Shah ([GitHub](https://github.com/dayshah/))
 - Dmitri Gekhtman ([GitHub](https://github.com/DmitriGekhtman/))
+- Douglas Strodtman ([GitHub](https://github.com/dstrodtman/))
 - Edward Oakes ([GitHub](https://github.com/edoakes/))
 - Eric Liang ([GitHub](https://github.com/ericl/))
 - Fengbin Fang ([GitHub](https://github.com/ffbin/))
@@ -34,6 +43,7 @@ This page lists the key people involved in the governance and maintenance of the
 - Ian Rodney ([GitHub](https://github.com/ijrsvt/))
 - Ibrahim Rabbani ([GitHub](https://github.com/israbbani/))
 - Ion Stoica ([GitHub](https://github.com/istoica/))
+- Jeffrey Wang ([GitHub](https://github.com/jeffreywang88/))
 - Jiajun Yao ([GitHub](https://github.com/jjyao/))
 - Jian Xiao ([GitHub](https://github.com/jianoaix/))
 - Jun Gong ([GitHub](https://github.com/gjoliver/))
@@ -56,6 +66,8 @@ This page lists the key people involved in the governance and maintenance of the
 - Robert Nishihara ([GitHub](https://github.com/robertnishihara/))
 - Rui Qiao ([GitHub](https://github.com/ruisearch42/))
 - Ruiyang Wang ([GitHub](https://github.com/rynewang/))
+- Ryan O'Leary ([GitHub](https://github.com/ryanaoleary/))
+- Sampan Nayak ([GitHub](https://github.com/sampan-s-nayak/))
 - SangBin Cho ([GitHub](https://github.com/rkooo567/))
 - Scott Lee ([GitHub](https://github.com/scottjlee/))
 - Shreyas Krishnaswamy ([GitHub](https://github.com/shrekris-anyscale/))

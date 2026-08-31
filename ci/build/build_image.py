@@ -27,6 +27,7 @@ from ci.build.build_common import (
 )
 
 DEFAULT_ARCHITECTURE = "x86_64"
+RAYCI_REGISTRY = "cr.ray.io/rayproject"
 
 # Maps image type to its base name (YAML config key and Docker Hub repo).
 _BASE_TYPE_MAP: dict[str, str] = {
@@ -188,6 +189,9 @@ class ImageBuildConfig:
         image_type: str,
         python_version: str,
         image_platform: str,
+        *,
+        no_java: bool = False,
+        no_dashboard: bool = False,
     ) -> ImageBuildConfig:
         ray_image = RayImage(
             image_type=image_type,
@@ -219,15 +223,29 @@ class ImageBuildConfig:
             else None
         )
 
+        java_image = (
+            "scratch"
+            if no_java
+            else f"{RAYCI_REGISTRY}/ray-java-build{ray_image.arch_suffix}"
+        )
+        dashboard_image = (
+            "scratch"
+            if no_dashboard
+            else f"{RAYCI_REGISTRY}/ray-dashboard{ray_image.arch_suffix}"
+        )
+
         build_env: dict[str, str] = {
             "PYTHON_VERSION": ray_image.python_version,
             "MANYLINUX_VERSION": manylinux_version,
             "HOSTTYPE": ray_image.architecture,
             "ARCH_SUFFIX": ray_image.arch_suffix,
+            "JDK_SUFFIX": "" if no_java else "-jdk",
             "BUILDKITE_COMMIT": commit,
             "RAY_VERSION": ray_version,
             "IS_LOCAL_BUILD": "true",
             "IMAGE_TYPE": ray_image.repo,
+            "RAY_JAVA_IMAGE": java_image,
+            "RAY_DASHBOARD_IMAGE": dashboard_image,
         }
         if ray_image.platform.startswith("cu"):
             build_env["CUDA_VERSION"] = ray_image.platform.removeprefix("cu")
@@ -481,6 +499,18 @@ def main():
         action="store_true",
         help="List valid platforms for the given image type and exit",
     )
+    parser.add_argument(
+        "--no-java",
+        action="store_true",
+        default=False,
+        help="Build wheel without Java JARs",
+    )
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        default=False,
+        help="Build wheel without the dashboard",
+    )
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -502,7 +532,11 @@ def main():
 
     try:
         config = ImageBuildConfig.from_args(
-            args.image_type, python_version, platform_choice
+            args.image_type,
+            python_version,
+            platform_choice,
+            no_java=args.no_java,
+            no_dashboard=args.no_dashboard,
         )
         builder = ImageBuilder(config)
         image_tag = builder.build()

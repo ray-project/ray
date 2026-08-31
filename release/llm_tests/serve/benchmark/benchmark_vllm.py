@@ -86,22 +86,25 @@ def get_vllm_cli_args(llm_config):
 
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():
-        cli_args.append("--" + key.replace("_", "-"))
-        if isinstance(value, dict):
-            cli_args.append(json.dumps(value))
-        elif isinstance(value, bool):
-            pass
-        else:
-            cli_args.append(str(value))
-
-    cli_args.extend(
-        ["--tensor-parallel-size", str(engine_kwargs["tensor_parallel_size"])]
-    )
-
-    if "max_model_len" in engine_kwargs:
-        cli_args.extend(["--max-model-len", str(engine_kwargs["max_model_len"])])
-
+        cli_args.extend(_engine_kwarg_to_cli(key, value))
     return cli_args
+
+
+def _engine_kwarg_to_cli(key, value):
+    """Translate one engine_kwargs entry to vllm CLI args.
+
+    vLLM uses argparse.BooleanOptionalAction for bool fields, so emit the
+    explicit `--flag` / `--no-flag` form to honor the configured value
+    regardless of the engine default.
+    """
+    if value is None:
+        return []
+    flag = "--" + key.replace("_", "-")
+    if isinstance(value, bool):
+        return [flag] if value else ["--no-" + key.replace("_", "-")]
+    if isinstance(value, dict):
+        return [flag, json.dumps(value)]
+    return [flag, str(value)]
 
 
 def get_ray_options(llm_config):
@@ -242,7 +245,7 @@ def main(pargs):
         "service_name": "",
         "py_version": f"py{sys.version_info.major}{sys.version_info.minor}",
         "tag": tag,
-        "vllm_engine": f"V{os.environ.get('VLLM_USE_V1', '')}",
+        "vllm_engine": "V1",
     }
 
     # Post the results to S3

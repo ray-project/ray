@@ -12,7 +12,6 @@ import os
 from collections import defaultdict
 from ray.util.state import list_nodes
 from ray._private.test_utils import get_system_metric_for_component
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.metrics.metrics_head import (
@@ -109,9 +108,7 @@ class DashboardTestAtScale:
         node = nodes[0]
         # Schedule on a head node.
         self.tester = DashboardTester.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node["node_id"], soft=False
-            )
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node["node_id"]}
         ).remote()
 
         self.tester.run.remote()
@@ -129,13 +126,15 @@ class DashboardTestAtScale:
 
         # Get the memory usage.
         memories = get_system_metric_for_component(
-            "ray_component_uss_mb",
+            "ray_component_uss_bytes",
             "dashboard",
             os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
         )
 
         return Result(
-            success=True, result=result, memory_mb=max(memories) if memories else None
+            success=True,
+            result=result,
+            memory_mb=max(memories) / 1.0e6 if memories else None,
         )
 
     def update_release_test_result(self, release_result: dict):

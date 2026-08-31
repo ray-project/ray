@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a MobileNet image classifier on Kubernetes with RayService, from Kind cluster setup to a live classification request."
+---
+
 (kuberay-mobilenet-rayservice-example)=
 
 # Serve a MobileNet image classifier on Kubernetes
@@ -12,14 +18,13 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ## Step 2: Install KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-Note that the YAML file in this example uses `serveConfigV2`. You need KubeRay version v0.6.0 or later to use this feature.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. Note that the YAML file in this example uses `serveConfigV2`. You need KubeRay version v0.6.0 or later to use this feature.
 
 ## Step 3: Install a RayService
 
 ```sh
 # Create a RayService
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.mobilenet.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.mobilenet.yaml
 ```
 
 * The [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) file needs `tensorflow` as a dependency. Hence, the YAML file uses `rayproject/ray-ml` image instead of `rayproject/ray` image.

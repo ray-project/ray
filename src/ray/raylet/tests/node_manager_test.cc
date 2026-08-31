@@ -32,8 +32,10 @@
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -48,6 +50,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -56,6 +59,7 @@ using ::testing::Return;
 namespace {
 
 constexpr double kTestTotalCpuResource = 10.0;
+constexpr double kTestObjectStoreMemory = 1024 * 1024 * 1024;  // 1 GiB
 
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
@@ -97,9 +101,23 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id) override { return ""; }
 
-  int64_t GetPrimaryBytes() const override { return 0; }
+  int64_t GetPrimaryBytes() const override { return primary_bytes_; }
+
+  // Settable by tests to simulate pinned primary object copies on the node.
+  int64_t primary_bytes_ = 0;
 
   bool HasLocallySpilledObjects() const override { return false; }
+
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override {
+    return {};
+  }
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override {
+    return {};
+  }
 
   std::string DebugString() const override { return ""; }
 
@@ -184,20 +202,21 @@ LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_addr
 }  // namespace
 
 TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
+  ray::Clock clock;
   {
     // Worker backlog report from a disconnected worker should be ignored.
     MockWorkerPool worker_pool;
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
-        .Times(1)
-        .WillOnce(Return(nullptr));
+
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(_)).Times(0);
-    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_, _, _)).Times(0);
+    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(0);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -217,7 +236,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    std::shared_ptr<MockWorker> driver = std::make_shared<MockWorker>(worker_id, 10);
+    std::shared_ptr<MockWorker> driver =
+        std::make_shared<MockWorker>(worker_id, 10, clock);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -232,19 +252,10 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
-        .Times(1)
-        .WillOnce(Return(nullptr));
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
-        .Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
-        .Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
@@ -261,7 +272,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(worker_id, 10);
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(worker_id, 10, clock);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -276,18 +288,14 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
+    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
+        .Times(1)
+        .WillOnce(Return(nullptr));
     EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
         .Times(1)
         .WillOnce(Return(worker));
-    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
 
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
-        .Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
-        .Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
@@ -316,8 +324,10 @@ class NodeManagerTest : public ::testing::Test {
     NodeManagerConfig node_manager_config{};
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
-    node_manager_config.resource_config = ResourceSet(
-        absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
+    node_manager_config.resource_config =
+        ResourceSet(absl::flat_hash_map<std::string, double>{
+            {"CPU", kTestTotalCpuResource},
+            {"object_store_memory", kTestObjectStoreMemory}});
     // Set non-zero ports to skip waiting for agents reporting ports back.
     // we don't actually start the agents in this test.
     node_manager_config.metrics_agent_port = 44386;
@@ -349,13 +359,13 @@ class NodeManagerTest : public ::testing::Test {
     objects_pending_deletion_ = std::make_shared<absl::flat_hash_set<ObjectID>>();
 
     local_object_manager_ =
-        std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
+        std::make_shared<FakeLocalObjectManager>(objects_pending_deletion_);
 
     lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
         *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
-        io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         ray::scheduling::NodeID(raylet_node_id_.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
@@ -364,6 +374,7 @@ class NodeManagerTest : public ::testing::Test {
               NodeID::FromBinary(node_id.Binary()));
         },
         fake_resource_usage_gauge_,
+        clock_,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -412,7 +423,8 @@ class NodeManagerTest : public ::testing::Test {
           return node_manager_->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock_);
 
     cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
@@ -426,6 +438,7 @@ class NodeManagerTest : public ::testing::Test {
 
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         raylet_node_id_,
         "test_node_name",
         node_manager_config,
@@ -448,12 +461,14 @@ class NodeManagerTest : public ::testing::Test {
         /*shutdown_raylet_gracefully=*/
         [](const auto &) {},
         [](const std::string &) {},
-        nullptr,
+        std::make_unique<NoopCgroupManager>(),
         shutting_down_,
         *placement_group_resource_manager_,
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_),
-        fake_memory_manager_worker_eviction_total_count_);
+        fake_memory_manager_worker_eviction_total_count_,
+        fake_node_manager_unexpected_worker_failure_total_count_,
+        fake_clock_);
   }
 
   instrumented_io_context io_service_;
@@ -463,11 +478,13 @@ class NodeManagerTest : public ::testing::Test {
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
+  FakeClock fake_clock_;
+  ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
-  std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
+  std::shared_ptr<FakeLocalObjectManager> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
@@ -491,7 +508,68 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
   ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
   ray::observability::FakeCounter fake_memory_manager_worker_eviction_total_count_;
+  ray::observability::FakeCounter
+      fake_node_manager_unexpected_worker_failure_total_count_;
 };
+
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadUnknownWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+      .WillOnce(Return(nullptr));
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredDriver(worker_id))
+      .WillOnce(Return(nullptr));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_TRUE(reply.is_dead());
+}
+
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadRegisteredDriver) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  auto driver = std::make_shared<MockWorker>(worker_id, 10, clock_);
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+      .WillOnce(Return(nullptr));
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredDriver(worker_id)).WillOnce(Return(driver));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(reply.is_dead());
+}
+
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadRegisteredWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  auto worker = std::make_shared<MockWorker>(worker_id, 10, clock_);
+  // || short-circuits: GetRegisteredDriver is never called when worker is found.
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id)).WillOnce(Return(worker));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(reply.is_dead());
+}
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
@@ -504,7 +582,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
@@ -531,7 +609,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 
@@ -581,7 +659,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       });
 
   // Prepare a mock worker and check if it is not killed later.
-  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -607,7 +685,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 
@@ -653,7 +731,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       });
 
   // Prepare a mock worker and check if it is not killed later.
-  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   // Complete the RequestWorkerLease rpc with the mock worker.
   pop_worker_callback(worker, PopWorkerStatus::OK, "");
   EXPECT_TRUE(promise.get_future().get().ok());
@@ -919,7 +997,8 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
   bool worker_exiting = std::get<1>(params);
 
   LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  leased_workers_[lease_id] =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   rpc::ReturnWorkerLeaseRequest request;
   rpc::ReturnWorkerLeaseReply reply1;
   rpc::ReturnWorkerLeaseReply reply2;
@@ -971,7 +1050,7 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   request.set_backlog_size(1);
   request.set_grant_or_reject(true);
   request.set_is_selected_based_on_locality(true);
-  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .Times(1)
@@ -1027,7 +1106,7 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {
 
   EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(1));
 
-  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   PopWorkerCallback pop_worker_callback;
   EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
       .Times(1)
@@ -1155,7 +1234,7 @@ TEST_F(NodeManagerTest, TestReschedulingLeasesDuringHandleDrainRaylet) {
   ASSERT_EQ(cluster_lease_manager_->GetInfeasibleQueueSize(), 1);
 }
 
-TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
+TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseWhenHasLeaseRequest) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request_worker_lease_request;
   rpc::RequestWorkerLeaseReply request_worker_lease_reply;
@@ -1190,14 +1269,20 @@ TEST_F(NodeManagerTest, RetryHandleCancelWorkerLeaseWhenHasLeaseRequest) {
         ASSERT_TRUE(s.ok());
       });
   ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
-  ASSERT_EQ(cancel_worker_lease_reply1.success(), true);
-  // Due to the message reordering case where the cancel worker lease request
-  // arrives at the raylet before the worker lease request has been received, we
-  // cannot return true on the retry since from the raylet perspective both situations are
-  // equivalent. Even if this returns false, the first request to HandleCancelWorkerLease
-  // will trigger the callback for HandleRequestWorkerLease and remove the pending lease
-  // request which prevents the CancelWorkerLease loop.
-  ASSERT_EQ(cancel_worker_lease_reply2.success(), false);
+
+  // A RequestWorkerLease that arrives after cancellation (message reordering)
+  // is rejected via the tombstone and must not re-queue the lease.
+  rpc::RequestWorkerLeaseReply reorder_reply;
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &reorder_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_TRUE(reorder_reply.canceled());
+  ASSERT_EQ(reorder_reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
 }
 
 TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
@@ -1220,8 +1305,27 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
         ASSERT_TRUE(s.ok());
       });
   ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
-  ASSERT_EQ(reply1.success(), false);
-  ASSERT_EQ(reply2.success(), false);
+
+  // A RequestWorkerLease for a lease cancelled before it was ever seen must
+  // be rejected and must not queue.
+  auto lease_spec = BuildLeaseSpec({});
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+  rpc::RequestWorkerLeaseRequest request_worker_lease_request;
+  request_worker_lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request_worker_lease_request.set_backlog_size(1);
+  request_worker_lease_request.set_grant_or_reject(true);
+  request_worker_lease_request.set_is_selected_based_on_locality(true);
+  rpc::RequestWorkerLeaseReply request_worker_lease_reply;
+  node_manager_->HandleRequestWorkerLease(
+      request_worker_lease_request,
+      &request_worker_lease_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_TRUE(request_worker_lease_reply.canceled());
+  ASSERT_EQ(request_worker_lease_reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+  ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
 }
 
 class PinObjectIDsIdempotencyTest : public NodeManagerTest,
@@ -1295,7 +1399,7 @@ TEST_P(NodeManagerKillActorTest, TestHandleKillLocalActorIdempotency) {
   std::shared_ptr<raylet::MockWorker> worker;
 
   if (worker_is_alive) {
-    worker = std::make_shared<raylet::MockWorker>(worker_id, 10);
+    worker = std::make_shared<raylet::MockWorker>(worker_id, 10, clock_);
     worker->Connect(fake_rpc_client);
     EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
         .Times(2)
@@ -1376,6 +1480,37 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
                          testing::Bool());
+
+TEST_F(NodeManagerTest, TestHandleDrainRayletRejectsIdleDrainWithPinnedObject) {
+  // Tests that a node that holds a primary copy rejects a drain.
+  local_object_manager_->primary_bytes_ = 1;
+
+  rpc::DrainRayletRequest request;
+  request.set_reason(
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
+  request.set_reason_message("idle for long enough");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+
+  rpc::DrainRayletReply reply;
+  node_manager_->HandleDrainRaylet(
+      request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_FALSE(reply.is_accepted());
+  ASSERT_FALSE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+
+  // With no pinned primary copies, the same idle drain is accepted.
+  local_object_manager_->primary_bytes_ = 0;
+  rpc::DrainRayletReply reply2;
+  node_manager_->HandleDrainRaylet(
+      request, &reply2, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_TRUE(reply2.is_accepted());
+  ASSERT_TRUE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+}
 
 class DrainRayletIdempotencyTest
     : public NodeManagerTest,
@@ -1481,6 +1616,10 @@ TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
   LeaseID lease_id = LeaseID::FromRandom();
   auto worker = std::make_shared<raylet::FakeWorker>(worker_id, 0, io_service_);
   worker->SetBundleId(bundle_id);
+  rpc::LeaseSpec lease_spec_msg;
+  lease_spec_msg.set_lease_id(lease_id.Binary());
+  lease_spec_msg.set_type(rpc::TaskType::NORMAL_TASK);
+  worker->GrantLease(RayLease(std::move(lease_spec_msg)));
   worker->GrantLeaseId(lease_id);
   leased_workers_.emplace(lease_id, worker);
 
@@ -1536,8 +1675,3 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ::testing::Bool());
 
 }  // namespace ray::raylet
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

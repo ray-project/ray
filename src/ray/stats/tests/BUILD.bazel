@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/stats:stats_metric",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -23,7 +22,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/stats:stats_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -34,6 +32,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/stats:percentile_tracker",
-        "@com_google_googletest//:gtest_main",
     ],
 )

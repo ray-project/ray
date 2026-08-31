@@ -40,11 +40,24 @@
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process_utils.h"
-#include "ray/util/time.h"
 
 namespace ray {
 
 namespace raylet {
+
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
+                                                       int64_t configured_threads) {
+  if (detected_cpus <= kWorkerGrpcThreadsWarningThreshold || configured_threads > 0) {
+    return std::nullopt;
+  }
+
+  return absl::StrFormat(
+      "Ray detected %d CPUs on this node. Consider setting "
+      "RAY_worker_num_grpc_internal_threads to reduce the number of gRPC threads. See "
+      "https://docs.ray.io/en/latest/ray-core/"
+      "configure.html#worker-grpc-thread-configuration for details.",
+      detected_cpus);
+}
 
 namespace {
 
@@ -86,6 +99,7 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 }  // namespace
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
+                       std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                        const NodeID &node_id,
                        std::string node_address,
                        std::function<int64_t()> get_num_cpus_available,
@@ -99,10 +113,11 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       std::function<absl::Time()> get_time,
+                       ClockInterface &clock,
                        WorkerPoolMetrics &worker_pool_metrics,
                        AddProcessToCgroupHook add_to_cgroup_hook)
-    : io_service_(&io_service),
+    : clock_(clock),
+      io_service_(&io_service),
       node_id_(node_id),
       node_address_(std::move(node_address)),
       node_address_family_(IsIPv6(node_address_) ? AF_INET6 : AF_INET),
@@ -121,8 +136,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
-      get_time_(std::move(get_time)),
+      periodical_runner_(std::move(periodical_runner)),
       add_to_cgroup_hook_(std::move(add_to_cgroup_hook)),
       worker_pool_metrics_(worker_pool_metrics) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
@@ -242,7 +256,7 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
     const WorkerID &worker_id,
     rpc::WorkerType worker_type,
     std::unique_ptr<ProcessInterface> proc,
-    const std::chrono::high_resolution_clock::time_point &start,
+    SteadyTimePoint start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
@@ -363,7 +377,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--worker-id=" + worker_id.Hex());
     worker_command_args.push_back("--worker-launch-time-ms=" +
-                                  std::to_string(current_sys_time_ms()));
+                                  std::to_string(absl::ToUnixMillis(clock_.Now())));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
@@ -523,7 +537,7 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  auto start = std::chrono::high_resolution_clock::now();
+  SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
   std::unique_ptr<ProcessInterface> proc =
       StartProcess(worker_command_args, env, worker_id);
@@ -552,20 +566,57 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
 void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
 #ifdef __linux__
-  std::ofstream oom_score_file;
   std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
-  oom_score_file.open(filename, std::ofstream::out);
-  int oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
-  oom_score_adj = std::max(oom_score_adj, 0);
-  oom_score_adj = std::min(oom_score_adj, 1000);
+
+  // Read the worker's current oom_score_adj as the baseline for the
+  // additive adjustment. If the read fails for any reason (the /proc
+  // entry is not yet visible, the file is unreadable, the parse fails,
+  // etc.), bail out rather than silently writing `0 + delta`: on
+  // hardened deployments where the raylet runs with a negative
+  // oom_score_adj the worker inherits that negative value, and writing
+  // `0 + delta` would make the worker much more kernel-OOM-killable
+  // than the operator configured.
+  std::ifstream original_oom_score_file(filename, std::ifstream::in);
+  if (!original_oom_score_file.is_open()) {
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Cannot read OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
+    return;
+  }
+  int original_oom_score_adj = 0;
+  original_oom_score_file >> original_oom_score_adj;
+  if (original_oom_score_file.fail()) {
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to parse OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
+    return;
+  }
+  original_oom_score_file.close();
+
+  int relative_oom_score_adj =
+      std::clamp(RayConfig::instance().worker_oom_score_adjustment(), 0, 1000);
+  // Clamp to the kernel-accepted range [-1000, 1000]. The previous code
+  // clamped only the upper bound, which silently accepted out-of-range
+  // inputs if either term was negative.
+  int oom_score_adj =
+      std::clamp(original_oom_score_adj + relative_oom_score_adj, -1000, 1000);
+
+  std::ofstream oom_score_file(filename, std::ofstream::out);
   if (oom_score_file.is_open()) {
     // Adjust worker's OOM score so that the OS prioritizes killing these
     // processes over the raylet.
     oom_score_file << std::to_string(oom_score_adj);
   }
   if (oom_score_file.fail()) {
-    RAY_LOG(INFO) << "Failed to set OOM score adjustment for worker with PID " << pid
-                  << ", error: " << strerror(errno);
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to set OOM score adjustment for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
   }
   oom_score_file.close();
 #endif
@@ -832,13 +883,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   auto &starting_process_info = it->second;
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      end - starting_process_info.start_time);
-  worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration.count());
+  int64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            clock_.SteadyNow() - starting_process_info.start_time)
+                            .count();
+  worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration_ms);
   RAY_LOG(DEBUG).WithField(worker_id)
       << "Registering worker with pid " << pid << ", port: " << port
-      << ", register cost: " << duration.count()
+      << ", register cost: " << duration_ms
       << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
@@ -1129,11 +1180,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // Worker pushed without suiting any pending request. Put to idle pool with
     // keep_alive_until.
     state.idle.insert(worker);
-    auto now = get_time_();
+    auto now = clock_.Now();
     absl::Time keep_alive_until =
         now +
         absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
-    if (worker->GetGrantedLeaseTime() == absl::Time()) {
+    if (!worker->GetLastGrantedLeaseTime().has_value()) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       auto it = state.worker_processes.find(worker->WorkerId());
       if (it != state.worker_processes.end()) {
@@ -1161,7 +1212,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  const absl::Time now = get_time_();
+  const absl::Time now = clock_.Now();
 
   // Filter out all idle workers that are already dead and/or associated with
   // jobs that have already finished.
@@ -1659,18 +1710,15 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorker
   return workers;
 }
 
-bool WorkerPool::IsWorkerAvailableForScheduling() const {
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
-      if (!worker->IsRegistered()) {
-        continue;
-      }
-      if (worker->IsAvailableForScheduling()) {
-        return true;
-      }
-    }
+bool WorkerPool::AllAliveWorkersAreActors() const {
+  auto workers = GetAllRegisteredWorkers(/*filter_dead_workers=*/true,
+                                         /*filter_io_workers=*/true);
+  if (workers.empty()) {
+    return false;
   }
-  return false;
+  return std::all_of(workers.begin(), workers.end(), [](const auto &worker) {
+    return !worker->GetActorId().IsNil();
+  });
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(
@@ -1730,7 +1778,7 @@ void WorkerPool::WarnAboutSize() {
       RAY_LOG(WARNING) << warning_message_str;
 
       auto error_data = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message_str, get_time_());
+          "worker_pool_large", warning_message_str, clock_.Now());
       gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
     }
   }

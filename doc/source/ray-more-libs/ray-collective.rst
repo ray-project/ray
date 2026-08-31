@@ -1,3 +1,6 @@
+.. meta::
+   :description: Collective communication primitives (allreduce, broadcast, send/recv) for Ray actors and tasks via ray.util.collective, on NCCL and GLOO.
+
 ..
   This part of the docs is generated from the ray.util.collective readme using m2r
   To update:
@@ -347,6 +350,12 @@ An example code utilizing the multi-GPU collective APIs is provided below:
 More Resources
 --------------
 
+.. toctree::
+    :hidden:
+    :caption: Custom Backends
+
+    ray-collective-custom-backend
+
 The following links provide helpful resources on how to efficiently leverage the ``ray.util.collective`` library.
 
 
@@ -358,4 +367,7 @@ API References
 --------------
 
 .. automodule:: ray.util.collective.collective
+    :members:
+
+.. automodule:: ray.util.collective.backend_registry
     :members:

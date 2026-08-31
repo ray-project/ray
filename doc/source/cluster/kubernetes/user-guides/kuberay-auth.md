@@ -1,8 +1,18 @@
+---
+myst:
+  html_meta:
+    description: "Enable Ray token authentication on a KubeRay cluster and access it with the Ray CLI and the dashboard."
+---
+
 (kuberay-auth)=
 
 # Configure Ray clusters to use token authentication
 
 This guide demonstrates how to enable Ray token authentication with KubeRay.
+
+:::{warning}
+It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
+:::
 
 ## Prerequisites
 
@@ -36,8 +46,7 @@ When enabled, the KubeRay operator will:
 * Create a Kubernetes Secret containing a randomly generated token.
 * Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
-If you are using a KubeRay version older than v1.6.0, you can enable token authentication by creating a Kubernetes Secret containing
-your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
+If you are using a KubeRay version older than v1.7.0, you can enable token authentication by creating a Kubernetes Secret containing your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
 
 ```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)

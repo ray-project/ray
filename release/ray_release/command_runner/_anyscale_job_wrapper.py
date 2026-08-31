@@ -9,19 +9,24 @@ have access to the ray_release package.
 import argparse
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict
 from urllib.parse import urlparse
 
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
+
+# Prometheus metric type for idle worker evictions. We expect Ray to kill idle workers
+# under memory pressure, so we exclude them from the OOM check.
+IDLE_WORKER_EVICTION_METRIC_TYPE = "MemoryManager.IdleWorkerEviction.Total"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -31,6 +36,20 @@ formatter = logging.Formatter(
 )
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+
+
+class PrometheusSeries(TypedDict):
+    """A single time series from a Prometheus query result.
+
+    Attributes:
+        metric: The series' label set, e.g. ``{"Type": ..., "Name": ...}``. Empty
+            when the query aggregated the labels away.
+        values: ``[timestamp, value]`` samples over the queried range. Prometheus
+            renders the values as strings.
+    """
+
+    metric: dict[str, str]
+    values: list[list]
 
 
 def exponential_backoff_retry(
@@ -111,29 +130,47 @@ def run_storage_cp(source: str, target: str):
         return False
 
 
-def collect_metrics(time_taken: float) -> bool:
+def collect_metrics(start_time: float, time_taken: float) -> bool:
     if "METRICS_OUTPUT_JSON" not in os.environ:
         return False
 
     # Timeout is the time the test took divided by 200
     # (~7 minutes for a 24h test) but no less than 90s
     # and no more than 900s
-    metrics_timeout = max(90, min((time.time() - time_taken) / 200, 900))
+    metrics_timeout = max(90, min(time_taken / 200, 900))
+    logger.info(f"Collecting Prometheus metrics (timeout: {metrics_timeout:.0f}s).")
     try:
         subprocess.run(
             [
                 "python",
                 "prometheus_metrics.py",
-                str(time_taken),
+                str(start_time),
                 "--path",
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
             timeout=metrics_timeout,
             check=True,
         )
+        logger.info("Metrics collection subprocess finished successfully.")
         return True
+    # TimeoutExpired and CalledProcessError are SubprocessError subclasses, so
+    # they must be caught first to differentiate them in the logs.
+    except subprocess.TimeoutExpired:
+        logger.error(
+            f"Metrics collection TIMED OUT after {metrics_timeout:.0f}s. The metrics "
+            "file may be missing or incomplete. This is a metrics-collection timeout, "
+            "distinct from an actual metric/OOM/spill issue."
+        )
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Metrics collection subprocess exited with non-zero return code "
+            f"{e.returncode}. See the prometheus_metrics.py output above for the "
+            "specific failure."
+        )
+        return False
     except subprocess.SubprocessError:
-        logger.exception("Couldn't collect metrics.")
+        logger.exception("Couldn't collect metrics due to an unexpected error.")
         return False
 
 
@@ -233,6 +270,208 @@ def run_prepare_commands(
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
+def _load_metrics_for_check(check_name: str, env_var: str) -> Optional[dict]:
+    """Load the Prometheus metrics file for a failure check.
+
+    Returns the parsed metrics dict, or ``None`` when the metrics could not be
+    obtained at all (file missing, unreadable, or an empty ``{}`` written
+    because every Prometheus query failed). In every ``None`` case this is a
+    metrics-collection/infra failure rather than an actual metric signal, and
+    the caller should treat it as such.
+    """
+    metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+    if not (metrics_path and Path(metrics_path).exists()):
+        logger.error(
+            f"{check_name}: {env_var} is set to 1, but no metrics file was found "
+            f"at path: {metrics_path}. Metrics collection failed entirely."
+        )
+        return None
+    try:
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"{check_name}: could not read metrics file {metrics_path}: {e}")
+        return None
+    if not isinstance(metrics, dict) or not metrics:
+        logger.error(
+            f"{check_name}: metrics file at {metrics_path} is empty. "
+            "See the prometheus_metrics.py output above for the cause."
+        )
+        return None
+    return metrics
+
+
+def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
+    """Return True if ``key`` could not be collected (missing or null).
+
+    Distinguishes a metrics-collection/infra failure (logged here) from an
+    actual metric signal, which the caller inspects when this returns False.
+    A ``None`` value means the Prometheus query failed; an empty list ``[]``
+    means the query succeeded but matched no series (i.e. a healthy result).
+    """
+    if key not in metrics:
+        logger.error(
+            f"{check_name}: '{key}' is missing from the metrics file, likely a collection issue."
+        )
+        return True
+    if metrics[key] is None:
+        logger.error(
+            f"{check_name}: '{key}' is None, likely the Prometheus query failed "
+            "(timeout / connection error / non-200)"
+        )
+        return True
+    return False
+
+
+def run_oom_check():
+    metrics = _load_metrics_for_check("OOM check", "RAYTEST_FAIL_ON_WORKER_OOM")
+    if metrics is None:
+        return 1
+
+    return_code = 0
+    if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
+        return_code = 1
+    else:
+        worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+        if worker_oom_kills:
+            logger.error(
+                f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
+            )
+            return_code = 1
+
+    if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
+        return_code = 1
+    elif metrics["unexpected_worker_failures"]:
+        logger.error(
+            "Test failed: Unexpected worker failures detected "
+            "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+            f"Details: {metrics['unexpected_worker_failures']}"
+        )
+        return_code = 1
+    return return_code
+
+
+def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
+    """Drop idle-worker evictions from the worker OOM kill series.
+
+    Idle-worker evictions are expected behavior, so we exclude them and only keep task
+    and actor kills.
+    """
+    return [
+        series
+        for series in worker_oom_kills
+        if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
+    ]
+
+
+def run_spilling_check():
+    metrics = _load_metrics_for_check("Spilling check", "RAYTEST_FAIL_ON_SPILLING")
+    if metrics is None:
+        return 1
+
+    return_code = 0
+    if _metric_unavailable("Spilling check", metrics, "spilled_bytes"):
+        return_code = 1
+    elif metrics["spilled_bytes"]:
+        logger.error(
+            "Test failed: unexpected object-store spilling detected. "
+            f"Details: {metrics['spilled_bytes']}"
+        )
+        return_code = 1
+    return return_code
+
+
+def run_obj_store_util_check(max_percent: str):
+    """Fail if peak object store utilization exceeded ``max_percent`` percent."""
+    check_name = "Object store utilization check"
+    env_var = "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+
+    try:
+        threshold = float(max_percent)
+    except ValueError:
+        logger.error(f"{check_name}: {env_var!r} isn't a number: {max_percent!r}.")
+        return 1
+
+    if threshold < 0:
+        logger.info(f"{check_name} skipped: {env_var} is {max_percent}.")
+        return 0
+
+    metrics = _load_metrics_for_check(check_name, env_var)
+    if metrics is None:
+        return 1
+    if _metric_unavailable(check_name, metrics, "object_store_util_percent"):
+        return 1
+
+    peak_percent = _peak_metric_value(metrics["object_store_util_percent"])
+    if peak_percent is None:
+        logger.error(
+            f"{check_name}: 'object_store_util_percent' contains no samples, likely "
+            "a collection issue."
+        )
+        return 0
+
+    if peak_percent > threshold:
+        logger.error(
+            f"Test failed: peak object store utilization {peak_percent:.1f}% exceeded "
+            f"the {threshold:.1f}% limit set by {env_var}."
+        )
+        return 1
+
+    logger.info(
+        f"{check_name} passed: peak object store utilization {peak_percent:.1f}% "
+        f"is within the {threshold:.1f}% limit."
+    )
+    return 0
+
+
+def _peak_metric_value(series: list[PrometheusSeries]) -> float | None:
+    """Return the largest sample across a Prometheus query result.
+
+    Args:
+        series: One entry per label set the query returned, each holding that
+            series' samples over the queried range.
+
+    Returns:
+        The largest value, or ``None`` if there aren't any valid values.
+    """
+    values = [
+        float(value)
+        for entry in series
+        for _, value in entry.get("values", [])
+        if not math.isnan(float(value))
+    ]
+    return max(values) if values else None
+
+
+def run_dead_node_check():
+    # Connect to the cluster and check for dead nodes
+    import ray
+    from ray.core.generated import common_pb2
+
+    return_code = 0
+    try:
+        ray.init(address="auto")  # Connect to the local cluster
+        unexpected_termination = common_pb2.NodeDeathInfo.Reason.Value(
+            "UNEXPECTED_TERMINATION"
+        )
+        unspecified = common_pb2.NodeDeathInfo.Reason.Value("UNSPECIFIED")
+        dead_nodes = [
+            node["NodeID"]
+            for node in ray.nodes()
+            if not node["Alive"]
+            and node.get("DeathReason") in [unexpected_termination, unspecified]
+        ]
+        if dead_nodes:
+            logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
+            return_code = 1
+    except Exception as e:
+        logger.error(f"Error during dead node check: {e}")
+        return_code = 1
+    finally:
+        ray.shutdown()  # Disconnect from the cluster
+    return return_code
+
+
 def main(
     test_workload: str,
     test_workload_timeout: float,
@@ -281,6 +520,7 @@ def main(
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
+        workload_start_unix_time = time.time()
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
@@ -297,18 +537,45 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
+        test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
+
+        if return_code == 0 and test_fail_on_dead_nodes:
+            return_code = run_dead_node_check()
+
         # Upload results.json
         uploaded_results = run_storage_cp(
             os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
         )
 
         # Collect prometheus metrics
-        collected_metrics = collect_metrics(workload_time_taken)
+        collected_metrics = collect_metrics(
+            workload_start_unix_time, workload_time_taken
+        )
         if collected_metrics:
             # Upload prometheus metrics
             uploaded_metrics = run_storage_cp(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
+
+        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+
+        # Fail if any OOM kills occurred
+        if return_code == 0 and test_fail_on_worker_oom:
+            return_code = run_oom_check()
+
+        test_fail_on_spilling = os.environ.get("RAYTEST_FAIL_ON_SPILLING") == "1"
+
+        # Fail if any object-store spilling occurred
+        if return_code == 0 and test_fail_on_spilling:
+            return_code = run_spilling_check()
+
+        max_obj_store_util_percent = os.environ.get(
+            "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+        )
+
+        # Fail if the object store filled up beyond the configured limit.
+        if return_code == 0 and max_obj_store_util_percent:
+            return_code = run_obj_store_util_check(max_obj_store_util_percent)
 
         uploaded_artifact = run_storage_cp(
             artifact_path,

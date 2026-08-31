@@ -27,11 +27,11 @@ class SGLangEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The input prompt.
-    prompt: Optional[str]
+    prompt: Optional[str] = None
     # Alternative to text. Specify the input as token IDs instead of text.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling parameters (more details can be seen in https://docs.sglang.ai/backend/sampling_params.html).
-    params: Optional[Dict[str, Any]]
+    params: Optional[Dict[str, Any]] = None
 
     class Config:
         validate_assignment = True
@@ -41,13 +41,13 @@ class SGLangEngineRequest(BaseModel):
 class SGLangOutputData(BaseModel):
     """The output of the SGLang engine."""
 
-    prompt: Optional[str]
-    prompt_token_ids: Optional[List[int]]
+    prompt: Optional[str] = None
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.
-    generated_tokens: Optional[List[int]]
-    generated_text: Optional[str]
+    generated_tokens: Optional[List[int]] = None
+    generated_text: Optional[str] = None
     num_generated_tokens: int
 
     # Metrics fields.
@@ -86,7 +86,7 @@ class SGLangEngineWrapper:
     """Wrapper around the SGLang engine to handle async requests.
 
     Args:
-        *args: The positional arguments for the engine.
+        idx_in_batch_column: The column name for the index of the row in the batch.
         max_pending_requests: The maximum number of pending requests in the queue.
         **kwargs: The keyword arguments for the engine.
     """
@@ -174,7 +174,7 @@ class SGLangEngineWrapper:
         """Process a single request.
 
         Args:
-            request: The request.
+            row: The input row.
 
         Returns:
             A tuple of index in batch, request output and bypassed custom fields, and time taken.
@@ -303,8 +303,8 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         Args:
             batch: A list of rows to run the SGLang engine on.
 
-        Returns:
-            The response of the SGLang engine.
+        Yields:
+            Dict[str, Any]: The response of the SGLang engine.
         """
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
@@ -344,7 +344,7 @@ class SGLangEngineStage(StatefulStage):
     fn: Type[StatefulStageUDF] = SGLangEngineStageUDF
 
     @root_validator(pre=True)
-    def post_init(cls, values):
+    def post_init(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Post-initialize the stage. Specifically,
         this function determines the num_gpus and Ray remote args
         for the .map_batches() call in this stage.

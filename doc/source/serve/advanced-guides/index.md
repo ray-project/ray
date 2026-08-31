@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Advanced Ray Serve guides: autoscaling tuning, asyncio, performance, request batching, gRPC, replica and gang scheduling, and custom routing."
+---
+
 (serve-advanced-guides)=
 # Advanced Guides
 
@@ -14,10 +20,12 @@ dev-workflow
 grpc-guide
 replica-ranks
 replica-scheduling
+gang-scheduling
 managing-java-deployments
 deploy-vm
 multi-app-container
 custom-request-router
+deployment-scoped-actors
 multi-node-gpu-troubleshooting
 ```
 
@@ -34,8 +42,10 @@ Use these advanced guides for more options and configurations:
 - [gRPC Support](serve-set-up-grpc-service)
 - [Replica Ranks](serve-replica-ranks)
 - [Replica Scheduling](serve-replica-scheduling)
+- [Gang Scheduling](serve-gang-scheduling)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
 - [Use Custom Algorithm for Request Routing](custom-request-router)
+- [Use deployment-scoped actors](serve-deployment-scoped-actors)
 - [Troubleshoot multi-node GPU setups for serving LLMs](multi-node-gpu-troubleshooting)

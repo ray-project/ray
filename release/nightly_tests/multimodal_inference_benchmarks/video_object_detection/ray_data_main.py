@@ -8,16 +8,14 @@ import io
 import uuid
 from benchmark import Benchmark
 
-NUM_GPU_NODES = 8
 YOLO_MODEL = "yolo11n.pt"
 INPUT_PATH = "s3://anonymous@ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 IMAGE_HEIGHT = 640
 IMAGE_WIDTH = 640
 # This was a change made: Alter batch size accordingly
-# batch_size = 32 for 1x large
-# batch_size = 100 for 2x, 4x, and 8x large
-BATCH_SIZE = 32
+# batch_size = 100 for 1x, 2x, 4x, and 8x large
+BATCH_SIZE = 100
 
 ray.init()
 
@@ -80,8 +78,7 @@ def crop_image(row):
     cropped_pil = pil_image.crop((x1, y1, x2, y2))
 
     buf = io.BytesIO()
-    # This was a change made: Use compress_level=2
-    cropped_pil.save(buf, format="PNG", compress_level=2)
+    cropped_pil.save(buf, format="PNG")
     cropped_pil_png = buf.getvalue()
 
     row["object"] = cropped_pil_png
@@ -89,13 +86,21 @@ def crop_image(row):
 
 
 def run_pipeline():
+    # These are best practices we recommend to avoid OOMs, though they're opt-in and
+    # not enabled by default.
+    ray.data.DataContext.get_current().isolate_read_workers = True
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
     ds = ray.data.read_videos(INPUT_PATH)
     ds = ds.map(resize_frame)
     ds = ds.map_batches(
         ExtractImageFeatures,
         batch_size=BATCH_SIZE,
         num_gpus=1.0,
-        concurrency=NUM_GPU_NODES,
+        # Ray Data can't prevent OOMs if you don't set `memory` for high-memory UDFs
+        # like this one. We chose this value because it was the max USS we observed in
+        # previous nightly test runs.
+        memory=3_529_273_344,  # ~3.5 GB
     )
     ds = ds.flat_map(explode_features)
     ds = ds.map(crop_image)

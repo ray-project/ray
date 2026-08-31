@@ -76,6 +76,25 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool exceeding max size",
             )
 
+        allocation = self._resource_manager.get_allocation(op)
+        op_usage = self._resource_manager.get_op_usage(op)
+        if allocation is not None and op_usage is not None:
+            over_budget_scale_down = _get_required_scale_down(
+                actor_pool, allocation.subtract(op_usage)
+            )
+            if over_budget_scale_down > 0:
+                max_can_release = actor_pool.current_size() - actor_pool.min_size()
+                num_to_scale_down = min(over_budget_scale_down, max_can_release)
+                if num_to_scale_down > 0:
+                    return ActorPoolScalingRequest.downscale(
+                        delta=-num_to_scale_down,
+                        reason="actor pool exceeds resource allocation",
+                    )
+                return ActorPoolScalingRequest.no_op(
+                    reason="actor pool exceeds resource allocation "
+                    "but cannot scale below min size",
+                )
+
         # To prevent unexpected downscaling from the initial size, short-circuit if
         # the operator hasn't received any inputs.
         if op.metrics.num_inputs_received == 0:
@@ -258,27 +277,50 @@ def _get_max_scale_up(
         The maximum number of actors that can be scaled up, or `None` if you can
         scale up infinitely.
     """
-    assert budget.cpu >= 0 and budget.gpu >= 0
+    assert budget.cpu >= 0 and budget.gpu >= 0 and budget.memory >= 0
 
-    num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
-    num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
-    assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0
+    per_actor = actor_pool.per_actor_resource_usage()
+    assert per_actor.cpu >= 0 and per_actor.gpu >= 0 and per_actor.memory >= 0
 
-    max_cpu_scale_up: float = float("inf")
-    if num_cpus_per_actor > 0 and not math.isinf(budget.cpu):
-        max_cpu_scale_up = budget.cpu // num_cpus_per_actor
-
-    max_gpu_scale_up: float = float("inf")
-    if num_gpus_per_actor > 0 and not math.isinf(budget.gpu):
-        max_gpu_scale_up = budget.gpu // num_gpus_per_actor
-
-    max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up)
+    # floordiv handles per_actor.x == 0 → inf (no constraint from that resource)
+    # and budget.x == inf → inf. We ignore object_store_memory since it is not
+    # a per-actor declared resource.
+    divisions = budget.floordiv(per_actor)
+    max_scale_up = min(divisions.cpu, divisions.gpu, divisions.memory)
     if math.isinf(max_scale_up):
         return sys.maxsize
-    else:
-        assert not math.isnan(max_scale_up), (
-            budget,
-            num_cpus_per_actor,
-            num_gpus_per_actor,
-        )
-        return int(max_scale_up)
+    return int(max_scale_up)
+
+
+def _get_required_scale_down(
+    actor_pool: AutoscalingActorPool,
+    budget: ExecutionResources,
+) -> int:
+    """Get the number of actors that must be removed to fit within budget.
+
+    Args:
+        actor_pool: The actor pool to scale down.
+        budget: The net remaining budget (allocation - usage). Can be negative
+            if the operator is over its allocation.
+
+    Returns:
+        The number of actors that need to be removed, or 0 if the pool
+        is within budget.
+    """
+    per_actor = actor_pool.per_actor_resource_usage()
+
+    required_cpu_scale_down = 0
+    if per_actor.cpu > 0 and budget.cpu < 0:
+        required_cpu_scale_down = math.ceil(abs(budget.cpu) / per_actor.cpu)
+
+    required_gpu_scale_down = 0
+    if per_actor.gpu > 0 and budget.gpu < 0:
+        required_gpu_scale_down = math.ceil(abs(budget.gpu) / per_actor.gpu)
+
+    required_memory_scale_down = 0
+    if per_actor.memory > 0 and budget.memory < 0:
+        required_memory_scale_down = math.ceil(abs(budget.memory) / per_actor.memory)
+
+    return max(
+        required_cpu_scale_down, required_gpu_scale_down, required_memory_scale_down
+    )

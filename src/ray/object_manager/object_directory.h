@@ -21,7 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -40,6 +40,13 @@ using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
 class IObjectDirectory {
  public:
   virtual ~IObjectDirectory() {}
+
+  /// Signal that the owning node is shutting down. After this call,
+  /// object-location subscription failures caused by local client
+  /// teardown are no longer surfaced as fatal remote-owner failures
+  /// to dependent tasks. Genuine owner deaths are still detected via
+  /// the GCS worker/node-death path.
+  virtual void MarkShuttingDown() {}
 
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a

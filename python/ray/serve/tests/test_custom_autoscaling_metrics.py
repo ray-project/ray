@@ -305,6 +305,31 @@ class TestCustomServeMetrics:
 
         signal.send.remote()
 
+    def test_record_autoscaling_stats_without_autoscaling_config(self, serve_instance):
+        """Test that record_autoscaling_stats doesn't crash when using num_replicas instead of autoscaling_config.
+
+        When a deployment defines record_autoscaling_stats but uses fixed num_replicas,
+        the replica should start successfully without crashing.
+        """
+
+        @serve.deployment(num_replicas=1)
+        class DeploymentWithCustomMetricsNoAutoscaling:
+            async def record_autoscaling_stats(self) -> Dict[str, float]:
+                return {"qps": 1.0}
+
+            async def __call__(self):
+                return "ok"
+
+        app_name = "test_custom_metrics_no_autoscaling"
+        handle = serve.run(
+            DeploymentWithCustomMetricsNoAutoscaling.bind(),
+            name=app_name,
+            route_prefix="/test_no_autoscaling",
+        )
+
+        response = handle.remote().result()
+        assert response == "ok"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

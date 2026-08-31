@@ -16,6 +16,12 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -176,6 +182,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm._get_downstream_ineligible_ops = types.MethodType(
             ResourceManager._get_downstream_ineligible_ops, rm
         )
+        rm.get_downstream_eligible_ops = types.MethodType(
+            ResourceManager.get_downstream_eligible_ops, rm
+        )
         rm._is_blocking_materializing_op = types.MethodType(
             ResourceManager._is_blocking_materializing_op, rm
         )
@@ -190,25 +199,22 @@ class TestDownstreamCapacityBackpressurePolicy:
         """Helper to set utilized budget fraction.
 
         The policy checks: utilized_fraction <= OBJECT_STORE_BUDGET_UTIL_THRESHOLD
-        With threshold=0.9, skip backpressure when utilized_fraction <= 0.9.
-        To trigger backpressure, set utilized_fraction > 0.9.
+        With threshold=0.5, skip backpressure when utilized_fraction <= 0.5.
+        To trigger backpressure, set utilized_fraction > 0.5.
         """
         self._mock_get_utilized_budget_fraction.return_value = fraction
         return fraction
 
-    def _set_queue_ratio(self, op, op_state, rm, queue_size, downstream_capacity):
-        """Helper to set queue ratio via mocks.
+    def _set_output_pressure(self, op, op_state, rm, output_size, downstream_capacity):
+        """Helper to set output pressure via mocks.
 
-        Matches _get_queue_ratio logic:
-        - queue_size_bytes = output_queue_bytes() + sum(get_op_usage(ineligible).object_store_memory)
-        - downstream_capacity_size_bytes = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
-        - If downstream_capacity == 0, returns 0 (no backpressure)
-        - Else returns queue_size / downstream_capacity
-
-        Returns the calculated queue_ratio for assertions.
+        Matches _get_output_pressure logic:
+        - output_size = get_mem_op_outputs(op, include_ineligible_downstream=True)
+        - downstream_capacity = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
+        - pressure = (output_size / downstream_capacity) - 1
         """
-        # Set queue size via output_queue_bytes
-        op_state.output_queue_bytes.return_value = queue_size
+        # Set output size via get_mem_op_outputs
+        rm.get_mem_op_outputs.return_value = output_size
 
         # Set downstream capacity on the first output dependency
         if op.output_dependencies:
@@ -219,7 +225,7 @@ class TestDownstreamCapacityBackpressurePolicy:
 
         if downstream_capacity == 0:
             return 0
-        return queue_size / downstream_capacity
+        return (output_size / downstream_capacity) - 1
 
     def test_backpressure_disabled_when_ratio_is_none(self):
         """Test that backpressure is disabled when ratio is None."""
@@ -247,25 +253,76 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
-    def test_backpressure_skipped_for_materializing_downstream(self):
-        """Test that backpressure is skipped when downstream is materializing.
-
-        Creates topology: cur_op -> materializing_op (AllToAllOperator).
-        """
-        # Create the current operator
-        op, op_state = self._mock_operator()
-        # Create a materializing downstream operator
-        materializing_op, materializing_op_state = self._mock_materializing_operator()
-        # Set up topology: op -> materializing_op
+    @pytest.mark.parametrize(
+        ("op_class", "throttling_disabled"),
+        [
+            (HashShufflingOperatorBase, False),
+            (AllToAllOperator, True),
+            (ShuffleMapOp, False),
+        ],
+    )
+    def test_backpressure_skipped_for_downstream_materializer(
+        self, op_class, throttling_disabled
+    ):
+        """Test that an upstream op isn't backpressured by a materializer."""
+        op, op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_operator(
+            op_class=op_class,
+            obj_store_mem_pending_task_inputs=100,
+            throttling_disabled=throttling_disabled,
+        )
+        materializing_op.__class__ = op_class
         op.output_dependencies = [materializing_op]
+
         topology = {op: op_state, materializing_op: materializing_op_state}
-        context = self._create_context()
+        context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        output_pressure = self._set_output_pressure(
+            op, op_state, rm, output_size=1100, downstream_capacity=100
+        )
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
+        self,
+    ):
+        """Test that a later materializer doesn't disable normal backpressure."""
+        op, op_state = self._mock_task_pool_map_operator()
+        downstream_op, downstream_op_state = self._mock_task_pool_map_operator()
+        materializing_op, materializing_op_state = self._mock_materializing_operator()
+        op.output_dependencies = [downstream_op]
+        downstream_op.output_dependencies = [materializing_op]
+
+        topology = {
+            op: op_state,
+            downstream_op: downstream_op_state,
+            materializing_op: materializing_op_state,
+        }
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager()
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        output_pressure = self._set_output_pressure(
+            op, op_state, rm, output_size=1100, downstream_capacity=100
+        )
+        assert output_pressure > 2.0
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+        assert policy.can_add_input(op) is False
 
     def test_backpressure_skipped_for_low_utilization(self):
         """Test backpressure skipped when utilized budget fraction is low."""
@@ -275,11 +332,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction below threshold = skip backpressure
-        # With threshold=0.9, skip backpressure when utilized <= 0.9
+        # With threshold=0.5, skip backpressure when utilized <= 0.5
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -294,11 +351,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction at threshold = skip backpressure
-        # With threshold=0.9, utilized <= 0.9 skips backpressure
+        # With threshold=0.5, utilized <= 0.5 skips backpressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold)  # 0.9
+        self._set_utilized_budget_fraction(rm, threshold)  # 0.5
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -315,25 +372,25 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager()
 
         # Utilized budget fraction above threshold = apply backpressure
-        # With threshold=0.9, apply backpressure when utilized > 0.9
+        # With threshold=0.5, apply backpressure when utilized > 0.5
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Queue ratio > 2.0: 1000 / 200 = 5
-        queue_ratio = self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=200
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        output_pressure = self._set_output_pressure(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert queue_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is False
 
-    def test_backpressure_triggered_high_queue_ratio(self):
-        """Test backpressure triggered when queue/capacity ratio is high."""
+    def test_backpressure_triggered_high_output_pressure(self):
+        """Test backpressure triggered when output pressure is high."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -341,25 +398,25 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # Utilized budget fraction above threshold = check queue ratio
+        # Utilized budget fraction above threshold = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Queue ratio > 2.0: 1000 / 200 = 5
-        queue_ratio = self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=200
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        output_pressure = self._set_output_pressure(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
-        assert queue_ratio > 2.0
+        assert output_pressure > 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is False
 
-    def test_no_backpressure_low_queue_ratio(self):
-        """Test no backpressure when queue/capacity ratio is acceptable."""
+    def test_no_backpressure_low_output_pressure(self):
+        """Test no backpressure when output pressure is low."""
         op, op_state = self._mock_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -371,13 +428,13 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.8
+        self._set_utilized_budget_fraction(rm, threshold - 0.1)  # 0.4
 
-        # Queue ratio < 2.0: 500 / 1000 = 0.5
-        queue_ratio = self._set_queue_ratio(
-            op, op_state, rm, queue_size=500, downstream_capacity=1000
+        # Output pressure < 2.0: (1500 / 1000) - 1 = 0.5
+        output_pressure = self._set_output_pressure(
+            op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
-        assert queue_ratio < 2.0
+        assert output_pressure < 2.0
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -397,12 +454,53 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    @pytest.mark.parametrize(
+        "external_bytes, expected_pressure, expected_can_add_input",
+        [
+            # 1000 buffered / 100 consumer capacity - 1 = 9, above the 2.0 threshold.
+            pytest.param(100, 9.0, False, id="with_external_consumer"),
+            # No consumer, so nothing to pace against (e.g. write pipelines).
+            pytest.param(0, 0, True, id="without_external_consumer"),
+        ],
+    )
+    def test_terminal_op_paces_against_external_consumer(
+        self, external_bytes, expected_pressure, expected_can_add_input
+    ):
+        """Terminal operators pace against the external consumer's buffer.
+
+        A terminal operator has no output dependencies, so its downstream
+        capacity comes from the external consumer (iter_batches /
+        streaming_split) rather than from a downstream operator's pending
+        task inputs. Without that, the ratio is hard-zero and this policy is
+        silently disabled for every iterator-consumed pipeline.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        op.output_dependencies = []  # terminal: consumed by an iterator
+        topology = {op: op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=external_bytes)
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        rm.get_mem_op_outputs.return_value = 1000
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        # Capacity comes from the external consumer, not a downstream op.
+        assert policy._get_downstream_capacity_size_bytes(op) == external_bytes
+        assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
+        assert policy.can_add_input(op) is expected_can_add_input
 
     def test_max_bytes_returns_none_when_backpressure_disabled(self):
         """Test max_task_output_bytes_to_read returns None when disabled."""
@@ -437,7 +535,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.85
+        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -457,11 +555,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Queue ratio > 2.0: 1000 / 200 = 5
-        self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=200
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        self._set_output_pressure(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
 
         policy = self._create_policy(
@@ -469,8 +567,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.max_task_output_bytes_to_read(op) == 0
 
-    def test_max_bytes_returns_zero_for_high_queue_ratio(self):
-        """Test max_task_output_bytes_to_read returns 0 for high queue ratio."""
+    def test_max_bytes_returns_zero_for_high_output_pressure(self):
+        """Test max_task_output_bytes_to_read returns 0 for high output pressure."""
         op, op_state = self._mock_task_pool_map_operator()
         downstream_op, downstream_op_state = self._mock_operator()
         op.output_dependencies = [downstream_op]
@@ -478,15 +576,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # High utilized budget fraction = check queue ratio
+        # High utilized budget fraction = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Queue ratio > 2.0: 1000 / 200 = 5
-        self._set_queue_ratio(
-            op, op_state, rm, queue_size=1000, downstream_capacity=200
+        # Output pressure > 2.0: (1200 / 200) - 1 = 5
+        self._set_output_pressure(
+            op, op_state, rm, output_size=1200, downstream_capacity=200
         )
 
         policy = self._create_policy(
@@ -503,15 +601,15 @@ class TestDownstreamCapacityBackpressurePolicy:
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager()
 
-        # High utilized budget fraction = check queue ratio
+        # High utilized budget fraction = check output pressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.95
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)  # 0.55
 
-        # Queue ratio < 2.0: 500 / 1000 = 0.5
-        self._set_queue_ratio(
-            op, op_state, rm, queue_size=500, downstream_capacity=1000
+        # Output pressure < 2.0: (1500 / 1000) - 1 = 0.5
+        self._set_output_pressure(
+            op, op_state, rm, output_size=1500, downstream_capacity=1000
         )
 
         policy = self._create_policy(
@@ -524,10 +622,10 @@ class TestDownstreamCapacityBackpressurePolicy:
     def test_backpressure_applied_fast_producer_slow_consumer(self):
         """Test backpressure IS applied when producer is faster than consumer.
 
-        In a fast producer → slow consumer scenario:
+        In a fast producer -> slow consumer scenario:
         - Queue builds up (producer outputs faster than consumer can process)
         - Downstream capacity is low (slow consumer has fewer pending inputs)
-        - Queue/capacity ratio exceeds threshold → backpressure applied
+        - Backpressure ratio exceeds threshold -> backpressure applied
         """
         # Fast producer -> slow consumer topology
         producer_op, producer_state = self._mock_task_pool_map_operator(
@@ -554,16 +652,16 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
 
-        # Fast producer scenario: large queue, low downstream capacity
-        # Queue ratio = 2000 / 200 = 10 (well above 2.0 threshold)
-        queue_ratio = self._set_queue_ratio(
+        # Fast producer scenario: large output, low downstream capacity
+        # Output pressure = (2200 / 200) - 1 = 10 (well above 2.0 threshold)
+        output_pressure = self._set_output_pressure(
             producer_op,
             producer_state,
             rm,
-            queue_size=2000,  # Large queue (producer outputting fast)
+            output_size=2200,  # Large output (producer outputting fast)
             downstream_capacity=200,  # Low capacity (slow consumer)
         )
-        assert queue_ratio > 2.0  # Verify ratio exceeds backpressure threshold
+        assert output_pressure > 2.0  # Verify ratio exceeds pressure threshold
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm

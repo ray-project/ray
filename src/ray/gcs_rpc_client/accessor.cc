@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
@@ -161,7 +162,22 @@ void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback
       });
 }
 
-NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
+// This default constructor is only used in unit tests, where a NodeInfoAccessor
+// needs to be created without a backing GcsClient. client_impl_ is set to
+// nullptr so that dereferencing it is a well-defined crash rather than
+// undefined behavior if a method that uses it is called in this state.
+NodeInfoAccessor::NodeInfoAccessor()
+    : client_impl_(nullptr),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
+
+// is_gcs_leader_ is seeded from ENABLE_GCS_LEADER_ELECTION: when leader election is
+// disabled (the default), the client always assumes it is talking to the leader, so
+// is_gcs_leader_ starts as true and legacy behavior is preserved. When leader
+// election is enabled, it starts as false and is updated once the first
+// CheckAlive reply reports the actual leadership status.
+NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const rpc::StatusCallback &callback) {
@@ -226,8 +242,12 @@ void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
   size_t num_raylets = node_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       std::move(request),
-      [num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
+      [this, num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
         if (status.ok()) {
+          // If is_leader is absent, the reply came from a GCS that predates this
+          // field (e.g. during a rolling upgrade); treat that as the legacy
+          // always-leader behavior rather than a demotion to passive.
+          is_gcs_leader_.store(reply.has_is_leader() ? reply.is_leader() : true);
           RAY_CHECK_EQ(static_cast<size_t>(reply.raylet_alive().size()), num_raylets);
           std::vector<bool> is_alive;
           is_alive.reserve(num_raylets);
@@ -421,6 +441,8 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
 
+bool NodeInfoAccessor::IsGcsLeader() const { return is_gcs_leader_.load(); }
+
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
@@ -601,7 +623,7 @@ void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
   rpc::ReportJobErrorRequest request;
   *request.mutable_job_error() = std::move(data);
-  client_impl_->GetGcsRpcClient().ReportJobError(
+  client_impl_->GetObservabilityPubSubRpcClient().ReportJobError(
       std::move(request),
       [job_id](const Status &status, rpc::ReportJobErrorReply &&reply) {
         RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
@@ -621,6 +643,36 @@ void WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
   subscribe_operation_(done);
 }
 
+void WorkerInfoAccessor::AsyncSubscribeToWorkerFailure(
+    const WorkerID &worker_id,
+    const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const rpc::StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  // Capture `done` so AsyncResubscribe can replay the caller's post-subscribe
+  // logic (e.g. a liveness fetch) after a GCS failover: the failover can drop
+  // a failure notification published while the connection was down, and only
+  // the replayed `done` can re-detect it. Resubscribe passes a null
+  // done_callback, which falls back to the captured one.
+  std::function<void(const rpc::StatusCallback &)> subscribe_operation =
+      [this, worker_id, subscribe, done](const rpc::StatusCallback &done_callback) {
+        client_impl_->GetGcsSubscriber().SubscribeWorkerFailure(
+            worker_id, subscribe, done_callback != nullptr ? done_callback : done);
+      };
+  {
+    absl::MutexLock lock(&per_worker_mutex_);
+    per_worker_subscribe_operations_[worker_id] = subscribe_operation;
+  }
+  subscribe_operation(done);
+}
+
+void WorkerInfoAccessor::AsyncUnsubscribeFromWorkerFailure(const WorkerID &worker_id) {
+  {
+    absl::MutexLock lock(&per_worker_mutex_);
+    per_worker_subscribe_operations_.erase(worker_id);
+  }
+  client_impl_->GetGcsSubscriber().UnsubscribeWorkerFailure(worker_id);
+}
+
 void WorkerInfoAccessor::AsyncResubscribe() {
   // TODO(iycheng): Fix the case where messages has been pushed to GCS but
   // resubscribe hasn't been done yet. In this case, we'll lose that message.
@@ -628,6 +680,14 @@ void WorkerInfoAccessor::AsyncResubscribe() {
   // The pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr) {
     subscribe_operation_(nullptr);
+  }
+  // Replay under the lock so a concurrent AsyncUnsubscribeFromWorkerFailure
+  // cannot race
+  absl::MutexLock lock(&per_worker_mutex_);
+  for (const auto &[_, operation] : per_worker_subscribe_operations_) {
+    // nullptr makes the operation fall back to its captured `done` callback,
+    // re-running the caller's post-subscribe logic (e.g. the liveness fetch).
+    operation(nullptr);
   }
 }
 
@@ -1261,7 +1321,7 @@ Status PublisherAccessor::PublishError(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_error_info_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1274,7 +1334,7 @@ Status PublisherAccessor::PublishLogs(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_log_batch_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1288,7 +1348,7 @@ void PublisherAccessor::AsyncPublishNodeResourceUsage(
   pub_message->set_key_id(std::move(key_id));
   pub_message->mutable_node_resource_usage_message()->set_json(
       std::move(node_resource_usage_json));
-  client_impl_->GetGcsRpcClient().GcsPublish(
+  client_impl_->GetObservabilityPubSubRpcClient().GcsPublish(
       std::move(request),
       [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
 }

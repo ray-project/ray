@@ -13,12 +13,14 @@
 // limitations under the License.
 
 #pragma once
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
@@ -121,7 +123,7 @@ class JobInfoAccessor {
 /// node information in the GCS.
 class NodeInfoAccessor {
  public:
-  NodeInfoAccessor() = default;
+  NodeInfoAccessor();
   explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
 
@@ -262,6 +264,13 @@ class NodeInfoAccessor {
   /// alive.
   virtual bool IsNodeAlive(const NodeID &node_id) const;
 
+  /// Check if the GCS server is currently the active leader based on the cached status
+  /// updated from GCS CheckAlive replies.
+  ///
+  /// \return True if the GCS server is believed to be the active leader, false if it
+  /// is currently in passive (read-only) mode.
+  virtual bool IsGcsLeader() const;
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -296,9 +305,13 @@ class NodeInfoAccessor {
       node_cache_address_and_liveness_
           ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_);
 
+  /// Cached GCS server leadership status
+  std::atomic<bool> is_gcs_leader_;
+
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
+  FRIEND_TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching);
 };
 
 /// \class NodeResourceInfoAccessor
@@ -427,6 +440,26 @@ class WorkerInfoAccessor {
       const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
       const rpc::StatusCallback &done);
 
+  /// Subscribe to the unexpected failure of a single worker. Unlike
+  /// AsyncSubscribeToWorkerFailures, the GCS only delivers failures of
+  /// \p worker_id to this subscriber, so the per-death fan-out stays
+  /// proportional to the number of interested subscribers instead of the
+  /// number of workers in the cluster.
+  ///
+  /// \param worker_id The worker whose failure to subscribe to.
+  /// \param subscribe Callback that will be called when the worker fails.
+  /// \param done Callback that will be called when subscription is complete. (is also
+  /// called during resubscribes)
+  virtual void AsyncSubscribeToWorkerFailure(
+      const WorkerID &worker_id,
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+      const rpc::StatusCallback &done);
+
+  /// Cancel a subscription made by AsyncSubscribeToWorkerFailure.
+  ///
+  /// \param worker_id The worker previously subscribed to.
+  virtual void AsyncUnsubscribeFromWorkerFailure(const WorkerID &worker_id);
+
   /// Report a worker failure to GCS asynchronously.
   ///
   /// \param data_ptr The worker failure information that will be reported to GCS.
@@ -477,12 +510,25 @@ class WorkerInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
+  ///
+  /// For keyed worker-failure subscriptions this also re-invokes each
+  /// subscription's original ``done`` callback, so callers can re-run
+  /// post-subscribe logic (e.g. a liveness fetch) after the reconnect.
   virtual void AsyncResubscribe();
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
   /// restarts from a failure.
   SubscribeOperation subscribe_operation_;
+
+  /// Guards the per-worker subscribe operations, which are mutated from
+  /// arbitrary threads (e.g. task execution threads registering generator
+  /// backpressure state) and read on GCS reconnection.
+  absl::Mutex per_worker_mutex_;
+  /// Per-worker subscribe operations, kept so they can be replayed when GCS
+  /// restarts from a failure. Keyed by the subscribed-to worker id.
+  absl::flat_hash_map<WorkerID, SubscribeOperation> per_worker_subscribe_operations_
+      ABSL_GUARDED_BY(per_worker_mutex_);
 
   GcsClient *client_impl_;
 };

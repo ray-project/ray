@@ -1,5 +1,6 @@
 import time
 from collections import defaultdict
+from typing import Dict, List, Optional
 
 import pytest
 
@@ -235,7 +236,12 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         ]
         return wg
 
-    def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):
+    def setup_and_check_worker_group(
+        pids: List[int],
+        node_ids: List[str],
+        gpu_ids: List[Optional[str]],
+        expected_local_ranks: Dict[int, int],
+    ):
         """
         Create a worker group, group workers by Node ID,
         and check local ranks assignment.

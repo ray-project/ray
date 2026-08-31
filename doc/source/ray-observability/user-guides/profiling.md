@@ -1,7 +1,12 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray applications for CPU, memory, and GPU bottlenecks using py-spy, cProfile, memray, and the PyTorch profiler from the dashboard."
+---
+
 (profiling)=
 # Profiling
-Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues.
-Here is a list of common profiling tools you may use when debugging Ray applications. 
+Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
 - CPU profiling
     - py-spy
 - Memory profiling
@@ -9,9 +14,72 @@ Here is a list of common profiling tools you may use when debugging Ray applicat
 - GPU profiling
     - PyTorch Profiler
     - Nsight System
+- TPU profiling
+    - JAX Profiler
 - Ray Task / Actor timeline
 
 If Ray doesn't work with certain profiling tools, try running them without Ray to debug the issues.
+
+(profiling-enabling)=
+## Enabling dashboard profiling
+
+The Ray Dashboard's built-in profiling features (CPU flame graphs, stack traces, and memory profiling) are disabled by default for security reasons. These endpoints trigger profiling work on Ray workers on demand and return the results. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to reach these endpoints from a browser.
+
+To enable dashboard profiling, set the following environment variable on the Ray head node before starting Ray:
+
+```bash
+export RAY_DASHBOARD_ENABLE_PROFILING=1
+```
+
+:::{warning}
+If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable {ref}`token authentication <token-auth>` when using profiling on an exposed dashboard.
+:::
+
+(profiling-defaults)=
+### Configuring profiling defaults
+
+Stack trace, CPU flame graph, and memory profile requests each accept several parameters. When a request omits a parameter, its value falls back to a cluster-wide default. Set the following environment variables on the Ray head node to change those defaults. An explicit query parameter always takes precedence.
+
+```{list-table}
+:header-rows: 1
+:widths: 45 40 15
+
+* - Environment variable
+  - Meaning
+  - Default
+* - `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT`
+  - Include native (C/C++) stack frames. Adds significant overhead. Only takes effect on Linux for stack traces and CPU profiling. Memory profiling honors it on every platform memray supports.
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT`
+  - Also profile child processes of the target (stack trace and CPU profiling).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_IDLE_DEFAULT`
+  - Include off-CPU or sleeping threads (CPU profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT`
+  - Report memory leaks instead of peak usage (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT`
+  - Record `pymalloc` allocations (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT`
+  - Duration in seconds for CPU profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `5`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT`
+  - Duration in seconds for memory profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `10`
+* - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
+  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so Ray caps it rather than leaving it open-ended. Raise or lower it per cluster. The minimum is always 1 second. An explicit `duration` query value above this maximum returns HTTP 400.
+  - `60`
+* - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
+  - Output format for CPU profiling. One of `flamegraph`, `raw`, or `speedscope`.
+  - `flamegraph`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT`
+  - Output format for memory profiling. One of `flamegraph` or `table`.
+  - `flamegraph`
+```
+
+For example, to make native frames the default for stack traces across the cluster, set `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` on the head node. Enable it only when sampling the Python layer alone isn't enough, because native frames significantly increase profiling overhead.
 
 (profiling-cpu)=
 ## CPU profiling
@@ -168,6 +236,10 @@ To visualize the results, install the [Nsight System GUI](https://developer.nvid
 ```
 The best practice is to only specify the filename in output option.
 
+
+(profiling-tpu)=
+## TPU profiling
+Profile TPU workloads with the JAX profiler. Trigger a JAX profile dynamically through the Ray Dashboard, then view the trace in TensorBoard. For the full walkthrough on Kubernetes, see {ref}`jax-tpu-profiling`.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline

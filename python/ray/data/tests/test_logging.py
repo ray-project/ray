@@ -75,6 +75,18 @@ def test_messages_printed_to_console(
     assert "ham" in capsys.readouterr().err
 
 
+def test_env_var_configures_log_level(
+    monkeypatch,
+    reset_logging,
+):
+    monkeypatch.setenv("RAY_DATA_LOG_LEVEL", "TRACE")
+
+    configure_logging()
+
+    logger = logging.getLogger("ray.data")
+    assert logger.getEffectiveLevel() == logging.getLevelName("TRACE")
+
+
 def test_hidden_messages_not_printed_to_console(
     capsys,
     configure_logging,

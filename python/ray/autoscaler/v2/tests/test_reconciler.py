@@ -83,9 +83,12 @@ class MockAutoscalingConfig:
     def get_idle_timeout_s(self):
         return self._configs.get("idle_timeout_s", 999)
 
+    def get_provider_instance_type(self, ray_node_type):
+        return self._configs.get("provider_instance_types", {}).get(ray_node_type, "")
+
     @property
     def provider(self):
-        return Provider.UNKNOWN
+        return self._configs.get("provider", Provider.UNKNOWN)
 
 
 class MockScheduler(IResourceScheduler):
@@ -270,6 +273,64 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
 
     @staticmethod
+    def test_multiple_node_types_share_launch_request_id(setup):
+        """
+        Test that all node types of a launch request are transitioned to
+        ALLOCATION_FAILED when each of them fails, i.e. launch errors of the same
+        launch request don't overwrite each other.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-2",
+                launch_request_id="l1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Both node types of the same launch request failed.
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-2",
+                timestamp_ns=1,
+            ),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
@@ -331,6 +392,7 @@ class TestReconciler:
         assert len(events_i_1) == 1
         assert events_i_1[0].new_instance_status == Instance.TERMINATED
         assert events_i_1[0].instance_id == "i-1"
+        assert events_i_1[0].cloud_instance_id == "c-1"
 
         events_i_2 = subscriber.events_by_id("i-2")
         assert len(events_i_2) == 2
@@ -841,14 +903,20 @@ class TestReconciler:
                 "no-update",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
-                ray_node_id="r-1",
+                ray_node_id=binary_to_hex(b"r-1"),
             ),
             create_instance(
                 "updated",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
-                ray_node_id="r-2",
+                ray_node_id=binary_to_hex(b"r-2"),
             ),
+        ]
+        # Both nodes are still RUNNING in GCS, so the drain is treated as having
+        # genuinely failed: the stuck handler must fall back to RAY_RUNNING.
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING),
+            NodeState(node_id=b"r-2", status=NodeStatus.RUNNING),
         ]
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -858,7 +926,7 @@ class TestReconciler:
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
             cloud_resource_monitor=cloud_resource_monitor,
-            ray_cluster_resource_state=ClusterResourceState(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -873,6 +941,101 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert instances["no-update"].status == cur_status
         assert instances["updated"].status == Instance.RAY_RUNNING
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "cur_status",
+        [
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+            Instance.RAY_STOPPING,
+        ],
+        ids=["ray_running", "ray_stop_requested", "ray_stopping"],
+    )
+    def test_missing_ray_node_marks_ray_stopped_and_terminates(cur_status, setup):
+        # If an instance that should have a ray node points at a node_id that no
+        # longer appears in GCS, the ray node has either been GC'd from the DEAD
+        # list or is otherwise no longer alive. Reconcile it to RAY_STOPPED so it
+        # can move through the normal termination path instead of lingering with a
+        # stale node_id (especially after RAY_STOP_REQUESTED fell back to
+        # RAY_RUNNING in a previous iteration).
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "updated",
+                cur_status,
+                ray_node_id=binary_to_hex(b"r-stale"),
+                cloud_instance_id="c-stale",
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(node_states=[]),
+            non_terminated_cloud_instances={
+                "c-stale": CloudInstance(
+                    cloud_instance_id="c-stale",
+                    node_type="worker_nodes1",
+                    node_kind=NodeKind.WORKER,
+                    is_running=True,
+                ),
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"max_concurrent_launches": 0}
+            ),
+        )
+
+        events = subscriber.events
+        assert len(events) == 2
+        assert events[0].new_instance_status == Instance.RAY_STOPPED
+        assert events[0].ray_node_id == binary_to_hex(b"r-stale")
+        assert events[1].new_instance_status == Instance.TERMINATING
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["updated"].status == Instance.TERMINATING
+
+    @staticmethod
+    def test_ray_stopped_shared_cloud_terminates_stale_record_only(setup):
+        instance_manager, instance_storage, subscriber, _ = setup
+
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "stale",
+                    Instance.RAY_STOPPED,
+                    ray_node_id=binary_to_hex(b"r-stale"),
+                    cloud_instance_id="c-shared",
+                ),
+                create_instance(
+                    "healthy",
+                    Instance.RAY_RUNNING,
+                    ray_node_id=binary_to_hex(b"r-live"),
+                    cloud_instance_id="c-shared",
+                ),
+            ],
+        )
+
+        Reconciler._terminate_instances(instance_manager)
+
+        assert [e.new_instance_status for e in subscriber.events_by_id("stale")] == [
+            Instance.TERMINATED
+        ]
+        assert all(
+            e.new_instance_status != Instance.TERMINATING for e in subscriber.events
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["stale"].status == Instance.TERMINATED
+        assert instances["healthy"].status == Instance.RAY_RUNNING
 
     @staticmethod
     @mock.patch("time.time_ns")
@@ -1441,6 +1604,13 @@ class TestReconciler:
             autoscaling_config=MockAutoscalingConfig(
                 configs={
                     "max_concurrent_launches": 0,  # don't launch anything.
+                    "provider_instance_types": {
+                        "type-1": "m5.large",
+                        "type-2": "m5.xlarge",
+                        "type-3": "c5.large",
+                        "type-4": "g5.xlarge",
+                        "type-5": "r5.large",
+                    },
                 }
             ),
         )
@@ -1449,16 +1619,29 @@ class TestReconciler:
         assert len(autoscaling_state.infeasible_gang_resource_requests) == 1
         assert len(autoscaling_state.infeasible_resource_requests) == 1
         assert len(autoscaling_state.pending_instances) == 2
-        pending_instances = {i.instance_id for i in autoscaling_state.pending_instances}
-        assert pending_instances == {"i-1", "i-5"}
+        pending_instances = {
+            (i.instance_id, i.instance_type_name, i.ray_node_type_name)
+            for i in autoscaling_state.pending_instances
+        }
+        assert pending_instances == {
+            ("i-1", "m5.large", "type-1"),
+            ("i-5", "r5.large", "type-5"),
+        }
         pending_instance_requests = defaultdict(int)
         for r in autoscaling_state.pending_instance_requests:
-            pending_instance_requests[r.ray_node_type_name] += r.count
+            pending_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
         failed_instance_requests = defaultdict(int)
         for r in autoscaling_state.failed_instance_requests:
-            failed_instance_requests[r.ray_node_type_name] += r.count
-        assert pending_instance_requests == {"type-2": 1, "type-3": 1}
-        assert failed_instance_requests == {"type-4": 1}
+            failed_instance_requests[
+                (r.instance_type_name, r.ray_node_type_name)
+            ] += r.count
+        assert pending_instance_requests == {
+            ("m5.xlarge", "type-2"): 1,
+            ("c5.large", "type-3"): 1,
+        }
+        assert failed_instance_requests == {("g5.xlarge", "type-4"): 1}
 
     @staticmethod
     def test_extra_cloud_instances_cloud_provider(setup):
@@ -1629,13 +1812,16 @@ class TestReconciler:
         assert events[2].new_instance_status == Instance.RAY_STOPPED
         assert events[2].instance_id == "i-1"
         assert events[2].ray_node_id == binary_to_hex(b"r-1")
-        assert events[3].new_instance_status == Instance.TERMINATING
+        # c-1 has been reused by the new ray node r-2 (now RAY_RUNNING), so the
+        # stale i-1 row must not terminate c-1. It is marked TERMINATED to clean
+        # up the record without issuing a cloud termination request.
+        assert events[3].new_instance_status == Instance.TERMINATED
         assert events[3].instance_id == "i-1"
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         statuses = {instance.status for instance in instances.values()}
-        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATED}
 
     @staticmethod
     def test_ray_head_restarted_on_the_same_cloud_instance(setup):
@@ -1695,13 +1881,16 @@ class TestReconciler:
         assert events[3].instance_id == events[1].instance_id
         assert events[3].ray_node_id == binary_to_hex(b"r-1")
 
-        assert events[4].new_instance_status == Instance.TERMINATING
+        # c-1 has been reused by the new ray node r-2 (now RAY_RUNNING), so the
+        # stale row must not terminate c-1. It is marked TERMINATED to clean up
+        # the record without issuing a cloud termination request.
+        assert events[4].new_instance_status == Instance.TERMINATED
         assert events[4].instance_id == events[1].instance_id
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         statuses = {instance.status for instance in instances.values()}
-        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATED}
 
     @staticmethod
     def test_reconcile_max_worker_nodes_limit_triggers_termination(setup):

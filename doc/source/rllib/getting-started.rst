@@ -1,5 +1,5 @@
-
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: End-to-end RLlib tutorial: configure and build an Algorithm, train, checkpoint, evaluate, and deploy a trained policy.
 
 .. _rllib-getting-started:
 
@@ -308,7 +308,7 @@ method to compute actions:
     )
 
     # Create the RL environment to test against (same as was used for training earlier).
-    env = gym.make("Pendulum-v1", render_mode="human")
+    env = gym.make("Pendulum-v1")
 
     episode_return = 0.0
     done = False
@@ -344,6 +344,14 @@ method to compute actions:
         done = terminated or truncated
 
     print(f"Reached episode return of {episode_return}.")
+
+
+.. note::
+
+    To watch the agent play the environment in a local pygame window, pass
+    ``render_mode="human"`` to ``gym.make(...)`` and uncomment the ``env.render()``
+    call in the loop above. This requires a local display, so it's omitted here
+    to keep the example runnable in headless environments.
 
 
 Alternatively, if you still have an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running

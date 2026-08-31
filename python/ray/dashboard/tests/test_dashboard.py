@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import copy
 import ipaddress
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 import warnings
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
@@ -49,6 +51,7 @@ from ray._private.test_utils import (
 )
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHead
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
@@ -144,7 +147,7 @@ def test_basic(ray_start_regular):
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
     logger.info("Test agent register is OK.")
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
@@ -188,7 +191,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -209,7 +212,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -253,7 +256,7 @@ def test_agent_report_unexpected_raylet_death(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -295,7 +298,7 @@ def test_agent_report_unexpected_raylet_death_large_file(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -735,6 +738,42 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
     response.raise_for_status()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_profiling_endpoints_disabled_by_default(
+    enable_test_module, ray_start_with_dashboard
+):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    profiling_endpoints = [
+        "/worker/traceback?pid=1&node_id=abc",
+        "/worker/cpu_profile?pid=1&node_id=abc",
+        "/worker/gpu_profile?pid=1&node_id=abc",
+        "/task/traceback?task_id=abc&attempt_number=0&node_id=abc",
+        "/task/cpu_profile?task_id=abc&attempt_number=0&node_id=abc",
+        "/memory_profile?pid=1&node_id=abc",
+        "/memory_profile?task_id=abc&attempt_number=0&node_id=abc",
+    ]
+
+    for endpoint in profiling_endpoints:
+        response = requests.get(webui_url + endpoint)
+        assert response.status_code == 403, (
+            f"Expected 403 for {endpoint} when profiling is disabled, "
+            f"got {response.status_code}"
+        )
+        assert "RAY_DASHBOARD_ENABLE_PROFILING" in response.text
+
+    # The status endpoint should report profiling as disabled.
+    response = requests.get(webui_url + "/api/profiling_enabled")
+    response.raise_for_status()
+    data = response.json()
+    assert data["data"]["profilingEnabled"] is False
 
 
 @pytest.mark.skipif(
@@ -1195,33 +1234,37 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = parse_address(address_info["webui_url"])
-    temp_dir = "/tmp/ray"
-    session_dir = "/tmp/ray/session_latest"
-    log_dir = "/tmp/ray/session_latest/logs"
+
     dashboard_cmd = [
         sys.executable,
         dashboard.__file__,
         f"--host={host}",
         f"--port={port}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={log_dir}",
+        "--temp-dir=/tmp/ray",
+        "--log-dir=/tmp/ray/session_latest/logs",
         f"--gcs-address={address_info['gcs_address']}",
         f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
-        f"--session-dir={session_dir}",
+        "--session-dir=/tmp/ray/session_latest",
         "--node-ip-address=127.0.0.1",
     ]
-    logger.info("The dashboard should be exit: %s", dashboard_cmd)
+
+    # Start a duplicate dashboard process with no port retries,
+    # it should crash due to port conflict.
+    print("Starting dashboard process *without* port retries:", dashboard_cmd)
     dashboard_process = subprocess.Popen(dashboard_cmd)
-    dashboard_process.wait(5)
+    try:
+        dashboard_process.wait(30)
+    finally:
+        dashboard_process.kill()
+        dashboard_process.wait()
 
+    # Now retry with port retries, it should find a port and succeed.
     dashboard_cmd.append("--port-retries=10")
+    print("Starting dashboard process *with* port retries:", dashboard_cmd)
     conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
+    try:
 
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
+        def _new_dashboard_url_populated():
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -1229,16 +1272,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
-                break
-        except AssertionError as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
-    dashboard_process.kill()
-    conflicting_dashboard_process.kill()
-    dashboard_process.wait()
-    conflicting_dashboard_process.wait()
+                return True
+
+            return False
+
+        wait_for_condition(_new_dashboard_url_populated)
+    finally:
+        conflicting_dashboard_process.kill()
+        conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
@@ -1324,7 +1365,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1374,7 +1415,7 @@ def test_agent_port_conflict(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1438,15 +1479,34 @@ async def test_dashboard_module_load(tmpdir):
     with pytest.raises(AssertionError):
         head._load_modules(modules_to_load=loaded_modules_expected)
 
+    # A requested-but-disabled subprocess module (is_enabled() is False, e.g. the
+    # flag-gated TaskEventsHead) is skipped, not treated as a load failure.
+    disabled_subprocess_modules = {
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if not m.is_enabled()
+    }
+    if disabled_subprocess_modules:
+        _, subprocess_module_handles = head._load_modules(
+            modules_to_load=disabled_subprocess_modules
+        )
+        assert len(subprocess_module_handles) == 0
+
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
+    # Mirror the loader, which skips modules whose is_enabled() is False (e.g. modules
+    # gated behind a feature flag such as TaskEventsHead / PlatformEventsHead).
     loaded_dashboard_head_modules_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        if m.is_enabled()
     }
     loaded_subprocess_module_handles_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if m.is_enabled()
     }
     dashboard_head_modules, subprocess_module_handles = head._load_modules()
     assert {
@@ -1656,6 +1716,268 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
         return True
 
     wait_for_condition(check_lag_metrics)
+
+
+_COMPONENT_CPU_METRIC = "ray_component_cpu_percentage"
+
+# `_record_dashboard_metrics` is wrapped in an infinite loop by
+# `async_loop_forever`. `__wrapped__` is the undecorated coroutine, so a test can
+# drive one record cycle at a time.
+_record_metrics_once = DashboardHead._record_dashboard_metrics.__wrapped__
+
+
+# Any non-zero value works; the tests only check that a reused handle stops
+# reading 0.0.
+_STUB_CPU_PERCENTAGE = 12.5
+
+
+@contextlib.contextmanager
+def _idle_process():
+    """Spawn a child process that only sleeps, and reap it on exit."""
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3600)"])
+    try:
+        yield process
+    finally:
+        process.kill()
+        # Wait so the pid is not left behind as a zombie, which psutil still
+        # considers running.
+        process.wait()
+
+
+def _stub_cpu_percent(monkeypatch):
+    """Emulate psutil's cpu_percent() contract without spending any CPU.
+
+    psutil measures CPU against the previous call on the same Process object and
+    reads 0.0 the first time an object is asked. Getting a real non-zero reading
+    means pegging a core long enough to register, so this emulates the contract
+    instead: a handle reads 0.0 until it is reused. The code under test reads the
+    value through `as_dict(attrs=["cpu_percent", ...])`, which dispatches here.
+    """
+
+    def cpu_percent(self, *args, **kwargs):
+        if getattr(self, "_asked_before", False):
+            return _STUB_CPU_PERCENTAGE
+        # Mark the instance, not the pid: a rebuilt handle for the same pid has
+        # to start over at 0.0, the way psutil behaves.
+        self._asked_before = True
+        return 0.0
+
+    monkeypatch.setattr(psutil.Process, "cpu_percent", cpu_percent)
+
+
+def _fake_subprocess_module_handle(process, module_name="DataHead"):
+    """Build a stand-in for SubprocessModuleHandle.
+
+    `_record_dashboard_metrics` only reads `process.pid` and
+    `module_cls.__name__` off the handle, the latter becoming the
+    `dashboard_<module_name>` component label.
+    """
+    return SimpleNamespace(process=process, module_cls=type(module_name, (), {}))
+
+
+def _make_dashboard_head_for_metrics(tmpdir):
+    """A DashboardHead wired up only enough to record metrics.
+
+    `DashboardHead.__init__` does no I/O and makes no GCS connection, so it can
+    be constructed directly. `metrics` and `_event_loop_lag_s_max` are normally
+    initialized in `run()`, which these tests do not call.
+    """
+    head = DashboardHead(
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
+        log_dir=str(tmpdir),
+        logging_level=ray_constants.LOGGER_LEVEL,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=True,
+        serve_frontend=False,
+    )
+    head.metrics = DashboardPrometheusMetrics()
+    head._event_loop_lag_s_max = None
+    return head
+
+
+def _component_cpu_percentage(head, component, pid=None):
+    """Read the exported CPU percentage of `component`, or None if unexported.
+
+    A component that restarted has a sample per pid it has run under, so `pid`
+    selects which one to read.
+    """
+    for metric in head.metrics.registry.collect():
+        for sample in metric.samples:
+            if (
+                sample.name == _COMPONENT_CPU_METRIC
+                and sample.labels.get("Component") == component
+                and (pid is None or sample.labels.get("pid") == str(pid))
+            ):
+                return sample.value
+    return None
+
+
+async def _record_twice(head, handles):
+    """Record two cycles, the minimum for a handle to report CPU usage."""
+    await _record_metrics_once(head, handles)
+    await _record_metrics_once(head, handles)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
+    """The `dashboard_<Module>` CPU metric must not be stuck at zero.
+
+    `psutil.Process.cpu_percent()` is measured relative to the previous call on
+    the *same* Process object, so it returns 0.0 the first time it is called on a
+    new object. Building a fresh Process every record cycle therefore pinned this
+    metric at ~0. See https://github.com/ray-project/ray/issues/29848
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
+        handles = [_fake_subprocess_module_handle(process)]
+
+        await _record_metrics_once(head, handles)
+        # The very first reading has no baseline to compare against, so 0.0 is
+        # expected.
+        assert _component_cpu_percentage(head, "dashboard_DataHead") == 0.0
+
+        await _record_metrics_once(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        ), "the module's handle was rebuilt, so its CPU reading stayed at 0"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(
+    tmpdir, monkeypatch
+):
+    """A module that restarts under a new pid still reports its CPU usage."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as first_process:
+        handle = _fake_subprocess_module_handle(first_process)
+        await _record_twice(head, [handle])
+
+    # Leaving the block above reaped the first process, so this stands in for the
+    # health check restarting the module under a new pid.
+    with _idle_process() as second_process:
+        handle.process = second_process
+        assert second_process.pid != first_process.pid
+
+        await _record_twice(head, [handle])
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead", second_process.pid)
+            == _STUB_CPU_PERCENTAGE
+        ), "the restarted module's CPU usage was not reported under its new pid"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
+    """Recording module metrics must not disturb the main `dashboard` component."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
+        await _record_twice(head, [_fake_subprocess_module_handle(process)])
+
+    assert _component_cpu_percentage(head, "dashboard") == _STUB_CPU_PERCENTAGE
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recorded_while_alive", [False, True])
+async def test_exited_subprocess_module_does_not_hide_other_modules(
+    tmpdir, monkeypatch, recorded_while_alive
+):
+    """A module that has exited must not cost the other modules their metrics.
+
+    A module can exit between a health check and the next record cycle, making
+    psutil raise `NoSuchProcess`. Recording has to carry on with the remaining
+    modules instead of abandoning the cycle. `recorded_while_alive` covers both
+    a module that was never recorded and one whose handle is already cached.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as live_process:
+        exiting_process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(3600)"]
+        )
+        # The exiting module is recorded first, so an unhandled psutil error
+        # would abandon the cycle before reaching the live one.
+        handles = [
+            _fake_subprocess_module_handle(exiting_process, "ExitedHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+        try:
+            if recorded_while_alive:
+                await _record_metrics_once(head, handles)
+        finally:
+            exiting_process.kill()
+            exiting_process.wait()
+
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_dying_mid_read_does_not_hide_other_modules(
+    tmpdir, monkeypatch
+):
+    """A module dying while its metrics are read must not hide the others.
+
+    A cached handle can pass the liveness check and then have its process exit
+    before the attributes are read, which makes `as_dict` raise. That window is
+    too small to hit reliably, so `as_dict` is patched to raise for one module.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as dying_process, _idle_process() as live_process:
+        handles = [
+            _fake_subprocess_module_handle(dying_process, "DyingHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+        real_as_dict = psutil.Process.as_dict
+
+        def as_dict(self, *args, **kwargs):
+            if self.pid == dying_process.pid:
+                raise psutil.NoSuchProcess(self.pid)
+            return real_as_dict(self, *args, **kwargs)
+
+        monkeypatch.setattr(psutil.Process, "as_dict", as_dict)
+
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
 
 
 if __name__ == "__main__":

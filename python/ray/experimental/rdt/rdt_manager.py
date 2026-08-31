@@ -4,6 +4,8 @@ import time
 import warnings
 import weakref
 from collections import defaultdict
+from dataclasses import dataclass
+from enum import Enum
 from queue import Queue
 from typing import (
     TYPE_CHECKING,
@@ -20,27 +22,51 @@ from typing import (
 import ray
 from ray._private import ray_constants
 from ray._raylet import ObjectRef
+from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 from ray.util.annotations import PublicAPI
 
-if TYPE_CHECKING:
 
+@dataclass
+class ObjectStoreFetchRequest(FetchRequest):
+    """Pending fetch via the object store. Holds the remote ObjectRef to ray.get on.
+
+    Args:
+        obj_id: The RDT object ID being fetched.
+        object_ref: The ObjectRef returned by the __ray_fetch_rdt_object__ remote call.
+        tensors: Unused. Tensors are returned directly by ray.get.
+    """
+
+    object_ref: Optional[ObjectRef] = None
+    tensors: Optional[List[Any]] = None
+
+
+if TYPE_CHECKING:
     from ray.experimental.rdt.rdt_store import (
         RDTStore,
     )
     from ray.experimental.rdt.tensor_transport_manager import (
         CommunicatorMetadata,
+        FetchRequest,
         TensorTransportMetadata,
     )
 
 logger = logging.getLogger(__name__)
 
-# RDTMeta is a named tuple containing the source actor, tensor transport
+
+class RDTSource(Enum):
+    DRIVER = "driver"
+
+
+RDTSourceType = Union[RDTSource, "ray.actor.ActorHandle"]
+
+
+# RDTMeta is a named tuple containing the source actor or driver, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the RDT store.
 class RDTMeta(NamedTuple):
-    src_actor: "ray.actor.ActorHandle"
+    src_actor: RDTSourceType
     tensor_transport_backend: str
     # This is set when the actual object is created and the metadata makes it back to the owner.
     # For ray.put the owner is the creator so it's immediately set.
@@ -52,12 +78,16 @@ class RDTMeta(NamedTuple):
     sent_to_src_actor_and_others_warned: bool
     # If the user set buffers for the object, the object will be fetched directly into the buffers on a ray.get
     target_buffers: Optional[List[weakref.ReferenceType[Any]]]
+    # If the user sets a target device for the object, the object will be fetched
+    # onto that device on a ray.get, even if it differs from the source device.
+    # This relies on the transport supporting cross-device transfers (e.g. NIXL).
+    target_device: Optional[str]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
 # __ray_send__ and __ray_recv__ and abort operations in case of failures / timeouts.
 class TransferMetadata(NamedTuple):
-    src_actor: "ray.actor.ActorHandle"
+    src_actor: RDTSourceType
     dst_actor: "ray.actor.ActorHandle"
     send_ref: Optional[ObjectRef]
     recv_ref: ObjectRef
@@ -105,11 +135,16 @@ def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     This is only supported by some transports (e.g., NIXL). If the transport
     does not support this feature, an exception will be raised during ray.get.
 
-    Before receiving, Ray validates that the provided target buffers match the metadata
-    of the tensors in the object (e.g., shape, dtype, device). If validation fails,
-    a `ValueError` is raised. We recommend sending over lists of tensors and passing a list
-    of the same length here because the serialization order from the sender-side must match
-    the order of the target tensors here.
+    Ray validates that the provided target buffers match the metadata of the
+    tensors in the object (e.g., shape, dtype). If validation fails, a
+    `ValueError` is raised. We recommend sending over lists of tensors and passing
+    a list of the same length here because the serialization order from the
+    sender-side must match the order of the target tensors here.
+
+    The buffers may be on a device that differs from the source device to perform
+    a cross-device transfer, for transports that support it (e.g., NIXL).
+
+    This overwrites any target buffer or target device previously set for the ref.
 
     Args:
         ref: The ObjectRef to set the target buffers for. The ref must be for an RDT object.
@@ -117,6 +152,30 @@ def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     """
     rdt_manager = ray.worker.global_worker.rdt_manager
     rdt_manager.set_target_buffers_for_ref(ref, target)
+
+
+@PublicAPI(stability="alpha")
+def set_target_device_for_ref(ref: ObjectRef, target_device: str):
+    """
+    Set the target device for an RDT ObjectRef to fetch tensors onto when
+    `ray.get` is called.
+
+    Ray allocates the receive buffers on ``target_device`` instead of the source
+    device. This enables cross-device transfers (e.g., fetching a CUDA tensor
+    onto CPU or vice versa) for transports that support it (e.g., NIXL). If the
+    transport does not support this feature, an exception will be raised during
+    ray.get.
+
+    This overwrites any target buffer or target device previously set for the ref.
+
+    Args:
+        ref: The ObjectRef to set the target for. The ref must be for an RDT object.
+        target_device: The device to fetch the tensors onto, as a device string
+            (e.g. ``"cpu"``, ``"cuda:0"``). This may differ from the source device
+            to perform a cross-device transfer.
+    """
+    rdt_manager = ray.worker.global_worker.rdt_manager
+    rdt_manager.set_target_device_for_ref(ref, target_device)
 
 
 class RDTManager:
@@ -140,6 +199,11 @@ class RDTManager:
         # A set of object ids that are queued to be freed. This is used when the object is freed
         # before the owner knows it's created (the tensor transport metadata is not available yet).
         self._queued_frees: Set[str] = set()
+        # Tensor-transport metadata delivered by the set_direct_transport_metadata
+        # callback before the owner registered the ref (see the race handling in
+        # set_tensor_transport_metadata_and_trigger_queued_operations). Keyed by
+        # object id; drained by set_rdt_metadata when the ref registers.
+        self._pending_tensor_transport_meta: Dict[str, "TensorTransportMetadata"] = {}
 
         # This lock makes sure the _rdt_store and _monitor_failures_thread are only created once.
         self._init_lock = threading.Lock()
@@ -226,6 +290,11 @@ class RDTManager:
     def set_rdt_metadata(self, obj_id: str, rdt_meta: RDTMeta):
         with self._lock:
             self._managed_rdt_metadata[obj_id] = rdt_meta
+            pending = self._pending_tensor_transport_meta.pop(obj_id, None)
+        if pending is not None:
+            self.set_tensor_transport_metadata_and_trigger_queued_operations(
+                obj_id, pending
+            )
 
     def get_rdt_metadata(self, obj_id: str) -> Optional[RDTMeta]:
         with self._lock:
@@ -324,6 +393,7 @@ class RDTManager:
             if not tensor_transport_manager.__class__.is_one_sided():
                 # This is dead code until we implement a NCCL abort since NIXL
                 # is the only abortable transport for now and is one-sided.
+                assert ref_info.src_actor != RDTSource.DRIVER
                 ref_info.src_actor.__ray_call__.options(
                     concurrency_group="_ray_system_error"
                 ).remote(
@@ -348,7 +418,8 @@ class RDTManager:
             )
         else:
             # TODO(#51276): Kill all actors in the collective group when we support more collective operations
-            ray.kill(ref_info.src_actor)
+            if ref_info.src_actor != RDTSource.DRIVER:
+                ray.kill(ref_info.src_actor)
             ray.kill(ref_info.dst_actor)
             logger.error(
                 "RDT transfer with src actor %s and dst actor %s failed. Killing the actors. "
@@ -375,7 +446,7 @@ class RDTManager:
     def add_rdt_ref(
         self,
         obj_ref: ObjectRef,
-        src_actor: "ray.actor.ActorHandle",
+        src_actor: RDTSourceType,
         tensor_transport: str,
         tensor_transport_meta: Optional["TensorTransportMetadata"] = None,
     ):
@@ -385,7 +456,8 @@ class RDTManager:
 
         Args:
             obj_ref: The ObjectRef of the task output.
-            src_actor: The actor that executes the task and that creates the RDT object.
+            src_actor: The actor that executes the task and creates the RDT object,
+                or RDTSource.DRIVER when the driver creates it.
             tensor_transport: The tensor transport protocol to use for the RDT object.
             tensor_transport_meta: The tensor transport metadata that is pre-computed.
                 This is known at ref creation time if the object is created through ray.put.
@@ -399,6 +471,7 @@ class RDTManager:
                 sent_dest_actors=set(),
                 sent_to_src_actor_and_others_warned=False,
                 target_buffers=None,
+                target_device=None,
             ),
         )
 
@@ -412,6 +485,16 @@ class RDTManager:
         dst_actors = None
         free_object = False
         with self._tensor_transport_meta_cv:
+            # This runs from the nogil C++ set_direct_transport_metadata callback,
+            # which is not ordered against the owner registering the ref via
+            # set_rdt_metadata. If the callback arrives first, obj_id is not yet in
+            # _managed_rdt_metadata and indexing it would raise KeyError; because the
+            # exception escapes the nogil callback it manifests as a SIGSEGV in
+            # __Pyx_AddTraceback rather than a normal error. Stash the (one-shot)
+            # metadata instead; set_rdt_metadata applies it when the ref registers.
+            if obj_id not in self._managed_rdt_metadata:
+                self._pending_tensor_transport_meta[obj_id] = tensor_transport_meta
+                return
             self._managed_rdt_metadata[obj_id] = self._managed_rdt_metadata[
                 obj_id
             ]._replace(tensor_transport_meta=tensor_transport_meta)
@@ -436,69 +519,101 @@ class RDTManager:
             if ref.hex() not in self._managed_rdt_metadata:
                 raise ValueError(f"Ref {ref} is not an RDT object.")
 
+            # Setting target buffers overwrites any previously set target buffer
+            # or target device so the two options stay mutually exclusive.
             self._managed_rdt_metadata[ref.hex()] = self._managed_rdt_metadata[
                 ref.hex()
             ]._replace(
                 target_buffers=[
                     weakref.ref(target_buffer) for target_buffer in target_buffers
-                ]
+                ],
+                target_device=None,
             )
 
-    def _fetch_object(
+    def set_target_device_for_ref(self, ref: ObjectRef, target_device: str):
+        import torch
+
+        from ray.experimental.rdt.util import device_match_transport
+
+        with self._lock:
+            if ref.hex() not in self._managed_rdt_metadata:
+                raise ValueError(f"Ref {ref} is not an RDT object.")
+
+            rdt_meta = self._managed_rdt_metadata[ref.hex()]
+            tensor_transport = rdt_meta.tensor_transport_backend
+
+            target_device_type = torch.device(target_device).type
+            if not device_match_transport(target_device_type, tensor_transport):
+                raise ValueError(
+                    f"Tensor transport backend {tensor_transport} does not support "
+                    f"fetching onto target device {target_device}."
+                )
+
+            # Setting a target device overwrites any previously set target buffer
+            # or target device so the two options stay mutually exclusive.
+            self._managed_rdt_metadata[ref.hex()] = rdt_meta._replace(
+                target_buffers=None,
+                target_device=target_device,
+            )
+
+    def _trigger_fetch(
         self,
         obj_id: str,
         use_object_store: bool,
-    ):
+    ) -> FetchRequest:
         """
-        Fetches the RDT object from the source actor's RDT store via the object store
-        instead of out-of-band tensor transfer and stores the tensors in the local RDT store.
+        Start fetching an RDT object.
 
-        This is useful when the current process does not support the designated out-of-band tensor transport.
-        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
-        fulfill a `ray.get` call.
+        If the specified transport supports async fetches, this will trigger the
+        fetch without blocking. Note that this always triggers a fetch, even if
+        the object is already in the store.
 
         Args:
             obj_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object through the
-                object store or through its designated tensor transport.
+            use_object_store: Whether to fetch through the object store or through
+                the designated one-sided tensor transport.
 
         Returns:
-            None
+            A FetchRequest. Wait on the FetchRequest to get the tensors.
         """
         from ray.experimental.rdt.rdt_store import (
             __ray_fetch_rdt_object__,
         )
         from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
-            validate_one_sided,
+            is_one_sided_transport,
         )
-
-        if self.rdt_store.has_object(obj_id):
-            return
 
         rdt_meta = self.get_rdt_metadata(obj_id)
         assert rdt_meta is not None
 
         if use_object_store:
-            if rdt_meta.target_buffers:
+            if rdt_meta.src_actor == RDTSource.DRIVER:
+                raise ValueError(
+                    "_use_object_store=True is not supported for RDT objects "
+                    "created by the driver. Use the object's one-sided tensor "
+                    "transport instead."
+                )
+            if rdt_meta.target_buffers or rdt_meta.target_device:
                 logger.warning(
-                    "Target buffers are not supported for use_object_store=True. Ignoring the target buffers."
+                    "Target buffers and target device are not supported for use_object_store=True. Ignoring the target buffers and target device."
                 )
 
             src_actor = rdt_meta.src_actor
-            tensors = ray.get(
-                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_fetch_rdt_object__, obj_id
-                )
+            assert src_actor != RDTSource.DRIVER
+            object_ref = src_actor.__ray_call__.options(
+                concurrency_group="_ray_system"
+            ).remote(__ray_fetch_rdt_object__, obj_id)
+            return ObjectStoreFetchRequest(
+                obj_id=obj_id, object_ref=object_ref, tensors=[]
             )
-            self.rdt_store.add_object(obj_id, tensors)
         else:
-            from ray.experimental.rdt.rdt_store import (
-                __ray_recv__,
-            )
-
             tensor_transport = rdt_meta.tensor_transport_backend
-            validate_one_sided(tensor_transport, "ray.get")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.get is not allowed on RDT objects using the two-sided transport {tensor_transport}. "
+                    "Either use a one-sided RDT transport or pass _use_object_store=True to ray.get to fetch the object through the object store instead."
+                )
             tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
@@ -530,13 +645,61 @@ class RDTManager:
                     else:
                         target_buffers.append(buffer)
 
-            __ray_recv__(
-                None,
+            if target_buffers is not None:
+                from ray.experimental.rdt.rdt_store import validate_tensor_buffers
+
+                # The buffers' own device is where the tensors land, so we don't
+                # require it to match the source device (cross-device fetch).
+                # Here we only validate shape/dtype/contiguity.
+                tensor_meta = tensor_transport_meta.tensor_meta
+                validate_tensor_buffers(target_buffers, tensor_meta)
+            elif rdt_meta.target_device is not None:
+                # No pre-allocated buffers, but the user requested a specific
+                # target device. Allocate the receive buffers on that device so
+                # the transport reads directly onto it.
+                from ray.experimental.rdt.util import (
+                    create_empty_tensors_from_metadata,
+                )
+
+                target_buffers = create_empty_tensors_from_metadata(
+                    tensor_transport_meta, device=rdt_meta.target_device
+                )
+
+            return tensor_transport_manager.fetch_multiple_tensors(
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
-                tensor_transport,
                 target_buffers,
+            )
+
+    def _wait_fetch(
+        self, obj_id: str, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
+        """
+        Waits for a previously triggered fetch to complete and returns the tensors.
+
+        Args:
+            obj_id: The object ID of the RDT object.
+            fetch_request: An ObjectStoreFetchRequest representing an object
+                transferred via Ray's object store or a FetchRequest
+                representing an object transferred via a tensor transport.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
+
+        Returns:
+            The list of tensors fetched.
+        """
+        if isinstance(fetch_request, ObjectStoreFetchRequest):
+            return ray.get(fetch_request.object_ref, timeout=timeout)
+        else:
+            from ray.experimental.rdt.util import get_tensor_transport_manager
+
+            rdt_meta = self.get_rdt_metadata(obj_id)
+            tensor_transport_manager = get_tensor_transport_manager(
+                rdt_meta.tensor_transport_backend
+            )
+            return tensor_transport_manager.wait_fetch_complete(
+                fetch_request, timeout=timeout
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
@@ -615,7 +778,8 @@ class RDTManager:
             # 2. object is sent back to its source actor.
             # 3. object is also sent to at least one other actor
             if (
-                not rdt_meta.sent_to_src_actor_and_others_warned
+                src_actor != RDTSource.DRIVER
+                and not rdt_meta.sent_to_src_actor_and_others_warned
                 and src_actor._actor_id in rdt_meta.sent_dest_actors
                 and len(rdt_meta.sent_dest_actors) > 1
             ):
@@ -631,7 +795,10 @@ class RDTManager:
                     sent_to_src_actor_and_others_warned=True
                 )
 
-            if src_actor._actor_id == dst_actor._actor_id:
+            if (
+                src_actor != RDTSource.DRIVER
+                and src_actor._actor_id == dst_actor._actor_id
+            ):
                 # If the source and destination actors are the same, the tensors can
                 # be transferred intra-process, so we skip the out-of-band tensor
                 # transfer.
@@ -640,8 +807,12 @@ class RDTManager:
             tensor_transport_manager = get_tensor_transport_manager(
                 rdt_meta.tensor_transport_backend
             )
+            assert (
+                src_actor != RDTSource.DRIVER
+                or tensor_transport_manager.__class__.is_one_sided()
+            )
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
-                src_actor,
+                None if src_actor == RDTSource.DRIVER else src_actor,
                 dst_actor,
                 rdt_meta.tensor_transport_backend,
             )
@@ -692,40 +863,138 @@ class RDTManager:
         )
         self.start_monitor_thread_if_needed()
 
-    def get_rdt_object(
+    def get_rdt_objects(
         self,
-        object_id: str,
-        use_object_store: bool = False,
-    ) -> List[Any]:
+        object_ids: List[str],
+    ) -> Dict[str, List[Any]]:
         """
-        Get the RDT object for a given object ID.
+        Get RDT objects that have already been transferred (e.g. via __ray_recv__).
+
+        This is used in the task argument deserialization path where the
+        out-of-band tensor transfer has already been triggered by the caller.
+        It only waits on the local RDT store for the tensors to arrive.
 
         Args:
-            object_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object
-                through the object store or through its designated tensor transport.
+            object_ids: The object IDs of the RDT objects.
 
         Returns:
-            The RDT object.
+            A dict mapping object ID to the RDT object (list of tensors).
         """
         rdt_store = self.rdt_store
-        if self.is_managed_object(object_id):
-            self._fetch_object(object_id, use_object_store)
+        result: Dict[str, List[Any]] = {}
+        for object_id in object_ids:
+            pop_object = not rdt_store.is_primary_copy(object_id)
+            if pop_object:
+                result[object_id] = rdt_store.wait_and_pop_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+            else:
+                result[object_id] = rdt_store.wait_and_get_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+        return result
 
-        # If the RDT object is the primary copy, it means the transfer is intra-actor.
-        # In this case, we should not remove the RDT object after it is consumed once,
-        # because the RDT object reference may be used again.
-        # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not rdt_store.is_primary_copy(object_id)
-        if pop_object:
-            rdt_object = rdt_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
+    def fetch_and_get_rdt_objects(
+        self,
+        object_ids: List[str],
+        timeout: Optional[float] = None,
+        use_object_store: bool = False,
+    ) -> Dict[str, List[Any]]:
+        """
+        Fetch and get RDT objects for a list of object IDs, pipelining async fetches.
+
+        This is used in the ray.get codepath where the caller initiates the
+        tensor fetch. For one-sided transports (e.g. NIXL), all transfers are
+        triggered first before waiting, eliminating serial transfer latency.
+
+        Args:
+            object_ids: The object IDs of the RDT objects.
+            timeout: The user-specified timeout from ray.get, or None for no
+                user timeout. The actual deadline is the minimum of this and
+                RDT_FETCH_FAIL_TIMEOUT_SECONDS.
+            use_object_store: Whether to fetch through the object store or through
+                the designated tensor transport.
+
+        Returns:
+            A dict mapping object ID to the RDT object (list of tensors).
+
+        Raises:
+            GetTimeoutError: If the user-specified timeout is exceeded.
+            ObjectFetchTimedOutError: If RDT_FETCH_FAIL_TIMEOUT_SECONDS is exceeded.
+        """
+        from ray.exceptions import GetTimeoutError, ObjectFetchTimedOutError
+
+        rdt_timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        now = time.time()
+        if timeout is not None and timeout >= 0:
+            rdt_deadline = now + rdt_timeout
+            user_deadline = now + timeout
+            if user_deadline < rdt_deadline:
+                deadline = user_deadline
+                user_timeout_is_smaller = True
+            else:
+                deadline = rdt_deadline
+                user_timeout_is_smaller = False
         else:
-            rdt_object = rdt_store.wait_and_get_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        return rdt_object
+            deadline = now + rdt_timeout
+            user_timeout_is_smaller = False
+
+        rdt_store = self.rdt_store
+        result: Dict[str, List[Any]] = {}
+
+        # First, try to get objects that are already available in the store
+        # These are primary copies, or secondary copies created via
+        # __ray_recv__ that haven't been consumed yet.
+        if not use_object_store:
+            for object_id in object_ids:
+                try:
+                    result[object_id] = rdt_store.wait_and_get_object(
+                        object_id, timeout=0
+                    )
+                except TimeoutError:
+                    pass
+
+        # For remaining objects, trigger fetches.
+        fetch_requests: Dict[str, "FetchRequest"] = {}
+        for object_id in object_ids:
+            if object_id in result:
+                continue
+            assert self.is_managed_object(
+                object_id
+            ), f"No metadata found for {object_id}"
+
+            fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
+
+        # Wait for all in-flight fetches to complete.
+        while fetch_requests:
+            object_id, fetch_request = fetch_requests.popitem()
+            remaining = deadline - time.time()
+            if remaining < 0:
+                if user_timeout_is_smaller:
+                    # User passed a timeout to ray.get that expired.
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
+                else:
+                    # Object fetch timeout expired. Throw an error in case we
+                    # hung.
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
+            try:
+                result[object_id] = self._wait_fetch(
+                    object_id, fetch_request, timeout=remaining
+                )
+            except (TimeoutError, GetTimeoutError):
+                if user_timeout_is_smaller:
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
+                else:
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
+        return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """
@@ -754,15 +1023,28 @@ class RDTManager:
 
         with self._lock:
             rdt_meta = self._managed_rdt_metadata.pop(object_id)
+        # TODO(#60434): Once the driver has some notion about where rdt args are stored, we can
+        # integrate __ray_free__ with the current free objects RPC and avoid having to call
+        # an actor task here.
+        if not ray.is_initialized():
+            return
         src_actor = rdt_meta.src_actor
         tensor_transport_backend = rdt_meta.tensor_transport_backend
         tensor_transport_meta = rdt_meta.tensor_transport_meta
-        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_free__,
-            object_id,
-            tensor_transport_backend,
-            tensor_transport_meta,
-        )
+        if src_actor == RDTSource.DRIVER:
+            __ray_free__(
+                None,
+                object_id,
+                tensor_transport_backend,
+                tensor_transport_meta,
+            )
+        else:
+            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_free__,
+                object_id,
+                tensor_transport_backend,
+                tensor_transport_meta,
+            )
 
     @staticmethod
     def actor_has_tensor_transport(
@@ -799,7 +1081,16 @@ class RDTManager:
             tensor_transport: The tensor transport backend to use.
             tensors: The tensors to put into the RDT manager.
         """
-        src_actor = ray.get_runtime_context().current_actor
+        from ray.experimental.rdt.util import is_one_sided_transport
+
+        try:
+            src_actor = ray.get_runtime_context().current_actor
+        except RuntimeError:
+            src_actor = RDTSource.DRIVER
+
+        if src_actor is None:
+            src_actor = RDTSource.DRIVER
+        assert src_actor != RDTSource.DRIVER or is_one_sided_transport(tensor_transport)
         tensor_transport_meta = self.rdt_store.add_object_primary(
             obj_ref.hex(), tensors, tensor_transport
         )

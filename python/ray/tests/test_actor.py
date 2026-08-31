@@ -1315,6 +1315,58 @@ def test_actor_generic_call(ray_start_regular_shared):
     assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
 
 
+def test_ray_call_with_state_access(ray_start_regular_shared):
+    """Test that __ray_call__ can read and mutate actor state via closure."""
+
+    @ray.remote
+    class Store:
+        def __init__(self):
+            self.data = {}
+            self.counter = 0
+
+        def increment(self):
+            self.counter += 1
+
+    actor = Store.remote()
+    ray.get(actor.increment.remote())
+    ray.get(actor.increment.remote())
+
+    # Read state via closure
+    count = ray.get(actor.__ray_call__.remote(lambda self: self.counter))
+    assert count == 2
+
+    # Mutate state via closure
+    ray.get(actor.__ray_call__.remote(lambda self: self.data.update({"key": "value"})))
+    result = ray.get(actor.__ray_call__.remote(lambda self: self.data))
+    assert result == {"key": "value"}
+
+
+def test_ray_call_with_extra_args(ray_start_regular_shared):
+    """Test that __ray_call__ correctly forwards *args and **kwargs to fn."""
+
+    @ray.remote
+    class Calculator:
+        def __init__(self):
+            self.base = 10
+
+    actor = Calculator.remote()
+
+    # Test *args forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(lambda self, x, y: self.base + x + y, 1, 2)
+    )
+    assert result == 13  # 10 + 1 + 2
+
+    # Test **kwargs forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(
+            lambda self, multiplier=1: self.base * multiplier,
+            multiplier=3,
+        )
+    )
+    assert result == 30  # 10 * 3
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1570,6 +1622,27 @@ def test_actor_equal(ray_start_regular_shared):
 
     remote = ray.get(get_actor.remote(origin))
     assert origin == remote
+
+
+@pytest.mark.parametrize("cross_language", [False, True], ids=["python", "cross_lang"])
+def test_actor_handle_hash_eq(ray_start_regular_shared, cross_language):
+    """hash()/eq/set/dict ops must work for both Python and cross-language handles."""
+
+    @ray.remote
+    class Actor:
+        pass
+
+    handle = Actor.remote()
+    if cross_language:
+        handle._ray_is_cross_language = True
+
+    h = hash(handle)
+    assert isinstance(h, int)
+    assert hash(handle) == h
+
+    assert handle == handle
+    assert handle in {handle}
+    assert {handle: "v"}[handle] == "v"
 
 
 def test_actor_handle_weak_ref_counting(ray_start_regular_shared):

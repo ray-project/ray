@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 from collections import deque
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import grpc
 from grpc import aio as aiogrpc
@@ -17,6 +17,12 @@ from ray.core.generated import (
 )
 
 logger = logging.getLogger(__name__)
+
+_OBSERVABILITY_PUBSUB_CHANNELS = (
+    pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+    pubsub_pb2.RAY_LOG_CHANNEL,
+    pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
+)
 
 
 class _SubscriberBase:
@@ -97,8 +103,10 @@ class _AioSubscriber(_SubscriberBase):
             channel = gcs_utils.create_gcs_channel(address, aio=True)
         else:
             assert channel is not None, "One of address and channel must be specified"
-        # GRPC stub to GCS pubsub.
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+        if pubsub_channel_type in _OBSERVABILITY_PUBSUB_CHANNELS:
+            self._stub = gcs_service_pb2_grpc.ObservabilityPubSubServiceStub(channel)
+        else:
+            self._stub = gcs_service_pb2_grpc.ControlPlanePubSubGcsServiceStub(channel)
 
         # Type of the channel.
         self._channel = pubsub_channel_type
@@ -187,8 +195,11 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
             pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, worker_id, address, channel
         )
 
-    async def poll(self, timeout=None) -> Tuple[bytes, str]:
+    async def poll(self, timeout: Optional[float] = None) -> Tuple[bytes, str]:
         """Polls for new resource usage message.
+
+        Args:
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A tuple of string reporter ID and resource usage json string.
@@ -218,9 +229,13 @@ class GcsAioActorSubscriber(_AioSubscriber):
         return len(self._queue)
 
     async def poll(
-        self, batch_size, timeout=None
+        self, batch_size: int, timeout: Optional[float] = None
     ) -> List[Tuple[bytes, gcs_pb2.ActorTableData]]:
         """Polls for new actor message.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A list of tuples of binary actor ID and actor table data.
@@ -251,9 +266,13 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
     async def poll(
-        self, batch_size, timeout=None
+        self, batch_size: int, timeout: Optional[float] = None
     ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
         """Polls for new node info message.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A list of tuples of (node_id, GcsNodeInfo).
@@ -270,5 +289,81 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         while len(queue) > 0 and popped < batch_size:
             msg = queue.popleft()
             msgs.append((msg.key_id, msg.node_info_message))
+            popped += 1
+        return msgs
+
+
+class GcsAioWorkerDeltaSubscriber(_AioSubscriber):
+    def __init__(
+        self,
+        worker_id: bytes = None,
+        address: str = None,
+        channel: grpc.Channel = None,
+    ):
+        super().__init__(
+            pubsub_pb2.GCS_WORKER_DELTA_CHANNEL, worker_id, address, channel
+        )
+
+    async def poll(
+        self, batch_size: int, timeout: Optional[float] = None
+    ) -> List[Tuple[bytes, gcs_pb2.WorkerDeltaData]]:
+        """Polls for new worker failure messages.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
+
+        Returns:
+            A list of tuples of (worker_id, WorkerDeltaData).
+        """
+        await self._poll(timeout=timeout)
+        return self._pop_worker_deltas(self._queue, batch_size=batch_size)
+
+    @staticmethod
+    def _pop_worker_deltas(queue, batch_size):
+        if len(queue) == 0:
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.worker_delta_message))
+            popped += 1
+        return msgs
+
+
+class GcsAioJobSubscriber(_AioSubscriber):
+    def __init__(
+        self,
+        worker_id: bytes = None,
+        address: str = None,
+        channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.GCS_JOB_CHANNEL, worker_id, address, channel)
+
+    async def poll(
+        self, batch_size: int, timeout: Optional[float] = None
+    ) -> List[Tuple[bytes, gcs_pb2.JobTableData]]:
+        """Polls for new job messages.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
+
+        Returns:
+            A list of tuples of (job_id, JobTableData).
+        """
+        await self._poll(timeout=timeout)
+        return self._pop_job_messages(self._queue, batch_size=batch_size)
+
+    @staticmethod
+    def _pop_job_messages(queue, batch_size):
+        if len(queue) == 0:
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.job_message))
             popped += 1
         return msgs

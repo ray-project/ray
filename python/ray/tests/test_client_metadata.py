@@ -38,6 +38,10 @@ def test_get_runtime_context(ray_start_regular_shared):
         assert len(rtc.node_id.hex()) == 56
         assert isinstance(rtc.namespace, str)
 
+        wid = ray.get_runtime_context().get_worker_id()
+        assert isinstance(wid, str)
+        assert len(wid) == 56
+
         # Ensure this doesn't throw
         ray.get_runtime_context().get()
 

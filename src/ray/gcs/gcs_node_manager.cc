@@ -26,7 +26,6 @@
 #include "ray/observability/ray_node_definition_event.h"
 #include "ray/observability/ray_node_lifecycle_event.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -39,14 +38,18 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name)
+    const std::string &session_name,
+    pubsub::ObservabilityPublisher *observability_publisher,
+    ClockInterface &clock)
     : gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
+      clock_(clock),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -168,12 +171,14 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
 
 void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::UnregisterNodeReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+                                          rpc::SendReplyCallback send_reply_callback,
+                                          const std::string &grpc_peer) {
   absl::MutexLock lock(&mutex_);
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id) << "HandleUnregisterNode() for node";
+  RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
+      << "HandleUnregisterNode() for node";
   auto node = RemoveNodeFromCache(
-      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
@@ -186,8 +191,20 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
-    PublishNodeInfoToPubsub(node_id, *node_info_delta);
+  // Publish node death on the in-memory DEAD transition, decoupled from the
+  // (possibly slow) durable write below -- same rationale as
+  // InternalOnNodeFailure (see the detailed comment there). Graceful
+  // unregistration is also a terminal, restart-re-derivable node-death
+  // transition, so it must not gate cluster-wide death detection on persist
+  // latency either. Posted onto io_context_ so it runs outside mutex_ (held
+  // here) yet independent of the persist completing.
+  io_context_.post(
+      [this, node_id, node_info_delta]() {
+        PublishNodeInfoToPubsub(node_id, *node_info_delta);
+      },
+      "GcsNodeManager.PublishNodeDeathOnUnregister");
+
+  auto on_put_done = [this, node](const Status &status) {
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
@@ -547,7 +564,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
     expect_force_termination = false;
   } else {
     expect_force_termination =
-        (current_sys_time_ms() > iter->second->deadline_timestamp_ms()) &&
+        (clock_.NowUnixMillis() > iter->second->deadline_timestamp_ms()) &&
         (iter->second->reason() ==
          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
   }
@@ -664,9 +681,8 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data = CreateErrorTableData(
-          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
-      gcs_publisher_->PublishError(node_id.Hex(), std::move(error_data));
+      auto error_data = CreateErrorTableData(type, error_message.str(), clock_.Now());
+      observability_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 
     // Notify all listeners.
@@ -689,7 +705,7 @@ void GcsNodeManager::InternalOnNodeFailure(
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
     auto node = RemoveNodeFromCache(
-        node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+        node_id, death_info, rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
 
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
@@ -698,17 +714,41 @@ void GcsNodeManager::InternalOnNodeFailure(
     node_info_delta.set_end_time_ms(node->end_time_ms());
     node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this,
-                    node_id,
-                    node_table_updated_callback,
-                    node_info_delta = std::move(node_info_delta),
-                    node](const Status &status) mutable {
-      WriteNodeExportEvent(*node, /*is_register_event*/ false);
-      if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback();
-      }
-      PublishNodeInfoToPubsub(node_id, node_info_delta);
-    };
+    // Publish node death as soon as the in-memory state has flipped to DEAD,
+    // decoupled from the (possibly slow) durable write below -- rather than
+    // from inside the write's completion callback.
+    //
+    // Owners of objects/tasks react to a node's death ONLY from this single
+    // pushed pub/sub notification (core_worker.cc on_node_change, DEAD
+    // branch); there is no owner-side re-poll fallback. Gating the publish on
+    // the storage write's completion therefore couples cluster-wide death
+    // detection to persist latency: under a slow durable backend (e.g. the
+    // RocksDB GCS with per-write fsync) the notification is delayed enough to
+    // strand object recovery and hang dynamic-generator reconstruction. See
+    // the provenance PR #64187 (root-cause proof on the in-memory GCS, not
+    // merged) for the full analysis.
+    //
+    // This relaxes broadcast-after-durable ordering (a subscriber can observe
+    // DEAD before it is persisted), which is safe here because node death is
+    // a terminal, restart-re-derivable transition: on a GCS restart the same
+    // death is re-established by health checks. Do NOT generalize this to the
+    // actor channel, whose state machine can resurrect across a GCS crash.
+    //
+    // Posted onto io_context_ so it runs outside mutex_ (held by our caller
+    // OnNodeFailure) yet independent of the persist completing.
+    io_context_.post(
+        [this, node_id, node_info_delta = std::move(node_info_delta)]() {
+          PublishNodeInfoToPubsub(node_id, node_info_delta);
+        },
+        "GcsNodeManager.PublishNodeDeathOnFailure");
+
+    auto on_done =
+        [this, node_table_updated_callback, node](const Status &status) mutable {
+          WriteNodeExportEvent(*node, /*is_register_event*/ false);
+          if (node_table_updated_callback != nullptr) {
+            node_table_updated_callback();
+          }
+        };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
   } else if (node_table_updated_callback != nullptr) {

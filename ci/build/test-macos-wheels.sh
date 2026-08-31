@@ -66,7 +66,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     conda create -y -n "$CONDA_ENV_NAME"
     conda activate "$CONDA_ENV_NAME"
     conda remove -y python || true
-    conda install -y python="${PY_MM}"
+    conda install -y python="${PY_MM}" pip=25.2
 
     PYTHON_EXE="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/python"
     PIP_CMD="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/pip"

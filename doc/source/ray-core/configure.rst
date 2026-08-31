@@ -1,3 +1,6 @@
+.. meta::
+   :description: How to configure Ray from the Python API (ray.init) and the command line (ray start), including cluster resource overrides and other runtime settings.
+
 .. _configuring-ray:
 
 Configuring Ray
@@ -74,6 +77,32 @@ If using the command line, connect to the Ray cluster as follow:
 
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
   ray.init(address=<address>)
+
+.. _worker-grpc-thread-configuration:
+
+Worker gRPC threads on high-CPU nodes
+-------------------------------------
+
+Each Ray worker process has its own gRPC runtime. By default, each runtime assumes it
+owns the whole machine and sizes its internal threads from the machine's CPU count. On
+nodes with many worker processes, this can create a high aggregate thread count.
+
+Set ``RAY_worker_num_grpc_internal_threads`` to a positive integer before starting Ray
+to reduce the worker-side gRPC runtime's CPU-count hint. Set it on every Ray node where
+you want the setting to apply. For example:
+
+.. code-block:: bash
+
+  # Head node.
+  RAY_worker_num_grpc_internal_threads=4 ray start --head
+
+  # Worker node.
+  RAY_worker_num_grpc_internal_threads=4 ray start --address=<HEAD_ADDRESS>
+
+The best value depends on the workload. Test small values such as 1, 2, and 4 while
+measuring task throughput and RPC latency.
+
+To diagnose high worker thread counts, see :ref:`debug-worker-thread-count`.
 
 .. _temp-dir-log-files:
 

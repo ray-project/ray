@@ -3,6 +3,7 @@ from unittest.mock import create_autospec
 import pytest
 
 import ray
+from ray.train.backend import Backend, BackendConfig
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
@@ -14,7 +15,9 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
+    FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -24,13 +27,21 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupPollStatus,
+    WorkerStatus,
+)
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import ControllerError
+from ray.train.v2.api.exceptions import (
+    ControllerError,
+    PreemptionError,
+    WorkerGroupError,
+)
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -111,6 +122,7 @@ async def test_resize():
 
     for decision in decisions:
         prev_num_workers = num_workers
+        prev_worker_group = worker_group
 
         scaling_policy.queue_monitor_decision(decision)
 
@@ -120,10 +132,12 @@ async def test_resize():
 
             worker_group = controller.get_worker_group()
             assert worker_group is not None
+            assert worker_group is prev_worker_group
             assert worker_group.has_started()
             num_workers = len(worker_group.get_workers())
             assert num_workers == prev_num_workers
         else:
+            # TODO: refactor common "run and check" sequences like this.
             await controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), ResizingState)
             await controller._run_control_loop_iteration()
@@ -133,6 +147,7 @@ async def test_resize():
 
             worker_group = controller.get_worker_group()
             assert worker_group is not None
+            assert worker_group is not prev_worker_group
             assert worker_group.has_started()
             num_workers = len(worker_group.get_workers())
             assert num_workers == decision.num_workers
@@ -159,6 +174,7 @@ async def test_failure_handling():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
+    worker_group_before_failure = controller.get_worker_group()
     controller.get_worker_group().error_worker(1)
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
@@ -172,12 +188,350 @@ async def test_failure_handling():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
+    # After failure recovery, worker group should be a new instance (full restart).
+    assert controller.get_worker_group() is not worker_group_before_failure
+
     DummyWorkerGroup.set_poll_failure(RuntimeError("Simulated poll failure"))
     failure_policy.queue_decision(FailureDecision.RAISE)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ShuttingDownState)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
+
+
+async def _advance_to_running(controller, scaling_policy, num_workers):
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=num_workers, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+
+@pytest.mark.asyncio
+async def test_preemption_drain_then_restart():
+    """A preemption signal moves Running -> Preempting and keeps draining while
+    workers run; when the reclaim kills them, a PreemptionError routes through
+    the failure policy to restart on a fresh worker group."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group_before = controller.get_worker_group()
+
+    # A worker echoes a preemption signal (no deadline) -> PreemptingState.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group_before.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Workers still running and no deadline -> keep draining.
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # The reclaim kills all workers -> the drain is complete: a PreemptionError
+    # carrying the kill errors routes through the failure policy, and restart.
+    worker_group_before.preempt_kill_worker(0)
+    worker_group_before.preempt_kill_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    error = controller.get_state().training_failed_error
+    assert isinstance(error, PreemptionError)
+    assert error.drain_timed_out is False
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    # Full restart -> fresh worker group.
+    assert controller.get_worker_group() is not worker_group_before
+
+
+@pytest.mark.asyncio
+async def test_preemption_staggered_merges_while_draining():
+    """A second preemption observed while draining is merged with the first, so
+    the final PreemptionError covers all affected nodes/ranks."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # First preemption: node-a (rank 0) -> PreemptingState. Deadlines are epoch
+    # milliseconds; use far-future values so the drain doesn't time out.
+    far_future = 9_000_000_000_000
+    info_a = PreemptionInfo(
+        deadline_ms=far_future, preempted_node_to_ranks={"node-a": [0]}
+    )
+    worker_group.preempt_worker(0, info_a)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # While draining, a second node drains -> the echo now reports node-b
+    # (rank 1) with an earlier deadline. It should be merged with node-a.
+    info_b = PreemptionInfo(
+        deadline_ms=far_future - 1000, preempted_node_to_ranks={"node-b": [1]}
+    )
+    worker_group.preempt_worker(0, info_b)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, PreemptingState)
+    assert state.preemption_info.preempted_node_ids == ["node-a", "node-b"]
+    assert state.preemption_info.preempted_ranks == [0, 1]
+    assert state.preemption_info.deadline_ms == far_future - 1000
+
+    # The reclaim kills the workers -> the PreemptionError carries the merged
+    # info from both staggered preemptions.
+    worker_group.preempt_kill_worker(0)
+    worker_group.preempt_kill_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, PreemptionError)
+    assert state.training_failed_error.preemption_info.preempted_ranks == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_preemption_partial_kill_keeps_draining():
+    """A reclaim kill of a subset of ranks does not end the drain: the healthy
+    ranks keep running (e.g. finishing emergency checkpoints) until every rank
+    has exited or the deadline passes."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Signal (no deadline) -> PreemptingState.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Rank 0 is killed by the reclaim while rank 1 is still running: the drain
+    # continues so the healthy rank can keep training/checkpointing.
+    worker_group.preempt_kill_worker(0)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Once the remaining rank exits too, the drain completes and restarts.
+    worker_group.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, PreemptionError)
+    assert state.training_failed_error.drain_timed_out is False
+
+
+@pytest.mark.asyncio
+async def test_preemption_clean_exit_finishes():
+    """If the workers return cleanly, the run finishes rather than restarting,
+    even when a preemption is in progress -- the training function finished
+    before its node was reclaimed."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # A preemption is in progress (echoed) but the workers return cleanly.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    worker_group.finish_worker(0)
+    worker_group.finish_worker(1)
+    await controller._run_control_loop_iteration()
+
+    # Genuine completion: shut down toward FinishedState, not PreemptingState.
+    state = controller.get_state()
+    assert isinstance(state, ShuttingDownState)
+    assert isinstance(state.next_state, FinishedState)
+
+
+@pytest.mark.asyncio
+async def test_user_error_during_drain_is_worker_failure():
+    """A worker error that is NOT a reclaim kill (e.g. a bug in the training
+    function's just-in-time checkpoint) surfaces as a WorkerGroupError charged
+    against `max_failures`, even while a preemption is being drained."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Signal present -> PreemptingState.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # A worker fails with a plain user error (not a preempted actor death)
+    # while draining.
+    worker_group.error_worker(0)
+    worker_group.finish_worker(0)
+    worker_group.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    # Charged as a worker failure, not against the preemption budget.
+    assert isinstance(state.training_failed_error, WorkerGroupError)
+    assert not isinstance(state.training_failed_error, PreemptionError)
+
+
+@pytest.mark.asyncio
+async def test_preempted_death_without_signal_restarts_directly():
+    """A worker killed by a node reclaim (RayActorError.preempted) with no
+    advance signal restarts through the failure policy directly -- there is
+    nothing to drain, so the controller skips PreemptingState. The failure
+    policy charges the reclaim kill to the preemption budget (see
+    test_failure_policy.py)."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Worker 0 is killed by the reclaim (preempted actor error), no advance
+    # echo; worker 1 exits cleanly.
+    worker_group.preempt_kill_worker(0)
+    worker_group.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, WorkerGroupError)
+
+
+@pytest.mark.parametrize(
+    "decision, expected_state",
+    [(FailureDecision.RETRY, RestartingState), (FailureDecision.RAISE, ErroredState)],
+)
+@pytest.mark.asyncio
+async def test_preemption_deadline_exceeded_routes_through_failure_policy(
+    decision, expected_state
+):
+    """The reclaim deadline only bounds how long we wait for workers to drain;
+    it does not by itself end the run. When it passes, we stop draining and route
+    the PreemptionError (with drain_timed_out=True) through the failure policy,
+    which RETRYs while the preemption budget remains and RAISEs once it's out."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+
+    # Deadline of 1ms past epoch is always exceeded.
+    info = PreemptionInfo(deadline_ms=1, preempted_node_to_ranks={"node-a": [0, 1]})
+    controller.get_worker_group().preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Deadline already passed while workers are still running -> stop draining
+    # and let the failure policy decide (budget remaining -> RETRY, else RAISE).
+    failure_policy.queue_decision(decision)
+    await controller._run_control_loop_iteration()
+
+    if expected_state is RestartingState:
+        state = controller.get_state()
+        assert isinstance(state, RestartingState)
+        assert isinstance(state.training_failed_error, PreemptionError)
+        assert state.training_failed_error.drain_timed_out is True
+    else:
+        assert isinstance(controller.get_state(), ShuttingDownState)
+        await controller._run_control_loop_iteration()
+        state = controller.get_state()
+        assert isinstance(state, ErroredState)
+        assert isinstance(state.training_failed_error, PreemptionError)
+        assert state.training_failed_error.drain_timed_out is True
+
+
+def test_preemption_deadline_unknown_falls_back_to_default(monkeypatch):
+    """With no deadline reported, the drain wait is capped at the default grace
+    window measured from when the preemption was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+    from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_DEADLINE_S
+
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    detected_at_s = 1000.0
+
+    # Before the fallback window elapses -> not exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S - 1,
+    )
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+    # After the fallback window elapses -> exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S + 1,
+    )
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+
+def test_preemption_deadline_uses_reported_deadline(monkeypatch):
+    """A known deadline is honored regardless of when it was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+
+    # Deadline is 5s past epoch (5000ms).
+    info = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"node-a": [0]})
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 4.0)
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 6.0)
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
 
 
 @pytest.mark.parametrize(
@@ -312,7 +666,6 @@ async def test_controller_callback(monkeypatch):
         callbacks=[callback],
     )
 
-    controller._start()
     assert callback.start_called
 
     mock_exit_actor = create_autospec(ray.actor.exit_actor)
@@ -373,52 +726,286 @@ async def test_controller_abort(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_controller_callback_error_during_state_update_is_handled():
-    """A controller callback hook failure is surfaced via CallbackManager.
+async def test_shutdown_failure_on_finished_path():
+    """Shutdown failure on the finished path transitions to ErroredState."""
 
-    This should not crash the control loop; it should transition into shutdown and
-    eventually into an errored terminal state. Callback failures during terminal
-    state transitions should not cause the controller to loop indefinitely.
-    """
-
-    class FailingStateUpdateCallback(ControllerCallback):
-        def after_controller_state_update(
-            self,
-            previous_state: TrainControllerState,
-            current_state: TrainControllerState,
-        ):
-            raise ValueError("Intentional error in state update callback")
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
 
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
+
+    controller.get_worker_group().shutdown = failing_shutdown
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ErroredState)
+    assert isinstance(controller.get_state().training_failed_error, ControllerError)
+
+
+class _MockReplicaGroupBackend(Backend):
+    has_replica_groups = True
+
+
+class _MockReplicaGroupBackendConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return _MockReplicaGroupBackend
+
+
+@pytest.mark.asyncio
+async def test_resize_and_fail_with_replica_groups():
+    """Test partial replica group replacement vs full restart with has_replica_groups.
+
+    Four scenarios:
+    1) Same size + no poll_status → regular full restart path
+    2) Same size + poll_status with errors → partial replacement path
+    3) Different size + poll_status → regular full restart path
+    4) Same size + all replica groups failing → regular full restart path
+    """
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context(
+        backend_config=_MockReplicaGroupBackendConfig(),
+    )
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
-        callbacks=[FailingStateUpdateCallback()],
     )
 
-    # When the state-update callback raises, the controller should surface the error
-    # via the failure policy and transition into shutdown -> errored.
-    failure_policy.queue_decision(FailureDecision.RAISE)
+    # Start with 4 workers.
+    assert isinstance(controller.get_state(), InitializingState)
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=4, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
 
+    initial_worker_group = controller.get_worker_group()
+    assert initial_worker_group is not None
+    assert initial_worker_group.has_started()
+    assert len(initial_worker_group.get_workers()) == 4
+
+    # --- Case 1: same size, no poll_status → regular full restart path ---
+    controller.get_worker_group().error_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=4, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+    worker_group_after_case1 = controller.get_worker_group()
+    assert worker_group_after_case1 is not initial_worker_group
+    assert worker_group_after_case1.has_started()
+    assert len(worker_group_after_case1.get_workers()) == 4
+
+    # --- Case 2: same size, failure poll_status → partial replacement path ---
+    poll_status = WorkerGroupPollStatus(
+        worker_statuses={
+            0: WorkerStatus(running=True),
+            1: WorkerStatus(running=False, error=RuntimeError("Worker 1 failed")),
+            2: WorkerStatus(running=True),
+            3: WorkerStatus(running=True),
+        },
+        worker_rank_to_replica_group_rank={0: 0, 1: 0, 2: 1, 3: 1},
+    )
+    controller.get_worker_group().get_latest_poll_status = lambda: poll_status
+    controller.get_worker_group().error_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=4, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+    worker_group_after_case2 = controller.get_worker_group()
+    assert worker_group_after_case2 is worker_group_after_case1
+    assert worker_group_after_case2.has_started()
+    assert worker_group_after_case2._replaced_replica_groups == [0]
+
+    # Clear the error so the next poll is clean.
+    worker_group_after_case2.clear_worker()
+
+    # --- Case 3: different size, failure poll_status → regular full restart path ---
+    controller.get_worker_group().error_worker(2)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=6, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+    worker_group_after_case3 = controller.get_worker_group()
+    assert worker_group_after_case3 is not worker_group_after_case2
+    assert worker_group_after_case3.has_started()
+    assert len(worker_group_after_case3.get_workers()) == 6
+
+    # --- Case 4: same size, all replica groups failing → regular full restart path ---
+    all_failing_poll_status = WorkerGroupPollStatus(
+        worker_statuses={
+            0: WorkerStatus(running=False, error=RuntimeError("Worker 0 failed")),
+            1: WorkerStatus(running=False, error=RuntimeError("Worker 1 failed")),
+            2: WorkerStatus(running=False, error=RuntimeError("Worker 2 failed")),
+            3: WorkerStatus(running=False, error=RuntimeError("Worker 3 failed")),
+            4: WorkerStatus(running=False, error=RuntimeError("Worker 4 failed")),
+            5: WorkerStatus(running=False, error=RuntimeError("Worker 5 failed")),
+        },
+        worker_rank_to_replica_group_rank={0: 0, 1: 0, 2: 0, 3: 1, 4: 1, 5: 1},
+    )
+    controller.get_worker_group().get_latest_poll_status = (
+        lambda: all_failing_poll_status
+    )
+    controller.get_worker_group().error_worker(0)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=6, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+    worker_group_after_case4 = controller.get_worker_group()
+    assert worker_group_after_case4 is not worker_group_after_case3
+    assert worker_group_after_case4.has_started()
+    assert len(worker_group_after_case4.get_workers()) == 6
+
+
+@pytest.mark.asyncio
+async def test_shutdown_failure_on_errored_path():
+    """Shutdown failure on the errored path preserves the original training error."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
 
-    await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), ShuttingDownState)
-    assert isinstance(controller.get_state().next_state, ErroredState)
-    assert isinstance(
-        controller.get_state().next_state.training_failed_error, ControllerError
-    )
+    controller.get_worker_group().error_worker(0)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Errored)
+    original_error = controller.get_state().next_state.training_failed_error
 
+    controller.get_worker_group().shutdown = failing_shutdown
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
+    assert controller.get_state().training_failed_error is original_error
+
+
+@pytest.mark.asyncio
+async def test_shutdown_and_callback_both_fail_on_finished_path():
+    """When both worker group shutdown and shutdown callback fail on the finished
+    path, the shutdown error takes precedence (callback error is logged)."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
+    class FailingShutdownHookCallback(ControllerCallback):
+        async def before_controller_shutdown(self):
+            raise ValueError("Intentional error in shutdown callback")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingShutdownHookCallback()],
+    )
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
+
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
+
+    controller.get_worker_group().shutdown = failing_shutdown
+    await controller._run_control_loop_iteration()
+    # Shutdown error takes precedence over callback error.
+    assert isinstance(controller.get_state(), ErroredState)
     assert isinstance(controller.get_state().training_failed_error, ControllerError)
+    assert (
+        "shutdown"
+        in str(controller.get_state().training_failed_error.controller_failure).lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_abort_resilient_to_callback_failure(monkeypatch):
+    """abort() completes even when a callback raises."""
+
+    class FailingAbortCallback(ControllerCallback):
+        def before_controller_abort(self):
+            raise ValueError("Intentional error in abort callback")
+
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingAbortCallback()],
+    )
+    await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
 if __name__ == "__main__":

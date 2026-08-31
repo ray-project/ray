@@ -15,6 +15,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
+    SharedFlag,
     check_deployment_status,
     check_num_replicas_eq,
     get_application_url,
@@ -174,18 +175,7 @@ def test_nonserializable_deployment(serve_instance):
 def test_deploy_application_unhealthy(serve_instance):
     """Test deploying an application that becomes unhealthy."""
 
-    @ray.remote
-    class Event:
-        def __init__(self):
-            self.is_set = False
-
-        def set(self):
-            self.is_set = True
-
-        def is_set(self):
-            return self.is_set
-
-    event = Event.remote()
+    event = SharedFlag.remote()
 
     @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
     class Model:
@@ -248,7 +238,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
-    wait_for_condition(check_fail, timeout=20)
+    wait_for_condition(check_fail, timeout=60)
 
 
 def test_deploy_same_deployment_name_different_app(serve_instance):
@@ -356,6 +346,10 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
                 "look_back_period_s": 2,
+                # Shrink from the 600s default so the transient extra replica
+                # (metric reading fractionally over target) downscales back
+                # within the test's wait window.
+                "downscale_delay_s": 4,
             },
             graceful_shutdown_timeout_s=1,
         )
@@ -366,6 +360,10 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
                 "look_back_period_s": 2,
+                # Shrink from the 600s default so the transient extra replica
+                # (metric reading fractionally over target) downscales back
+                # within the test's wait window.
+                "downscale_delay_s": 4,
             },
             graceful_shutdown_timeout_s=1,
         )(A)
@@ -388,9 +386,9 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         # Overrided by `autoscaling_config`
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
+        "downscale_delay_s": 4.0,
         # Untouched defaults
         "look_back_period_s": 2.0,
-        "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,

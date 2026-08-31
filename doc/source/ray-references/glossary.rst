@@ -1,3 +1,6 @@
+.. meta::
+   :description: Alphabetical definitions of key Ray terminology, from tasks, actors, and objects to reinforcement learning terms.
+
 .. _ray_glossary:
 
 Ray Glossary
@@ -403,10 +406,6 @@ documentation, sorted alphabetically.
         to its next action inside an RL environment.
 
     .. TODO: Policy evaluation
-
-    Predictor
-        :class:`An interface for performing inference<ray.train.predictor.Predictor>` (prediction)
-        on input data with a trained model.
 
     Preprocessor
         :ref:`An interface used to preprocess a Dataset<preprocessor-ref>` for

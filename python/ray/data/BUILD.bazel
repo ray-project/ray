@@ -54,6 +54,19 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "small",
+    files = glob(["_internal/logical/operators/tests/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
@@ -337,6 +350,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block_metadata_schema_cache",
+    size = "small",
+    srcs = ["tests/unit/test_block_metadata_schema_cache.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_block_sizing",
     size = "medium",
     srcs = ["tests/test_block_sizing.py"],
@@ -352,7 +379,7 @@ py_test(
 
 py_test(
     name = "test_context_propagation",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_context_propagation.py"],
     tags = [
         "exclusive",
@@ -451,7 +478,7 @@ py_test(
 
 py_test(
     name = "test_unique_e2e",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
@@ -465,7 +492,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -692,6 +719,21 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_aggregate",
+    size = "medium",
+    srcs = ["tests/test_gpu_aggregate.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
@@ -709,6 +751,48 @@ py_test(
     name = "test_hash_shuffle_aggregator",
     size = "small",
     srcs = ["tests/test_hash_shuffle_aggregator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_runtime",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_smoke",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_smoke.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -748,6 +832,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches",
+    size = "small",
+    srcs = ["tests/test_iter_torch_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iterator",
     size = "small",
     srcs = ["tests/test_iterator.py"],
@@ -767,6 +865,20 @@ py_test(
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lineage_tracker_linear",
+    size = "small",
+    srcs = ["tests/test_lineage_tracker_linear.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -833,6 +945,20 @@ py_test(
 )
 
 py_test(
+    name = "test_auto_batch_size",
+    size = "medium",
+    srcs = ["tests/test_auto_batch_size.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_with_column",
     size = "medium",
     srcs = ["tests/test_with_column.py"],
@@ -864,6 +990,20 @@ py_test(
     name = "test_numpy",
     size = "small",
     srcs = ["tests/datasource/test_numpy.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_orc",
+    size = "small",
+    srcs = ["tests/datasource/test_orc.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -917,6 +1057,34 @@ py_test(
 )
 
 py_test(
+    name = "test_read_parquet_v2",
+    size = "small",
+    srcs = ["tests/datasource/test_read_parquet_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_placement_group_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_placement_group_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],
@@ -945,6 +1113,48 @@ py_test(
 )
 
 py_test(
+    name = "test_common_subexpr_elimination",
+    size = "small",
+    srcs = ["tests/test_common_subexpr_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_idempotency_optimizer_guards",
+    size = "small",
+    srcs = ["tests/test_idempotency_optimizer_guards.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_infer_schema",
+    size = "small",
+    srcs = ["tests/test_infer_schema.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_task_pool_map_operator",
     size = "small",
     srcs = ["tests/test_task_pool_map_operator.py"],
@@ -960,7 +1170,7 @@ py_test(
 
 py_test(
     name = "test_tensor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensor.py"],
     tags = [
         "exclusive",
@@ -1004,6 +1214,8 @@ py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/datasource/test_tf.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -1018,10 +1230,11 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/datasource/test_tfrecords.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
-        "tfxbsl",
     ],
     deps = [
         ":conftest",
@@ -1063,6 +1276,21 @@ py_test(
     srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_inference",
+    size = "medium",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "gpu",
         "team:data",
     ],
     deps = [
@@ -1186,6 +1414,22 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_torch_batches_gpu",
+    size = "medium",
+    srcs = ["tests/test_iter_torch_batches_gpu.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_execution_optimizer_limit_pushdown",
     size = "medium",
     srcs = ["tests/test_execution_optimizer_limit_pushdown.py"],
@@ -1229,7 +1473,7 @@ py_test(
 
 py_test(
     name = "test_iceberg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_iceberg.py"],
     tags = [
         "exclusive",
@@ -1298,6 +1542,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block_ref_counter",
+    size = "small",
+    srcs = ["tests/test_block_ref_counter.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_map_operator",
     size = "medium",
     srcs = ["tests/test_map_operator.py"],
@@ -1329,20 +1587,6 @@ py_test(
     name = "test_limit_operator",
     size = "small",
     srcs = ["tests/test_limit_operator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_block_ref_bundler",
-    size = "small",
-    srcs = ["tests/test_block_ref_bundler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1455,20 +1699,6 @@ py_test(
     name = "test_randomize_block_order",
     size = "small",
     srcs = ["tests/test_randomize_block_order.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_ranker",
-    size = "small",
-    srcs = ["tests/test_ranker.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1597,6 +1827,20 @@ py_test(
 )
 
 py_test(
+    name = "test_no_progress_guard",
+    size = "medium",
+    srcs = ["tests/test_no_progress_guard.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_ref_bundle",
     size = "small",
     srcs = ["tests/test_ref_bundle.py"],
@@ -1695,6 +1939,20 @@ py_test(
 )
 
 py_test(
+    name = "test_usage",
+    size = "small",
+    srcs = ["tests/test_usage.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
@@ -1738,8 +1996,22 @@ py_test(
 
 py_test(
     name = "test_webdataset",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_webdataset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_zarrv2",
+    size = "medium",
+    srcs = ["tests/datasource/test_zarrv2.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1821,9 +2093,9 @@ py_test(
 )
 
 py_test(
-    name = "test_autoscaler",
+    name = "test_actor_autoscaler",
     size = "small",
-    srcs = ["tests/test_autoscaler.py"],
+    srcs = ["tests/test_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1866,6 +2138,20 @@ py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lerobot",
+    size = "medium",
+    srcs = ["tests/datasource/test_lerobot.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1936,6 +2222,20 @@ py_test(
     name = "test_download_expression",
     size = "small",
     srcs = ["tests/test_download_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_combine_downloads",
+    size = "small",
+    srcs = ["tests/test_combine_downloads.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2045,6 +2345,34 @@ py_test(
 )
 
 py_test(
+    name = "test_write_delta",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta_catalog_e2e",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta_catalog_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_aggregations",
     size = "medium",
     srcs = ["tests/test_aggregations.py"],
@@ -2115,6 +2443,34 @@ py_test(
 )
 
 py_test(
+    name = "test_catalog",
+    size = "small",
+    srcs = ["tests/test_catalog.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_iter_jax",
+    size = "small",
+    srcs = ["tests/test_iter_jax.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_random_api",
     size = "small",
     srcs = ["tests/test_random_api.py"],
@@ -2132,6 +2488,20 @@ py_test(
     name = "test_synthetic_expression",
     size = "small",
     srcs = ["tests/test_synthetic_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_mix",
+    size = "small",
+    srcs = ["tests/test_mix.py"],
     tags = [
         "exclusive",
         "team:data",

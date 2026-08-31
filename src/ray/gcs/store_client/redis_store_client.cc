@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "ray/common/ray_config.h"
@@ -118,25 +119,20 @@ void RedisStoreClient::MGetValues(
   }
 }
 
-std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
-                                                  const RedisClientOptions &options) {
-  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
-  auto context = std::make_shared<RedisContext>(io_service);
-  RAY_CHECK_OK(context->Connect(options.ip,
-                                options.port,
-                                /*username=*/options.username,
-                                /*password=*/options.password,
-                                /*enable_ssl=*/options.enable_ssl))
-      << "Failed to connect to Redis.";
-  return context;
-}
-
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
-                                   const RedisClientOptions &options)
+                                   const RedisClientOptions &options,
+                                   ClockInterface &clock)
     : io_service_(io_service),
       options_(options),
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      primary_context_(ConnectRedisContext(io_service, options)) {
+      primary_context_(std::make_shared<RedisContext>(io_service, clock)) {
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
+  RAY_CHECK_OK(primary_context_->Connect(options.ip,
+                                         options.port,
+                                         /*username=*/options.username,
+                                         /*password=*/options.password,
+                                         /*enable_ssl=*/options.enable_ssl))
+      << "Failed to connect to Redis.";
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
@@ -516,7 +512,9 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
   primary_context_->RunArgvAsync({"PING"}, redis_callback);
 }
 
-// Returns True if at least 1 key is deleted, False otherwise.
+// Cleans up all Redis HASHes whose keys carry the given external storage
+// namespace prefix. Returns true unless the cleanup process aborted; a key that
+// is already absent counts as success, so cleanup is idempotent.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
                            const std::string &username,
@@ -526,7 +524,15 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
-  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options);
+  Clock real_clock;
+  RedisContext context(io_service, real_clock);
+  RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
+  RAY_CHECK_OK(context.Connect(options.ip,
+                               options.port,
+                               /*username=*/options.username,
+                               /*password=*/options.password,
+                               /*enable_ssl=*/options.enable_ssl))
+      << "Failed to connect to Redis.";
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -542,13 +548,23 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::string match_pattern = RedisMatchPattern::Prefix(redis_key.ToString()).escaped_;
-  std::vector<std::optional<std::string>> keys;
+  // Bound the server-side work per round trip. Without COUNT, Redis scans 10
+  // buckets per call, so cleanup costs total_keyspace_size/10 round trips --
+  // MATCH filters after the scan, so unrelated keys are paid for too. This
+  // mirrors RedisScanner::Scan, which already uses this knob for HSCAN.
+  const std::string scan_count =
+      std::to_string(RayConfig::instance().maximum_gcs_storage_operation_batch_size());
+  // SCAN guarantees each key is returned at least once: the cursor can rewind
+  // on a rehash and return duplicates. Collect into a set so a duplicate key is
+  // not deleted twice and then miscounted as already absent.
+  absl::flat_hash_set<std::string> keys;
   size_t cursor = 0;
 
   do {
-    std::vector<std::string> cmd{"SCAN", std::to_string(cursor), "MATCH", match_pattern};
+    std::vector<std::string> cmd{
+        "SCAN", std::to_string(cursor), "MATCH", match_pattern, "COUNT", scan_count};
     std::promise<std::shared_ptr<CallbackReply>> promise;
-    context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
+    context.RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
       promise.set_value(reply);
     });
 
@@ -556,8 +572,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     std::vector<std::string> scan_result;
     cursor = reply->ReadAsScanArray(&scan_result);
 
-    keys.insert(keys.end(),
-                std::make_move_iterator(scan_result.begin()),
+    keys.insert(std::make_move_iterator(scan_result.begin()),
                 std::make_move_iterator(scan_result.end()));
   } while (cursor != 0);
 
@@ -566,32 +581,39 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                   << external_storage_namespace;
     return true;
   }
-  auto delete_one_sync = [&context](const std::string &key) {
-    auto del_cmd = std::vector<std::string>{"DEL", key};
+
+  const std::string delete_command =
+      RayConfig::instance().redis_namespace_cleanup_use_unlink() ? "UNLINK" : "DEL";
+
+  auto delete_one_sync = [&context, &delete_command](const std::string &key) {
+    // One key per command: Redis Cluster rejects multi-key commands whose keys
+    // hash to different slots (CROSSSLOT) even on the single-shard cluster Ray
+    // requires, and GCS table keys carry no hash tag. A namespace holds only a
+    // handful of keys, so there is nothing to gain from batching.
+    auto del_cmd = std::vector<std::string>{delete_command, key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
-    context->RunArgvAsync(del_cmd,
-                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
-                            prom.set_value(callback_reply);
-                          });
-    auto del_reply = prom.get_future().get();
-    return del_reply->ReadAsInteger() > 0;
+    context.RunArgvAsync(del_cmd,
+                         [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                           prom.set_value(callback_reply);
+                         });
+    return prom.get_future().get()->ReadAsInteger();
   };
   size_t num_deleted = 0;
-  size_t num_failed = 0;
+  size_t num_already_absent = 0;
   for (const auto &key : keys) {
-    if ((!key.has_value()) || key->empty()) {
-      continue;
-    }
-    if (delete_one_sync(*key)) {
+    if (delete_one_sync(key) > 0) {
       num_deleted++;
     } else {
-      num_failed++;
+      // Already gone: a concurrent cleanup, or a key removed between the SCAN
+      // and here. That is the desired end state, not a failure.
+      num_already_absent++;
     }
   }
-  RAY_LOG(INFO) << "Finished deleting keys with external storage namespace "
-                << external_storage_namespace << ". Deleted table count: " << num_deleted
-                << ", Failed table count: " << num_failed;
-  return num_failed == 0;
+  RAY_LOG(INFO) << "Finished cleaning up external storage namespace "
+                << external_storage_namespace << " using " << delete_command
+                << ". Keys removed: " << num_deleted
+                << ", keys already absent: " << num_already_absent << ".";
+  return true;
 }
 
 }  // namespace gcs
