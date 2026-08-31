@@ -273,11 +273,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Applied after the loop: extracting children would bump it.
-                # Skip preserved symlinks (UsrMerge /bin -> usr/bin): utime
-                # would follow them and stamp the target with the wrong time.
+                # Deferred to the post-loop pass: tar lists a directory
+                # before its contents, so a restrictive archived mode (0500)
+                # applied here would break extracting the children. Preserved
+                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mtime))
+                    dir_mtimes.append((target_path, member.mode, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -295,8 +296,11 @@ def extract_tar_layer(
                     except OSError:
                         pass
 
-    for dir_path, mtime in dir_mtimes:
+    # Children first, so a parent's restrictive mode cannot block them.
+    for dir_path, mode, mtime in reversed(dir_mtimes):
         try:
+            if mode:
+                os.chmod(dir_path, mode)
             os.utime(dir_path, (mtime, mtime))
         except OSError:
             pass

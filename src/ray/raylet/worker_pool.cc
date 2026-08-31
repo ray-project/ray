@@ -45,6 +45,20 @@ namespace ray {
 
 namespace raylet {
 
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
+                                                       int64_t configured_threads) {
+  if (detected_cpus <= kWorkerGrpcThreadsWarningThreshold || configured_threads > 0) {
+    return std::nullopt;
+  }
+
+  return absl::StrFormat(
+      "Ray detected %d CPUs on this node. Consider setting "
+      "RAY_worker_num_grpc_internal_threads to reduce the number of gRPC threads. See "
+      "https://docs.ray.io/en/latest/ray-core/"
+      "configure.html#worker-grpc-thread-configuration for details.",
+      detected_cpus);
+}
+
 namespace {
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
