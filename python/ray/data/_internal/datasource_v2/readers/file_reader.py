@@ -247,7 +247,7 @@ class FileReader(Reader[FileManifest]):
             "filter": (
                 self._predicate.to_pyarrow() if self._predicate is not None else None
             ),
-            "batch_size": self._resolve_batch_size(dataset),
+            "batch_size": self._resolve_batch_size(dataset, input_split),
             "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
@@ -326,10 +326,11 @@ class FileReader(Reader[FileManifest]):
             rows_read += len(table)
             yield table
 
-    def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
+    def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
         """Return the batch size to use for scanning.
 
-        Subclasses can override this to implement adaptive batch sizing.
+        Subclasses can override this to implement adaptive batch sizing, using
+        the ``manifest`` (e.g. footer-derived per-chunk stats) to avoid re-I/O.
         """
         return self._batch_size
 
