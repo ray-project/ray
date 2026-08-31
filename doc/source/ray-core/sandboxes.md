@@ -239,11 +239,11 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API — anonymously, with no Docker daemon and no credentials — extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and reuses that cache for every later sandbox on the node that names the same image.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and reuses that cache for every later sandbox on the node that names the same image. The sandbox filesystem is an overlay on top of this root filesystem.
 
 ### Route Docker Hub pulls through a mirror
 
-Because the pulls are anonymous, every node's Docker Hub pull counts against Docker Hub's anonymous rate limits and crosses the WAN. A cluster whose nodes concurrently pull distinct multi-GB images — a benchmark sweep, a fleet of RL rollout workers — runs into both at once, and image pulls start failing under concurrency that they survive one at a time.
+Because the pulls are anonymous, every node's Docker Hub pull counts against Docker Hub's anonymous rate limits and crosses the WAN. A cluster whose nodes concurrently pull distinct multi-GB images runs into both at once, and image pulls may start failing.
 
 Set `RAY_SANDBOX_REGISTRY_MIRROR` on the worker nodes to a registry that mirrors Docker Hub, and Ray rewrites Docker Hub pulls to it. Pulls from any other registry, such as GHCR or a private registry, pass through untouched.
 
