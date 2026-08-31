@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy a RayCluster on Kubernetes, run a job in the head pod or through the job submission SDK, and open the Ray Dashboard."
+---
+
 (kuberay-raycluster-quickstart)=
 
 # RayCluster Quickstart
@@ -28,7 +34,7 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
 
 ```sh
 # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+helm install raycluster kuberay/ray-cluster --version 1.7.0
 ```
 
 

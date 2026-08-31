@@ -428,8 +428,9 @@ class ReadFiles(
 class ListFiles(LogicalOperator, SourceOperator):
     """Logical source op that lists files and yields ``FileManifest`` blocks.
 
-    Extracted from the prior monolithic ``ReadFiles`` so listing, shuffling,
-    and size-balanced bucketing live in one place (see
+    Extracted from the prior monolithic ``ReadFiles`` so listing, file shuffle
+    (applied by the ``FileIndexer`` after path discovery and before metadata
+    fetch), and size-balanced bucketing live in one place (see
     :func:`ray.data._internal.planner.plan_list_files_op.plan_list_files_op`).
     Downstream, ``ReadFiles`` consumes the manifest blocks produced here.
     """
@@ -448,6 +449,16 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
+    # Pushed-down read constraints, populated by the optimizer rules
+    # (``predicate_pushdown`` / ``projection_pushdown`` / ``limit_pushdown``).
+    # A ``StreamingFileChunker`` (e.g. the Parquet footer chunker) uses them to
+    # prune row groups, size only projected columns, and stop listing early;
+    # the per-file listing path ignores them. Whether footer-based chunking runs
+    # is decided by the indexer's chunker type, not a flag here -- this op stays
+    # format-agnostic.
+    predicate: Optional[Expr] = None
+    projected_columns: Optional[List[str]] = None
+    limit: Optional[int] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

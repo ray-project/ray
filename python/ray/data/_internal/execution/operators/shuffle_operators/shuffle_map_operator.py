@@ -18,7 +18,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
-    ObjectStoreUsage,
     OpTask,
     estimate_total_num_of_blocks,
 )
@@ -429,8 +428,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             memory=self._map_resource_usage.memory,
         )
 
-    def estimate_object_store_usage(self, state) -> ObjectStoreUsage:
-        return ObjectStoreUsage(internal=0, outputs=0)
+    def estimate_object_store_usage(self) -> int:
+        # Map outputs are intermediate partitions consumed by the reduce
+        # stage; backpressure is driven by the reduce side instead.
+        return 0
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
