@@ -1,8 +1,7 @@
 import os
-import platform
 import shutil
-import tempfile
-import urllib.request
+import subprocess
+from pathlib import Path
 
 import pytest
 
