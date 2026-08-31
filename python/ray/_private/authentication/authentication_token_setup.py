@@ -62,14 +62,9 @@ def _get_default_token_path() -> Path:
 
 
 def _enable_token_auth() -> None:
-    """Enable token authentication for this process and its child processes.
-
-    Sets ``RAY_AUTH_MODE=token``, which the child processes (GCS, raylet,
-    dashboard) inherit via ``os.environ``, and refreshes the cached ``RayConfig``
-    so this process observes token mode too (``RayConfig`` caches env vars on
-    first read).
-    """
+    """Enable token authentication for this process and its child processes."""
     os.environ[AUTH_MODE_ENV_VAR] = "token"
+    # Refresh the cached RayConfig so this process observes token mode too
     Config.initialize("")
 
 
@@ -86,18 +81,7 @@ def _warn_token_auth_disabled() -> None:
 
 
 def maybe_enable_token_auth_if_token_available() -> bool:
-    """Enable token auth for ``ray start --head`` if a token already exists.
-
-    With ``RAY_AUTH_MODE`` unset, enable token auth when a token is available
-    (``RAY_AUTH_TOKEN``, ``RAY_AUTH_TOKEN_PATH``, or ``~/.ray/auth_token``);
-    otherwise warn. An explicit ``RAY_AUTH_MODE`` is respected; never generates a token.
-
-    Returns:
-        True if token authentication is enabled after this call, False otherwise.
-
-    Raises:
-        AuthenticationError: If a token source is set but unreadable (fails closed).
-    """
+    """Enable token auth for ``ray start --head`` if a token already exists."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
         enabled = auth_mode_env.lower() == "token"
@@ -118,16 +102,7 @@ def maybe_enable_token_auth_if_token_available() -> bool:
 
 
 def enable_token_auth_by_default() -> bool:
-    """Enable token auth by default for a new local ``ray.init()`` cluster.
-
-    With ``RAY_AUTH_MODE`` unset, enable token auth; the caller's
-    ``ensure_token_if_auth_enabled(create_token_if_missing=True)`` then generates
-    or reuses the token. An explicit ``RAY_AUTH_MODE`` is respected. Never warns.
-    Only for a new local cluster, not when connecting (``ray.init(address=...)``).
-
-    Returns:
-        True if token authentication is enabled after this call, False otherwise.
-    """
+    """Enable token auth by default for a new local ``ray.init()`` cluster."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
         return auth_mode_env.lower() == "token"
