@@ -33,11 +33,19 @@ install_runsc() {
         wget ${wget_options} -c "${url}" -O runsc
 
         chmod 0755 runsc
-        sudo mkdir -p "${INSTALL_DIR}"
-        sudo mv runsc "${INSTALL_DIR}/runsc"
+
+        # Only use sudo if the target dir isn't writable.
+        local sudo_cmd=""
+        if [ -d "${INSTALL_DIR}" ] && [ ! -w "${INSTALL_DIR}" ]; then
+            sudo_cmd="sudo"
+        elif ! mkdir -p "${INSTALL_DIR}" 2>/dev/null; then
+            sudo_cmd="sudo"
+            ${sudo_cmd} mkdir -p "${INSTALL_DIR}"
+        fi
+        ${sudo_cmd} mv runsc "${INSTALL_DIR}/runsc"
 
         echo "Installed runsc to ${INSTALL_DIR}/runsc"
-        runsc --version
+        "${INSTALL_DIR}/runsc" --version
         ;;
     *)
         echo "runsc is only supported on Linux; skipping on ${OSTYPE}." 1>&2
