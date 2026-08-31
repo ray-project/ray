@@ -324,7 +324,8 @@ class MapTransformer:
         input_blocks: Iterable[Block],
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
-        udf_time_scope: Optional["UDFTimeScope"] = None,
+        *,
+        udf_time_scope: "UDFTimeScope",
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks.
 
@@ -335,9 +336,10 @@ class MapTransformer:
                 its :class:`CustomOpStats`. ``_map_task`` passes its reporter's
                 ``report``; defaults to a stateless no-op for callers (e.g. tests)
                 that don't collect custom stats.
-            udf_time_scope: Where to accumulate this task's UDF time.
-                ``_map_task`` passes the scope it created for the task; callers
-                that don't collect timings get a throwaway one.
+            udf_time_scope: Where to accumulate this task's UDF time. Required and
+                keyword-only on purpose: a caller that silently skipped it would
+                report a UDF time of zero rather than fail. Callers that don't
+                collect timings pass a throwaway ``UDFTimeScope()``.
 
         Returns:
             An iterable of the transformed output blocks.
@@ -350,9 +352,6 @@ class MapTransformer:
             last_transform.override_target_max_block_size(
                 self.target_max_block_size_override
             )
-
-        if udf_time_scope is None:
-            udf_time_scope = UDFTimeScope()
 
         iter = input_blocks
         # Each stage's timer has to be installed before the next stage is built:

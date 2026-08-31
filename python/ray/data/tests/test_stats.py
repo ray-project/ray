@@ -37,6 +37,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     CustomOpStatsReporter,
     MapTransformer,
+    UDFTimeScope,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
@@ -222,7 +223,11 @@ def test_map_transformer_custom_op_stats():
     ctx = TaskContext(task_idx=0, op_name="test")
     block = pa.table({"id": list(range(expected.num_rows))})
     # apply_transform takes the report callback, not the reporter object.
-    list(transformer.apply_transform([block], ctx, reporter.report))
+    list(
+        transformer.apply_transform(
+            [block], ctx, reporter.report, udf_time_scope=UDFTimeScope()
+        )
+    )
     assert reporter.get_stats() == [expected]
 
 

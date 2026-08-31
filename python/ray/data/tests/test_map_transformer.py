@@ -67,7 +67,9 @@ def test_chained_transforms_release_intermediates_between_batches():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i + 1]})
 
-    result_iter = transformer.apply_transform(make_input_blocks(), ctx)
+    result_iter = transformer.apply_transform(
+        make_input_blocks(), ctx, udf_time_scope=UDFTimeScope()
+    )
 
     for i in range(NUM_BATCHES):
         # Consume batch

@@ -853,7 +853,10 @@ def _map_task(
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
             return map_transformer.apply_transform(
-                blocks_iter, ctx, op_stats_reporter.report, udf_time_scope
+                blocks_iter,
+                ctx,
+                op_stats_reporter.report,
+                udf_time_scope=udf_time_scope,
             )
 
         if retry_on:
