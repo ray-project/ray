@@ -73,5 +73,108 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   ASSERT_EQ(11, count);
 }
 
+TEST_F(ActorCreatorTest, AsyncRegisterActorBatch) {
+  auto actor_id1 = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  auto actor_id2 = ActorID::FromHex("f4ce02420592ca68c1738a0d02000000");
+  auto task_spec1 = GetTaskSpec(actor_id1);
+  auto task_spec2 = GetTaskSpec(actor_id2);
+
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id2));
+
+  int batch_cb_count = 0;
+  actor_creator->AsyncRegisterActorBatch({task_spec1, task_spec2},
+                                         [&batch_cb_count](Status status) {
+                                           ASSERT_TRUE(status.ok());
+                                           batch_cb_count++;
+                                         });
+
+  ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id1));
+  ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id2));
+
+  ASSERT_TRUE(gcs_client->mock_actor_accessor->async_register_actor_batch_callback_ !=
+              nullptr);
+  gcs_client->mock_actor_accessor->async_register_actor_batch_callback_(Status::OK());
+
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id2));
+  ASSERT_EQ(1, batch_cb_count);
+}
+
+TEST_F(ActorCreatorTest, AsyncRegisterActorBatchEmpty) {
+  int batch_cb_count = 0;
+  actor_creator->AsyncRegisterActorBatch({}, [&batch_cb_count](Status status) {
+    ASSERT_TRUE(status.ok());
+    batch_cb_count++;
+  });
+  ASSERT_EQ(1, batch_cb_count);
+}
+
+TEST_F(ActorCreatorTest, AsyncRegisterActorBatchWithWaiters) {
+  auto actor_id1 = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  auto actor_id2 = ActorID::FromHex("f4ce02420592ca68c1738a0d02000000");
+  auto task_spec1 = GetTaskSpec(actor_id1);
+  auto task_spec2 = GetTaskSpec(actor_id2);
+
+  int batch_cb_count = 0;
+  int waiter1_cb_count = 0;
+  int waiter2_cb_count = 0;
+
+  actor_creator->AsyncRegisterActorBatch({task_spec1, task_spec2},
+                                         [&batch_cb_count](Status status) {
+                                           ASSERT_TRUE(status.ok());
+                                           batch_cb_count++;
+                                         });
+
+  actor_creator->AsyncWaitForActorRegisterFinish(actor_id1,
+                                                 [&waiter1_cb_count](Status status) {
+                                                   ASSERT_TRUE(status.ok());
+                                                   waiter1_cb_count++;
+                                                 });
+  actor_creator->AsyncWaitForActorRegisterFinish(actor_id2,
+                                                 [&waiter2_cb_count](Status status) {
+                                                   ASSERT_TRUE(status.ok());
+                                                   waiter2_cb_count++;
+                                                 });
+
+  ASSERT_TRUE(gcs_client->mock_actor_accessor->async_register_actor_batch_callback_ !=
+              nullptr);
+  gcs_client->mock_actor_accessor->async_register_actor_batch_callback_(Status::OK());
+
+  ASSERT_EQ(1, batch_cb_count);
+  ASSERT_EQ(1, waiter1_cb_count);
+  ASSERT_EQ(1, waiter2_cb_count);
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id2));
+}
+
+TEST_F(ActorCreatorTest, AsyncRegisterActorBatchFailure) {
+  auto actor_id1 = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  auto task_spec1 = GetTaskSpec(actor_id1);
+
+  int batch_cb_count = 0;
+  int waiter_cb_count = 0;
+
+  actor_creator->AsyncRegisterActorBatch({task_spec1}, [&batch_cb_count](Status status) {
+    ASSERT_TRUE(status.IsIOError());
+    batch_cb_count++;
+  });
+
+  actor_creator->AsyncWaitForActorRegisterFinish(actor_id1,
+                                                 [&waiter_cb_count](Status status) {
+                                                   ASSERT_TRUE(status.IsIOError());
+                                                   waiter_cb_count++;
+                                                 });
+
+  ASSERT_TRUE(gcs_client->mock_actor_accessor->async_register_actor_batch_callback_ !=
+              nullptr);
+  gcs_client->mock_actor_accessor->async_register_actor_batch_callback_(
+      Status::IOError("GCS error"));
+
+  ASSERT_EQ(1, batch_cb_count);
+  ASSERT_EQ(1, waiter_cb_count);
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
+}
+
 }  // namespace core
 }  // namespace ray
