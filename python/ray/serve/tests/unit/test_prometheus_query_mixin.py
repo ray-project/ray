@@ -1,6 +1,7 @@
 import gc
 import io
 import json
+import logging
 import sys
 import time
 import urllib.request
@@ -82,6 +83,38 @@ class TestQueryScalar:
         self._patch(monkeypatch, _vector(float("nan")))
         assert ap._query_scalar("http://x/api/v1/query", "q", 5.0) is None
 
+    def test_sends_headers(self, monkeypatch):
+        captured = {}
+
+        def urlopen(request, timeout=None):
+            captured["authorization"] = request.get_header("Authorization")
+            return _FakeResp(_vector(2.5))
+
+        monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+        assert (
+            ap._query_scalar(
+                "http://x/api/v1/query",
+                "q",
+                5.0,
+                {"Authorization": "Bearer token"},
+            )
+            == 2.5
+        )
+        assert captured["authorization"] == "Bearer token"
+
+
+class TestFetchMetrics:
+    def test_query_failures_are_isolated(self, monkeypatch, caplog):
+        def query_scalar(query_url, query, timeout_s, headers=None):
+            if query == "bad":
+                raise OSError("unreachable")
+            return 2.5
+
+        monkeypatch.setattr(ap, "_query_scalar", query_scalar)
+        with caplog.at_level(logging.WARNING, logger=ap.logger.name):
+            assert ap._fetch_metrics("http://x", ["bad", "good"]) == {"good": 2.5}
+        assert "Failed to evaluate Prometheus query 'bad'" in caplog.text
+
 
 class TestPrometheusQueryMixin:
     def test_no_address_no_thread(self, monkeypatch):
@@ -105,8 +138,20 @@ class TestPrometheusQueryMixin:
         )
         assert mixin._prometheus_address == "http://explicit:9090"
 
+    def test_headers_default_to_env(self, monkeypatch):
+        monkeypatch.setenv(
+            "RAY_PROMETHEUS_HEADERS", '{"Authorization": "Bearer token"}'
+        )
+        mixin = PrometheusQueryMixin()
+        assert mixin._prometheus_headers == {"Authorization": "Bearer token"}
+
+    def test_headers_accept_env_list_format(self, monkeypatch):
+        monkeypatch.setenv("RAY_PROMETHEUS_HEADERS", '[["X-Scope-OrgID", "tenant"]]')
+        mixin = PrometheusQueryMixin()
+        assert mixin._prometheus_headers == {"X-Scope-OrgID": "tenant"}
+
     def test_read_does_not_block_on_fetch(self, monkeypatch):
-        def slow(address, queries):
+        def slow(address, queries, timeout_s=5.0, headers=None):
             time.sleep(0.8)
             return {queries[0]: 5.0}
 
@@ -127,7 +172,9 @@ class TestPrometheusQueryMixin:
         assert mixin.prometheus_metrics == {"q": 5.0}
 
     def test_stale_cache_reads_none(self, monkeypatch):
-        monkeypatch.setattr(ap, "_fetch_metrics", lambda a, q: {q[0]: 5.0})
+        monkeypatch.setattr(
+            ap, "_fetch_metrics", lambda a, q, timeout_s=5.0, headers=None: {q[0]: 5.0}
+        )
         mixin = PrometheusQueryMixin(
             prometheus_address="localhost:9090",
             prometheus_queries=["q"],
@@ -143,7 +190,9 @@ class TestPrometheusQueryMixin:
         assert mixin.prometheus_metrics is None
 
     def test_thread_stops_on_gc(self, monkeypatch):
-        monkeypatch.setattr(ap, "_fetch_metrics", lambda a, q: {q[0]: 5.0})
+        monkeypatch.setattr(
+            ap, "_fetch_metrics", lambda a, q, timeout_s=5.0, headers=None: {q[0]: 5.0}
+        )
         mixin = PrometheusQueryMixin(
             prometheus_address="localhost:9090",
             prometheus_queries=["q"],

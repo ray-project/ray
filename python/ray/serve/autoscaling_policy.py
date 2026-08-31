@@ -372,6 +372,32 @@ default_autoscaling_policy = replica_queue_length_autoscaling_policy
 DEFAULT_PROMETHEUS_FETCH_INTERVAL_S = 5.0
 DEFAULT_PROMETHEUS_CACHE_TTL_S = 15.0
 DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S = 5.0
+_PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
+
+
+def _parse_prometheus_headers(headers: Any) -> Dict[str, str]:
+    """Parse and validate Prometheus HTTP headers.
+
+    Matches the formats accepted by the Ray dashboard: a JSON object or a
+    JSON list of ``[name, value]`` pairs. Duplicate names in the list format
+    are collapsed because ``urllib.request`` represents headers as a mapping.
+    """
+    if isinstance(headers, str):
+        headers = json.loads(headers)
+    if isinstance(headers, list):
+        try:
+            headers = dict(headers)
+        except (TypeError, ValueError):
+            headers = None
+    if not isinstance(headers, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in headers.items()
+    ):
+        raise ValueError(
+            "Prometheus headers must be a JSON object with string keys and "
+            "values, or a JSON list of [name, value] pairs."
+        )
+    return dict(headers)
 
 
 def _normalize_query_url(address: str) -> str:
@@ -388,14 +414,20 @@ def _normalize_query_url(address: str) -> str:
     return f"{address}/api/v1/query"
 
 
-def _query_scalar(query_url: str, query: str, timeout_s: float) -> Optional[float]:
+def _query_scalar(
+    query_url: str,
+    query: str,
+    timeout_s: float,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[float]:
     """Run one PromQL query and return its single finite scalar or None.
 
     An autoscaling signal must resolve to one value, so only a single-sample
     instant vector is accepted. Anything else is treated as no data.
     """
     url = query_url + "?" + urllib.parse.urlencode({"query": query})
-    with urllib.request.urlopen(url, timeout=timeout_s) as resp:
+    request = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(request, timeout=timeout_s) as resp:
         body = json.load(resp)
     data = body.get("data", {})
     result = data.get("result", [])
@@ -411,18 +443,21 @@ def _fetch_metrics(
     address: str,
     queries: List[str],
     timeout_s: float = DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S,
+    headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, float]:
-    """Evaluate ``queries`` against ``address``, omitting no-data results.
-
-    Query or parse errors propagate to the caller (``_run_refresh``), which
-    logs and retries on the next interval, so the refresh thread survives.
-    """
+    """Evaluate ``queries``, independently omitting no-data or failed results."""
     query_url = _normalize_query_url(address)
     out: Dict[str, float] = {}
     for query in queries:
-        value = _query_scalar(query_url, query, timeout_s)
-        if value is not None:
-            out[query] = value
+        try:
+            value = _query_scalar(query_url, query, timeout_s, headers)
+            if value is not None:
+                out[query] = value
+        except Exception as exc:
+            logger.warning("Failed to evaluate Prometheus query %r: %s", query, exc)
+            logger.debug(
+                "Failed to evaluate Prometheus query %r.", query, exc_info=True
+            )
     return out
 
 
@@ -441,11 +476,15 @@ class _MetricCache:
 
 
 def _run_refresh(
-    cache: _MetricCache, address: str, queries: List[str], interval_s: float
+    cache: _MetricCache,
+    address: str,
+    queries: List[str],
+    headers: Dict[str, str],
+    interval_s: float,
 ) -> None:
     while not cache.stop.is_set():
         try:
-            values = _fetch_metrics(address, queries)
+            values = _fetch_metrics(address, queries, headers=headers)
             with cache.lock:
                 cache.values = values or None
                 cache.timestamp = time.monotonic()
@@ -466,7 +505,8 @@ class PrometheusQueryMixin:
 
     ``prometheus_address`` defaults to the ``RAY_PROMETHEUS_HOST`` environment
     variable, which Ray's dashboard and managed clusters already set, so the
-    common case needs no address.
+    common case needs no address. HTTP headers are read from the JSON-encoded
+    ``RAY_PROMETHEUS_HEADERS`` environment variable used by the dashboard.
     """
 
     def __init__(
@@ -481,6 +521,9 @@ class PrometheusQueryMixin:
         super().__init__(**kwargs)
         self._prometheus_address = prometheus_address or os.environ.get(
             "RAY_PROMETHEUS_HOST"
+        )
+        self._prometheus_headers = _parse_prometheus_headers(
+            os.environ.get(_PROMETHEUS_HEADERS_ENV_VAR, "{}")
         )
         if isinstance(prometheus_queries, str):
             prometheus_queries = [prometheus_queries]
@@ -503,6 +546,7 @@ class PrometheusQueryMixin:
                 cache,
                 self._prometheus_address,
                 self._prometheus_queries,
+                self._prometheus_headers,
                 self._fetch_interval_s,
             ),
             name="serve-prometheus-autoscaling-fetch",
