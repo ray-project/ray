@@ -32,6 +32,18 @@ from ray.serve.tests.test_metrics import (
     get_metric_dictionaries,
 )
 
+# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
+# on an exported metric needs room for several full-length attempts.
+METRICS_WAIT_TIMEOUT_S = 90
+
+
+def wait_for_metric(predicate, **kwargs):
+    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
+    agent is not hammered while it catches up."""
+    wait_for_condition(
+        predicate, timeout=METRICS_WAIT_TIMEOUT_S, retry_interval_ms=1000, **kwargs
+    )
+
 
 @serve.deployment
 class WaitForSignal:
@@ -92,6 +104,71 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
+    def _wait_for_metric_summary(self, metric_name, expected, timeseries):
+        """Deployments export independently, so wait for all of them rather than
+        asserting on whichever happen to have reported already."""
+
+        def check():
+            routes, apps = self._generate_metrics_summary(
+                get_metric_dictionaries(metric_name, timeseries=timeseries, wait=False)
+            )
+            msg = f"Incorrect metrics for {metric_name}"
+            for deployment, (route, app) in expected.items():
+                assert routes[deployment] == route, msg
+                assert apps[deployment] == app, msg
+            return True
+
+        wait_for_metric(check)
+
+    def _wait_for_route_and_name(
+        self, metric_name, deployment_name, app_name, route, timeseries
+    ):
+        """Waits for app name and route to appear in deployment's metric."""
+        self._wait_for_metric_summary(
+            metric_name, {deployment_name: ({route}, app_name)}, timeseries
+        )
+
+    def _wait_for_labeled_metric(self, metric_name, expected_labels, timeseries):
+        """The series can be mid-export, so wait for it instead of asserting on
+        whatever the first scrape happened to return."""
+
+        def check():
+            metrics = get_metric_dictionaries(
+                metric_name, timeseries=timeseries, wait=False
+            )
+            assert len(metrics) == 1, f"Expected one {metric_name}, got {len(metrics)}"
+            self.verify_metrics(metrics[0], expected_labels)
+            return True
+
+        wait_for_metric(check)
+
+    def _wait_for_proxy_routes(self, metric_names, expected_routes, timeseries):
+        """Proxy metrics export on their own cycle, so they can still be missing
+        once the deployment metrics waited on above have arrived."""
+        for metric_name in metric_names:
+
+            def check(name=metric_name):
+                routes = {
+                    sample.labels["route"]
+                    for sample in fetch_prometheus_metric_timeseries(
+                        ["localhost:9999"],
+                        timeseries,
+                        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+                    )[name]
+                }
+                assert routes == expected_routes, f"Incorrect routes for {name}"
+                return True
+
+            wait_for_metric(check)
+
+    def _wait_for_handle_metrics(self, expected, timeseries):
+        for metric_name in [
+            "ray_serve_handle_request_counter_total",
+            "ray_serve_num_router_requests_total",
+            "ray_serve_deployment_processing_latency_ms_sum",
+        ]:
+            self._wait_for_metric_summary(metric_name, expected, timeseries)
+
     @skip_if_haproxy(
         "direct ingress invokes the ingress deployment without a handle or router "
         "hop, so these metrics are not emitted"
@@ -137,81 +214,46 @@ class TestRequestContextMetrics:
             timeout=40,
         )
 
-        def wait_for_route_and_name(
-            metric_name: str,
-            deployment_name: str,
-            app_name: str,
-            route: str,
-            timeout: float = 5,
-        ):
-            """Waits for app name and route to appear in deployment's metric."""
-
-            def check():
-                # Check replica qps & latency
-                (
-                    qps_metrics_route,
-                    qps_metrics_app_name,
-                ) = self._generate_metrics_summary(
-                    get_metric_dictionaries(metric_name, timeseries=timeseries),
-                )
-                assert qps_metrics_app_name[deployment_name] == app_name
-                assert qps_metrics_route[deployment_name] == {route}
-                return True
-
-            wait_for_condition(check, timeout=timeout)
-
         # Check replica qps & latency
-        wait_for_route_and_name(
-            "ray_serve_deployment_request_counter_total", "f", "app1", "/app1"
+        self._wait_for_route_and_name(
+            "ray_serve_deployment_request_counter_total",
+            "f",
+            "app1",
+            "/app1",
+            timeseries,
         )
-        wait_for_route_and_name(
-            "ray_serve_deployment_request_counter_total", "g", "app2", "/app2"
+        self._wait_for_route_and_name(
+            "ray_serve_deployment_request_counter_total",
+            "g",
+            "app2",
+            "/app2",
+            timeseries,
         )
-        wait_for_route_and_name(
-            "ray_serve_deployment_error_counter_total", "h", "app3", "/app3"
+        self._wait_for_route_and_name(
+            "ray_serve_deployment_error_counter_total",
+            "h",
+            "app3",
+            "/app3",
+            timeseries,
         )
 
         # Check http proxy qps & latency
-        for metric_name in [
-            "ray_serve_num_http_requests_total",
-            "ray_serve_http_request_latency_ms_sum",
-        ]:
-            metrics = [
-                sample.labels
-                for sample in fetch_prometheus_metric_timeseries(
-                    ["localhost:9999"],
-                    timeseries,
-                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-                )[metric_name]
-            ]
-            assert {metric["route"] for metric in metrics} == {
-                "/app1",
-                "/app2",
-                "/app3",
-            }
-
-        for metric_name in [
-            "ray_serve_handle_request_counter_total",
-            "ray_serve_num_router_requests_total",
-            "ray_serve_deployment_processing_latency_ms_sum",
-        ]:
-            metrics_route, metrics_app_name = self._generate_metrics_summary(
-                [
-                    sample.labels
-                    for sample in fetch_prometheus_metric_timeseries(
-                        ["localhost:9999"],
-                        timeseries,
-                        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-                    )[metric_name]
-                ]
-            )
-            msg = f"Incorrect metrics for {metric_name}"
-            assert metrics_route["f"] == {"/app1"}, msg
-            assert metrics_route["g"] == {"/app2"}, msg
-            assert metrics_route["h"] == {"/app3"}, msg
-            assert metrics_app_name["f"] == "app1", msg
-            assert metrics_app_name["g"] == "app2", msg
-            assert metrics_app_name["h"] == "app3", msg
+        self._wait_for_proxy_routes(
+            [
+                "ray_serve_num_http_requests_total",
+                "ray_serve_http_request_latency_ms_sum",
+            ],
+            {"/app1", "/app2", "/app3"},
+            timeseries,
+        )
+        self._wait_for_handle_metrics(
+            {
+                "f": ({"/app1"}, "app1"),
+                "g": ({"/app2"}, "app2"),
+                "h": ({"/app3"}, "app3"),
+            },
+            timeseries,
+        )
 
     @skip_if_haproxy(
         "direct ingress skips the handle and router hop and HAProxy counts its "
@@ -256,80 +298,46 @@ class TestRequestContextMetrics:
             timeout=40,
         )
 
-        def wait_for_route_and_name(
-            _metric_name: str,
-            deployment_name: str,
-            app_name: str,
-            route: str,
-            timeout: float = 5,
-        ):
-            """Waits for app name and route to appear in deployment's metric."""
-
-            def check():
-                # Check replica qps & latency
-                (
-                    qps_metrics_route,
-                    qps_metrics_app_name,
-                ) = self._generate_metrics_summary(
-                    get_metric_dictionaries(_metric_name, timeseries=timeseries),
-                )
-                assert qps_metrics_app_name[deployment_name] == app_name
-                assert qps_metrics_route[deployment_name] == {route}
-                return True
-
-            wait_for_condition(check, timeout=timeout)
-
         # Check replica qps & latency
-        wait_for_route_and_name(
+        self._wait_for_route_and_name(
             "ray_serve_deployment_request_counter_total",
             depl_name1,
             app_name1,
             app_name1,
+            timeseries,
         )
-        wait_for_route_and_name(
+        self._wait_for_route_and_name(
             "ray_serve_deployment_request_counter_total",
             depl_name2,
             app_name2,
             app_name2,
+            timeseries,
         )
-        wait_for_route_and_name(
-            "ray_serve_deployment_error_counter_total", depl_name3, app_name3, app_name3
+        self._wait_for_route_and_name(
+            "ray_serve_deployment_error_counter_total",
+            depl_name3,
+            app_name3,
+            app_name3,
+            timeseries,
         )
 
         # Check grpc proxy qps & latency
-        for metric_name in [
-            "ray_serve_num_grpc_requests_total",
-            "ray_serve_grpc_request_latency_ms_sum",
-        ]:
-            metrics = [
-                sample.labels
-                for sample in fetch_prometheus_metric_timeseries(
-                    ["localhost:9999"],
-                    timeseries,
-                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-                )[metric_name]
-            ]
-            assert {metric["route"] for metric in metrics} == {
-                "app1",
-                "app2",
-                "app3",
-            }
-
-        for metric_name in [
-            "ray_serve_handle_request_counter_total",
-            "ray_serve_num_router_requests_total",
-            "ray_serve_deployment_processing_latency_ms_sum",
-        ]:
-            metrics_route, metrics_app_name = self._generate_metrics_summary(
-                get_metric_dictionaries(metric_name, timeseries=timeseries),
-            )
-            msg = f"Incorrect metrics for {metric_name}"
-            assert metrics_route[depl_name1] == {"app1"}, msg
-            assert metrics_route[depl_name2] == {"app2"}, msg
-            assert metrics_route[depl_name3] == {"app3"}, msg
-            assert metrics_app_name[depl_name1] == "app1", msg
-            assert metrics_app_name[depl_name2] == "app2", msg
-            assert metrics_app_name[depl_name3] == "app3", msg
+        self._wait_for_proxy_routes(
+            [
+                "ray_serve_num_grpc_requests_total",
+                "ray_serve_grpc_request_latency_ms_sum",
+            ],
+            {app_name1, app_name2, app_name3},
+            timeseries,
+        )
+        self._wait_for_handle_metrics(
+            {
+                depl_name1: ({app_name1}, app_name1),
+                depl_name2: ({app_name2}, app_name2),
+                depl_name3: ({app_name3}, app_name3),
+            },
+            timeseries,
+        )
 
     def test_request_context_pass_for_handle_passing(self, metrics_start_shutdown):
         """Test handle passing contexts between replicas"""
@@ -384,20 +392,15 @@ class TestRequestContextMetrics:
             == 4,
             timeout=40,
         )
-        (
-            requests_metrics_route,
-            requests_metrics_app_name,
-        ) = self._generate_metrics_summary(
-            get_metric_dictionaries(
-                "ray_serve_deployment_request_counter_total", timeseries=timeseries
-            ),
+        self._wait_for_metric_summary(
+            "ray_serve_deployment_request_counter_total",
+            {
+                "G": ({"/api", "/api2"}, "app"),
+                "g1": ({"/api"}, "app"),
+                "g2": ({"/api2"}, "app"),
+            },
+            timeseries,
         )
-        assert requests_metrics_route["G"] == {"/api", "/api2"}
-        assert requests_metrics_route["g1"] == {"/api"}
-        assert requests_metrics_route["g2"] == {"/api2"}
-        assert requests_metrics_app_name["G"] == "app"
-        assert requests_metrics_app_name["g1"] == "app"
-        assert requests_metrics_app_name["g2"] == "app"
 
     @pytest.mark.parametrize("route_prefix", ["", "/prefix"])
     def test_fastapi_route_metrics(self, metrics_start_shutdown, route_prefix: str):
@@ -509,10 +512,6 @@ class TestRequestContextMetrics:
             timeout=40,
         )
 
-        counter_metrics = get_metric_dictionaries(
-            "ray_my_counter_total", timeseries=timeseries
-        )
-        assert len(counter_metrics) == 1
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "100",
@@ -521,7 +520,9 @@ class TestRequestContextMetrics:
             "application": "app",
             "route": "/app",
         }
-        self.verify_metrics(counter_metrics[0], expected_metrics)
+        self._wait_for_labeled_metric(
+            "ray_my_counter_total", expected_metrics, timeseries
+        )
 
         expected_metrics = {
             "my_static_tag": "static_value",
@@ -531,9 +532,7 @@ class TestRequestContextMetrics:
             "application": "app",
             "route": "/app",
         }
-        gauge_metrics = get_metric_dictionaries("ray_my_gauge", timeseries=timeseries)
-        assert len(gauge_metrics) == 1
-        self.verify_metrics(gauge_metrics[0], expected_metrics)
+        self._wait_for_labeled_metric("ray_my_gauge", expected_metrics, timeseries)
 
         expected_metrics = {
             "my_static_tag": "static_value",
@@ -543,11 +542,9 @@ class TestRequestContextMetrics:
             "application": "app",
             "route": "/app",
         }
-        histogram_metrics = get_metric_dictionaries(
-            "ray_my_histogram_sum", timeseries=timeseries
+        self._wait_for_labeled_metric(
+            "ray_my_histogram_sum", expected_metrics, timeseries
         )
-        assert len(histogram_metrics) == 1
-        self.verify_metrics(histogram_metrics[0], expected_metrics)
 
     @pytest.mark.parametrize("use_actor", [False, True])
     def test_serve_metrics_outside_serve(self, use_actor, metrics_start_shutdown):
@@ -656,33 +653,27 @@ class TestRequestContextMetrics:
             timeout=40,
         )
 
-        counter_metrics = get_metric_dictionaries(
-            "ray_my_counter_total", timeseries=timeseries
-        )
-        assert len(counter_metrics) == 1
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "100",
         }
-        self.verify_metrics(counter_metrics[0], expected_metrics)
+        self._wait_for_labeled_metric(
+            "ray_my_counter_total", expected_metrics, timeseries
+        )
 
-        gauge_metrics = get_metric_dictionaries("ray_my_gauge", timeseries=timeseries)
-        assert len(gauge_metrics) == 1
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "300",
         }
-        self.verify_metrics(gauge_metrics[0], expected_metrics)
+        self._wait_for_labeled_metric("ray_my_gauge", expected_metrics, timeseries)
 
-        histogram_metrics = get_metric_dictionaries(
-            "ray_my_histogram_sum", timeseries=timeseries
-        )
-        assert len(histogram_metrics) == 1
         expected_metrics = {
             "my_static_tag": "static_value",
             "my_runtime_tag": "200",
         }
-        self.verify_metrics(histogram_metrics[0], expected_metrics)
+        self._wait_for_labeled_metric(
+            "ray_my_histogram_sum", expected_metrics, timeseries
+        )
 
 
 class TestHandleMetrics:
@@ -700,7 +691,7 @@ class TestHandleMetrics:
             # call.remote("WaitForSignal", "app1")
             # c.call.remote()
             caller.call.remote()
-            wait_for_condition(
+            wait_for_metric(
                 check_sum_metric_eq,
                 metric_name="ray_serve_deployment_queued_queries",
                 tags={"application": "app1"},
@@ -710,7 +701,7 @@ class TestHandleMetrics:
 
         # Release signal
         ray.get(signal.send.remote())
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
@@ -724,7 +715,7 @@ class TestHandleMetrics:
 
         # Send first request
         call.remote("WaitForSignal", "app1")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
@@ -733,7 +724,7 @@ class TestHandleMetrics:
 
         # Send second request (which should stay queued)
         call.remote("WaitForSignal", "app1")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
@@ -742,7 +733,7 @@ class TestHandleMetrics:
 
         # Send third request (which should stay queued)
         call.remote("WaitForSignal", "app1")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
@@ -751,7 +742,7 @@ class TestHandleMetrics:
 
         # Release signal
         ray.get(signal.send.remote())
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
@@ -945,7 +936,7 @@ class TestHandleMetrics:
             call.remote("Router", "app1", index)
             requests_sent[index] += 1
 
-            wait_for_condition(
+            wait_for_metric(
                 check_sum_metric_eq,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d1"},
@@ -953,7 +944,7 @@ class TestHandleMetrics:
                 timeseries=timeseries,
             )
 
-            wait_for_condition(
+            wait_for_metric(
                 check_sum_metric_eq,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d2"},
@@ -961,7 +952,7 @@ class TestHandleMetrics:
                 timeseries=timeseries,
             )
 
-            wait_for_condition(
+            wait_for_metric(
                 check_sum_metric_eq,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "Router"},
@@ -971,7 +962,7 @@ class TestHandleMetrics:
 
         # Release signal, the number of running requests should drop to 0
         ray.get(signal.send.remote())
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_num_ongoing_requests_at_replicas",
             tags={"application": "app1"},
@@ -1015,7 +1006,7 @@ class TestProxyStateMetrics:
             assert "node_id" in metric
             assert "node_ip_address" in metric
 
-        wait_for_condition(
+        wait_for_metric(
             check_metric_float_eq,
             metric="ray_serve_proxy_status",
             expected=2,
@@ -1064,24 +1055,22 @@ class TestProxyStateMetrics:
 
         wait_for_condition(check_shutdown_duration_metric_exists, timeout=30)
 
-        # Verify the metric has the expected tags
-        metrics = get_metric_dictionaries(
-            "ray_serve_proxy_shutdown_duration_ms_sum",
-            timeseries=timeseries,
-            wait=False,
-        )
-        assert len(metrics) == 1
-        for metric in metrics:
-            assert "node_id" in metric
-            assert "node_ip_address" in metric
+        # Verify the sum and _count series, which export separately from the
+        # sample the wait above observed.
+        def check_shutdown_duration_series():
+            for name in [
+                "ray_serve_proxy_shutdown_duration_ms_sum",
+                "ray_serve_proxy_shutdown_duration_ms_count",
+            ]:
+                metrics = get_metric_dictionaries(
+                    name, timeseries=timeseries, wait=False
+                )
+                assert len(metrics) == 1, f"Expected one {name}, got {len(metrics)}"
+                assert "node_id" in metrics[0]
+                assert "node_ip_address" in metrics[0]
+            return True
 
-        # Also verify _count metric exists
-        count_metrics = get_metric_dictionaries(
-            "ray_serve_proxy_shutdown_duration_ms_count",
-            timeseries=timeseries,
-            wait=False,
-        )
-        assert len(count_metrics) == 1
+        wait_for_metric(check_shutdown_duration_series)
 
 
 if __name__ == "__main__":
