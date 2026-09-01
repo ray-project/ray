@@ -1298,6 +1298,8 @@ class TestModelMultiplexing:
             "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
             1.0,
         )
+        # The deadline below only proves "right away" while this patch is in effect.
+        assert s._multiplexed_matching_timeout >= 1.0
 
         r1 = FakeRunningReplica("r1", model_ids={"m1"})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
