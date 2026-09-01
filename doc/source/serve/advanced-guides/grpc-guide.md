@@ -148,6 +148,8 @@ Read more about gRPC clients in Python: [https://grpc.io/docs/languages/python/b
 ## Explore your gRPC API with server reflection
 Serve's gRPC proxy supports the [gRPC server reflection protocol](https://grpc.io/docs/guides/reflection/). With reflection enabled, standard tools such as [grpcurl](https://github.com/fullstorydev/grpcurl), [grpcui](https://github.com/fullstorydev/grpcui), and Postman can discover, describe, and call the gRPC services registered on the proxy without needing local copies of your `.proto` files—similar to how FastAPI's `/docs` page works for HTTP.
 
+The examples below use the `UserDefinedService` and generated `user_defined_protos_pb2_grpc` module from [Define a gRPC service](custom-serve-grpc-service) at the top of this guide.
+
 Server reflection is off by default. Enable it with the `enable_reflection` option:
 
 ::::{tab-set}
