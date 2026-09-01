@@ -15,7 +15,9 @@
 #include "ray/gcs/store_client/redis_context.h"
 
 #include <cerrno>
+#include <charconv>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -32,6 +34,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -52,6 +55,21 @@ size_t ResponsePayloadBytes(const redisReply &reply) {
   case REDIS_REPLY_VERB:
   case REDIS_REPLY_BIGNUM:
     return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_INTEGER: {
+    char buffer[std::numeric_limits<long long>::digits10 + 3];
+    const auto [end, error] =
+        std::to_chars(buffer, buffer + sizeof(buffer), reply.integer);
+    RAY_CHECK(error == std::errc{});
+    return static_cast<size_t>(end - buffer);
+  }
+  case REDIS_REPLY_DOUBLE:
+    // hiredis preserves the original RESP3 decimal representation in `str`.
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_BOOL:
+    // RESP3 encodes booleans as one application byte: `t` or `f`.
+    return 1;
+  case REDIS_REPLY_NIL:
+    return 0;
   case REDIS_REPLY_ARRAY:
   case REDIS_REPLY_MAP:
   case REDIS_REPLY_SET:
@@ -65,34 +83,15 @@ size_t ResponsePayloadBytes(const redisReply &reply) {
     return total;
   }
   default:
-    // INTEGER, NIL, DOUBLE, BOOL and anything unknown carry no payload bytes.
+    // Unknown reply types have no payload definition.
     return 0;
   }
 }
 
-std::string_view NormalizeRedisCommandLabel(std::string_view verb) {
-  // Closed domain. The first nine are what RedisStoreClient issues today; the
-  // rest are the namespace-cleanup verbs, listed so that instrumenting that
-  // path later cannot surprise anyone with new label values.
-  static constexpr std::string_view kAllowlist[] = {"HSET",
-                                                    "HSETNX",
-                                                    "HGET",
-                                                    "HMGET",
-                                                    "HDEL",
-                                                    "HEXISTS",
-                                                    "HSCAN",
-                                                    "INCRBY",
-                                                    "PING",
-                                                    "SCAN",
-                                                    "DEL",
-                                                    "UNLINK",
-                                                    "INFO"};
-  for (const auto &allowed : kAllowlist) {
-    if (verb == allowed) {
-      return allowed;
-    }
-  }
-  return "OTHER";
+std::string NormalizeRedisCommandLabel(std::string_view verb) {
+  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
+  absl::AsciiStrToUpper(&label);
+  return label;
 }
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
@@ -220,7 +219,7 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          std::vector<std::string> args,
                                          ClockInterface &clock,
                                          RedisMetrics *metrics,
-                                         RedisCommandLabels labels)
+                                         std::string_view table_label)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
@@ -232,8 +231,9 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       redis_cmds_(std::move(args)),
       clock_(clock),
       metrics_(metrics),
-      command_label_(labels.command),
-      table_label_(labels.table) {
+      table_label_(table_label) {
+  RAY_CHECK(!redis_cmds_.empty());
+  command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
   // This context owns the argument buffers now, so their sizes are safe to read
@@ -921,8 +921,9 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback,
-                                RedisCommandLabels labels) {
+                                std::string_view table_label) {
   RAY_CHECK(redis_async_context_);
+  RAY_CHECK(!args.empty());
   auto request_context =
       new RedisRequestContext(io_service_,
                               std::move(redis_callback),
@@ -930,7 +931,7 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                               std::move(args),
                               clock_,
                               metrics_.has_value() ? &*metrics_ : nullptr,
-                              labels);
+                              table_label);
   // RedisRequestContext is thread safe.
   request_context->Run();
 }

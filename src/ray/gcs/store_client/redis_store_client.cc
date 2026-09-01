@@ -306,10 +306,8 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
         return;
       }
     }
-    // Send the actual request. `command` is owned by this lambda, so the label
-    // views are alive across the call; RedisRequestContext copies them.
-    RedisCommandLabels labels{NormalizeRedisCommandLabel(command.command),
-                              command.redis_key.table_name};
+    // Send the actual request. RedisContext derives the Command label from the
+    // first argument, so only the table attribution is supplied here.
     primary_context_->RunArgvAsync(
         command.ToRedisArgs(),
         [this,
@@ -327,7 +325,7 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
             redis_callback(reply);
           }
         },
-        labels);
+        command.redis_key.table_name);
   };
 
   {
@@ -432,7 +430,7 @@ void RedisStoreClient::RedisScanner::Scan() {
       },
       // One round of a multi-round scan: the counters aggregate every round, so
       // gcs_redis_command_count on HSCAN is round trips, not AsyncGetAll calls.
-      RedisCommandLabels{"HSCAN", redis_key_.table_name});
+      redis_key_.table_name);
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
@@ -481,7 +479,7 @@ void RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
         auto job_id = static_cast<int>(reply->ReadAsInteger());
         std::move(callback).Post("GcsStore.GetNextJobID", job_id);
       },
-      RedisCommandLabels{"INCRBY", "JobCounter"});
+      "JobCounter");
 }
 
 void RedisStoreClient::AsyncGetKeys(const std::string &table_name,
@@ -528,8 +526,7 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
   };
 
-  primary_context_->RunArgvAsync(
-      {"PING"}, redis_callback, RedisCommandLabels{"PING", kNoTable});
+  primary_context_->RunArgvAsync({"PING"}, redis_callback, kNoTable);
 }
 
 // Cleans up all Redis HASHes whose keys carry the given external storage
@@ -592,7 +589,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
         [&promise](const std::shared_ptr<CallbackReply> &reply) {
           promise.set_value(reply);
         },
-        RedisCommandLabels{"SCAN", kAllTables});
+        kAllTables);
 
     auto reply = promise.get_future().get();
     std::vector<std::string> scan_result;
@@ -623,7 +620,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
         [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
           prom.set_value(callback_reply);
         },
-        RedisCommandLabels{delete_command, kAllTables});
+        kAllTables);
     return prom.get_future().get()->ReadAsInteger();
   };
   size_t num_deleted = 0;

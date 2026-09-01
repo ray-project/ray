@@ -173,8 +173,9 @@ inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
 
 // The payload definitions below are normative: they are what the metric means,
 // and tests assert exact deltas against them. "Payload" is always the
-// application bytes -- the RESP bulk strings themselves -- and never the RESP
-// framing ("*N\r\n", "$len\r\n", trailing CRLF), TLS records or TCP/IP headers.
+// application data carried by RESP values, and never the RESP framing
+// ("*N\r\n", "$len\r\n", type prefixes, trailing CRLF), TLS records or TCP/IP
+// headers.
 // GCS values are not compressed anywhere between GcsTable::Put and the socket,
 // so compressed bytes do not arise. To reconcile with Redis' own
 // total_net_input_bytes, add framing: 3 + digits(nargs) per command plus
@@ -200,10 +201,10 @@ inline ray::stats::Sum GetGcsRedisResponsePayloadBytesSumMetric() {
       /*description=*/
       "Bytes of Redis replies received by the GCS: the sum of the byte lengths "
       "of every bulk string and status string in the reply, including the field "
-      "names returned by HSCAN. Integer and nil replies contribute zero. "
-      "Excludes RESP framing, TLS and TCP/IP overhead. A reply that comes back "
-      "as an error is retried instead of delivered, and contributes nothing at "
-      "all -- error bytes are never counted here.",
+      "names returned by HSCAN. Integers count as their decimal text; nil replies "
+      "contribute zero. Excludes RESP framing, TLS and TCP/IP overhead. A reply "
+      "that comes back as an error is retried instead of delivered, and "
+      "contributes nothing at all -- error bytes are never counted here.",
       /*unit=*/"bytes",
       /*tag_keys=*/{"Command", "TableName"},
   };

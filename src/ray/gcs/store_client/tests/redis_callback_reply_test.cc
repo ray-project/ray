@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <limits>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -140,8 +140,8 @@ redisReply MakeArrayReply(redisReply **elements, size_t count) {
 }  // namespace
 
 // ResponsePayloadBytes is the normative definition of
-// gcs_redis_response_payload_bytes: the sum of `len` over every string-shaped
-// node, recursing into arrays, with integers and nils contributing nothing.
+// gcs_redis_response_payload_bytes: application bytes carried by every reply
+// node, recursing into arrays and excluding RESP framing.
 // These cases pin that definition; changing any expectation here changes what
 // the exported metric means.
 TEST(TestResponsePayloadBytes, ScalarReplies) {
@@ -151,12 +151,30 @@ TEST(TestResponsePayloadBytes, ScalarReplies) {
     ASSERT_EQ(ResponsePayloadBytes(nil), 0u);
   }
   {
-    // HSET/HDEL/HEXISTS/INCRBY all reply with an integer, which carries no
-    // payload however large the value written was.
+    // RESP integers carry their ASCII decimal form between ':' and CRLF.
     redisReply integer{};
     integer.type = REDIS_REPLY_INTEGER;
+    integer.integer = 0;
+    ASSERT_EQ(ResponsePayloadBytes(integer), 1u);
     integer.integer = 1;
-    ASSERT_EQ(ResponsePayloadBytes(integer), 0u);
+    ASSERT_EQ(ResponsePayloadBytes(integer), 1u);
+    integer.integer = -12345;
+    ASSERT_EQ(ResponsePayloadBytes(integer), 6u);
+    integer.integer = std::numeric_limits<long long>::max();
+    ASSERT_EQ(ResponsePayloadBytes(integer), 19u);
+    integer.integer = std::numeric_limits<long long>::min();
+    ASSERT_EQ(ResponsePayloadBytes(integer), 20u);
+  }
+  {
+    std::string decimal = "-12.5";
+    redisReply number = MakeStringReply(REDIS_REPLY_DOUBLE, decimal);
+    ASSERT_EQ(ResponsePayloadBytes(number), decimal.size());
+  }
+  {
+    redisReply boolean{};
+    boolean.type = REDIS_REPLY_BOOL;
+    boolean.integer = 1;
+    ASSERT_EQ(ResponsePayloadBytes(boolean), 1u);
   }
   {
     // PING replies "+PONG\r\n"; `len` is the decoded 4, because the leading '+'
@@ -233,43 +251,21 @@ TEST(TestResponsePayloadBytes, ScanArrayCountsCursorAndFieldNames) {
   ASSERT_EQ(expected, 4u + 9u + 64u + 9u + 128u);
 }
 
-// The Command label domain is closed by construction: anything off the
-// allowlist collapses to OTHER, so a Redis command added elsewhere in the GCS
-// cannot grow the exported time series count.
-TEST(TestNormalizeRedisCommandLabel, AllowlistedVerbsMapToThemselves) {
-  for (const auto *verb : {"HSET",
-                           "HSETNX",
-                           "HGET",
-                           "HMGET",
-                           "HDEL",
-                           "HEXISTS",
-                           "HSCAN",
-                           "INCRBY",
-                           "PING",
-                           "SCAN",
-                           "DEL",
-                           "UNLINK",
-                           "INFO"}) {
-    EXPECT_EQ(NormalizeRedisCommandLabel(verb), verb);
-  }
+TEST(TestNormalizeRedisCommandLabel, PreservesUppercaseVerb) {
+  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), "HGETALL");
 }
 
-TEST(TestNormalizeRedisCommandLabel, UnknownVerbsCollapseToOther) {
-  EXPECT_EQ(NormalizeRedisCommandLabel(""), "OTHER");
-  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), "OTHER");
-  EXPECT_EQ(NormalizeRedisCommandLabel("EVAL"), "OTHER");
-  // Matching is exact and case sensitive; every verb in the tree is uppercase.
-  EXPECT_EQ(NormalizeRedisCommandLabel("hset"), "OTHER");
+TEST(TestNormalizeRedisCommandLabel, UppercasesAsciiVerb) {
+  EXPECT_EQ(NormalizeRedisCommandLabel("hSeTnX"), "HSETNX");
 }
 
-TEST(TestNormalizeRedisCommandLabel, ResultOutlivesItsArgument) {
-  // The label is copied into a std::string at Record time, but the view is held
-  // across the call, so it must not point into the caller's storage.
-  std::string_view label;
-  {
-    std::string verb = "HMGET";
-    label = NormalizeRedisCommandLabel(verb);
-  }
-  EXPECT_EQ(label, "HMGET");
+TEST(TestNormalizeRedisCommandLabel, TruncatesToMaximumLength) {
+  const std::string exact(kMaxRedisCommandLabelLength, 'a');
+  EXPECT_EQ(NormalizeRedisCommandLabel(exact),
+            std::string(kMaxRedisCommandLabelLength, 'A'));
+
+  const std::string too_long = exact + "suffix";
+  EXPECT_EQ(NormalizeRedisCommandLabel(too_long),
+            std::string(kMaxRedisCommandLabelLength, 'A'));
 }
 }  // namespace ray::gcs
