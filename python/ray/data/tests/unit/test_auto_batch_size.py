@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     MapTransformer,
-    UDFTimeScope,
+    TransformClock,
     _compute_auto_batch_size,
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
@@ -85,7 +85,7 @@ def test_auto_batches_respect_target_size():
         ]
     )
     ctx = TaskContext(task_idx=0, op_name="test")
-    list(transformer.apply_transform(iter([block]), ctx, udf_time_scope=UDFTimeScope()))
+    list(transformer.apply_transform(iter([block]), ctx, clock=TransformClock()))
 
     assert sum(received_sizes) == 1000
     assert all(s == 10 for s in received_sizes[:-1])

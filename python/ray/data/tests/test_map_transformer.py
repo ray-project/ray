@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     MapTransformer,
-    UDFTimeScope,
+    TransformClock,
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
@@ -68,7 +68,7 @@ def test_chained_transforms_release_intermediates_between_batches():
             yield pd.DataFrame({"id": [i + 1]})
 
     result_iter = transformer.apply_transform(
-        make_input_blocks(), ctx, udf_time_scope=UDFTimeScope()
+        make_input_blocks(), ctx, clock=TransformClock()
     )
 
     for i in range(NUM_BATCHES):
@@ -174,10 +174,10 @@ def test_chained_transforms_dont_double_count_udf_time():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i]})
 
-    scope = UDFTimeScope()
+    scope = TransformClock()
     start_s = time.perf_counter()
     blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
+        transformer.apply_transform(make_input_blocks(), ctx, clock=scope)
     )
     wall_s = time.perf_counter() - start_s
 
@@ -188,7 +188,7 @@ def test_chained_transforms_dont_double_count_udf_time():
     # The whole transform chain, not just the sleeps: for each stage it covers
     # turning input blocks into batches, the UDF body, and building output
     # blocks. The sleeps are therefore a floor on it, never an equality.
-    reported_s = scope.attributed_s
+    reported_s = scope.drain().total_s
     # Measured, not assumed: block shaping decides how many batches each stage sees.
     slept_s = num_calls * SLEEP_S
 
@@ -242,17 +242,17 @@ def test_chained_transforms_total_is_independent_of_distribution():
         for i in range(NUM_BATCHES):
             yield pd.DataFrame({"id": [i]})
 
-    scope = UDFTimeScope()
+    scope = TransformClock()
     start_s = time.perf_counter()
     blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, udf_time_scope=scope)
+        transformer.apply_transform(make_input_blocks(), ctx, clock=scope)
     )
     wall_s = time.perf_counter() - start_s
 
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
     assert all(n > 0 for n in calls_per_stage), calls_per_stage
 
-    reported_s = scope.attributed_s
+    reported_s = scope.drain().total_s
     slept_s = sum(n * s for n, s in zip(calls_per_stage, SLEEPS_S))
 
     # Summing the stages' inclusive times would give 0.05 + 0.15 + 0.30 = 0.50s
