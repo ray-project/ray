@@ -1,10 +1,11 @@
 import os
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pytest
 
 import ray
-from ray.train import ScalingConfig
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.lightning import (
     RayDDPStrategy,
     RayDeepSpeedStrategy,
@@ -151,6 +152,42 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
+
+
+def test_custom_checkpoint_callback(ray_start_6_cpus_2_gpus):
+    """A custom callback must save on every worker to avoid a DDP deadlock."""
+
+    class CustomCheckpointCallback(pl.Callback):
+        def on_train_epoch_end(self, trainer, pl_module):
+            with TemporaryDirectory() as tmpdir:
+                checkpoint = None
+                if trainer.current_epoch == 0:
+                    checkpoint_path = os.path.join(tmpdir, "ckpt.pt")
+                    trainer.save_checkpoint(checkpoint_path, weights_only=False)
+                    if ray.train.get_context().get_world_rank() == 0:
+                        checkpoint = Checkpoint.from_directory(tmpdir)
+                ray.train.report(
+                    {"epoch": trainer.current_epoch}, checkpoint=checkpoint
+                )
+
+    def train_loop():
+        trainer = pl.Trainer(
+            max_epochs=1,
+            devices="auto",
+            accelerator="cpu",
+            strategy=RayDDPStrategy(),
+            plugins=[RayLightningEnvironment()],
+            callbacks=[CustomCheckpointCallback()],
+        )
+        trainer.fit(LinearModule(input_dim=32, output_dim=4), DummyDataModule(8, 16))
+
+    result = TorchTrainer(
+        train_loop_per_worker=train_loop,
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
+    ).fit()
+
+    with result.checkpoint.as_directory() as checkpoint_dir:
+        assert os.path.exists(os.path.join(checkpoint_dir, "ckpt.pt"))
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
