@@ -273,6 +273,64 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
 
     @staticmethod
+    def test_multiple_node_types_share_launch_request_id(setup):
+        """
+        Test that all node types of a launch request are transitioned to
+        ALLOCATION_FAILED when each of them fails, i.e. launch errors of the same
+        launch request don't overwrite each other.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-2",
+                launch_request_id="l1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Both node types of the same launch request failed.
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-2",
+                timestamp_ns=1,
+            ),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup

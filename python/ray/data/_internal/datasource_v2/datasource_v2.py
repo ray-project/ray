@@ -33,6 +33,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+        FilePartitioner,
+    )
     from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
         InMemorySizeEstimator,
     )
@@ -71,7 +74,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     4. Scanner creation
 
     Subclasses should implement the abstract methods and can optionally
-    override _get_file_indexer() and get_size_estimator() for file-based sources.
+    override _get_file_indexer(), get_size_estimator(), and optionally
+    get_file_partitioner() for file-based sources.
 
     Example::
 
@@ -135,6 +139,19 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             FileIndexer instance, or None for non-file-based sources.
         """
         return None
+
+    def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
+        """Partitioner that groups this source's listing rows into read units.
+
+        Defaults to the size-estimating ``RoundRobinPartitioner``. Override when
+        the indexer emits rows carrying richer metadata (e.g. Parquet row-group
+        stats) that a different grouping strategy can exploit.
+        """
+        from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (  # noqa: E501
+            RoundRobinPartitioner,
+        )
+
+        return RoundRobinPartitioner(**kwargs)
 
     def get_size_estimator(self) -> Optional[InMemorySizeEstimator]:
         """Return size estimator for this datasource.

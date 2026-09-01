@@ -1,4 +1,3 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
@@ -1699,7 +1698,6 @@ gymnasium==1.2.2 \
     #   minigrid
     #   pettingzoo
     #   ray
-    #   shimmy
     #   supersuit
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
@@ -3510,7 +3508,6 @@ numpy==2.2.6 \
     #   ray
     #   scikit-learn
     #   scipy
-    #   shimmy
     #   stanio
     #   statsforecast
     #   statsmodels
@@ -5684,12 +5681,6 @@ shellingham==1.5.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   typer
-shimmy==2.0.0 \
-    --hash=sha256:4244e693b0ff28bd5ce55e73c636cab953df2a1fafe639718158ee6510613dfe \
-    --hash=sha256:a42d07806fc1ca5460439cb4799f32d4855a9e1138b39a39031e72fb8460a508
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1 \
     --hash=sha256:3c11d2007b915c43bee3e10625f068d8a349e04f0d81f08f5fa08507427ebf1f \
     --hash=sha256:492c7402ff91beb1342a5898bd61ea953985bf24a41cd9f247409aa2e03c8f77
