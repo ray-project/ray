@@ -11,6 +11,7 @@ import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR,
     TPU_SUBSLICE_LABEL_PREFIX,
     VALID_TPU_TYPES,
     _build_subslice_labels,
@@ -20,7 +21,6 @@ from ray._private.accelerators.tpu import (
     _parse_topology_dims,
     get_chips_per_host,
     get_num_chips_from_topology,
-    get_tpu_resource_per_chip,
     infer_tpu_pod_type_from_topology,
     reserve_tpu_slice,
 )
@@ -128,7 +128,9 @@ def get_tpu_num_slices_for_workers(
         return 1
 
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = get_tpu_resource_per_chip(accelerator_type)
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
 
     try:
         # Calculate how many workers fit in a single slice (num_slices=1)
@@ -182,7 +184,9 @@ def get_tpu_worker_resources(
         - worker_resources: The resource dictionary for a single worker.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = get_tpu_resource_per_chip(accelerator_type)
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
 
     if tpu_resource_per_chip <= 0:
         raise ValueError("`tpu_resource_per_chip` must be a positive integer.")
@@ -404,7 +408,9 @@ def get_num_ready_tpu_slices(
         The integer count of fully ready and available TPU slices.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = get_tpu_resource_per_chip(accelerator_type)
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
     intact_slices = _get_intact_tpu_slices(
         topology, accelerator_type, tpu_resource_per_chip
     )
@@ -466,7 +472,9 @@ def get_num_tpu_slices(
         The integer count of physically intact TPU slices.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = get_tpu_resource_per_chip(accelerator_type)
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
     return len(
         _get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip)
     )
@@ -576,7 +584,9 @@ class SlicePlacementGroup:
         self._num_slices = num_slices
         self._head_reservation_timeout_s = head_reservation_timeout_s
         if tpu_resource_per_chip is None:
-            tpu_resource_per_chip = get_tpu_resource_per_chip(self._accelerator_version)
+            tpu_resource_per_chip = int(
+                os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+            )
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
