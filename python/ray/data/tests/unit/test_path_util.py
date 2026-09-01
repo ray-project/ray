@@ -61,7 +61,9 @@ def test_resolve_http_paths(filesystem):
     "path, expected",
     [
         ("hdfs://namenode.example/path/file", "/path/file"),
+        ("hdfs://namenode.example/path/file;param?query=value", "/path/file;param"),
         ("viewfs://cluster/path/file", "/path/file"),
+        ("viewfs://cluster/path/file;param?query=value", "/path/file;param"),
         ("s3://bucket/path/file", "bucket/path/file"),
         ("gs://bucket/path/file", "bucket/path/file"),
         ("abfs://container/path/file", "container/path/file"),
