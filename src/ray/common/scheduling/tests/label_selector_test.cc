@@ -214,25 +214,23 @@ TEST(LabelSelectorTest, Deduplication) {
 
 namespace {
 
-LabelSelector OneConstraint(const std::string &key,
+LabelSelector OneConstraint(std::string key,
                             LabelSelectorOperator op,
-                            const absl::flat_hash_set<std::string> &values) {
+                            absl::flat_hash_set<std::string> values) {
   LabelSelector selector;
-  selector.AddConstraint(LabelConstraint(key, op, values));
+  selector.AddConstraint(LabelConstraint(std::move(key), op, std::move(values)));
   return selector;
 }
 
-LabelSelector RegionSelector(const absl::flat_hash_set<std::string> &values) {
-  return OneConstraint("region", LabelSelectorOperator::LABEL_IN, values);
+LabelSelector RegionSelector(absl::flat_hash_set<std::string> values) {
+  return OneConstraint("region", LabelSelectorOperator::LABEL_IN, std::move(values));
 }
 
 }  // namespace
 
-// A constraint holds its values in a flat_hash_set and operator== compares them as a
-// set, so selectors built from the same labels have to hash alike however the set was
-// filled. Which slot an element takes depends on the order elements were inserted, when
-// two contend for one, and on a salt absl derives from the address of the table's control
-// bytes, so sweep shuffled orders rather than trusting one layout.
+// LabelConstraint values form an unordered set, so their hash must be order-independent
+// to match operator==. We shuffle inputs to force diverse internal memory layouts
+// (caused by insertion order and internal salting) and verify hash stability.
 TEST(LabelSelectorTest, EqualSelectorsHashEquallyWhateverTheValueOrder) {
   std::vector<std::string> values;
   values.reserve(64);
@@ -248,7 +246,7 @@ TEST(LabelSelectorTest, EqualSelectorsHashEquallyWhateverTheValueOrder) {
   for (int round = 0; round < 16; round++) {
     std::shuffle(values.begin(), values.end(), rng);
     absl::flat_hash_set<std::string> set(values.begin(), values.end());
-    const LabelSelector selector = RegionSelector(set);
+    const LabelSelector selector = RegionSelector(std::move(set));
     // operator== compares the constraint vectors, so it also passes when both sides are
     // empty; the count needs its own assertion, which also guards the [0] below.
     ASSERT_EQ(selector.GetConstraints().size(), 1u);
@@ -264,8 +262,7 @@ TEST(LabelSelectorTest, EqualSelectorsHashEquallyWhateverTheValueOrder) {
   EXPECT_EQ(hashes.size(), 1u);
 }
 
-// The order sweep above would also pass if the values stopped reaching the hash at all,
-// so pin that they contribute.
+// Verify that the values are mixed into the hash.
 TEST(LabelSelectorTest, SelectorsWithDifferentValuesHashDifferently) {
   EXPECT_NE(absl::HashOf(RegionSelector({"us-east", "us-west"})),
             absl::HashOf(RegionSelector({"eu-central", "ap-south"})));
@@ -274,8 +271,7 @@ TEST(LabelSelectorTest, SelectorsWithDifferentValuesHashDifferently) {
   EXPECT_NE(absl::HashOf(RegionSelector({})), absl::HashOf(RegionSelector({"us-east"})));
 }
 
-// The key and the operator need their own case: with only the cases above, dropping
-// either one from the hash leaves this file green.
+// Verify that both the key and the operator are mixed into the hash.
 TEST(LabelSelectorTest, SelectorsDifferingOnlyInKeyOrOperatorHashDifferently) {
   const absl::flat_hash_set<std::string> values = {"us-east"};
   EXPECT_NE(
