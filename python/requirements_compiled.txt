@@ -755,7 +755,6 @@ gymnasium==1.2.2
     #   -r python/requirements.txt
     #   minigrid
     #   pettingzoo
-    #   shimmy
     #   supersuit
 h11==0.16.0
     # via
@@ -1317,7 +1316,6 @@ numpy==2.2.6
     #   raydp
     #   scikit-learn
     #   scipy
-    #   shimmy
     #   skops
     #   soundfile
     #   stanio
@@ -2164,8 +2162,6 @@ shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt
 shellingham==1.5.4
     # via typer
-shimmy==2.0.0
-    # via -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 simplejson==4.0.1
