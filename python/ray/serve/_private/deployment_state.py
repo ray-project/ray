@@ -6846,7 +6846,8 @@ class DeploymentStateManager:
         """
         node_ids = set()
         for deployment_state in self._deployment_states.values():
-            if deployment_state.is_ingress_request_router():
+            info = deployment_state.target_info
+            if info is not None and info.ingress_request_router:
                 continue
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids

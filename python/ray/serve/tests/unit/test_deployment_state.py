@@ -4452,6 +4452,20 @@ def test_get_active_node_ids_excludes_ingress_request_router(
     assert dsm.get_active_node_ids() == {application_node}
 
 
+def test_get_active_node_ids_handles_undeployed_state(
+    mock_deployment_state_manager,
+):
+    """An uninitialized deployment state should not break proxy reconciliation."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    undeployed_id = DeploymentID(name="undeployed", app_name="test_app")
+    undeployed_state = dsm._create_deployment_state(undeployed_id)
+    dsm._deployment_states[undeployed_id] = undeployed_state
+
+    assert undeployed_state.target_info is None
+    assert dsm.get_active_node_ids() == set()
+
+
 def _pinned_target_node_ids(ds) -> set:
     return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
 
