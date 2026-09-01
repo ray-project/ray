@@ -446,6 +446,64 @@ class TestReconciler:
         assert len(failed) == 1
 
     @staticmethod
+    def test_duplicate_launch_errors_sum_failure_counts(setup):
+        """
+        Multiple LaunchNodeError events with the same (request id, type)
+        should add their counts. NodeProviderAdapter emits one error per
+        launch batch, so overwriting would leave extra REQUESTED instances.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 1)],
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 2)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=2,
+            ),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup

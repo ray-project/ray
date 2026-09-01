@@ -394,11 +394,15 @@ class Reconciler:
             )
         )
 
-        # Fail at most LaunchNodeError.count instances per (request id, type)
-        # after assigning any matching unassigned cloud instances.
-        remaining_launch_failures = {
-            key: error.count for key, error in launch_errors.items()
-        }
+        # Fail at most the summed LaunchNodeError.count instances per
+        # (request id, type). NodeProviderAdapter can emit several batch
+        # failures with the same key in one poll; do not keep only the last.
+        remaining_launch_failures: Dict[Tuple[str, NodeType], int] = defaultdict(int)
+        for error in cloud_provider_errors:
+            if isinstance(error, LaunchNodeError):
+                remaining_launch_failures[
+                    (error.request_id, error.node_type)
+                ] += error.count
 
         # For each instance, try to allocate or fail the allocation.
         for instance in instances_with_launch_requests:
