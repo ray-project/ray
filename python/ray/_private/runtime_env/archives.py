@@ -64,6 +64,7 @@ class ArchivesPlugin(RuntimeEnvPlugin):
             self._resources_dir,
             gcs_client=None,
             logger=logger,
+            overwrite=True,
         )
         return get_directory_size_bytes(local_dir)
 

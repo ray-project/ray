@@ -483,7 +483,7 @@ class RuntimeEnvAgent:
             with self._setup_logger_factory.setup_logger(
                 request.job_id.decode(), log_files
             ) as per_job_logger:
-                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+                context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars()))
 
                 # Warn about unrecognized fields in the runtime env.
                 for name, _ in runtime_env.plugins():

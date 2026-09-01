@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -13,9 +14,26 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import create_for_plugin_if_needed
+from ray._private.runtime_env.packaging import get_local_dir_from_uri
+from ray._private.runtime_env.plugin import (
+    RuntimeEnvPlugin,
+    create_for_plugin_if_needed,
+)
 from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv, get_archive_paths
+
+
+class ArchivesRetryPlugin(RuntimeEnvPlugin):
+    name = "archives_retry_plugin"
+    priority = 20
+
+    def __init__(self):
+        self._attempts = 0
+
+    def modify_context(self, uris, runtime_env, context, logger):
+        self._attempts += 1
+        if self._attempts == 1:
+            raise ValueError("Retry archives runtime environment setup.")
 
 
 def _create_zip(path: Path, files: Dict[str, str]) -> str:
@@ -72,6 +90,27 @@ async def test_archives_plugin_lifecycle(tmp_path):
     assert uri_cache.get_total_size_bytes() == 0
     assert not local_dir.exists()
     assert plugin.delete_uri(archive_uri) == 0
+
+
+@pytest.mark.asyncio
+async def test_archives_plugin_overwrites_incomplete_directory(tmp_path):
+    archive_uri = _create_zip(
+        tmp_path / "resources.zip",
+        {"resource.txt": "resource-data"},
+    )
+    plugin = ArchivesPlugin(str(tmp_path / "runtime_resources"))
+    local_dir = get_local_dir_from_uri(archive_uri, plugin._resources_dir)
+    local_dir.mkdir()
+    (local_dir / "incomplete.txt").write_text("incomplete")
+
+    await plugin.create(
+        archive_uri,
+        RuntimeEnv(archives=archive_uri),
+        RuntimeEnvContext(),
+    )
+
+    assert (local_dir / "resource.txt").read_text() == "resource-data"
+    assert not (local_dir / "incomplete.txt").exists()
 
 
 @pytest.mark.asyncio
@@ -166,6 +205,48 @@ def test_archives_runtime_env(tmp_path):
             "duplicate_path": True,
             "config": '{"enabled": true}',
         }
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.parametrize("set_runtime_env_retry_times", ["2"], indirect=True)
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        json.dumps(
+            [{"class": ("ray.tests.test_runtime_env_archives.ArchivesRetryPlugin")}]
+        )
+    ],
+    indirect=True,
+)
+def test_archives_runtime_env_retry(
+    tmp_path, set_runtime_env_retry_times, set_runtime_env_plugins
+):
+    resources_uri = _create_zip(
+        tmp_path / "resources.zip",
+        {"resource.txt": "resource-data"},
+    )
+
+    try:
+        ray.init(num_cpus=1, include_dashboard=False)
+
+        @ray.remote
+        def read_archive():
+            archive_path = Path(get_archive_paths())
+            return (
+                (archive_path / "resource.txt").read_text(),
+                os.environ["USER_ENV_VAR"],
+            )
+
+        assert ray.get(
+            read_archive.options(
+                runtime_env={
+                    "archives": resources_uri,
+                    "env_vars": {"USER_ENV_VAR": "user-value"},
+                    ArchivesRetryPlugin.name: {},
+                }
+            ).remote()
+        ) == ("resource-data", "user-value")
     finally:
         ray.shutdown()
 
