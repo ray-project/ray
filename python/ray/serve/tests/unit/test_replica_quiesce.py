@@ -80,9 +80,9 @@ def _make_shutdown_fake(
     fake._internal_grpc_port = internal_grpc_port
     fake._server = FakeGrpcServer(events, "inter_deployment_stop")
 
-    async def drain(min_draining_period_s=0.0):
-        # Quiescing must only start AFTER the drain: during the drain the
-        # replica must keep serving normally.
+    async def drain(min_draining_period_s=0.0, check_immediately=False):
+        # The drain runs before quiescing, so the replica keeps serving
+        # normally while it drains.
         assert fake._quiescing is False
         events.append(("drain", min_draining_period_s))
 
@@ -244,8 +244,7 @@ class TestPerformGracefulShutdown:
 
     @pytest.mark.asyncio
     async def test_behind_haproxy_uses_two_phase_drain(self):
-        """Behind HAProxy the two-phase drain is used instead of serving for as
-        long as requests keep arriving."""
+        """With HAProxy enabled, shutdown runs the two-phase drain."""
         fake, events = _make_shutdown_fake(is_direct_ingress=True)
 
         with patch(
@@ -261,8 +260,11 @@ class TestPerformGracefulShutdown:
 
     @pytest.mark.asyncio
     async def test_without_haproxy_keeps_serving_until_drained(self):
-        """Without a retrying party in front, the replica keeps accepting for
-        the whole drain: refusing would surface to the client."""
+        """With HAProxy disabled, shutdown runs the plain drain.
+
+        Nothing in front would retry a refused connection, so the replica
+        keeps accepting for the whole drain.
+        """
         fake, events = _make_shutdown_fake(is_direct_ingress=True)
 
         with patch(
@@ -287,29 +289,34 @@ class TestDrainBehindHAProxy:
             lambda: Replica._stop_accepting_direct_ingress(fake)
         )
 
-        async def drain(min_draining_period_s=0.0):
-            events.append(("drain", min_draining_period_s))
+        async def drain(min_draining_period_s=0.0, check_immediately=False):
+            events.append(("drain", min_draining_period_s, check_immediately))
 
         fake._drain_ongoing_requests = drain
         return fake, events
 
     @pytest.mark.asyncio
     async def test_closes_listeners_before_waiting_for_in_flight(self):
-        """The listeners close first, so a request arriving from a stale router
-        is refused (and retried elsewhere) rather than admitted and then severed
-        when the replica exits."""
+        """The HTTP listener closes before we wait for in-flight requests.
+
+        A request that arrives after that is refused, so the caller can retry
+        it elsewhere instead of having it cut off when the replica exits.
+        """
         fake, events = self._make_fake()
 
         await Replica._drain_behind_haproxy(fake, 0.0)
 
         assert [e[0] for e in events] == ["http_should_exit", "drain"]
-        # The minimum period is already spent; it must not be applied again.
-        assert events[-1] == ("drain", 0.0)
+        # Phase 1 already waited, so don't wait again, and check the request
+        # count before sleeping (see `check_immediately`).
+        assert events[-1] == ("drain", 0.0, True)
 
     @pytest.mark.asyncio
     async def test_serves_the_full_deregistration_window_first(self):
-        """The minimum draining period is honoured in full: listeners stay open
-        until load balancers have had time to deregister this replica."""
+        """The listener stays open for the whole draining period.
+
+        That is the window load balancers need to deregister the replica.
+        """
         fake, events = self._make_fake()
 
         start = time.monotonic()
@@ -321,13 +328,47 @@ class TestDrainBehindHAProxy:
 
     @pytest.mark.asyncio
     async def test_no_http_server_is_a_no_op(self):
-        """A replica without a direct ingress HTTP server still drains."""
+        """A replica with no direct ingress HTTP server still drains."""
         fake, events = self._make_fake()
         fake._direct_ingress_http_server = None
 
         await Replica._drain_behind_haproxy(fake, 0.0)
 
         assert [e[0] for e in events] == ["drain"]
+
+
+class TestDrainOngoingRequests:
+    @staticmethod
+    def _make_fake(wait_loop_period_s: float, num_ongoing: int = 0):
+        fake = MagicMock()
+        fake._deployment_config.graceful_shutdown_wait_loop_s = wait_loop_period_s
+        fake.get_num_ongoing_requests = lambda: num_ongoing
+        return fake
+
+    @pytest.mark.asyncio
+    async def test_check_immediately_skips_the_first_sleep(self):
+        """With the flag set, an idle replica returns without sleeping first.
+
+        Callers that already waited out the draining period use this: another
+        wait loop can overrun the controller's force-kill deadline, which
+        would cut the shutdown short before the servers close gracefully.
+        """
+        fake = self._make_fake(wait_loop_period_s=10)
+
+        start = time.monotonic()
+        await Replica._drain_ongoing_requests(fake, check_immediately=True)
+
+        assert time.monotonic() - start < 1
+
+    @pytest.mark.asyncio
+    async def test_sleeps_before_the_first_check_by_default(self):
+        """Without the flag, the request count is checked after a wait loop."""
+        fake = self._make_fake(wait_loop_period_s=0.05)
+
+        start = time.monotonic()
+        await Replica._drain_ongoing_requests(fake)
+
+        assert time.monotonic() - start >= 0.05
 
 
 if __name__ == "__main__":

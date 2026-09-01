@@ -2071,18 +2071,34 @@ class Replica:
         finally:
             release()
 
-    async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
+    async def _drain_ongoing_requests(
+        self,
+        min_draining_period_s: float = 0.0,
+        check_immediately: bool = False,
+    ):
         """Wait until the minimum draining period has elapsed and no ongoing
         requests remain.
 
         The minimum draining period gives load balancers time to deregister
         this replica; a request admitted during it becomes ongoing and is
         waited for like any other.
+
+        Args:
+            min_draining_period_s: keep waiting until at least this long has
+                passed, even if no requests are ongoing.
+            check_immediately: count ongoing requests before the first
+                `graceful_shutdown_wait_loop_s` sleep instead of after it. Use
+                this when the caller already waited out the draining period, so
+                an idle replica does not spend another wait loop here.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         deadline = time.monotonic() + min_draining_period_s
+        skip_sleep = check_immediately
         while True:
-            await asyncio.sleep(wait_loop_period_s)
+            if skip_sleep:
+                skip_sleep = False
+            else:
+                await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
             min_period_remaining_s = deadline - time.monotonic()
@@ -2140,8 +2156,11 @@ class Replica:
         )
         self._stop_accepting_direct_ingress()
 
-        # Phase 3: wait for in-flight requests (window already served).
-        await self._drain_ongoing_requests()
+        # Phase 3: wait for in-flight requests. Check the count before
+        # sleeping: the window is already spent, and another
+        # graceful_shutdown_wait_loop_s here can run past the controller's
+        # force-kill deadline, which would skip the quiesce below.
+        await self._drain_ongoing_requests(check_immediately=True)
 
     async def shutdown(self):
         try:
