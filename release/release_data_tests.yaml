@@ -304,10 +304,30 @@
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      shuffle_strategy: []
+      columns: []
+      # Only sort_shuffle_pull_based over the 84-group key wants a larger
+      # budget; the rest measured best at 32 MiB. A matrix cannot vary
+      # ``byod.runtime_env`` per value, so the budget rides as a matrix
+      # dimension. Rendered test names are unchanged.
+      bin_packing_bytes: []
+    adjustments:
+      - with:
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 268435456
+      - with:
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 33554432
+      - with:
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 33554432
+      - with:
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 33554432
 
   cluster:
     anyscale_sdk_2026: true
@@ -344,7 +364,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
