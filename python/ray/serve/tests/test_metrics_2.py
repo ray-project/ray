@@ -143,9 +143,22 @@ class TestRequestContextMetrics:
             timeout=PROMETHEUS_METRICS_TIMEOUT_S,
         )
 
+    def _wait_for_exports(self, metric_names, timeseries):
+        """One debut budget covering every series; a first export is the slow
+        step, and gating each name separately would take one budget apiece."""
+
+        def check():
+            samples = self._scrape(timeseries)
+            for name in metric_names:
+                assert samples[name], f"Metric {name} not exported yet"
+            return True
+
+        wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
+
     def _wait_for_metric_summary(self, metric_names, expected, timeseries):
         """Deployments export independently, so wait for all of them rather than
         asserting on whichever happen to have reported already."""
+        self._wait_for_exports(metric_names, timeseries)
 
         def check():
             samples = self._scrape(timeseries)
@@ -188,6 +201,7 @@ class TestRequestContextMetrics:
     def _wait_for_proxy_routes(self, metric_names, expected_routes, timeseries):
         """Proxy metrics export on their own cycle, so they can still be missing
         once the deployment metrics waited on above have arrived."""
+        self._wait_for_exports(metric_names, timeseries)
 
         def check():
             samples = self._scrape(timeseries)
@@ -684,6 +698,7 @@ class TestHandleMetrics:
             # call.remote("WaitForSignal", "app1")
             # c.call.remote()
             caller.call.remote()
+            wait_for_metric_export("ray_serve_deployment_queued_queries", timeseries)
             wait_for_metric(
                 check_sum_metric_eq,
                 metric_name="ray_serve_deployment_queued_queries",
@@ -919,6 +934,9 @@ class TestHandleMetrics:
             print(f"Sending request to d{index}")
             call.remote("Router", "app1", index)
             requests_sent[index] += 1
+            wait_for_metric_export(
+                "ray_serve_num_ongoing_requests_at_replicas", timeseries
+            )
 
             wait_for_metric(
                 check_sum_metric_eq,
