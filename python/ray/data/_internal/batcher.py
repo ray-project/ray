@@ -486,8 +486,8 @@ class ShufflingBatcher(BatcherInterface):
         """Return number of unyielded rows in the uncompacted buffer."""
         return self._builder.num_rows()
 
-    def _compact_shuffle_buffer(self) -> None:
-        """Build and shuffle a new logical buffer generation."""
+    def _start_new_shuffle_generation(self) -> None:
+        """Build the buffer, take plans, and permutation for a new generation."""
         if self._buffer_state is not None and self._buffer_state.remaining_rows > 0:
             # Reuse this generation's prepared plans when carrying its unyielded
             # rows into the next generation.
@@ -527,7 +527,7 @@ class ShufflingBatcher(BatcherInterface):
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            self._compact_shuffle_buffer()
+            self._start_new_shuffle_generation()
 
         assert self._buffer_state is not None
         return self._buffer_state.take_next(self._batch_size)
