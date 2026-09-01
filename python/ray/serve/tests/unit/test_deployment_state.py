@@ -4424,6 +4424,34 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
+def test_get_active_node_ids_excludes_ingress_request_router(
+    mock_deployment_state_manager,
+):
+    """Ingress request routers should not keep their proxy nodes active."""
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    application_node = NodeID.from_random().hex()
+    router_node = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(application_node)
+    cluster_node_info_cache.add_node(router_node)
+
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=1)[0])
+    assert dsm.deploy(
+        TEST_DEPLOYMENT_ID_2,
+        deployment_info(ingress_request_router=True)[0],
+    )
+    dsm.update(proxy_nodes={router_node})
+
+    application_state = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    router_state = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
+    application_state._replicas.get()[0]._actor.set_node_id(application_node)
+    router_state._replicas.get()[0]._actor.set_node_id(router_node)
+
+    assert application_state.get_active_node_ids() == {application_node}
+    assert router_state.get_active_node_ids() == {router_node}
+    assert dsm.get_active_node_ids() == {application_node}
+
+
 def _pinned_target_node_ids(ds) -> set:
     return {r.target_node_id for r in ds._replicas.get(states=[ReplicaState.STARTING])}
 
