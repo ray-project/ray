@@ -474,8 +474,9 @@ def test_maybe_enable_token_auth_if_token_available(
     token_source, auth_mode_env, expected_enabled, tmp_path
 ):
     """The helper enables token auth for a local head cluster when a token is
-    available from any source and RAY_AUTH_MODE isn't explicitly set, and warns
-    when token auth ends up disabled."""
+    available from any source and RAY_AUTH_MODE isn't explicitly set. It warns
+    whenever RAY_AUTH_MODE is unset (that auth was enabled or left disabled), and
+    stays silent when the mode is set explicitly."""
     from unittest import mock
 
     import ray._private.authentication.authentication_token_setup as auth_setup
@@ -511,13 +512,23 @@ def test_maybe_enable_token_auth_if_token_available(
 
         if expected_enabled:
             assert get_authentication_mode() == AuthenticationMode.TOKEN
-            mock_warning.assert_not_called()
         else:
-            # The explicit setting (or lack thereof) is preserved, and the user
-            # is warned that the cluster is unauthenticated.
+            # The explicit setting (or lack thereof) is preserved.
             assert os.environ.get("RAY_AUTH_MODE") == auth_mode_env
             assert get_authentication_mode() == AuthenticationMode.DISABLED
+
+        # Warn only when RAY_AUTH_MODE is unset (that auth was enabled or left
+        # disabled); an explicit mode is respected silently.
+        if auth_mode_env is None:
             mock_warning.assert_called_once()
+            expected_phrase = (
+                "Token authentication is enabled"
+                if expected_enabled
+                else "Token authentication is disabled"
+            )
+            assert expected_phrase in mock_warning.call_args.args[0]
+        else:
+            mock_warning.assert_not_called()
 
     reset_auth_token_state()
 
@@ -557,7 +568,8 @@ def test_maybe_enable_token_auth_if_token_available_fails_closed(tmp_path):
 )
 def test_enable_token_auth_by_default(auth_mode_env, token_exists, expected_enabled):
     """The helper enables token auth by default for a new local ray.init()
-    cluster unless RAY_AUTH_MODE is explicitly set, and never warns."""
+    cluster unless RAY_AUTH_MODE is explicitly set. It warns that auth was
+    enabled when RAY_AUTH_MODE is unset, and stays silent when it is set."""
     from unittest import mock
 
     import ray._private.authentication.authentication_token_setup as auth_setup
@@ -579,8 +591,14 @@ def test_enable_token_auth_by_default(auth_mode_env, token_exists, expected_enab
             enabled = auth_setup.enable_token_auth_by_default()
 
         assert enabled is expected_enabled
-        # This helper never warns, regardless of outcome.
-        mock_warning.assert_not_called()
+
+        # Warn only when RAY_AUTH_MODE is unset (auth enabled by default); an
+        # explicit mode is respected silently.
+        if auth_mode_env is None:
+            mock_warning.assert_called_once()
+            assert "Token authentication is enabled" in mock_warning.call_args.args[0]
+        else:
+            mock_warning.assert_not_called()
 
         if expected_enabled:
             assert get_authentication_mode() == AuthenticationMode.TOKEN
@@ -647,16 +665,16 @@ def test_ray_start_head_enables_auth_from_existing_token():
     reason="Uses subprocess ray start, not compatible with client mode",
 )
 @pytest.mark.parametrize(
-    "auth_mode",
+    "auth_mode, expect_warn",
     [
-        None,  # RAY_AUTH_MODE unset + no token -> disabled + warn.
-        "disabled",  # RAY_AUTH_MODE=disabled -> disabled + warn.
+        (None, True),  # RAY_AUTH_MODE unset + no token -> disabled + warn.
+        ("disabled", False),  # explicit RAY_AUTH_MODE=disabled -> no warn.
     ],
     ids=["unset_no_token", "explicit_disabled"],
 )
-def test_ray_start_head_warns_when_auth_disabled(auth_mode):
-    """ray start --head starts and warns the user when it runs without token auth,
-    both when no token is available and when RAY_AUTH_MODE=disabled."""
+def test_ray_start_head_warns_when_auth_disabled(auth_mode, expect_warn):
+    """ray start --head warns that it runs without token auth only when
+    RAY_AUTH_MODE is unset; an explicit RAY_AUTH_MODE=disabled is silent."""
     # No token available anywhere.
     env = os.environ.copy()
     env.pop("RAY_AUTH_MODE", None)
@@ -673,9 +691,10 @@ def test_ray_start_head_warns_when_auth_disabled(auth_mode):
             ["--head", "--port=0"], env, expect_success=True
         )
         output = result.stdout + result.stderr
+        warned = "Token authentication is disabled" in output
         assert (
-            "Token authentication is disabled" in output
-        ), f"Expected a token-auth-disabled warning. Got: {output}"
+            warned is expect_warn
+        ), f"Expected disabled-warning={expect_warn}. Got: {output}"
     finally:
         _cleanup_ray_start(env)
 
