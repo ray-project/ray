@@ -64,71 +64,69 @@ class TestQueryPrometheus:
             urllib.request, "urlopen", lambda url, timeout=None: _FakeResp(payload)
         )
 
-    def test_vector_one_sample(self, monkeypatch):
-        self._patch(
-            monkeypatch,
-            _vector(2.5, labels={"model": "a"}, timestamp=123.0),
-        )
-        assert ap._query_prometheus(
-            "http://x/api/v1/query", "q", 5.0
-        ) == PrometheusVector(
-            samples=(
-                PrometheusSample(labels={"model": "a"}, value=2.5, timestamp=123.0),
-            )
-        )
-
-    def test_scalar(self, monkeypatch):
-        self._patch(
-            monkeypatch,
-            {
-                "status": "success",
-                "data": {"resultType": "scalar", "result": [123.0, "3.5"]},
-            },
-        )
-        assert ap._query_prometheus(
-            "http://x/api/v1/query", "q", 5.0
-        ) == PrometheusScalar(value=3.5, timestamp=123.0)
-
-    def test_multi_sample_vector(self, monkeypatch):
-        self._patch(
-            monkeypatch,
-            {
-                "status": "success",
-                "data": {
-                    "resultType": "vector",
-                    "result": [
-                        {"metric": {"model": "a"}, "value": [1.0, "1.0"]},
-                        {"metric": {"model": "b"}, "value": [2.0, "2.0"]},
-                    ],
+    @pytest.mark.parametrize(
+        "payload,expected",
+        [
+            pytest.param(
+                _vector(2.5, labels={"model": "a"}, timestamp=123.0),
+                PrometheusVector(
+                    samples=(
+                        PrometheusSample(
+                            labels={"model": "a"}, value=2.5, timestamp=123.0
+                        ),
+                    )
+                ),
+                id="vector_one_sample",
+            ),
+            pytest.param(
+                {
+                    "status": "success",
+                    "data": {"resultType": "scalar", "result": [123.0, "3.5"]},
                 },
-            },
-        )
-        assert ap._query_prometheus(
-            "http://x/api/v1/query", "q", 5.0
-        ) == PrometheusVector(
-            samples=(
-                PrometheusSample(labels={"model": "a"}, value=1.0, timestamp=1.0),
-                PrometheusSample(labels={"model": "b"}, value=2.0, timestamp=2.0),
-            )
-        )
-
-    def test_empty_vector(self, monkeypatch):
-        self._patch(
-            monkeypatch,
-            {
-                "status": "success",
-                "data": {"resultType": "vector", "result": []},
-            },
-        )
-        assert ap._query_prometheus(
-            "http://x/api/v1/query", "q", 5.0
-        ) == PrometheusVector(samples=())
-
-    def test_nan_is_no_data(self, monkeypatch):
-        self._patch(monkeypatch, _vector(float("nan")))
-        assert ap._query_prometheus(
-            "http://x/api/v1/query", "q", 5.0
-        ) == PrometheusVector(samples=())
+                PrometheusScalar(value=3.5, timestamp=123.0),
+                id="scalar",
+            ),
+            pytest.param(
+                {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [
+                            {"metric": {"model": "a"}, "value": [1.0, "1.0"]},
+                            {"metric": {"model": "b"}, "value": [2.0, "2.0"]},
+                        ],
+                    },
+                },
+                PrometheusVector(
+                    samples=(
+                        PrometheusSample(
+                            labels={"model": "a"}, value=1.0, timestamp=1.0
+                        ),
+                        PrometheusSample(
+                            labels={"model": "b"}, value=2.0, timestamp=2.0
+                        ),
+                    )
+                ),
+                id="multi_sample_vector",
+            ),
+            pytest.param(
+                {
+                    "status": "success",
+                    "data": {"resultType": "vector", "result": []},
+                },
+                PrometheusVector(samples=()),
+                id="empty_vector",
+            ),
+            pytest.param(
+                _vector(float("nan")),
+                PrometheusVector(samples=()),
+                id="nan_is_no_data",
+            ),
+        ],
+    )
+    def test_result_parsing(self, monkeypatch, payload, expected):
+        self._patch(monkeypatch, payload)
+        assert ap._query_prometheus("http://x/api/v1/query", "q", 5.0) == expected
 
     def test_native_histogram_rejected(self, monkeypatch):
         self._patch(
@@ -204,29 +202,41 @@ class TestPrometheusQueryMixin:
         time.sleep(0.2)
         assert calls == []
 
-    def test_address_defaults_to_env(self, monkeypatch):
-        monkeypatch.setenv("RAY_PROMETHEUS_HOST", "http://envhost:9090")
-        mixin = PrometheusQueryMixin(prometheus_queries=["q"])
-        assert mixin._prometheus_address == "http://envhost:9090"
-
-    def test_explicit_address_overrides_env(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "explicit_address,expected",
+        [
+            pytest.param(None, "http://envhost:9090", id="env_default"),
+            pytest.param(
+                "http://explicit:9090", "http://explicit:9090", id="explicit_override"
+            ),
+        ],
+    )
+    def test_address_resolution(self, monkeypatch, explicit_address, expected):
         monkeypatch.setenv("RAY_PROMETHEUS_HOST", "http://envhost:9090")
         mixin = PrometheusQueryMixin(
-            prometheus_address="http://explicit:9090", prometheus_queries=["q"]
+            prometheus_address=explicit_address, prometheus_queries=["q"]
         )
-        assert mixin._prometheus_address == "http://explicit:9090"
+        assert mixin._prometheus_address == expected
 
-    def test_headers_default_to_env(self, monkeypatch):
-        monkeypatch.setenv(
-            "RAY_PROMETHEUS_HEADERS", '{"Authorization": "Bearer token"}'
-        )
+    @pytest.mark.parametrize(
+        "env_value,expected",
+        [
+            pytest.param(
+                '{"Authorization": "Bearer token"}',
+                {"Authorization": "Bearer token"},
+                id="json_object",
+            ),
+            pytest.param(
+                '[["X-Scope-OrgID", "tenant"]]',
+                {"X-Scope-OrgID": "tenant"},
+                id="list_of_pairs",
+            ),
+        ],
+    )
+    def test_headers_from_env(self, monkeypatch, env_value, expected):
+        monkeypatch.setenv("RAY_PROMETHEUS_HEADERS", env_value)
         mixin = PrometheusQueryMixin()
-        assert mixin._prometheus_headers == {"Authorization": "Bearer token"}
-
-    def test_headers_accept_env_list_format(self, monkeypatch):
-        monkeypatch.setenv("RAY_PROMETHEUS_HEADERS", '[["X-Scope-OrgID", "tenant"]]')
-        mixin = PrometheusQueryMixin()
-        assert mixin._prometheus_headers == {"X-Scope-OrgID": "tenant"}
+        assert mixin._prometheus_headers == expected
 
     def test_read_does_not_block_on_fetch(self, monkeypatch):
         def slow(address, queries, timeout_s=5.0, headers=None):

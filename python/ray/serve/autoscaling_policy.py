@@ -548,9 +548,11 @@ def _fetch_prometheus_results(
             if result is not None:
                 out[query] = result
         except Exception as exc:
-            logger.warning("Failed to evaluate Prometheus query %r: %s", query, exc)
-            logger.debug(
-                "Failed to evaluate Prometheus query %r.", query, exc_info=True
+            logger.warning(
+                "Failed to evaluate Prometheus query %r: %s",
+                query,
+                exc,
+                exc_info=logger.isEnabledFor(logging.DEBUG),
             )
     return out
 
@@ -623,8 +625,6 @@ class PrometheusQueryMixin:
         self._prometheus_headers = _parse_prometheus_headers(
             os.environ.get(_PROMETHEUS_HEADERS_ENV_VAR, "{}")
         )
-        if isinstance(prometheus_queries, str):
-            prometheus_queries = [prometheus_queries]
         self._prometheus_queries = list(prometheus_queries or [])
         self._fetch_interval_s = fetch_interval_s
         self._cache_ttl_s = cache_ttl_s
