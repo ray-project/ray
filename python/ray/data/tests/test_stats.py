@@ -21,6 +21,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.data import ActorPoolStrategy
+from ray.data.datasource import Datasink
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -1897,6 +1898,64 @@ def test_udf_time_phases_separate_object_serde(ray_start_regular_shared):
     assert sum(p.sum for p in parts.values()) == pytest.approx(
         op.udf_time.sum, rel=1e-6
     )
+
+
+def test_eagerly_consuming_stage_body_is_timed(ray_start_regular_shared):
+    """A stage that consumes its input eagerly still has its work attributed.
+
+    A write does its whole upload inside the call that builds its output
+    iterable, before any timing iterator wraps it, so timing only `__next__`
+    misses it entirely -- reporting microseconds for an upload that took
+    seconds. It belongs in `Built-in stages`, since a datasink is Ray Data's
+    code rather than the user's.
+    """
+    write_sleep_s = 0.3
+    num_blocks = 2
+
+    class SlowSink(Datasink):
+        def write(self, blocks, ctx):
+            written = 0
+            for _ in blocks:
+                time.sleep(write_sleep_s)
+                written += 1
+            return written
+
+    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks).map_batches(
+        lambda batch: batch, batch_size=None
+    )
+    ds.write_datasink(SlowSink())
+
+    op = ds._write_ds.get_stats_summary().operators_stats[-1]
+    expected_s = write_sleep_s * num_blocks
+    assert op.other_stage_time is not None, "built-in stage time was not collected"
+    # Generous lower bound: the point is that seconds of I/O are not reported as
+    # microseconds, not that the figure is tight.
+    assert op.other_stage_time.sum > expected_s * 0.5, (
+        f"write of {expected_s}s reported {op.other_stage_time.sum}s of "
+        f"built-in stage time"
+    )
+    # And it is inside the headline total, not stranded outside it.
+    assert op.udf_time.sum >= op.other_stage_time.sum
+
+
+def test_operator_without_a_udf_reports_no_udf_time(
+    ray_start_regular_shared, restore_data_context
+):
+    """An operator that runs no user function reports no UDF time.
+
+    Every stage of a decomposed chain is timed, so without a guard a standalone
+    read would report its whole transform under "UDF time" -- on an operator
+    that runs nothing the user wrote -- where it has always reported zero.
+    """
+    ds = ray.data.range(100, override_num_blocks=2).materialize()
+    op = ds.get_stats_summary().operators_stats[-1]
+
+    assert op.udf_time.sum == 0.0, f"read reported {op.udf_time.sum}s of UDF time"
+    # Nothing was measured, so the phases are absent rather than a row of zeros.
+    assert op.input_prep_time is None
+    assert op.udf_body_time is None
+    assert op.output_build_time is None
+    assert op.other_stage_time is None
 
 
 def test_row_transform_phases_are_opt_in(

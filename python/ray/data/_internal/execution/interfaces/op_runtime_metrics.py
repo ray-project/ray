@@ -448,8 +448,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     other_stage_time_s: float = metric_field(
         default=0,
         description=(
-            "Time spent in the bodies of non-UDF stages fused into the same "
-            "chain, such as a read or a write."
+            "Time spent in the bodies of stages Ray Data supplies itself, such "
+            "as a read or a write, fused into the same chain. Excludes the input "
+            "prep and output build around every stage, which are reported "
+            "separately."
         ),
         metrics_group=MetricsGroup.TASKS,
         # Only map operators run a UDF transform chain.

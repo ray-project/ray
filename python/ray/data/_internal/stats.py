@@ -1934,20 +1934,25 @@ class OperatorStatsSummary:
             # the detail warrants. They are absent altogether for row-based
             # transforms unless `DataContext.accurate_map_phase_timing` is set,
             # since measuring them per row costs more than it reports.
+            # The trailing flag is whether to print the line at 0.0. The three
+            # phases every chain runs are always printed, so the lines visibly
+            # sum to the total above and a fast phase doesn't silently vanish.
+            # Built-in stages is dropped at zero: most chains fuse nothing
+            # built-in, and a constant 0.0 line would be noise.
             breakdown = [
-                ("Input prep", self.input_prep_time),
-                ("Function body", self.udf_body_time),
-                ("Output block build", self.output_build_time),
-                # Bodies of the stages Ray Data supplies -- reads, writes,
-                # downloads, file listing -- as opposed to the function you
-                # passed. Only non-zero when one is fused into this operator.
-                ("Built-in stages", self.other_stage_time),
+                ("Input prep", self.input_prep_time, True),
+                ("Function body", self.udf_body_time, True),
+                ("Output block build", self.output_build_time, True),
+                # Bodies of the stages Ray Data supplies -- reads, downloads,
+                # file listing -- as opposed to the function you passed. Only
+                # non-zero when one is fused into this operator.
+                ("Built-in stages", self.other_stage_time, False),
             ]
             if DataContext.get_current().verbose_stats_logs and any(
-                s is not None and s.sum for _, s in breakdown
+                s is not None for _, s, _ in breakdown
             ):
-                for label, stats in breakdown:
-                    if stats is None or not stats.sum:
+                for label, stats, always_show in breakdown:
+                    if stats is None or (not always_show and not stats.sum):
                         continue
                     out += indent
                     out += "\t* {}: {} min, {} max, {} mean, {} total\n".format(

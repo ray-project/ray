@@ -94,16 +94,22 @@ class MapTransformFnDataType(Enum):
 
 # Hook that wraps one phase of one stage, returning the iterable to chain into
 # the next. `MapTransformer.apply_transform` passes one that times.
+#
+# It takes a thunk rather than the iterable: a stage that consumes its input
+# eagerly does its work while building the iterable, so the hook has to own the
+# call to time it at all.
 PhaseWrapFn = Callable[
-    ["MapTransformPhase", Iterable[MapTransformFnData]], Iterable[MapTransformFnData]
+    ["MapTransformPhase", Callable[[], Iterable[MapTransformFnData]]],
+    Iterable[MapTransformFnData],
 ]
 
 
 def _no_phase_wrapping(
-    phase: "MapTransformPhase", data: Iterable[MapTransformFnData]
+    phase: "MapTransformPhase",
+    make_data: Callable[[], Iterable[MapTransformFnData]],
 ) -> Iterable[MapTransformFnData]:
     """Default `PhaseWrapFn`, for chains that only time their total."""
-    return data
+    return make_data()
 
 
 class MapTransformFn(ABC):
@@ -175,12 +181,16 @@ class MapTransformFn(ABC):
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
         wrap_phase: "PhaseWrapFn" = _no_phase_wrapping,
     ) -> Iterable[Block]:
-        batches = wrap_phase(MapTransformPhase.INPUT_PREP, self._pre_process(blocks))
+        batches = wrap_phase(
+            MapTransformPhase.INPUT_PREP, lambda: self._pre_process(blocks)
+        )
         results = wrap_phase(
             MapTransformPhase.UDF_BODY,
-            self._apply_transform(ctx, batches, report_custom_op_stats),
+            lambda: self._apply_transform(ctx, batches, report_custom_op_stats),
         )
-        return wrap_phase(MapTransformPhase.OUTPUT_BUILD, self._post_process(results))
+        return wrap_phase(
+            MapTransformPhase.OUTPUT_BUILD, lambda: self._post_process(results)
+        )
 
     @property
     def output_block_size_option(self):
@@ -283,6 +293,35 @@ class UDFTimeScope:
         self.phase_totals: List[float] = [0.0] * len(MapTransformPhase)
         # Set by `apply_transform`; False when only the total was measured.
         self.decomposed: bool = False
+
+    def attribute_call(
+        self,
+        phase: Optional["MapTransformPhase"],
+        make_data: Callable[[], Iterable[MapTransformFnData]],
+    ) -> Iterable[MapTransformFnData]:
+        """Run ``make_data()`` inside an attribution window and return its result.
+
+        A stage that streams does its work in ``__next__``, which the timing
+        iterator covers. A stage that consumes its input eagerly -- a write
+        performs its whole upload before handing back a buffer -- does it here
+        instead, where no iterator can see it. Timing the call is what puts that
+        work in the total.
+
+        Runs once per stage per task, so unlike ``__next__`` it is off the hot
+        path and its cost does not scale with rows.
+        """
+        before_s = self.attributed_s
+        start = time.perf_counter()
+        try:
+            return make_data()
+        finally:
+            inclusive_s = time.perf_counter() - start
+            # An eager stage pulls its input through the timers already in the
+            # chain, so subtract what they credited to leave its own work.
+            exclusive_s = max(0.0, inclusive_s - (self.attributed_s - before_s))
+            self.attributed_s += exclusive_s
+            if phase is not None:
+                self.phase_totals[phase.value] += exclusive_s
 
     def drain(self) -> "MapTransformPhaseTimes":
         """Return the time accumulated since the last drain, and reset."""
@@ -454,10 +493,17 @@ class MapTransformer:
         # `accurate_map_phase_timing` opts into the breakdown for them.
         from ray.data.context import DataContext
 
+        # A chain with no UDF in it -- a standalone read, write or projection --
+        # has no user function to attribute time to, so it reports no UDF time at
+        # all, as it always has. Timing its stages would put its whole transform
+        # under "UDF time" on an operator that runs nothing the user wrote.
+        has_udf = any(fn._is_udf for fn in self._transform_fns)
         per_row = any(
             fn._input_type is MapTransformFnDataType.Row for fn in self._transform_fns
         )
-        decomposed = not per_row or DataContext.get_current().accurate_map_phase_timing
+        decomposed = has_udf and (
+            not per_row or DataContext.get_current().accurate_map_phase_timing
+        )
         udf_time_scope.decomposed = decomposed
 
         iter = input_blocks
@@ -466,21 +512,39 @@ class MapTransformer:
         # eagerly, and with `batch_size="auto"` that peeks at a real block to
         # size batches, pulling data through the stages already in the chain.
         for transform_fn in self._transform_fns:
+            if not has_udf:
+                # Nothing the user wrote runs in this chain, so there is nothing
+                # to attribute and no timer to pay for.
+                iter = transform_fn(iter, ctx, report_custom_op_stats)
+                continue
+
             if decomposed:
                 is_udf = transform_fn._is_udf
 
                 def wrap_phase(
                     phase: MapTransformPhase,
-                    data: Iterable[MapTransformFnData],
+                    make_data: Callable[[], Iterable[MapTransformFnData]],
                     _is_udf: bool = is_udf,
                 ) -> Iterable[MapTransformFnData]:
                     if phase is MapTransformPhase.UDF_BODY and not _is_udf:
                         phase = MapTransformPhase.OTHER
+                    # Time building the iterable as well as draining it, so a
+                    # stage that consumes its input eagerly is not missed.
+                    data = udf_time_scope.attribute_call(phase, make_data)
                     return self._UDFTimingIterator(data, udf_time_scope, phase)
 
                 iter = transform_fn(iter, ctx, report_custom_op_stats, wrap_phase)
             else:
-                iter = transform_fn(iter, ctx, report_custom_op_stats)
+                # Only UDF stages get a per-item timer here -- paying that per
+                # row is what this branch exists to avoid. The eager window is
+                # once per stage, so every stage gets one and the total stays
+                # the figure the decomposed branch would report.
+                iter = udf_time_scope.attribute_call(
+                    None,
+                    lambda fn=transform_fn, it=iter: fn(
+                        it, ctx, report_custom_op_stats
+                    ),
+                )
                 if transform_fn._is_udf:
                     iter = self._UDFTimingIterator(iter, udf_time_scope)
 
