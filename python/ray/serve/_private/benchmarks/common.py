@@ -400,6 +400,17 @@ def _controller_replica_num_cpus(target_replicas: int) -> float:
     return _CONTROLLER_REPLICA_NUM_CPUS * _CONTROLLER_DENSE_PACK_ABOVE / target_replicas
 
 
+# Fixed per-replica memory reservation so the scheduler packs nodes by memory
+# as well as CPU. Replica processes have roughly constant RSS regardless of
+# their CPU reservation (idle waiters still pay full process memory), so the
+# dense packing above 4096 (num_cpus 0.2 -> ~40 procs/node) can drive m5.2xlarge
+# workers into the 95% memory-monitor kill threshold and lose replicas
+# mid-benchmark (observed 2026-08-31: 28.6GB used / 30.0GB limit on the failing
+# node). 600MiB binds packing at ~34 replicas/node under the default
+# schedulable-memory figure on m5.2xlarge (~20.5GiB) and deliberately does not
+# bind at or below 4096 (20 procs/node), so historical series are unchanged.
+_CONTROLLER_REPLICA_MEMORY_BYTES = 600 * 1024**2
+
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
 # concurrent waiters (up to 8192 in controller benchmark).
 _SignalActorForController = _SignalActor.options(max_concurrency=100000)
@@ -429,7 +440,10 @@ class ControllerBenchHelloWorld:
     autoscaling_config=_CONTROLLER_AUTOSCALING_CONFIG,
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=1,
-    ray_actor_options={"num_cpus": _CONTROLLER_REPLICA_NUM_CPUS},
+    ray_actor_options={
+        "num_cpus": _CONTROLLER_REPLICA_NUM_CPUS,
+        "memory": _CONTROLLER_REPLICA_MEMORY_BYTES,
+    },
 )
 class ControllerBenchMetricsGenerator:
     """Autoscaling deployment that generates handle metrics to stress the controller."""
