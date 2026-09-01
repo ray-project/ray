@@ -28,7 +28,6 @@ py_library(
     ),
     data = glob(["**/*.lua.tmpl"]),
     visibility = [
-        "//python/ray/experimental/sandbox/http:__pkg__",
         "//python/ray/serve:__pkg__",
         "//python/ray/serve:__subpackages__",
         "//release:__pkg__",

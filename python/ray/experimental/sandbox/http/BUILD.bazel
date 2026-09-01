@@ -13,7 +13,6 @@ py_library(
     ],
     deps = [
         "//python/ray/experimental/sandbox:sandbox_lib",
-        "//python/ray/serve:serve_lib",
     ],
 )
 
