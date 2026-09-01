@@ -58,7 +58,7 @@ and languages (C++/Python). Raylet spawns two agents:
 
 2. **Runtime Env Agent** - manages runtime environments:
 
-   - ``runtime_env_agent_port``: gRPC (default: random)
+   - ``runtime_env_agent_port``: HTTP (default: random)
 
 After binding, agents write their ports to
 ``{session_dir}/{port_name}_{node_id_hex}`` (see `port_persistence.h <https://github.com/ray-project/ray/blob/master/src/ray/util/port_persistence.h>`_).
@@ -83,6 +83,12 @@ for "bind to any port within this range". So Raylet must manage the range itself
 Raylet maintains a ``free_ports_`` queue. When a worker registers, Raylet assigns
 it an unused port from the queue. The worker binds, then confirms with ``AnnounceWorkerPort``.
 
+At startup, Raylet seeds that queue with a random permutation of the configured ports,
+independently on each Raylet. Without it, every Raylet sharing a network namespace and a
+port range starts from the lower bound of the range and deterministically contends for
+the same ports. Randomizing lowers the odds of a collision; it isn't a reservation
+protocol, so two Raylets can still pick the same port and rely on the retry path below.
+
 If the worker fails to bind the port (e.g., port already in use by external process),
 it crashes. Raylet detects the socket disconnect via
 `NodeManager::HandleClientConnectionError <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.h>`_, which returns the port to the queue and starts a new worker.
@@ -100,7 +106,8 @@ Node Table
 
 Each Raylet registers a GcsNodeInfo to GCS, containing its own ports
 (``node_manager_port``, ``object_manager_port``) and agent ports
-(``runtime_env_agent_port``, ``metrics_agent_port``, ``dashboard_agent_listen_port``).
+(``runtime_env_agent_port``, ``metrics_agent_port``, ``metrics_export_port``,
+``dashboard_agent_listen_port``).
 
 Other components query GCS for this information:
 

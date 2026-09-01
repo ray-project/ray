@@ -80,11 +80,15 @@ doc/source/ray-observability/reference/
 # library's docs example step. Config assets that examples consume (.yaml, .sh)
 # are deliberately absent: they can change what a test does, so they keep
 # routing to the owning library below.
-# Claude Code skills and agent files under doc/.claude/ never participate in
-# the Sphinx build and define no test targets, so they trigger nothing. This
-# matches the RtD build guard, which excludes the same path for the same reason
-# (see the `:!doc/.claude/` exclude in .readthedocs.yaml).
+# Claude Code skills and agent files never participate in the Sphinx build and
+# define no test targets, so they trigger nothing. This covers both the doc
+# subtree (doc/.claude/, which also matches the `:!doc/.claude/` exclude in
+# .readthedocs.yaml) and the repo-root .claude/, which is Markdown plus a
+# settings JSON with no target of its own. Routing them here, ahead of the
+# catch-all, keeps an agent-file edit from fanning out to the full test suite
+# and lets the docs-go scope guard treat them as content.
 doc/.claude/
+.claude/
 doc/*.md
 doc/*.rst
 doc/*.png
