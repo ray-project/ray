@@ -204,35 +204,23 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             rejected_nodes = self._submit_scale_request(scale_request)
 
-            if rejected_nodes:
-                nodes_to_reject = {}
-                for node_type, count in rejected_nodes.items():
-                    requested = shape.get(node_type, 0)
-                    if requested > 0:
-                        if count >= requested:
-                            # Total cap: no instances of this type can be launched.
-                            # We can safely emit an error without failing valid instances.
-                            nodes_to_reject[node_type] = requested
-                        else:
-                            # Partial cap: some instances can be launched.
-                            # Emitting an error here would cause the reconciler to fail
-                            # ALL instances in this request_id, including the ones we
-                            # successfully patched. We must skip the error and let the
-                            # rejected portion timeout naturally in the reconciler.
-                            logger.warning(
-                                f"Partial maxReplicas cap for {node_type}: requested {requested}, "
-                                f"but {count} were rejected. Allowing valid nodes to proceed."
-                            )
-
-                if nodes_to_reject:
-                    self._add_launch_errors(
-                        nodes_to_reject,
-                        request_id,
-                        details="Launch capped by maxReplicas limit.",
-                    )
-
-            # Only add to processed requests if successful and after rejection feedback loop
+            # This request_id has been handled (full, partial, or no-op). Cache it
+            # so a replay does not add to_launch again. Instances that did not get
+            # a slot are failed below so they do not retry with this same id.
             self._requests.add(request_id)
+
+            nodes_to_reject = {}
+            for node_type, rejected in rejected_nodes.items():
+                requested = shape.get(node_type, 0)
+                if requested > 0 and rejected > 0:
+                    nodes_to_reject[node_type] = min(rejected, requested)
+
+            if nodes_to_reject:
+                self._add_launch_errors(
+                    nodes_to_reject,
+                    request_id,
+                    details="Launch capped by maxReplicas limit.",
+                )
 
         except Exception as e:
             logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
