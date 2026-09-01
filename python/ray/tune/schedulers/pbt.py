@@ -141,7 +141,13 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
+            if isinstance(config[key], bool):
+                # `bool` is a subclass of `int`, so the branch below would turn a
+                # `tune.choice([True, False])` flag into 1 or 0. Multiplying a flag by
+                # a perturbation factor is meaningless anyway, so keep it a bool and
+                # let `resample_probability` be the only thing that flips it.
+                new_config[key] = bool(new_config[key])
+            elif isinstance(config[key], int):
                 # If this hyperparameter started out as an integer (ex: `batch_size`),
                 # convert the new value back. Round rather than truncate: int() drops
                 # the fraction toward zero, so with the default factors `* 1.2` was a

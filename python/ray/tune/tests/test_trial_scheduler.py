@@ -1398,6 +1398,38 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             # least half a step, rather than rounding straight back down.
             self.assertGreater(perturb(value, 1.2), value)
 
+    def testBooleanPerturbationKeepsItsType(self):
+        """`bool` is a subclass of `int`, so the integer branch would eat a flag.
+
+        Truncation also made the flag one-directional: `True * 0.8` is `0.8`, which
+        `int()` floors to `0`, while `False * anything` is `0`, so a boolean could
+        ratchet from True to False and never back. Multiplying a flag by a
+        perturbation factor means nothing, so perturbation leaves it alone and
+        `resample_probability` is the only thing that flips it.
+        """
+
+        def perturb(value, factor, resample_probability=0.0):
+            new_config, _ = _explore(
+                {"v": value},
+                {"v": tune.choice([True, False])},
+                resample_probability,
+                perturbation_factors=(factor, factor),
+                custom_explore_fn=None,
+            )
+            return new_config["v"]
+
+        for value in (True, False):
+            for factor in (0.8, 1.2):
+                perturbed = perturb(value, factor)
+                self.assertIsInstance(perturbed, bool)
+                self.assertEqual(perturbed, value)
+
+        # Resampling still hands back a real bool, and is the path that can flip it.
+        random.seed(0)
+        resampled = [perturb(True, 0.8, resample_probability=1.0) for _ in range(20)]
+        self.assertTrue(all(isinstance(v, bool) for v in resampled))
+        self.assertIn(False, resampled)
+
     def testPerturbationValues(self):
         def assertProduces(fn, values):
             random.seed(0)
