@@ -18,6 +18,7 @@ from ray._common.test_utils import (
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
+    TEST_METRICS_EXPORT_PORT,
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
@@ -33,16 +34,47 @@ from ray.serve.tests.test_metrics import (
 )
 
 # A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
-# on an exported metric needs room for several full-length attempts.
-METRICS_WAIT_TIMEOUT_S = 90
+# needs room for several full-length attempts. A newly registered series is the slow
+# thing to surface, so its debut gets the larger budget and value checks the smaller.
+METRICS_FIRST_EXPORT_TIMEOUT_S = 90
+METRICS_WAIT_TIMEOUT_S = 45
+METRICS_RETRY_INTERVAL_MS = 1000
 
 
-def wait_for_metric(predicate, **kwargs):
+def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
     """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
     agent is not hammered while it catches up."""
     wait_for_condition(
-        predicate, timeout=METRICS_WAIT_TIMEOUT_S, retry_interval_ms=1000, **kwargs
+        predicate,
+        timeout=budget_s,
+        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
+        **kwargs,
     )
+
+
+def wait_for_metric_export(metric_name, timeseries, count=None):
+    """Waits for a series to surface, which is the slow step; count=None accepts
+    any number of samples."""
+
+    def check():
+        metrics = get_metric_dictionaries(
+            metric_name, timeseries=timeseries, wait=False
+        )
+        if count is None:
+            assert metrics, f"Metric {metric_name} not exported yet"
+        else:
+            assert (
+                len(metrics) == count
+            ), f"Expected {count} {metric_name}, got {len(metrics)}"
+        return True
+
+    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
+
+
+def check_metric_float(**kwargs):
+    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
+    own 20s default is larger than most callers' retry budgets."""
+    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
 
 
 @serve.deployment
@@ -106,7 +138,9 @@ class TestRequestContextMetrics:
 
     def _scrape(self, timeseries):
         return fetch_prometheus_metric_timeseries(
-            ["localhost:9999"], timeseries, timeout=PROMETHEUS_METRICS_TIMEOUT_S
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
         )
 
     def _wait_for_metric_summary(self, metric_names, expected, timeseries):
@@ -122,7 +156,8 @@ class TestRequestContextMetrics:
                 msg = f"Incorrect metrics for {name}"
                 for deployment, (route, app) in expected.items():
                     assert routes[deployment] == route, msg
-                    assert apps[deployment] == app, msg
+                    if app is not None:
+                        assert apps[deployment] == app, msg
             return True
 
         wait_for_metric(check)
@@ -136,8 +171,9 @@ class TestRequestContextMetrics:
         )
 
     def _wait_for_labeled_metric(self, metric_name, expected_labels, timeseries):
-        """The series can be mid-export, so wait for it instead of asserting on
-        whatever the first scrape happened to return."""
+        """The series can be mid-export, so wait for its debut before checking
+        labels; the label check itself must not sit on the debut budget."""
+        wait_for_metric_export(metric_name, timeseries)
 
         def check():
             metrics = get_metric_dictionaries(
@@ -206,16 +242,8 @@ class TestRequestContextMetrics:
         assert resp.status_code == 500
         timeseries = PrometheusTimeseries()
 
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_serve_deployment_processing_latency_ms_sum",
-                    timeseries=timeseries,
-                    wait=False,
-                )
-            )
-            == 3,
-            timeout=40,
+        wait_for_metric_export(
+            "ray_serve_deployment_processing_latency_ms_sum", timeseries, count=3
         )
 
         # Check replica qps & latency
@@ -290,16 +318,8 @@ class TestRequestContextMetrics:
         timeseries = PrometheusTimeseries()
 
         # app1 has 1 deployment, app2 has 3 deployments, and app3 has 1 deployment.
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_serve_deployment_processing_latency_ms_sum",
-                    timeseries=timeseries,
-                    wait=False,
-                )
-            )
-            == 5,
-            timeout=40,
+        wait_for_metric_export(
+            "ray_serve_deployment_processing_latency_ms_sum", timeseries, count=5
         )
 
         # Check replica qps & latency
@@ -385,16 +405,8 @@ class TestRequestContextMetrics:
         # g2 deployment metrics:
         #   {xxx, route:/api2}
         timeseries = PrometheusTimeseries()
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_serve_deployment_request_counter_total",
-                    timeseries=timeseries,
-                    wait=False,
-                )
-            )
-            == 4,
-            timeout=40,
+        wait_for_metric_export(
+            "ray_serve_deployment_request_counter_total", timeseries, count=4
         )
         self._wait_for_metric_summary(
             ["ray_serve_deployment_request_counter_total"],
@@ -433,26 +445,19 @@ class TestRequestContextMetrics:
         assert resp.text == '"ok2"'
 
         timeseries = PrometheusTimeseries()
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_serve_deployment_request_counter_total",
-                    timeseries=timeseries,
-                    wait=False,
+        wait_for_metric_export(
+            "ray_serve_deployment_request_counter_total", timeseries, count=2
+        )
+        self._wait_for_metric_summary(
+            ["ray_serve_deployment_request_counter_total"],
+            {
+                "A": (
+                    {route_prefix + "/api", route_prefix + "/api2/{user_id}"},
+                    None,
                 )
-            )
-            == 2,
-            timeout=40,
+            },
+            timeseries,
         )
-        (requests_metrics_route, _,) = self._generate_metrics_summary(
-            get_metric_dictionaries(
-                "ray_serve_deployment_request_counter_total", timeseries=timeseries
-            )
-        )
-        assert requests_metrics_route["A"] == {
-            route_prefix + "/api",
-            route_prefix + "/api2/{user_id}",
-        }
 
     def test_customer_metrics_with_context(self, metrics_start_shutdown):
         @serve.deployment
@@ -506,15 +511,7 @@ class TestRequestContextMetrics:
         http_url = get_application_url("HTTP", "app")
         resp = httpx.get(http_url)
         deployment_name, replica_id = resp.json()
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_my_gauge", timeseries=timeseries, wait=False
-                ),
-            )
-            == 1,
-            timeout=40,
-        )
+        wait_for_metric_export("ray_my_gauge", timeseries, count=1)
 
         expected_metrics = {
             "my_static_tag": "static_value",
@@ -647,15 +644,7 @@ class TestRequestContextMetrics:
         resp = httpx.get(http_url)
         assert resp.text == "hello"
         timeseries = PrometheusTimeseries()
-        wait_for_condition(
-            lambda: len(
-                get_metric_dictionaries(
-                    "ray_my_gauge", timeseries=timeseries, wait=False
-                ),
-            )
-            == 1,
-            timeout=40,
-        )
+        wait_for_metric_export("ray_my_gauge", timeseries, count=1)
 
         expected_metrics = {
             "my_static_tag": "static_value",
@@ -705,6 +694,9 @@ class TestHandleMetrics:
 
         # Release signal
         ray.get(signal.send.remote())
+        # A retired replica leaves a stale sample that would hold the sum above 0.
+        timeseries.flush()
+        wait_for_metric_export("ray_serve_deployment_queued_queries", timeseries)
         wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_deployment_queued_queries",
@@ -716,42 +708,37 @@ class TestHandleMetrics:
     def test_queued_queries_multiple_handles(self, metrics_start_shutdown):
         signal = SignalActor.options(name="signal123").remote()
         serve.run(WaitForSignal.options(max_ongoing_requests=1).bind(), name="app1")
+        timeseries = PrometheusTimeseries()
 
-        # Send first request
+        def wait_for_queued(expected):
+            wait_for_metric(
+                check_sum_metric_eq,
+                metric_name="ray_serve_deployment_queued_queries",
+                tags={"application": "app1", "deployment": "WaitForSignal"},
+                expected=expected,
+                timeseries=timeseries,
+            )
+
+        # Send first request. An absent series also sums to 0, so wait for its
+        # debut before trusting the count.
         call.remote("WaitForSignal", "app1")
-        wait_for_metric(
-            check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
-            tags={"application": "app1", "deployment": "WaitForSignal"},
-            expected=0,
-        )
+        wait_for_metric_export("ray_serve_deployment_queued_queries", timeseries)
+        wait_for_queued(0)
 
         # Send second request (which should stay queued)
         call.remote("WaitForSignal", "app1")
-        wait_for_metric(
-            check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
-            tags={"application": "app1", "deployment": "WaitForSignal"},
-            expected=1,
-        )
+        wait_for_queued(1)
 
         # Send third request (which should stay queued)
         call.remote("WaitForSignal", "app1")
-        wait_for_metric(
-            check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
-            tags={"application": "app1", "deployment": "WaitForSignal"},
-            expected=2,
-        )
+        wait_for_queued(2)
 
         # Release signal
         ray.get(signal.send.remote())
-        wait_for_metric(
-            check_sum_metric_eq,
-            metric_name="ray_serve_deployment_queued_queries",
-            tags={"application": "app1", "deployment": "WaitForSignal"},
-            expected=0,
-        )
+        # A retired replica leaves a stale sample that would hold the sum above 0.
+        timeseries.flush()
+        wait_for_metric_export("ray_serve_deployment_queued_queries", timeseries)
+        wait_for_queued(0)
 
     @skip_if_haproxy(
         "asserts num_scheduling_tasks, a proxy-router metric that direct ingress "
@@ -772,9 +759,9 @@ class TestHandleMetrics:
 
         print("Deployed hang_on_first_request deployment.")
         timeseries = PrometheusTimeseries()
-        wait_for_condition(
-            check_metric_float_eq,
-            timeout=15,
+        wait_for_metric(
+            check_metric_float,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
             metric="ray_serve_num_scheduling_tasks",
             # Router is eagerly created on HTTP proxy, so there are metrics emitted
             # from proxy router
@@ -787,9 +774,9 @@ class TestHandleMetrics:
             timeseries=timeseries,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
-        wait_for_condition(
-            check_metric_float_eq,
-            timeout=15,
+        wait_for_metric(
+            check_metric_float,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
             metric="ray_serve_num_scheduling_tasks_in_backoff",
             # Router is eagerly created on HTTP proxy, so there are metrics emitted
             # from proxy router
@@ -816,9 +803,9 @@ class TestHandleMetrics:
         )
 
         print("First request is executing.")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=1,
             timeseries=timeseries,
@@ -830,17 +817,16 @@ class TestHandleMetrics:
         print(f"{num_queued_requests} more requests now queued.")
 
         # First request should be processing. All others should be queued.
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
             metric_name="ray_serve_deployment_queued_queries",
             expected=num_queued_requests,
             timeseries=timeseries,
         )
         print("ray_serve_deployment_queued_queries updated successfully.")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=num_queued_requests + 1,
             timeseries=timeseries,
@@ -849,17 +835,15 @@ class TestHandleMetrics:
 
         # There should be 2 scheduling tasks (which is the max, since
         # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_scheduling_tasks",
             expected=2,
             timeseries=timeseries,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=2,
             timeseries=timeseries,
@@ -871,9 +855,8 @@ class TestHandleMetrics:
         timeseries.flush()
         print("Cancelled all HTTP requests.")
 
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_deployment_queued_queries",
             expected=0,
             timeseries=timeseries,
@@ -881,26 +864,23 @@ class TestHandleMetrics:
         print("ray_serve_deployment_queued_queries updated successfully.")
 
         # Task should get cancelled.
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=0,
             timeseries=timeseries,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
 
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_scheduling_tasks",
             expected=0,
             timeseries=timeseries,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
-        wait_for_condition(
+        wait_for_metric(
             check_sum_metric_eq,
-            timeout=15,
             metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=0,
             timeseries=timeseries,
@@ -966,6 +946,9 @@ class TestHandleMetrics:
 
         # Release signal, the number of running requests should drop to 0
         ray.get(signal.send.remote())
+        # A retired replica leaves a stale sample that would hold the sum above 0.
+        timeseries.flush()
+        wait_for_metric_export("ray_serve_num_ongoing_requests_at_replicas", timeseries)
         wait_for_metric(
             check_sum_metric_eq,
             metric_name="ray_serve_num_ongoing_requests_at_replicas",
@@ -999,7 +982,7 @@ class TestProxyStateMetrics:
                     return True
             return False
 
-        wait_for_condition(check_proxy_status, timeout=30)
+        wait_for_metric(check_proxy_status, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
 
         # Verify the metric has the expected tags
         metrics = get_metric_dictionaries(
@@ -1011,7 +994,7 @@ class TestProxyStateMetrics:
             assert "node_ip_address" in metric
 
         wait_for_metric(
-            check_metric_float_eq,
+            check_metric_float,
             metric="ray_serve_proxy_status",
             expected=2,
             timeseries=timeseries,
@@ -1029,13 +1012,13 @@ class TestProxyStateMetrics:
         timeseries = PrometheusTimeseries()
 
         # Wait for the proxy to become healthy first (status=2 means HEALTHY)
-        wait_for_condition(
-            check_metric_float_eq,
+        wait_for_metric(
+            check_metric_float,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
             metric="ray_serve_proxy_status",
             expected=2,
             timeseries=timeseries,
             expected_tags={},
-            timeout=30,
         )
 
         # Shutdown serve, which will trigger proxy shutdown
@@ -1057,10 +1040,13 @@ class TestProxyStateMetrics:
                     return True
             return False
 
-        wait_for_condition(check_shutdown_duration_metric_exists, timeout=30)
+        wait_for_metric(
+            check_shutdown_duration_metric_exists,
+            budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
+        )
 
-        # Verify the sum and _count series, which export separately from the
-        # sample the wait above observed.
+        # A histogram exports _sum and _count in one scrape, so this re-checks
+        # their tags rather than waiting for a second export.
         def check_shutdown_duration_series():
             for name in [
                 "ray_serve_proxy_shutdown_duration_ms_sum",
