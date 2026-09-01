@@ -10,6 +10,7 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _try_normalize_take_indices,
     hash_partition,
+    take_table,
 )
 from ray.data._internal.batcher import (
     ShufflingBatcher,
@@ -27,7 +28,6 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     try_prepare_chunked_tensor_take,
     try_take_chunked_tensor,
 )
-from ray.data.extensions import take_table
 
 
 def _tensor_array(tensor_type, values):
@@ -852,20 +852,24 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
         plain_table, batch_size=9, buffer_rows=27, source_rows=4, seed=51
     )
 
-    tensor_ids = [
-        batch.column("row_id").combine_chunks().to_numpy() for batch in tensor_batches
-    ]
-    plain_ids = [
-        batch.column("row_id").combine_chunks().to_numpy() for batch in plain_batches
-    ]
+    tensor_ids = []
+    for batch in tensor_batches:
+        assert isinstance(batch, pa.Table)
+        tensor_ids.append(batch.column("row_id").combine_chunks().to_numpy())
+    plain_ids = []
+    for batch in plain_batches:
+        assert isinstance(batch, pa.Table)
+        plain_ids.append(batch.column("row_id").combine_chunks().to_numpy())
     assert len(tensor_ids) == len(plain_ids)
     for actual, expected in zip(tensor_ids, plain_ids):
         np.testing.assert_array_equal(actual, expected)
     for batch, ids in zip(tensor_batches, tensor_ids):
+        assert isinstance(batch, pa.Table)
         tensor = batch.column("tensor").chunk(0).to_numpy()
         np.testing.assert_array_equal(tensor[:, 0], ids.astype(np.float32))
 
     assert sum(len(ids) for ids in tensor_ids) == len(tensor_table)
+    assert batcher._shuffled_indices is not None
     assert batcher._batch_head == len(batcher._shuffled_indices)
     assert batcher._prepared_tensor_takes
     assert not hasattr(batcher, "_prefetched_block")
@@ -1093,6 +1097,7 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
     assert len(batcher.next_batch()) == 10
     assert calls == 1
     assert not batcher._prepared_tensor_takes
+    assert isinstance(batcher._shuffle_buffer, pa.Table)
     assert batcher._shuffle_buffer.column("tensor").num_chunks == 1
     assert combine_calls == 1
 

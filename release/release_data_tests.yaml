@@ -676,7 +676,7 @@
     cluster_compute: fixed_size_1_cpu_compute.yaml
   run:
     timeout: 600
-    script: python chunked_tensor_take_benchmark.py
+    script: python chunked_tensor_take_benchmark.py --fast-path enabled
 
 - name: "iter_batches_{{format}}"
   python: "3.10"

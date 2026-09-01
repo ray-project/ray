@@ -50,6 +50,4 @@ requests==2.32.5
 tensorflow==2.20.0
 tf-keras==2.20.1
 xmltodict==0.13.0
-# Required to import Ray Data's pandas-backed extension types during autodoc.
-pandas==2.3.3
 pyarrow==19.0.1

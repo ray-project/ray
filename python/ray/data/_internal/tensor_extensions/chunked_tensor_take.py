@@ -92,15 +92,97 @@ class PreparedChunkedTensorTake(NamedTuple):
             dtype=self.value_dtype,
         )
         if len(indices) > 0:
-            _gather_into_output(
-                output,
-                indices,
-                self.chunk_views,
-                self.chunk_starts,
-                self.subbatch_rows,
-            )
+            self._gather_into_output(output, indices)
 
-        return _wrap_tensor_output(output, self.tensor_type, self.values_per_row)
+        return self._wrap_tensor_output(output)
+
+    def _gather_into_output(
+        self,
+        output: np.ndarray,
+        indices: np.ndarray,
+    ) -> None:
+        """Gather normalized row indices into a preallocated tensor output.
+
+        Each bounded subbatch maps every global row index to a source
+        ``chunk_id`` and an index local to that chunk. The gather strategy then
+        depends only on how those chunk IDs are arranged:
+
+        * Monotonic chunk IDs already form contiguous chunk groups. They can be
+          copied in output order and can use source slices for contiguous rows.
+        * Unordered IDs over at most 16 chunks are grouped with masks. Repeated
+          linear scans are cheaper than allocating and sorting an order array
+          when the number of chunks is small.
+        * Unordered IDs over more chunks sort output positions by chunk once,
+          gather each resulting group, and scatter it back to the original
+          positions. The temporary sort changes processing order, never
+          caller-visible row order.
+
+        Subbatching bounds the temporary chunk-ID, local-index, mask, and sort
+        arrays. All three strategies write into the same preallocated output
+        and preserve the order of ``indices``.
+
+        Args:
+            output: Destination tensor array.
+            indices: Normalized global source-row indices.
+        """
+        for start in range(0, len(indices), self.subbatch_rows):
+            stop = min(len(indices), start + self.subbatch_rows)
+            subbatch_indices = indices[start:stop]
+            output_slice = output[start:stop]
+            chunk_ids = (
+                np.searchsorted(self.chunk_starts, subbatch_indices, side="right") - 1
+            )
+            local_indices = subbatch_indices - self.chunk_starts[chunk_ids]
+
+            if np.all(chunk_ids[1:] >= chunk_ids[:-1]):
+                _gather_monotonic_chunk_ids(
+                    output_slice,
+                    local_indices,
+                    self.chunk_views,
+                    chunk_ids,
+                )
+            elif len(self.chunk_views) <= _MAX_MASK_GROUP_CHUNKS:
+                _gather_by_chunk_masks(
+                    output_slice,
+                    local_indices,
+                    self.chunk_views,
+                    chunk_ids,
+                )
+            else:
+                _gather_by_sorted_chunk_ids(
+                    output_slice,
+                    local_indices,
+                    self.chunk_views,
+                    chunk_ids,
+                )
+
+    def _wrap_tensor_output(self, output: np.ndarray) -> pa.Array:
+        """Wrap the owned output buffer with the original Ray tensor type.
+
+        Rebuilding data and offset arrays from buffers avoids another payload
+        copy and preserves the caller-visible V1/V2 extension type and table
+        schema.
+        """
+        scalar_type = self.tensor_type.storage_type.value_type
+        data_array = pa.Array.from_buffers(
+            scalar_type,
+            output.size,
+            [None, pa.py_buffer(output)],
+        )
+        offset_dtype = np.dtype(self.tensor_type.OFFSET_DTYPE.to_pandas_dtype())
+        offsets = np.arange(
+            0,
+            (len(output) + 1) * self.values_per_row,
+            self.values_per_row,
+            dtype=offset_dtype,
+        )
+        storage = pa.Array.from_buffers(
+            self.tensor_type.storage_type,
+            len(output),
+            [None, pa.py_buffer(offsets)],
+            children=[data_array],
+        )
+        return self.tensor_type.wrap_array(storage)
 
 
 def try_prepare_chunked_tensor_take(
@@ -305,69 +387,6 @@ def _try_get_zero_copy_chunk_view(
         return None
 
 
-def _gather_into_output(
-    output: np.ndarray,
-    indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_starts: np.ndarray,
-    subbatch_rows: int,
-) -> None:
-    """Gather normalized row indices into a preallocated tensor output.
-
-    Each bounded subbatch maps every global row index to a source ``chunk_id``
-    and an index local to that chunk. The gather strategy then depends only on
-    how those chunk IDs are arranged:
-
-    * Monotonic chunk IDs already form contiguous chunk groups. They can be
-      copied in output order and can use source slices for contiguous rows.
-    * Unordered IDs over at most 16 chunks are grouped with masks. Repeated
-      linear scans are cheaper than allocating and sorting an order array when
-      the number of chunks is small.
-    * Unordered IDs over more chunks sort output positions by chunk once, gather
-      each resulting group, and scatter it back to the original positions. The
-      temporary sort changes processing order, never caller-visible row order.
-
-    Subbatching bounds the temporary chunk-ID, local-index, mask, and sort
-    arrays. All three strategies write into the same preallocated output and
-    preserve the order of ``indices``.
-
-    Args:
-        output: Destination tensor array.
-        indices: Normalized global source-row indices.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_starts: Global starting row of each source chunk.
-        subbatch_rows: Maximum indices processed by one gather subbatch.
-    """
-    for start in range(0, len(indices), subbatch_rows):
-        stop = min(len(indices), start + subbatch_rows)
-        subbatch_indices = indices[start:stop]
-        output_slice = output[start:stop]
-        chunk_ids = np.searchsorted(chunk_starts, subbatch_indices, side="right") - 1
-        local_indices = subbatch_indices - chunk_starts[chunk_ids]
-
-        if np.all(chunk_ids[1:] >= chunk_ids[:-1]):
-            _gather_monotonic_chunk_ids(
-                output_slice,
-                local_indices,
-                chunks,
-                chunk_ids,
-            )
-        elif len(chunks) <= _MAX_MASK_GROUP_CHUNKS:
-            _gather_by_chunk_masks(
-                output_slice,
-                local_indices,
-                chunks,
-                chunk_ids,
-            )
-        else:
-            _gather_by_sorted_chunk_ids(
-                output_slice,
-                local_indices,
-                chunks,
-                chunk_ids,
-            )
-
-
 def _gather_monotonic_chunk_ids(
     output: np.ndarray,
     local_indices: np.ndarray,
@@ -467,31 +486,3 @@ def _gather_by_sorted_chunk_ids(
         chunk_id = chunk_ids[positions[0]]
         output[positions] = chunks[chunk_id][local_indices[positions]]
         group_start = group_stop
-
-
-def _wrap_tensor_output(output: np.ndarray, tensor_type, values_per_row: int):
-    """Wrap the owned NumPy output buffer with the original Ray tensor type.
-
-    Rebuilding data and offset arrays from buffers avoids another payload copy and
-    preserves the caller-visible V1/V2 extension type and table schema.
-    """
-    scalar_type = tensor_type.storage_type.value_type
-    data_array = pa.Array.from_buffers(
-        scalar_type,
-        output.size,
-        [None, pa.py_buffer(output)],
-    )
-    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
-    offsets = np.arange(
-        0,
-        (len(output) + 1) * values_per_row,
-        values_per_row,
-        dtype=offset_dtype,
-    )
-    storage = pa.Array.from_buffers(
-        tensor_type.storage_type,
-        len(output),
-        [None, pa.py_buffer(offsets)],
-        children=[data_array],
-    )
-    return tensor_type.wrap_array(storage)

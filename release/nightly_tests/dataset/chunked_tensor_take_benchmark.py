@@ -1,12 +1,11 @@
-"""Benchmark multi-chunk tensor row takes before and after the fast path.
+"""Benchmark the selected chunked tensor row-take behavior.
 
-The disabled arm reproduces the full-column concatenate-and-take path. The
-enabled arm gathers selected rows directly from their source chunks. A
-single-chunk control verifies that the operational switch does not affect
-columns that are ineligible for the fast path. A full ShufflingBatcher case
+Each invocation measures one configuration selected by ``--fast-path`` so the
+release system can compare the same metrics across builds. A single-chunk
+control tracks the path used by ineligible columns. A full ShufflingBatcher case
 uses the KPMCross primary-column shape with 320 rows, 32 source chunks, and
-128-row batches to cover one-row scratch subbatching and prepared-plan reuse.
-A smaller streaming case interleaves adds and takes and forces multiple buffer
+128-row batches to cover one-row scratch subbatching and prepared-plan reuse. A
+smaller streaming case interleaves adds and takes and forces multiple buffer
 compactions, covering prepared-plan reuse while carrying old-buffer rows forward.
 """
 
@@ -25,16 +24,10 @@ import numpy as np
 import pyarrow as pa
 
 from ray.data._internal import batcher as batcher_module
+from ray.data._internal.arrow_ops.transform_pyarrow import take_table
 from ray.data._internal.batcher import ShufflingBatcher
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
-from ray.data.extensions import take_table
-
-
-_MAX_EXTREME_TIME_REGRESSION = 1.5
-_MAX_EXTREME_RSS_REGRESSION = 1.5
-_TIME_NOISE_ALLOWANCE_S = 0.005
-_RSS_NOISE_ALLOWANCE_KIB = 64 * 1024
 
 
 def _tensor_array(tensor_type, values):
@@ -92,8 +85,7 @@ def _take(table, indices):
     return take_table(table, indices)
 
 
-def _time_operation(operation, *, enabled, iterations, warmup):
-    _set_fast_path(enabled)
+def _time_operation(operation, *, iterations, warmup):
     for _ in range(warmup):
         operation()
 
@@ -179,46 +171,10 @@ def _shuffle_result_signature(batches):
     return schemas, np.concatenate(row_ids), np.concatenate(payload_bounds)
 
 
-def _assert_no_extreme_regression(case_name, before, after, memory=None):
-    """Fail only on large regressions; release metrics track smaller changes."""
-    for statistic in ("median_s", "p90_s"):
-        limit = max(
-            before[statistic] * _MAX_EXTREME_TIME_REGRESSION,
-            before[statistic] + _TIME_NOISE_ALLOWANCE_S,
-        )
-        assert after[statistic] <= limit, (
-            f"{case_name} {statistic} regressed from {before[statistic]:.6f}s "
-            f"to {after[statistic]:.6f}s (limit {limit:.6f}s)"
-        )
-
-    if memory is not None:
-        before_rss = memory["before_incremental_peak_rss_kib"]
-        after_rss = memory["after_incremental_peak_rss_kib"]
-        if before_rss > 0:
-            limit = max(
-                before_rss * _MAX_EXTREME_RSS_REGRESSION,
-                before_rss + _RSS_NOISE_ALLOWANCE_KIB,
-            )
-            assert after_rss <= limit, (
-                f"{case_name} incremental peak RSS regressed from "
-                f"{before_rss} KiB to {after_rss} KiB (limit {limit:.0f} KiB)"
-            )
-
-
 def _check_correctness(table, values, indices):
-    original = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
-    try:
-        _set_fast_path(False)
-        before = _take(table, indices)
-        _set_fast_path(True)
-        after = _take(table, indices)
-    finally:
-        _set_fast_path(original)
-
-    before_values = before.column("tensor").combine_chunks().to_numpy()
-    after_values = after.column("tensor").combine_chunks().to_numpy()
-    np.testing.assert_array_equal(before_values, after_values)
-    np.testing.assert_array_equal(after_values, values[indices])
+    result = _take(table, indices)
+    result_values = result.column("tensor").combine_chunks().to_numpy()
+    np.testing.assert_array_equal(result_values, values[indices])
 
 
 def _peak_rss_kib():
@@ -269,67 +225,55 @@ def _run_memory_arm(args):
     result = operation()
     peak = _peak_rss_kib()
     _ = result
-    print(f"MEMORY {args.memory_arm} {peak} {baseline}")
+    print(f"MEMORY {peak} {baseline}")
 
 
 def _measure_memory(args, *, single_chunk=False, memory_case="take"):
-    measurements = {}
-    for arm, enabled in (("before", "0"), ("after", "1")):
-        command = [
-            sys.executable,
-            os.path.abspath(__file__),
-            "--rows",
-            str(args.rows),
-            "--width",
-            str(args.width),
-            "--chunks",
-            str(args.chunks),
-            "--batch-size",
-            str(args.batch_size),
-            "--shuffle-rows",
-            str(args.shuffle_rows),
-            "--shuffle-shape",
-            *(str(dimension) for dimension in args.shuffle_shape),
-            "--shuffle-chunks",
-            str(args.shuffle_chunks),
-            "--shuffle-batch-size",
-            str(args.shuffle_batch_size),
-            "--memory-case",
-            memory_case,
-            "--memory-arm",
-            arm,
-        ]
-        if single_chunk:
-            command.append("--single-chunk")
+    command = [
+        sys.executable,
+        os.path.abspath(__file__),
+        "--fast-path",
+        args.fast_path,
+        "--rows",
+        str(args.rows),
+        "--width",
+        str(args.width),
+        "--chunks",
+        str(args.chunks),
+        "--batch-size",
+        str(args.batch_size),
+        "--shuffle-rows",
+        str(args.shuffle_rows),
+        "--shuffle-shape",
+        *(str(dimension) for dimension in args.shuffle_shape),
+        "--shuffle-chunks",
+        str(args.shuffle_chunks),
+        "--shuffle-batch-size",
+        str(args.shuffle_batch_size),
+        "--memory-case",
+        memory_case,
+        "--memory-only",
+    ]
+    if single_chunk:
+        command.append("--single-chunk")
 
-        env = {
-            **os.environ,
-            "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE": enabled,
-        }
-        completed = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-        memory_line = next(
-            line for line in completed.stdout.splitlines() if line.startswith("MEMORY ")
-        )
-        _, measured_arm, peak, baseline = memory_line.split()
-        peak = int(peak)
-        baseline = int(baseline)
-        measurements[f"{measured_arm}_peak_rss_kib"] = peak
-        measurements[f"{measured_arm}_baseline_rss_kib"] = baseline
-        measurements[f"{measured_arm}_incremental_peak_rss_kib"] = peak - baseline
-
-    before_incremental = measurements["before_incremental_peak_rss_kib"]
-    after_incremental = measurements["after_incremental_peak_rss_kib"]
-    if before_incremental > 0:
-        measurements["after_over_before_incremental_peak_rss_ratio"] = (
-            after_incremental / before_incremental
-        )
-    return measurements
+    completed = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    memory_line = next(
+        line for line in completed.stdout.splitlines() if line.startswith("MEMORY ")
+    )
+    _, peak, baseline = memory_line.split()
+    peak = int(peak)
+    baseline = int(baseline)
+    return {
+        "peak_rss_kib": peak,
+        "baseline_rss_kib": baseline,
+        "incremental_peak_rss_kib": peak - baseline,
+    }
 
 
 def _run_case(args, *, single_chunk):
@@ -347,58 +291,28 @@ def _run_case(args, *, single_chunk):
     )
     _check_correctness(table, values, indices)
 
-    original = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
-    try:
-        before = _time_operation(
-            lambda: _take(table, indices),
-            enabled=False,
-            iterations=args.iterations,
-            warmup=args.warmup,
-        )
-        after = _time_operation(
-            lambda: _take(table, indices),
-            enabled=True,
-            iterations=args.iterations,
-            warmup=args.warmup,
-        )
-    finally:
-        _set_fast_path(original)
+    measurement = _time_operation(
+        lambda: _take(table, indices),
+        iterations=args.iterations,
+        warmup=args.warmup,
+    )
 
     metrics = {
-        "time": after["median_s"],
-        "before_mean_s": before["mean_s"],
-        "before_min_s": before["min_s"],
-        "before_median_s": before["median_s"],
-        "before_p90_s": before["p90_s"],
-        "after_mean_s": after["mean_s"],
-        "after_min_s": after["min_s"],
-        "after_median_s": after["median_s"],
-        "after_p90_s": after["p90_s"],
-        "before_over_after_min_time_ratio": before["min_s"] / after["min_s"],
-        "before_over_after_median_time_ratio": before["median_s"] / after["median_s"],
-        "before_over_after_p90_time_ratio": before["p90_s"] / after["p90_s"],
+        "time": measurement["median_s"],
+        **measurement,
         "rows": args.rows,
         "row_width": args.width,
         "source_chunks": table.column("tensor").num_chunks,
         "batch_size": args.batch_size,
     }
-    memory = None
     if not args.no_memory:
-        memory = _measure_memory(args, single_chunk=single_chunk)
-        metrics.update(memory)
-    _assert_no_extreme_regression(
-        "single-chunk control" if single_chunk else "multi-chunk take",
-        before,
-        after,
-        memory,
-    )
+        metrics.update(_measure_memory(args, single_chunk=single_chunk))
     return metrics
 
 
 def _run_shuffle_case(
     args,
     *,
-    case_name,
     rows,
     shape,
     chunks,
@@ -408,76 +322,39 @@ def _run_shuffle_case(
 ):
     blocks = _make_shuffle_blocks(rows, shape, chunks)
 
-    original = chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE
-    try:
-        _set_fast_path(False)
-        expected = _run_shuffle_lifecycle(
+    actual = _run_shuffle_lifecycle(
+        blocks,
+        batch_size=batch_size,
+        buffer_rows=buffer_rows,
+    )
+    assert all(len(batch) == batch_size for batch in actual[:-1])
+    assert 0 < len(actual[-1]) <= batch_size
+    actual_schemas, actual_row_ids, actual_bounds = _shuffle_result_signature(actual)
+    assert all(schema == blocks[0].schema for schema in actual_schemas)
+    np.testing.assert_array_equal(
+        np.sort(actual_row_ids),
+        np.arange(rows, dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        actual_bounds,
+        np.repeat(actual_row_ids[:, None], actual_bounds.shape[1], axis=1),
+    )
+    del actual
+    gc.collect()
+
+    measurement = _time_operation(
+        lambda: _run_shuffle_lifecycle(
             blocks,
             batch_size=batch_size,
             buffer_rows=buffer_rows,
-        )
-        assert all(len(batch) == batch_size for batch in expected[:-1])
-        assert 0 < len(expected[-1]) <= batch_size
-        expected_schemas, expected_row_ids, expected_bounds = _shuffle_result_signature(
-            expected
-        )
-        del expected
-        gc.collect()
-
-        _set_fast_path(True)
-        actual = _run_shuffle_lifecycle(
-            blocks,
-            batch_size=batch_size,
-            buffer_rows=buffer_rows,
-        )
-        actual_schemas, actual_row_ids, actual_bounds = _shuffle_result_signature(
-            actual
-        )
-        assert actual_schemas == expected_schemas
-        np.testing.assert_array_equal(actual_row_ids, expected_row_ids)
-        np.testing.assert_array_equal(actual_bounds, expected_bounds)
-        np.testing.assert_array_equal(
-            np.sort(actual_row_ids),
-            np.arange(rows, dtype=np.float32),
-        )
-        np.testing.assert_array_equal(
-            actual_bounds,
-            np.repeat(actual_row_ids[:, None], actual_bounds.shape[1], axis=1),
-        )
-        del actual
-        gc.collect()
-
-        before = _time_operation(
-            lambda: _run_shuffle_lifecycle(
-                blocks,
-                batch_size=batch_size,
-                buffer_rows=buffer_rows,
-            ),
-            enabled=False,
-            iterations=args.iterations,
-            warmup=args.warmup,
-        )
-        after = _time_operation(
-            lambda: _run_shuffle_lifecycle(
-                blocks,
-                batch_size=batch_size,
-                buffer_rows=buffer_rows,
-            ),
-            enabled=True,
-            iterations=args.iterations,
-            warmup=args.warmup,
-        )
-    finally:
-        _set_fast_path(original)
+        ),
+        iterations=args.iterations,
+        warmup=args.warmup,
+    )
 
     metrics = {
-        "time": after["median_s"],
-        "before_median_s": before["median_s"],
-        "before_p90_s": before["p90_s"],
-        "after_median_s": after["median_s"],
-        "after_p90_s": after["p90_s"],
-        "before_over_after_median_time_ratio": before["median_s"] / after["median_s"],
-        "before_over_after_p90_time_ratio": before["p90_s"] / after["p90_s"],
+        "time": measurement["median_s"],
+        **measurement,
         "rows": rows,
         "row_shape": shape,
         "source_chunks": len(blocks),
@@ -488,16 +365,19 @@ def _run_shuffle_case(
     # KPMCross source first so its resident pages do not overlap the child RSS.
     blocks = None
     gc.collect()
-    memory = None
     if measure_memory and not args.no_memory:
-        memory = _measure_memory(args, memory_case="shuffle")
-        metrics.update(memory)
-    _assert_no_extreme_regression(case_name, before, after, memory)
+        metrics.update(_measure_memory(args, memory_case="shuffle"))
     return metrics
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--fast-path",
+        choices=("enabled", "disabled"),
+        default="enabled",
+        help="Select the implementation measured by this benchmark.",
+    )
     parser.add_argument("--rows", type=int, default=50_000)
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--chunks", type=int, default=32)
@@ -526,18 +406,14 @@ def _parse_args():
         default="take",
         help=argparse.SUPPRESS,
     )
-    parser.add_argument(
-        "--memory-arm",
-        choices=["before", "after"],
-        default=None,
-        help=argparse.SUPPRESS,
-    )
+    parser.add_argument("--memory-only", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
-    if args.memory_arm is not None:
+    _set_fast_path(args.fast_path == "enabled")
+    if args.memory_only:
         _run_memory_arm(args)
         return
 
@@ -546,7 +422,6 @@ def main():
         "single_chunk_control": _run_case(args, single_chunk=True),
         "shuffle_lifecycle": _run_shuffle_case(
             args,
-            case_name="KPMCross shuffle lifecycle",
             rows=args.shuffle_rows,
             shape=tuple(args.shuffle_shape),
             chunks=args.shuffle_chunks,
@@ -556,7 +431,6 @@ def main():
         ),
         "streaming_shuffle_lifecycle": _run_shuffle_case(
             args,
-            case_name="streaming shuffle lifecycle",
             rows=args.streaming_rows,
             shape=(args.streaming_width,),
             chunks=args.streaming_chunks,

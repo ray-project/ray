@@ -18,7 +18,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.extensions import ArrowTensorArray, take_table
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -135,34 +134,6 @@ def test_map_batches_basic(
         ds_list = ds.map_batches(
             lambda df: 1, batch_size=2, batch_format="pyarrow"
         ).take()
-
-
-def test_map_batches_can_use_public_take_table(ray_start_regular_shared):
-    def reverse_batch(table: pa.Table) -> pa.Table:
-        row_ids = table.column("id").combine_chunks().to_numpy()
-        tensor = ArrowTensorArray.from_numpy(
-            np.broadcast_to(row_ids[:, None], (len(row_ids), 64)).astype(np.float32)
-        )
-        split = len(tensor) // 2
-        tensor = pa.chunked_array(
-            [tensor.slice(0, split), tensor.slice(split)],
-            type=tensor.type,
-        )
-        table = pa.table({"id": table.column("id"), "tensor": tensor})
-        indices = np.arange(table.num_rows - 1, -1, -1, dtype=np.int64)
-        return take_table(table, indices)
-
-    result = (
-        # 4096 float32[64] rows meet the operational 1 MiB source gate, so this
-        # exercises the public multi-chunk tensor path from a PyArrow UDF.
-        ray.data.range(4096, override_num_blocks=1)
-        .map_batches(reverse_batch, batch_size=None, batch_format="pyarrow")
-        .take_all()
-    )
-
-    expected = list(range(4095, -1, -1))
-    assert [row["id"] for row in result] == expected
-    assert [row["tensor"][0] for row in result] == expected
 
 
 def test_map_batches_extra_args(

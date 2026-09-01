@@ -307,6 +307,7 @@ def take_table(
                     if taken is not None:
                         new_cols.append(taken)
                         continue
+                # Regular path.
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
