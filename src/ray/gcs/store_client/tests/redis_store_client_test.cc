@@ -543,8 +543,8 @@ class RedisStoreClientMetricsTest : public ::testing::Test {
 };
 
 // The published definition, pinned exactly: request bytes are the sum of the
-// RESP argument lengths -- verb, Redis key, field name and value -- and an
-// integer reply carries no response payload however large the write was.
+// RESP argument lengths -- verb, Redis key, field name and value -- while the
+// HSET integer reply contributes its decimal text length.
 TEST_F(RedisStoreClientMetricsTest, PutMatchesDocumentedDefinition) {
   const std::string table = "NODE";
   const std::string key = "node-id-0123456789";
@@ -555,7 +555,7 @@ TEST_F(RedisStoreClientMetricsTest, PutMatchesDocumentedDefinition) {
   const double expected =
       std::string("HSET").size() + RedisKeyFor(table).size() + key.size() + value.size();
   EXPECT_EQ(RequestBytes("HSET", table), expected);
-  EXPECT_EQ(ResponseBytes("HSET", table), 0.0);
+  EXPECT_EQ(ResponseBytes("HSET", table), 1.0);
   EXPECT_EQ(CommandCount("HSET", table), 1.0);
 }
 
@@ -672,9 +672,9 @@ TEST_F(RedisStoreClientMetricsTest, BatchedCommandsCountPerChunk) {
   EXPECT_EQ(CommandCount("HDEL", table), expected_chunks);
 }
 
-// The cardinality bound is the reason this design is safe to export at all, so
-// assert it over every public method rather than trusting the label sites.
-TEST_F(RedisStoreClientMetricsTest, LabelDomainIsBounded) {
+// Every public method should use the actual Redis verb and the logical table,
+// never a rendered Redis key containing the per-cluster namespace.
+TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
   const std::string table = "ACTOR_TASK_SPEC";
   PutSync(table, "k1", "v1");
   GetSync(table, "k1");
@@ -707,8 +707,7 @@ TEST_F(RedisStoreClientMetricsTest, LabelDomainIsBounded) {
                                                           "SCAN",
                                                           "DEL",
                                                           "UNLINK",
-                                                          "INFO",
-                                                          "OTHER"};
+                                                          "INFO"};
   const absl::flat_hash_set<std::string> allowed_tables{
       table, "JobCounter", std::string(kNoTable), std::string(kAllTables)};
 
@@ -805,13 +804,12 @@ class RedisDelKeyPrefixSyncTest : public ::testing::Test {
   // Runs one command on the admin connection and returns its reply.
   std::shared_ptr<CallbackReply> RunCmd(std::vector<std::string> cmd) {
     std::promise<std::shared_ptr<CallbackReply>> promise;
-    const std::string command = cmd.front();
     context_->RunArgvAsync(
         std::move(cmd),
         [&promise](const std::shared_ptr<CallbackReply> &reply) {
           promise.set_value(reply);
         },
-        RedisCommandLabels{command, kNoTable});
+        kAllTables);
     return promise.get_future().get();
   }
 

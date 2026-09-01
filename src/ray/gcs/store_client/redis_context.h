@@ -111,9 +111,10 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
-/// Payload bytes of a Redis reply: the sum of `len` over every string-shaped
-/// node, recursing into arrays. Integer and nil nodes contribute 0, and RESP
-/// framing is never included -- `redisReply::len` is the decoded string length.
+/// Payload bytes of a Redis reply, recursing into aggregate replies. String and
+/// double nodes contribute their decoded length, integers contribute their
+/// decimal text length, booleans contribute 1, and nil nodes contribute 0. RESP
+/// framing is never included.
 ///
 /// Error nodes are measured like any other string, but that only matters for an
 /// error nested inside an aggregate reply. A *top-level* error never reaches
@@ -131,18 +132,15 @@ using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 /// \return The payload bytes it carries, 0 for replies that carry none.
 size_t ResponsePayloadBytes(const redisReply &reply);
 
-/// Maps a Redis verb onto a closed label domain, so that adding a Redis command
-/// elsewhere in the GCS cannot grow the exported time series count. Returns
-/// "OTHER" for anything not on the allowlist. The returned view points into
-/// static storage and outlives any request.
-///
-/// Matching is exact and case sensitive: every verb in the tree is an uppercase
-/// string literal.
+/// Maximum byte length of the normalized Redis Command label.
+inline constexpr size_t kMaxRedisCommandLabelLength = 16;
+
+/// Normalizes a Redis verb for use as a metric label by converting its first
+/// kMaxRedisCommandLabelLength bytes to uppercase ASCII.
 ///
 /// \param verb The Redis command verb to normalize.
-/// \return The matching allowlist entry, or "OTHER". Points into static
-/// storage, so it outlives the argument.
-std::string_view NormalizeRedisCommandLabel(std::string_view verb);
+/// \return An owned, normalized label value.
+std::string NormalizeRedisCommandLabel(std::string_view verb);
 
 /// A TableName label value for commands that address no single GCS table.
 /// Explicit sentinels rather than "": a blank label value is indistinguishable
@@ -163,29 +161,19 @@ struct RedisMetrics {
   ray::observability::MetricInterface &command_count_counter;
 };
 
-/// Bounded label values for one Redis command.
-///
-/// `command` must already be normalized (see NormalizeRedisCommandLabel) and
-/// point into storage that outlives the call; `table` is copied by the request
-/// context, because the RedisCommand a caller derives it from does not outlive
-/// the reply.
-struct RedisCommandLabels {
-  std::string_view command;
-  std::string_view table;
-};
-
 class RedisContext;
 struct RedisRequestContext {
   /// \param metrics Payload metrics to record into, or nullptr to record
   /// nothing. Null both when the payload metrics are disabled by config and in
   /// the standalone namespace-cleanup process, which has no metrics exporter.
+  /// \param table_label The GCS table label copied into this request.
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       RedisAsyncContext *context,
                       std::vector<std::string> args,
                       ClockInterface &clock,
                       RedisMetrics *metrics,
-                      RedisCommandLabels labels);
+                      std::string_view table_label);
 
   static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
@@ -208,10 +196,8 @@ struct RedisRequestContext {
 
   // Nullable; see the constructor docs.
   RedisMetrics *metrics_;
-  // Owned copies: the reply is delivered long after the caller's RedisCommand
-  // is gone. Both fit libstdc++'s small-string buffer for every value the GCS
-  // produces (the longest is "PLACEMENT_GROUP", 15 chars), so this does not
-  // allocate.
+  // Owned copies: the reply is delivered long after the caller's command and
+  // table label are gone.
   std::string command_label_;
   std::string table_label_;
 
@@ -256,12 +242,12 @@ class RedisContext {
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
-  /// \param labels Payload metric labels for this command. Deliberately not
-  /// defaulted: a new command site must decide how it is attributed, so
-  /// instrumentation cannot be silently skipped.
+  /// \param table_label The GCS table label for this command. Deliberately not
+  /// defaulted: a new command site must decide how it is attributed. The
+  /// command label is derived from args[0].
   void RunArgvAsync(std::vector<std::string> args,
                     RedisCallback redis_callback,
-                    RedisCommandLabels labels);
+                    std::string_view table_label);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
