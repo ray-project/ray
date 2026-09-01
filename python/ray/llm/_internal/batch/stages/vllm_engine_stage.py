@@ -1006,7 +1006,8 @@ class vLLMEngineStage(StatefulStage):
                 "Tokenization keyword arguments passed to the vLLM engine. "
                 "Use this to control prompt truncation, e.g. "
                 '{"truncation": true, "max_length": 512}. '
-                "See https://docs.vllm.ai/en/latest/design/mm_processing/ "
+                "See "
+                "https://docs.vllm.ai/en/latest/api/vllm/entrypoints/pooling/offline/#vllm.entrypoints.pooling.offline.PoolingOfflineMixin.embed "
                 "for details."
             )
         return ret
