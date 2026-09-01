@@ -341,7 +341,7 @@ GPU Profiling with PyTorch Profiler
 -----------------------------------
 Here are the steps to use PyTorch Profiler during training with Ray Train or batch inference with Ray Data:
 
-* Follow the `PyTorch Profiler documentation <https://pytorch.org/tutorials/intermediate/tensorboard_profiler_tutorial.html>`_ to record events in your PyTorch code.
+* Follow the `PyTorch Profiler documentation <https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html>`_ to record events in your PyTorch code.
 
 * Convert your PyTorch script to a :ref:`Ray Train training script <train-pytorch>` or a :ref:`Ray Data batch inference script <batch_inference_home>`. (no change to your profiler-related code)
 
