@@ -1924,28 +1924,15 @@ class OperatorStatsSummary:
                 fmt(self.udf_time.mean),
                 fmt(self.udf_time.sum),
             )
-            # Breakdown of the line above, in execution order: input blocks
-            # become batches or rows, the UDF runs, output goes back into
-            # blocks. These sum to the total.
-            #
-            # Verbose-only, like `extra_metrics`: the figures are always on the
-            # summary for anyone reading it programmatically, but adding four
-            # lines to everyone's default `ds.stats()` is a bigger change than
-            # the detail warrants. They are absent altogether for row-based
-            # transforms unless `DataContext.accurate_map_phase_timing` is set,
-            # since measuring them per row costs more than it reports.
-            # The trailing flag is whether to print the line at 0.0. The three
-            # phases every chain runs are always printed, so the lines visibly
-            # sum to the total above and a fast phase doesn't silently vanish.
-            # Built-in stages is dropped at zero: most chains fuse nothing
-            # built-in, and a constant 0.0 line would be noise.
+            # Breakdown of the line above, in execution order; these sum to
+            # it. Verbose-only, like `extra_metrics` -- the figures are on the
+            # summary either way. The bool is whether to print at 0.0.
             breakdown = [
                 ("Input prep", self.input_prep_time, True),
                 ("Function body", self.udf_body_time, True),
                 ("Output block build", self.output_build_time, True),
-                # Bodies of the stages Ray Data supplies -- reads, downloads,
-                # file listing -- as opposed to the function you passed. Only
-                # non-zero when one is fused into this operator.
+                # A stage Ray Data supplies rather than one you passed; zero
+                # unless one is fused in, so hidden then.
                 ("Built-in stages", self.other_stage_time, False),
             ]
             if DataContext.get_current().verbose_stats_logs and any(

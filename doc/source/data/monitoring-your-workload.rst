@@ -393,11 +393,10 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
-* **UDF time**: The UDF time is the total time an operator's tasks spend transforming data. It covers the functions you pass
-  into Ray Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`,
-  :meth:`~ray.data.Dataset.filter`, etc., *and* the work Ray Data does on either side of them to hand them batches and to turn
-  what they return back into blocks. Set ``DataContext.verbose_stats_logs`` to break it into the following phases, which sum to
-  this total:
+* **UDF time**: The UDF time is the total time an operator spends transforming one output block. It covers the functions you
+  pass into Ray Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`,
+  :meth:`~ray.data.Dataset.filter`, etc., plus the work around those calls that feeds them and collects what they return.
+  Set ``DataContext.verbose_stats_logs`` to break it into the following phases, which sum to this total:
 
   * **Input prep**: Time spent turning input blocks into the batches or rows your functions receive, including converting them
     to the ``batch_format`` you asked for. This can dominate when rows hold Python objects or large tensors.
