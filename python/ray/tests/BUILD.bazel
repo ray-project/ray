@@ -636,6 +636,7 @@ py_test_module_list(
     files = [
         "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
+        "rdt/test_nixl_registration_cache.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
     ],

@@ -226,6 +226,13 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
 
     If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
 
+    Resizing a preregistered tensor storage requires Ray to deregister the old
+    NIXL extent and register the resized extent. If the maximum required size is
+    known, allocate that size before calling this function to avoid repeated
+    registration work. Do not resize the storage concurrently with registration
+    or an active RDT transfer, or while a live RDT ``ObjectRef`` refers to it;
+    already-published transfer descriptors cannot be rewritten.
+
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
 
