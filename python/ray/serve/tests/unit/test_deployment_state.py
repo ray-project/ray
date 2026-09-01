@@ -10631,5 +10631,34 @@ class TestRankConsistencyMembershipGate:
         assert ds._rank_manager.consistency_calls == 0
 
 
+@pytest.mark.parametrize("aggregation_function, expected", [("max", 8), ("min", 2)])
+def test_aggregation_function_reaches_builtin_metrics(aggregation_function, expected):
+    """`max`/`min` now reduce the built-in running-requests metric. The removed simple
+    mode ignored `aggregation_function` and always reported a mean."""
+    asm = AutoscalingStateManager()
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 6,
+            "aggregation_function": aggregation_function,
+        }
+    )
+    asm.register_deployment(TEST_DEPLOYMENT_ID, info, 1)
+    replica_id = ReplicaID(unique_id="r1", deployment_id=TEST_DEPLOYMENT_ID)
+    asm.update_running_replica_ids(TEST_DEPLOYMENT_ID, [replica_id])
+    asm.record_request_metrics_for_replica(
+        ReplicaMetricReport(
+            replica_id=replica_id,
+            metrics={
+                RUNNING_REQUESTS_KEY: [TimeStampedValue(1, 8), TimeStampedValue(2, 2)]
+            },
+            timestamp=2,
+        )
+    )
+
+    assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

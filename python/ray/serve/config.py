@@ -176,10 +176,9 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # Exact only because both sides share the deployment's `aggregation_function`;
-        # for non-additive ones (min/max) this difference is an approximation. Keep them
-        # on the same function -- aggregating either side differently breaks it outright.
-        return self.total_num_requests - self.total_queued_requests
+        # Approximate: the two operands are reduced over independently derived windows,
+        # so their difference can even go negative. Clamped until they share one window.
+        return max(0.0, self.total_num_requests - self.total_queued_requests)
 
     @property
     def total_pending_async_requests(self) -> int:

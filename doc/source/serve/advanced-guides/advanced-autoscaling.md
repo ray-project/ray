@@ -88,8 +88,8 @@ This controls how often each replica and handle sends reports on current ongoing
 
 * **[`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value="mean"]**: This controls how metrics are aggregated over the `look_back_period_s` time window. The aggregation function determines how Ray Serve combines multiple metric measurements into a single value for autoscaling decisions. Supported values:
   - `"mean"` (default): Uses time-weighted average of metrics. This provides smooth scaling behavior that responds to sustained traffic patterns.
-  - `"max"`: Uses the maximum metric value observed. This makes autoscaling more sensitive to spikes, scaling up quickly when any replica experiences high load.
-  - `"min"`: Uses the minimum metric value observed. This results in more conservative scaling behavior.
+  - `"max"`: Uses the highest value the deployment total reached during the window, not the highest value of any one replica. This makes autoscaling more sensitive to spikes.
+  - `"min"`: Uses the lowest value the deployment total reached during the window. This scales conservatively. Because an idle stretch inside the window pins the minimum to zero, a deployment that scaled to zero stays there until those samples age out.
 
 For most workloads, the default `"mean"` aggregation provides the best balance. Use `"max"` if you need to react quickly to traffic spikes, or `"min"` if you prefer conservative scaling that avoids rapid fluctuations.
 
@@ -135,8 +135,9 @@ The controller aggregates the raw timeseries to compute total ongoing requests a
 - **Output**: Single value representing total ongoing requests
 
 :::{note}
-Earlier releases also supported a "simple mode" that summed averages pre-computed at each replica and handle, selected by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`. That flag and that mode are removed. The controller now always aggregates raw timeseries. Two consequences if you're upgrading from a release that had the flag, where it defaulted to simple mode:
-- [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) now always applies. Under simple mode it was ignored, so a deployment that set `max` or `min` and never enabled the flag scaled on a mean and now scales on a peak or a trough.
+Earlier releases also supported a "simple mode" that summed averages pre-computed at each replica and handle, selected by `RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER`. That flag and that mode are removed. The controller now always aggregates raw timeseries. Deployments already running with `RAY_SERVE_ENABLE_DIRECT_INGRESS`, which both `RAY_SERVE_THROUGHPUT_OPTIMIZED` and HAProxy turn on, aggregated at the controller regardless of the flag and see no change. If you're upgrading from a release where the flag defaulted to simple mode, expect three consequences:
+- [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) now always applies. Under simple mode it was ignored, so a deployment that set `max` or `min` scaled on a mean and now scales on a peak or a trough.
+- Under the default `"mean"`, steady-state values don't change, but transients do. Simple mode averaged each source's samples without regard to their spacing, whereas the controller weights them by time. Sources that report at different intervals diverge the most.
 - Aggregating timeseries costs the controller more than summing pre-computed averages, and the cost grows with the number of replicas. Watch controller CPU on deployments with high replica counts.
 :::
 

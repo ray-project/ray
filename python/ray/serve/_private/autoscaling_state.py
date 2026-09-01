@@ -300,24 +300,26 @@ class DeploymentAutoscalingState:
                 and handle_metric.actor_id not in alive_serve_actor_ids
             ):
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                peak_requests = handle_metric.total_requests
+                if peak_requests > 0:
                     logger.debug(
                         f"Dropping metrics for handle '{handle_id}' because the Serve "
                         f"actor it was on ({handle_metric.actor_id}) is no longer "
-                        f"alive. It had {handle_metric.total_requests} ongoing requests"
+                        f"alive. Its peak ongoing requests was {peak_requests}."
                     )
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
             elif time.time() - handle_metric.timestamp >= timeout_s:
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                peak_requests = handle_metric.total_requests
+                if peak_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
                     logger.info(
                         f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
                         f"because no update was received for {timeout_s:.1f}s. "
-                        f"Ongoing requests was: {handle_metric.total_requests}."
+                        f"Peak ongoing requests was: {peak_requests}."
                     )
 
     def record_autoscaling_metrics(
@@ -545,65 +547,18 @@ class DeploymentAutoscalingState:
         return 0.0
 
     def get_total_num_requests(self) -> float:
-        """Get average total number of requests aggregated over the past
-        `look_back_period_s` number of seconds.
+        """Total ongoing requests, aggregated at the controller from raw timeseries.
 
-        Works with raw timeseries metrics data and performs aggregation at the
-        controller level. If there are 0 running replicas, then returns the total
-        number of requests queued at handles.
+        Replica and handle timeseries are merged into an instantaneous total and then
+        reduced by the deployment's `aggregation_function`, so the result is a window
+        mean, peak or trough rather than the current value. With no running replicas
+        this reduces to the handles' queued-requests series.
 
-        This code assumes that the metrics are either emmited on handles
-        or on replicas, but not both. Its the responsibility of the writer
-        to ensure enclusivity of the metrics.
-
-        Processing Steps:
-            1. Collect raw timeseries data (eg: running request) from replicas (if available)
-            2. Collect queued requests from handles (always tracked at handle level)
-            3. Collect raw timeseries data (eg: running request) from handles (if not available from replicas)
-            4. Merge timeseries using instantaneous approach for mathematically correct totals
-            5. Calculate time-weighted average running requests from the merged timeseries
-
-        Metrics Collection:
-            Running requests are collected with either replica-level or handle-level metrics.
-
-            Queued requests are always collected from handles regardless of where
-            running requests are collected.
-
-        Timeseries Aggregation:
-            Raw timeseries data from multiple sources is merged using an instantaneous
-            approach that treats gauges as right-continuous step functions. This provides
-            mathematically correct totals without arbitrary windowing bias.
-
-        Example with Numbers:
-            Assume metrics_interval_s = 0.5s, current time = 2.0s
-
-            Step 1: Collect raw timeseries from 2 replicas (r1, r2)
-            replica_metrics = [
-                {"running_requests": [(t=0.2, val=5), (t=0.8, val=7), (t=1.5, val=6)]},  # r1
-                {"running_requests": [(t=0.1, val=3), (t=0.9, val=4), (t=1.4, val=8)]}   # r2
-            ]
-
-            Step 2: Collect queued requests from handles
-            handle_queued = 2 + 3 = 5  # total from all handles
-
-            Step 3: No handle metrics needed (replica metrics available)
-            handle_metrics = []
-
-            Step 4: Merge timeseries using instantaneous approach
-            # Create delta events: r1 starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
-            #                      r2 starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.4)
-            # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.4, val=15), (t=1.5, val=14)]
-            merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)]}
-
-            Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+0.5=2.0)
-            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.5 + 15*0.1 + 14*0.5) / 2.0 = 10.05
-            avg_running = 10.05
-
-            Final result: total_requests = avg_running + queued = 10.05 + 5 = 15.05
+        Assumes running requests are emitted on handles or on replicas but not both;
+        the writer is responsible for keeping those exclusive.
 
         Returns:
-            Total number of requests (average running + queued) calculated from
-            timeseries data aggregation.
+            The aggregated total of running and queued requests.
         """
         # Collect replica-based running requests (returns List[TimeSeries])
         replica_timeseries = self._collect_replica_running_requests()

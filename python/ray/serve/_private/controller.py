@@ -393,8 +393,8 @@ class ServeController:
         report_delay: Callable[..., None],
         record_delay: Optional[Callable[[float], None]] = None,
     ) -> None:
-        """Report ingest delay. Prometheus aggregates reports from all sources of a
-        deployment, so the per-source tag is omitted to bound cardinality."""
+        """Report ingest delay. Only deployment/application tags are set, so these
+        metrics stay bounded no matter how many sources report."""
         delay_ms = (time.time() - timestamp) * 1000
         report_delay(
             delay_ms,

@@ -256,9 +256,12 @@ def test_running_replica_info():
 
 
 def test_handle_metric_report_total_requests():
-    """Peaks are summed, so a handle that drained by its last sample still reports load."""
+    """Per-series peaks are summed, so the value survives a mid-window dip and counts
+    every replica. It deliberately over-states any single instant."""
     deployment_id = DeploymentID(name="D", app_name="app")
-    replica_str = ReplicaID("r1", deployment_id=deployment_id).to_full_id_str()
+    r1, r2 = (
+        ReplicaID(r, deployment_id=deployment_id).to_full_id_str() for r in ("r1", "r2")
+    )
 
     def report(queued, running):
         return HandleMetricReport(
@@ -271,12 +274,24 @@ def test_handle_metric_report_total_requests():
             timestamp=2,
         )
 
-    drained = report(
-        [TimeStampedValue(1, 3), TimeStampedValue(2, 0)],
-        {replica_str: [TimeStampedValue(1, 5), TimeStampedValue(2, 0)]},
+    # Peaks are 4 (queued), 6 (r1) and 3 (r2). Summing every point would give 18 and
+    # taking either endpoint would give 4, so this pins both the peak and the per-
+    # replica sum rather than passing on a coincidence.
+    peaky = report(
+        [TimeStampedValue(1, 1), TimeStampedValue(2, 4), TimeStampedValue(3, 2)],
+        {
+            r1: [
+                TimeStampedValue(1, 0),
+                TimeStampedValue(2, 6),
+                TimeStampedValue(3, 1),
+            ],
+            r2: [TimeStampedValue(1, 3), TimeStampedValue(2, 1)],
+        },
     )
-    assert drained.total_requests == 8
+    assert peaky.total_requests == 13
 
+    # An empty series contributes nothing rather than raising.
+    assert report([], {r1: []}).total_requests == 0
     assert report([], {}).total_requests == 0
 
 

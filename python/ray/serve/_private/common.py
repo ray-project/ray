@@ -1010,9 +1010,9 @@ class HandleMetricReport:
 
     @property
     def total_requests(self) -> float:
-        """Upper bound on queued + running requests over this handle's reported window.
-        Diagnostic only (logged when a handle's metrics are dropped); peaks are summed
-        so a handle that was busy earlier in the window is not reported as idle."""
+        """Peak queued + running requests over this handle's reported window, summed
+        per series so it over-states any single instant. Diagnostic only: it gates and
+        labels the log line emitted when a handle's metrics are dropped."""
         running = self.metrics.get(RUNNING_REQUESTS_KEY, {}).values()
         series = [self.queued_requests, *running]
         return sum(max(point.value for point in s) for s in series if s)
