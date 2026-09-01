@@ -60,12 +60,13 @@ def get_package_extension(
 
     Args:
         path: Package path or URI to inspect.
-        supported_extensions: Extensions to match, including any compound extensions.
+        supported_extensions: Extensions to match in any order, including compound
+            extensions. If extensions overlap, the longest match takes precedence.
 
     Returns:
-        The matching extension, or ``None`` if the path is unsupported.
+        The longest matching extension, or ``None`` if the path is unsupported.
     """
-    for extension in supported_extensions:
+    for extension in sorted(supported_extensions, key=len, reverse=True):
         if path.endswith(extension):
             return extension
     return None
@@ -76,12 +77,16 @@ def has_package_extension(path: str, supported_extensions: Tuple[str, ...]) -> b
     return get_package_extension(path, supported_extensions) is not None
 
 
-def validate_package_extension(path: str, field: str) -> None:
+def validate_package_extension(
+    path: str, field: str, display_path: Optional[str] = None
+) -> None:
     """Validate a RuntimeEnv package path using the field's capabilities.
 
     Args:
         path: Package path to validate.
         field: RuntimeEnv field whose format capabilities apply.
+        display_path: Optional sanitized user-facing path to include in validation
+            errors. URI query parameters must be removed before passing it.
 
     Raises:
         ValueError: If the path does not have an extension supported by the field.
@@ -91,6 +96,7 @@ def validate_package_extension(path: str, field: str) -> None:
         return
 
     formats = ", ".join(supported_extensions)
+    error_path = path if display_path is None else display_path
     raise ValueError(
-        f"Only {formats} files are supported for {field} URIs; got {path}."
+        f"Only {formats} files are supported for {field} URIs; got {error_path}."
     )

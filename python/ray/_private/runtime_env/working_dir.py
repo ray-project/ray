@@ -73,7 +73,11 @@ def upload_working_dir_if_needed(
 
     if protocol is not None:
         if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
-            validate_package_extension(path, WORKING_DIR)
+            validate_package_extension(
+                path,
+                WORKING_DIR,
+                display_path=working_dir.split("?", 1)[0],
+            )
         return runtime_env
 
     default_excludes = ray_constants.get_runtime_env_default_excludes()

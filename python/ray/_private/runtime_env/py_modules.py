@@ -37,7 +37,7 @@ def _check_is_uri(s: str) -> bool:
         protocol, path = None, None
 
     if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
-        validate_package_extension(path, PY_MODULES)
+        validate_package_extension(path, PY_MODULES, display_path=s.split("?", 1)[0])
 
     return protocol is not None
 

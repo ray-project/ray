@@ -35,7 +35,7 @@ def validate_uri(uri: str, field: str):
         )
 
     if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
-        validate_package_extension(path, field)
+        validate_package_extension(path, field, display_path=uri.split("?", 1)[0])
 
 
 def _handle_local_deps_requirement_file(requirements_file: str):

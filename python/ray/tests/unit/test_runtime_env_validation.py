@@ -97,6 +97,15 @@ class TestValidateWorkingDir:
             ):
                 parse_and_validate_working_dir(uri)
 
+    def test_invalid_extension_error_uses_uri_without_query(self):
+        uri = "https://some_domain.com/path/file.txt?X-Amz-Signature=secret"
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_and_validate_working_dir(uri)
+
+        assert "https://some_domain.com/path/file.txt" in str(exc_info.value)
+        assert "X-Amz-Signature" not in str(exc_info.value)
+
     def test_validate_remote_valid_input(self):
         for uri in [
             "https://some_domain.com/path/file.zip",

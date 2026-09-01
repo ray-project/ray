@@ -129,7 +129,11 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
     ],
 )
 def test_lazy_reads(
-    insert_test_dir_in_pythonpath, start_cluster, tmp_working_dir, option: str
+    insert_test_dir_in_pythonpath,
+    start_cluster,
+    tmp_path,
+    tmp_working_dir,
+    option: str,
 ):
     """Tests the case where we lazily read files or import inside a task/actor.
 
@@ -156,15 +160,14 @@ def test_lazy_reads(
                 )
                 ray.init(address, runtime_env={"working_dir": package})
         elif option in {"working_dir_tar_xz", "py_modules_tar_xz"}:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                package = shutil.make_archive(
-                    os.path.join(tmp_dir, "test"), "xztar", tmp_working_dir
-                )
-                if option == "working_dir_tar_xz":
-                    runtime_env = {"working_dir": package}
-                else:
-                    runtime_env = {"py_modules": [Path(package).as_uri()]}
-                ray.init(address, runtime_env=runtime_env)
+            package = shutil.make_archive(
+                str(tmp_path / "test"), "xztar", tmp_working_dir
+            )
+            if option == "working_dir_tar_xz":
+                runtime_env = {"working_dir": package}
+            else:
+                runtime_env = {"py_modules": [Path(package).as_uri()]}
+            ray.init(address, runtime_env=runtime_env)
         elif option == "py_modules":
             ray.init(
                 address,
