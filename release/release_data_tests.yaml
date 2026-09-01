@@ -306,10 +306,12 @@
     setup:
       shuffle_strategy: []
       columns: []
-      # Only sort_shuffle_pull_based over the 84-group key wants a larger
-      # budget; the rest measured best at 32 MiB. A matrix cannot vary
-      # ``byod.runtime_env`` per value, so the budget rides as a matrix
-      # dimension. Rendered test names are unchanged.
+      # The 84-group key is read-bound, so it wants large bins: small bins
+      # shatter the read into short tasks the executor cannot dispatch fast
+      # enough, and the cluster idles. The 7M-group key is shuffle-bound and
+      # measured best at 32 MiB. A matrix cannot vary ``byod.runtime_env``
+      # per value, so the budget rides as a matrix dimension. Rendered test
+      # names are unchanged.
       bin_packing_bytes: []
     adjustments:
       - with:
@@ -323,7 +325,7 @@
       - with:
           shuffle_strategy: hash_shuffle
           columns: "column08 column13 column14"   # 84 groups
-          bin_packing_bytes: 33554432
+          bin_packing_bytes: 134217728
       - with:
           shuffle_strategy: hash_shuffle
           columns: "column02 column14"  # 7M groups
@@ -350,10 +352,23 @@
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [shuffle_v2]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      shuffle_strategy: []
+      columns: []
+      # Same split as the block above: the 84-group key is read-bound and
+      # wants large bins, the 7M-group key is shuffle-bound and measured
+      # best at 64 MiB. A matrix cannot vary ``byod.runtime_env`` per value,
+      # so the budget rides as a matrix dimension. Rendered test names are
+      # unchanged.
+      bin_packing_bytes: []
+    adjustments:
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 536870912
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 67108864
 
   cluster:
     anyscale_sdk_2026: true
@@ -364,7 +379,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
