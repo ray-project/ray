@@ -735,8 +735,8 @@ py_test_module_list(
     ],
 )
 
-# Gang scheduling with pack scheduling. Same 30 tests as the default-env
-# variant above, so it needs the same enormous budget.
+# Gang scheduling with pack scheduling: same tests as the default-env
+# variant, so it needs the same enormous budget.
 py_test_module_list(
     size = "enormous",
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},

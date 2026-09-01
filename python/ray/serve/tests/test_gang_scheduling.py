@@ -1460,7 +1460,7 @@ class TestGangNodeFailure:
         successes_at_recovery = len(successes)
         wait_for_condition(
             lambda: len(successes) > successes_at_recovery,
-            timeout=WAIT_TIMEOUT_S,
+            timeout=10,
         )
         stop.set()
         sender.join(timeout=5)
