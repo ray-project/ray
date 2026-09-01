@@ -14,7 +14,6 @@ from ray.data._internal.datasource_v2.listing.file_pruners import (
 from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
     FilePartitioner,
 )
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.block import Block
 
@@ -66,6 +65,8 @@ def list_files_for_each_block(
     predicate: Optional["Expr"] = None,
     limit: Optional[int] = None,
     projected_columns: Optional[List[str]] = None,
+    shuffle_config: Optional["FileShuffleConfig"] = None,
+    execution_idx: int = 0,
 ) -> Iterable[Block]:
     """Expand path blocks into ``FileManifest`` blocks.
 
@@ -80,6 +81,11 @@ def list_files_for_each_block(
     to the indexer; metadata-aware indexers (e.g. the footer-based Parquet
     indexer) use them to skip row groups, stop early, and size projected
     columns, while the plain indexer ignores them.
+
+    ``shuffle_config`` is also forwarded: the indexer shuffles listed files
+    after path discovery and before metadata fetch. Listing still runs as a
+    single task when shuffle is requested so the indexer sees the full file
+    set.
     """
     pruners = _build_pruners(file_extensions, partition_filter)
     for block in blocks:
@@ -91,38 +97,11 @@ def list_files_for_each_block(
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
-
-
-def shuffle_files(
-    blocks: Iterable[Block],
-    _: TaskContext,
-    *,
-    shuffle_config: "FileShuffleConfig",
-    execution_idx: int,
-) -> Iterable[Block]:
-    """Concatenate manifest blocks and shuffle rows with the seeded RNG.
-
-    Runs in a single task (`plan_list_files_op` sets `should_parallelize=False`
-    when shuffle is requested) so we have the full manifest before
-    shuffling. Emits one merged manifest block. Determinism comes from
-    ``FileManifest.shuffle`` which sorts by path before applying the
-    permutation — this protects against non-deterministic upstream
-    indexer yield order.
-    """
-    builder = DelegatingBlockBuilder()
-    for block in blocks:
-        if len(block) > 0:
-            builder.add_block(block)
-
-    combined = builder.build()
-    if len(combined) == 0:
-        return
-
-    seed = shuffle_config.get_seed(execution_idx)
-    yield FileManifest(combined).shuffle(seed).as_block()
 
 
 def sample_files(
