@@ -3,7 +3,19 @@ import logging
 import math
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -93,7 +105,7 @@ class DeploymentAutoscalingState:
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
         # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
-        self._running_replicas: List[ReplicaID] = []
+        self._running_replicas: Sequence[ReplicaID] = []
         self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
@@ -208,8 +220,12 @@ class DeploymentAutoscalingState:
             self._target_capacity,
         )
 
-    def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
+    def update_running_replica_ids(self, running_replicas: Sequence[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
+        if running_replicas is self._running_replicas:
+            # Identity means DeploymentState handed back its memoized tuple, so the
+            # running-replica ids are unchanged and the derived str set still matches.
+            return
         self._running_replicas = running_replicas
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
@@ -281,7 +297,9 @@ class DeploymentAutoscalingState:
         """Records task queue length from QueueMonitor for async inference."""
         self._total_pending_async_requests = report.queue_length
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
+    def drop_stale_handle_metrics(
+        self, alive_serve_actor_ids: AbstractSet[str]
+    ) -> None:
         """Drops handle metrics that are no longer valid.
 
         This includes handles that live on Serve Proxy or replica actors
@@ -395,7 +413,9 @@ class DeploymentAutoscalingState:
             app_name=self._deployment_id.app_name,
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
-            running_replicas=self._running_replicas,
+            # Copy: _running_replicas holds the memoized tuple from
+            # get_running_replica_ids(), and this is a stable public List[ReplicaID].
+            running_replicas=list(self._running_replicas),
             total_num_requests=self.get_total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
@@ -1013,7 +1033,7 @@ class ApplicationAutoscalingState:
             }
 
     def update_running_replica_ids(
-        self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
+        self, deployment_id: DeploymentID, running_replicas: Sequence[ReplicaID]
     ):
         self._deployment_autoscaling_states[deployment_id].update_running_replica_ids(
             running_replicas
@@ -1080,7 +1100,7 @@ class ApplicationAutoscalingState:
                 report.deployment_id
             ].record_async_inference_task_queue_metrics(report)
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]):
+    def drop_stale_handle_metrics(self, alive_serve_actor_ids: AbstractSet[str]):
         """Drops handle metrics that are no longer valid.
 
         This includes handles that live on Serve Proxy or replica actors
@@ -1183,7 +1203,7 @@ class AutoscalingStateManager:
         )
 
     def update_running_replica_ids(
-        self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
+        self, deployment_id: DeploymentID, running_replicas: Sequence[ReplicaID]
     ):
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
@@ -1271,6 +1291,8 @@ class AutoscalingStateManager:
         if app_state:
             app_state.record_async_inference_task_queue_metrics(report)
 
-    def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
+    def drop_stale_handle_metrics(
+        self, alive_serve_actor_ids: AbstractSet[str]
+    ) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
