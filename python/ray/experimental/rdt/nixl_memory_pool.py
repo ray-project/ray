@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch
@@ -149,9 +149,7 @@ class MemoryPoolManager:
                     if block.size >= size:
                         # Allocate at the start of the current free block. Take
                         # the padding along with the requested bytes so the next
-                        # block starts aligned; a trailing free block that is
-                        # too small to hold the padding is consumed whole
-                        # instead of leaving an unaligned remainder.
+                        # block starts aligned.
                         offset = block.offset
                         consumed = min(_align_up(size), block.size)
                         remaining_after = block.size - consumed
@@ -233,7 +231,10 @@ class MemoryPoolManager:
         return views, blocks
 
     def copy_out_and_free(
-        self, views: List["torch.Tensor"], blocks: List[MemoryBlock]
+        self,
+        views: List["torch.Tensor"],
+        blocks: List[MemoryBlock],
+        target_device: Optional[Union[str, "torch.device"]] = None,
     ) -> List["torch.Tensor"]:
         """Copy pool-backed views into independent tensors and free their blocks.
 
@@ -244,18 +245,26 @@ class MemoryPoolManager:
         Args:
             views: Pool-backed views returned by ``allocate_for_tensor_meta``.
             blocks: The blocks backing those views.
+            target_device: Device the copies should land on. Defaults to the
+                pool's own device. Staging through a pool on a different device
+                costs nothing extra, since the copy out happens either way.
 
         Returns:
             One independently allocated tensor per view, in the same order.
         """
         import torch
 
+        device = self.device if target_device is None else target_device
         try:
-            copies = [view.clone() for view in views]
+            # TODO(#65828): Allow a user to specify a stream for the copies.
+            copies = [view.to(device, copy=True) for view in views]
             if self.device.type == "cuda":
                 # The clones are queued on the current stream, while the pool
                 # block is reused by NIXL outside of any stream ordering, so
                 # wait for the copies before the block becomes reusable.
+                # TODO(#65829): Synchronize lazily. The copy only has to finish before
+                # the next NIXL transfer writes into the block, not before this
+                # returns
                 torch.cuda.synchronize(self.device)
         finally:
             self.free_blocks(blocks)

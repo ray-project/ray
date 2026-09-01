@@ -122,6 +122,8 @@ class NixlFetchRequest(FetchRequest):
         pool_blocks: Memory pool blocks backing the receive buffers, or None if
             the receive-side pool was not used. Cleared once the blocks have
             been returned to the pool.
+        pool_target_device: Device the pool-backed buffers should be copied out
+            to, which may differ from the pool's own device.
     """
 
     xfer_handle: Any = None
@@ -130,6 +132,7 @@ class NixlFetchRequest(FetchRequest):
     remove_tensor_descs: bool = False
     transport: Any = None
     pool_blocks: Optional[List[MemoryBlock]] = None
+    pool_target_device: Optional[str] = None
 
     def release(self) -> None:
         """Releases the transfer's resources, and is safe to call repeatedly.
@@ -424,21 +427,21 @@ class NixlTensorTransport(TensorTransportManager):
         added_tensor_descs = False
         tensors = None
         pool_blocks = None
+        pool_target_device = None
 
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
 
             recv_pool_eligible = (
-                target_buffers is None
-                and self._memory_pool is not None
-                and tensor_transport_metadata.tensor_device
-                == self._memory_pool.get_pool_tensor().device.type
+                target_buffers is None and self._memory_pool is not None
             )
             if recv_pool_eligible:
                 # The pool-backed buffers are only used for the transfer
                 # itself. wait_fetch_complete copies them out into independent
-                # tensors before returning them to the caller.
+                # tensors on the target device before returning them, so the
+                # pool's own device doesn't have to match.
+                pool_target_device = tensor_transport_metadata.tensor_device
                 tensors, pool_blocks = self._memory_pool.allocate_for_tensor_meta(
                     tensor_transport_metadata.tensor_meta
                 )
@@ -497,6 +500,7 @@ class NixlTensorTransport(TensorTransportManager):
                 remove_tensor_descs=added_tensor_descs,
                 transport=self,
                 pool_blocks=pool_blocks,
+                pool_target_device=pool_target_device,
             )
         except Exception:
             self._cleanup_transfer(
@@ -567,7 +571,7 @@ class NixlTensorTransport(TensorTransportManager):
                 blocks = fetch_request.pool_blocks
                 fetch_request.pool_blocks = None
                 fetch_request.tensors = self._memory_pool.copy_out_and_free(
-                    fetch_request.tensors, blocks
+                    fetch_request.tensors, blocks, fetch_request.pool_target_device
                 )
             return fetch_request.tensors
         except TimeoutError:
