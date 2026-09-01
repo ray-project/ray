@@ -774,6 +774,7 @@ cupy-cuda12x==14.0.1 \
     --hash=sha256:f244bc14fad6f1ef0c74abd98afa4b82d2534aecdba911197810ec0047f0d1f3 \
     --hash=sha256:fa356384760e01498d010af2d96de536ef3dad19db1d3a1ad0764e4323fb919f
     # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
     #   -r docker/ray-torch/torch-requirements.txt
     #   ray
 cython==3.2.4 \
@@ -950,6 +951,7 @@ dm-tree==0.1.10 \
     --hash=sha256:f0e8907bb6809dc195be3af077e382126eaebe06c00f835d09ae26e36d2165ff \
     --hash=sha256:f395390d6acfb5d39c564c8bbcaf35352a81eb2f0d34d449739039b2ef786e14
     # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
     #   -r docker/ray-torch/torch-requirements.txt
     #   ray
 durationpy==0.10 \
@@ -2084,6 +2086,7 @@ llvmlite==0.47.0 \
     --hash=sha256:f9d118bc1dd7623e0e65ca9ac485ec6dd543c3b77bc9928ddc45ebd34e1e30a7 \
     --hash=sha256:fa1cbd800edd3b20bc141521f7fd45a6185a5b84109aa6855134e81397ffe72b
     # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
     #   -r docker/ray-torch/torch-requirements.txt
     #   numba
 locust==2.44.3 \
@@ -2646,7 +2649,9 @@ numba==0.65.0 \
     --hash=sha256:dff9fd5fbc9a35c517359c5823ea705d9b65f01fb46e42e35a2eabe5a52c2e96 \
     --hash=sha256:edad0d9f6682e93624c00125a471ae4df186175d71fd604c983c377cdc03e68b \
     --hash=sha256:ee336b398a6fca51b1f626034de99f50cb1bd87d537a166275158a3cee744b82
-    # via -r docker/ray-torch/torch-requirements.txt
+    # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
+    #   -r docker/ray-torch/torch-requirements.txt
 numpy==2.4.6 \
     --hash=sha256:001fbb8e08d942dd57599e781f2472269ee7f2755fae407b4f67b2f0b17da3f1 \
     --hash=sha256:0280e0356c0829a18d9de1cb7eee50ec22ca639878d7240307ca0943d73cd2c4 \
@@ -4461,6 +4466,7 @@ torch==2.10.0+cu128 \
     --hash=sha256:f1f8b840c64b645a4bc61a393db48effb9c92b2dc26c8373873911f0750d1ea7 \
     --hash=sha256:fbde8f6a9ec8c76979a0d14df21c10b9e5cab6f0d106a73ca73e2179bc597cae
     # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
     #   -r docker/ray-torch/torch-requirements.txt
     #   sentence-transformers
     #   torchmetrics
@@ -4491,7 +4497,9 @@ torchvision==0.25.0+cu128 \
     --hash=sha256:e2dbf9ea9f4b2416822249e96ff3ad873d9a84e51285d6b9967732be3015c523 \
     --hash=sha256:e2e0317e3861bba1b5aeba7c1cb4bcd50937cf0bffdbea478619d1f5f73e9050 \
     --hash=sha256:ebf2b495c76097796b9a2eac9290efbcae96e0fd9e5ae52c40eff188610bb440
-    # via -r docker/ray-torch/torch-requirements.txt
+    # via
+    #   -c docker/ray-torch/torch-constraints-py3.14.txt
+    #   -r docker/ray-torch/torch-requirements.txt
 tornado==6.5.5 \
     --hash=sha256:192b8f3ea91bd7f1f50c06955416ed76c6b72f96779b962f07f911b91e8d30e9 \
     --hash=sha256:2c9a876e094109333f888539ddb2de4361743e5d21eece20688e3e351e4990a6 \
