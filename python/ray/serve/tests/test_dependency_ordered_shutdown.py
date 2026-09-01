@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import time
 from typing import Dict, List, Set, Tuple
 
 import pytest
@@ -26,8 +27,8 @@ def shutdown_test_cluster(request, monkeypatch):
     ray.shutdown()
 
 
-# A healthy replica cannot drain faster than graceful_shutdown_wait_loop_s, whose
-# 2s default exceeds the tier timeout below, so every tier would time out.
+# A healthy replica's drain cannot finish faster than graceful_shutdown_wait_loop_s,
+# whose 2s default is most of the 5s tier timeout below and slows every teardown here.
 _SHORT_DRAIN = {"graceful_shutdown_wait_loop_s": 0.1}
 
 
@@ -341,8 +342,11 @@ class TestBestEffortTopologyShutdown:
         client = _get_global_client()
         ray.get(client._controller.graceful_shutdown.remote(False))
 
-        # Ingress drains well inside the tier timeout, so Leaf is only reached by
-        # timing out on Middle, the one tier that never drains.
+        # Leaf sits behind the tier that never drains, so it cannot be recorded
+        # until that tier times out; Ingress drains immediately.
+        _shutdown_order(recorder, {"Ingress"})
+        time.sleep(2)
+        assert "Leaf" not in ray.get(recorder.get.remote())
         assert _shutdown_order(recorder, {"Ingress", "Leaf"}) == ["Ingress", "Leaf"]
         middle_replica = _replica_actor("Middle", "chain")
 
