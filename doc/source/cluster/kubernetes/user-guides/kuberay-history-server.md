@@ -189,7 +189,7 @@ Configure the History Server with the following environment variables and comman
 :::
 
 :::{warning}
-The History Server doesn't authenticate its own callers, and a client-supplied cookie determines which RayCluster it proxies to. When `--enable-live-clusters` is enabled, anyone who can reach the History Server can reach the Ray Dashboard API of every RayCluster that the History Server can access. Only enable live cluster access when you restrict access to the History Server by other means.
+The History Server does not authenticate its own callers, and a client-supplied cookie determines which RayCluster it proxies to. When `--enable-live-clusters` is enabled, anyone who can reach the History Server can reach the Ray Dashboard API of every RayCluster that the History Server can access. Only enable live cluster access when you restrict access to the History Server by other means.
 :::
 
 :::{note}
