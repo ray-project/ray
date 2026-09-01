@@ -325,9 +325,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             logger.info("Refreshing K8s API client token and certs.")
             self._headers, self._verify, self._cert = load_k8s_secrets()
             self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
-            return self._headers, self._verify, self._cert
-        else:
-            return self._headers, self._verify, self._cert
+        return self._headers, self._verify, self._cert
 
     def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers.

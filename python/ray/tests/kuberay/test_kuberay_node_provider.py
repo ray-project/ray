@@ -1,5 +1,6 @@
 import contextlib
 import copy
+import datetime
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -521,6 +522,26 @@ def test_client_patch_defaults_unchanged():
         "verify": IN_CLUSTER_CA_CERT_PATH,
         "cert": None,
     }
+
+
+def test_client_caches_credentials_until_they_expire():
+    """Credentials are loaded once and reused until the refresh period elapses."""
+    client = KubernetesHttpApiClient(namespace="default")
+    with _mock_auth_config(), _mock_token_file(), mock.patch.object(
+        node_provider_module, "load_k8s_secrets", return_value=({}, "ca", None)
+    ) as mock_load, mock.patch.object(node_provider_module.requests, "get") as mock_get:
+        mock_get.return_value = _mock_ok_response({})
+
+        client.get("pods")
+        client.get("pods")
+        assert mock_load.call_count == 1
+
+        # Force the cached credentials to look expired.
+        client._token_expires_at = datetime.datetime.now() - datetime.timedelta(
+            seconds=1
+        )
+        client.get("pods")
+        assert mock_load.call_count == 2
 
 
 @pytest.mark.parametrize("method", ["get", "patch"])
