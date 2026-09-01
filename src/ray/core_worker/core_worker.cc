@@ -3908,6 +3908,15 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
     return;
   }
   RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
+  if (reference_counter_->IsObjectOutOfScope(object_id)) {
+    // Same answer as above, reached when the Reference outlived the scope it was
+    // tracking: lineage pinning keeps it while a task that may be retried depends on
+    // the object. The value was deleted when the object went out of scope, so unless
+    // such a task is retried the wait below never gets a reply.
+    reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
     reply->set_status(rpc::GetObjectStatusReply::FREED);
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3915,7 +3924,7 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   }
   // Send the reply once the value has become available. The value is
   // guaranteed to become available eventually because we own the object and
-  // its ref count is > 0.
+  // it is still in scope.
   memory_store_->GetAsync(object_id,
                           [this, object_id, reply, send_reply_callback](
                               const std::shared_ptr<RayObject> &obj) {
