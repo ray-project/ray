@@ -1,23 +1,146 @@
 """Memory pool management for NIXL RDT optimization."""
 
-import logging
-import threading
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     import torch
 
-logger = logging.getLogger(__name__)
-
-# Pool offsets are kept at a multiple of this many bytes. ``Tensor.view(dtype)``
-# requires the byte offset into the storage to be divisible by the target dtype's
-# element size, so an unpadded 1-byte allocation would otherwise leave the next
-# block at an offset that no wider dtype can view.
-BLOCK_ALIGNMENT = 8
+# Pool blocks are carved on this boundary so every block starts aligned for any
+# torch dtype (complex128 has the largest element size).
+_MAX_ALIGNMENT = 16
 
 
-def _align_up(size: int) -> int:
-    return ((size + BLOCK_ALIGNMENT - 1) // BLOCK_ALIGNMENT) * BLOCK_ALIGNMENT
+def _align_up(value: int, alignment: int) -> int:
+    """Round ``value`` up to the next multiple of ``alignment``.
+
+    Adding ``alignment - 1`` pushes any value past the boundary it belongs to and
+    the floor division truncates back down to it, so a value already on a
+    boundary comes back unchanged. At most ``alignment - 1`` is added, which is
+    what bounds the padding a dtype boundary can cost.
+
+    Args:
+        value: Byte count or offset to round up.
+        alignment: Boundary to round to, always a power of two here: either a
+            dtype's element size or ``_MAX_ALIGNMENT``.
+
+    Returns:
+        The smallest multiple of ``alignment`` that is at least ``value``, for
+        example 8 for both ``(1, 8)`` and ``(8, 8)``, and 16 for ``(9, 8)``.
+    """
+    return (value + alignment - 1) // alignment * alignment
+
+
+class TensorLayout(NamedTuple):
+    """A tensor's size and alignment.
+
+    Attributes:
+        nbytes: The tensor's own byte size without padding, ``numel * element_size``.
+        alignment: The boundary the tensor must start on, its element size.
+    """
+
+    nbytes: int
+    alignment: int
+
+
+def packed_offsets(
+    tensor_layouts: Sequence[TensorLayout],
+) -> Tuple[List[int], int]:
+    """Compute offsets for one consecutive group of tensors.
+
+    Each tensor starts on a multiple of its own element size, which is what
+    ``Tensor.view(dtype)`` needs to reinterpret the packed bytes. A group of
+    tensors sharing a dtype therefore packs with no padding, so a receiver
+    holding one contiguous buffer can match this layout exactly.
+
+    Both sender and receiver use this to place tensors within a descriptor.
+    The returned byte count ends at the last tensor with no trailing pad.
+
+    Args:
+        tensor_layouts: Size and alignment of each tensor in the group, in
+            tensor order.
+
+    Returns:
+        (offsets, packed_nbytes) for the group.
+    """
+    offsets: List[int] = []
+    byte_index = 0
+    for nbytes, alignment in tensor_layouts:
+        byte_index = _align_up(byte_index, alignment)
+        offsets.append(byte_index)
+        byte_index += nbytes
+    return offsets, byte_index
+
+
+def group_tensors_by_desc(
+    tensor_layouts: Sequence[TensorLayout],
+    packed_group_nbytes: Sequence[int],
+) -> List[List[int]]:
+    """Recover which tensors each descriptor covers from the packed sizes.
+
+    Walks the tensors in order and closes a group when its packed byte count
+    equals the current descriptor's. Raises if the tensors and byte counts are
+    not consumed exactly.
+
+    Args:
+        tensor_layouts: Size and alignment of each tensor, in tensor order.
+        packed_group_nbytes: Total byte count of each NIXL transfer descriptor,
+            in order. Each descriptor covers a consecutive group of tensors, so
+            there are no more of these than there are tensors.
+
+    Returns:
+        One list per packed descriptor. Each list contains indices into
+        tensor_layouts corresponding to the contained tensors.
+    """
+    num_tensors = len(tensor_layouts)
+    desc_groups: List[List[int]] = []
+    tensor_idx = 0
+    for group_nbytes in packed_group_nbytes:
+        if tensor_idx >= num_tensors:
+            raise ValueError(
+                f"Extra descriptor byte count {group_nbytes} after consuming "
+                f"all {num_tensors} tensors"
+            )
+        desc_group: List[int] = []
+        packed_nbytes = 0
+        closed = False
+        while tensor_idx < num_tensors:
+            nbytes, alignment = tensor_layouts[tensor_idx]
+            candidate_nbytes = _align_up(packed_nbytes, alignment) + nbytes
+            if candidate_nbytes > group_nbytes:
+                raise ValueError(
+                    f"Tensor sizes "
+                    f"{[tensor_layouts[i].nbytes for i in desc_group + [tensor_idx]]}"
+                    f" do not pack into descriptor byte count {group_nbytes} under "
+                    f"the wire contract (packed_nbytes={candidate_nbytes})"
+                )
+            desc_group.append(tensor_idx)
+            packed_nbytes = candidate_nbytes
+            tensor_idx += 1
+            if packed_nbytes == group_nbytes:
+                closed = True
+                break
+        if not closed:
+            raise ValueError(
+                f"Descriptor byte count {group_nbytes} does not match packed byte "
+                f"count {packed_nbytes} for tensor indices {desc_group}"
+            )
+        desc_groups.append(desc_group)
+
+    if tensor_idx != num_tensors:
+        raise ValueError(
+            f"Descriptor byte counts {list(packed_group_nbytes)} did not consume "
+            f"all {num_tensors} tensors (stopped at index {tensor_idx})"
+        )
+    return desc_groups
 
 
 class NixlOutOfMemoryError(RuntimeError):
@@ -40,15 +163,25 @@ class MemoryBlock:
         return f"MemoryBlock(offset={self.offset}, size={self.size})"
 
 
+def _merge_free_blocks(blocks: List[MemoryBlock]) -> None:
+    """Sort a free list by offset and merge adjacent blocks, in place."""
+    blocks.sort(key=lambda b: b.offset)
+    i = 0
+    while i < len(blocks) - 1:
+        curr = blocks[i]
+        nxt = blocks[i + 1]
+        if curr.offset + curr.size == nxt.offset:
+            curr.size += nxt.size
+            blocks.pop(i + 1)
+        else:
+            i += 1
+
+
 class MemoryPoolManager:
     """Manages a pre-allocated memory pool for NIXL RDT transfers.
 
     This class provides a memory allocator interface over a pre-allocated memory pool,
     allowing reuse of registered memory descriptors across multiple transfers.
-
-    It also tracks which storage data pointers have allocated blocks, enabling
-    cross-call reuse (the same storage can reuse its pool slot across multiple
-    ray.put calls) and pool-level block management.
     """
 
     def __init__(self, pool_size: int, device: "torch.device"):
@@ -69,14 +202,10 @@ class MemoryPoolManager:
             pool_size, dtype=torch.uint8, device=self.device
         )
 
-        # Track free blocks using a largest-request-first, first-fit allocator.
         # List of MemoryBlock for free blocks, sorted by offset.
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
-
-        # Track allocated blocks by storage data pointer.
-        # Maps storage_data_ptr -> MemoryBlock in the pool.
-        self._allocated_blocks: Dict[int, MemoryBlock] = {}
-        self._allocator_lock = threading.RLock()
+        # Blocks allocated per object ID.
+        self._allocated_by_obj: Dict[str, List[MemoryBlock]] = {}
 
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
@@ -86,366 +215,282 @@ class MemoryPoolManager:
         """
         return self._pool_tensor
 
-    def has_block(self, tensor: "torch.Tensor") -> bool:
-        """Check if a tensor has an allocated block in the pool.
+    def allocate_group(
+        self,
+        obj_id: str,
+        tensors: List["torch.Tensor"],
+    ) -> List["torch.Tensor"]:
+        """Pack tensors into as few contiguous pool blocks as possible.
+
+        Copies only each tensor's own bytes (numel * element_size), not the
+        full underlying storage. Packs in tensor order so each block covers a
+        consecutive group. Replaces any prior allocation for ``obj_id``.
 
         Args:
-            tensor: The tensor to check.
+            obj_id: Object ID that owns the allocation.
+            tensors: Source tensors to allocate pool memory for.
 
         Returns:
-            True if the tensor's storage has an allocated block.
-        """
-        with self._allocator_lock:
-            return tensor.untyped_storage().data_ptr() in self._allocated_blocks
-
-    def _allocate_memory_blocks(self, sizes: List[int]) -> List[MemoryBlock]:
-        """Allocate multiple memory blocks from the pool atomically.
-
-        Either all allocations succeed, or none of them do.
-
-        Blocks are padded up to ``BLOCK_ALIGNMENT`` so that every block offset
-        stays aligned, which means a returned block may be larger than the
-        requested size.
-
-        Args:
-            sizes: List of sizes to allocate in bytes.
-
-        Returns:
-            List of MemoryBlock objects, one per requested size.
+            One pool-backed region per block, in order, to transfer as is. The
+            receiver recovers the individual tensors from the region lengths
+            with ``group_tensors_by_desc`` and ``packed_offsets``.
 
         Raises:
-            ValueError: If ``sizes`` is empty or contains non-positive values.
             NixlOutOfMemoryError: If the pool has insufficient space.
         """
-        with self._allocator_lock:
-            if not sizes or any(s <= 0 for s in sizes):
-                raise ValueError("Invalid allocation request")
+        tensor_layouts = [
+            TensorLayout(t.numel() * t.element_size(), t.element_size())
+            for t in tensors
+        ]
+        sizes = [layout.nbytes for layout in tensor_layouts]
 
-            # If total free space is less than total requested, fail fast.
-            total_requested = sum(sizes)
-            total_free = sum(b.size for b in self._free_blocks)
-            if total_free < total_requested:
-                raise NixlOutOfMemoryError(
-                    f"NIXL memory pool out of memory: cannot allocate "
-                    f"{len(sizes)} block(s) totaling "
-                    f"{total_requested} bytes. Consider increasing "
-                    f"the pool size when calling "
-                    f"register_nixl_memory_pool."
+        # Snapshot the free list so the whole group is atomic. If this obj_id
+        # already owns blocks (re-extract), treat them as free for packing so
+        # the new allocation can reuse that space; on failure the real state
+        # is left untouched.
+        temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
+        prior = self._allocated_by_obj.get(obj_id)
+        if prior:
+            temp_free.extend(MemoryBlock(b.offset, b.size) for b in prior)
+            _merge_free_blocks(temp_free)
+
+        if sum(b.size for b in temp_free) < sum(sizes):
+            raise NixlOutOfMemoryError(
+                f"NIXL memory pool out of memory: cannot allocate {len(sizes)} "
+                f"tensor(s) totaling {sum(sizes)} bytes. Consider increasing the "
+                f"pool size when calling register_nixl_memory_pool."
+            )
+
+        blocks: List[MemoryBlock] = []
+        # Bytes actually packed into each block, and the absolute pool offset of
+        # each tensor. Tensors are taken in order, so pool_starts ends up in
+        # tensor order.
+        block_nbytes: List[int] = []
+        pool_starts: List[int] = []
+        remaining = list(range(len(tensors)))
+
+        while remaining:
+            rem_layouts = [tensor_layouts[i] for i in remaining]
+            offsets, total_nbytes = packed_offsets(rem_layouts)
+
+            # Prefer the smallest free block that fits everything remaining.
+            free_idx = min(
+                (i for i, b in enumerate(temp_free) if b.size >= total_nbytes),
+                key=lambda i: temp_free[i].size,
+                default=None,
+            )
+            if free_idx is not None:
+                take_count = len(remaining)
+                placed_nbytes = total_nbytes
+            else:
+                # Take the largest free block and pack as many as fit in order.
+                free_idx = max(
+                    range(len(temp_free)),
+                    key=lambda i: temp_free[i].size,
+                    default=None,
                 )
-
-            # Allocate largest first to reduce fragmentation; then return in original order.
-            order = sorted(range(len(sizes)), key=lambda i: -sizes[i])
-            sorted_sizes = [sizes[i] for i in order]
-
-            # Try to allocate all blocks atomically.
-            allocations: List[MemoryBlock] = []
-            temp_free_blocks = [
-                MemoryBlock(b.offset, b.size) for b in self._free_blocks
-            ]
-
-            for size in sorted_sizes:
-                allocated = False
-                for i, block in enumerate(temp_free_blocks):
-                    if block.size >= size:
-                        # Allocate at the start of the current free block. Take
-                        # the padding along with the requested bytes so the next
-                        # block starts aligned.
-                        offset = block.offset
-                        consumed = min(_align_up(size), block.size)
-                        remaining_after = block.size - consumed
-
-                        if remaining_after == 0:
-                            temp_free_blocks.pop(i)
-                        else:
-                            block.offset = offset + consumed
-                            block.size = remaining_after
-
-                        allocations.append(MemoryBlock(offset, consumed))
-                        allocated = True
+                hole_size = 0 if free_idx is None else temp_free[free_idx].size
+                take_count = 0
+                placed_nbytes = 0
+                for n, layout in enumerate(rem_layouts):
+                    if offsets[n] + layout.nbytes > hole_size:
                         break
-
-                if not allocated:
+                    take_count = n + 1
+                    placed_nbytes = offsets[n] + layout.nbytes
+                if take_count == 0:
                     raise NixlOutOfMemoryError(
-                        f"NIXL memory pool out of memory: cannot allocate "
-                        f"{len(sizes)} block(s) totaling "
-                        f"{total_requested} bytes. Consider increasing "
-                        f"the pool size when calling "
-                        f"register_nixl_memory_pool."
+                        f"NIXL memory pool out of memory: cannot allocate next "
+                        f"tensor of {rem_layouts[0].nbytes} bytes (largest free "
+                        f"block is {hole_size} bytes). Consider increasing the "
+                        f"pool size when calling register_nixl_memory_pool."
                     )
 
-            # Reorder allocations back to original request order
-            result: List[MemoryBlock] = [MemoryBlock(0, 0)] * len(sizes)
-            for k, alloc in enumerate(allocations):
-                result[order[k]] = alloc
+            # Round the carved block up so subsequent offsets stay aligned.
+            free_block = temp_free[free_idx]
+            block_offset = free_block.offset
+            carved = min(_align_up(placed_nbytes, _MAX_ALIGNMENT), free_block.size)
+            if carved == free_block.size:
+                temp_free.pop(free_idx)
+            else:
+                free_block.offset += carved
+                free_block.size -= carved
 
-            # All successful, submit modifications
-            temp_free_blocks.sort(key=lambda b: b.offset)
-            self._free_blocks = temp_free_blocks
+            blocks.append(MemoryBlock(block_offset, carved))
+            block_nbytes.append(placed_nbytes)
+            pool_starts.extend(block_offset + off for off in offsets[:take_count])
+            remaining = remaining[take_count:]
 
-            return result
+        # Commit only after the full group packs successfully.
+        temp_free.sort(key=lambda b: b.offset)
+        self._free_blocks = temp_free
+        self._allocated_by_obj[obj_id] = blocks
 
-    def allocate_for_tensor_meta(
+        regions = [
+            self._pool_tensor[b.offset : b.offset + nbytes]
+            for b, nbytes in zip(blocks, block_nbytes)
+        ]
+        self._copy_into_pool(tensors, sizes, pool_starts)
+        return regions
+
+    def _copy_into_pool(
         self,
-        tensor_meta: List[Tuple[Union["torch.Size", Tuple[int, ...]], "torch.dtype"]],
-    ) -> Tuple[List["torch.Tensor"], List[MemoryBlock]]:
-        """Allocate pool-backed receive buffers for the given tensor metadata.
-
-        For each ``(shape, dtype)`` entry, allocates a pool block sized to the
-        tensor byte count and returns a typed view backed by the pool.
-
-        The views are only valid until their blocks are freed, so the caller
-        owns the returned blocks and must pass them to ``copy_out_and_free``
-        once the transfer completes, or to ``free_blocks`` if it fails. The
-        views must not be handed to user code, since a pool block returned to
-        the pool can be overwritten by the next transfer.
+        tensors: List["torch.Tensor"],
+        sizes: List[int],
+        pool_starts: List[int],
+    ) -> None:
+        """Copy each tensor's own bytes into its packed slot in the pool.
+        Only the tensor's own bytes are copied, never its whole storage, so a
+        view into a larger weight costs only the bytes it occupies.
 
         Args:
-            tensor_meta: List of ``(shape, dtype)`` tuples describing tensors
-                to receive.
-
-        Returns:
-            A tuple of (pool-backed tensor views, blocks backing those views),
-            one entry each per metadata entry.
-
-        Raises:
-            NixlOutOfMemoryError: If the pool has insufficient space.
+            tensors: Source tensors, in input order.
+            sizes: Byte size of each tensor.
+            pool_starts: Absolute pool offset each tensor was placed at.
         """
         import torch
 
-        sizes = []
-        for shape, dtype in tensor_meta:
-            numel = 1
-            for dim in shape:
-                numel *= dim
-            sizes.append(numel * torch.tensor([], dtype=dtype).element_size())
+        for tensor, nbytes, pool_start in zip(tensors, sizes, pool_starts):
+            src_bytes = tensor.flatten().view(torch.uint8)
+            self._pool_tensor[pool_start : pool_start + nbytes].copy_(src_bytes)
 
-        blocks = self._allocate_memory_blocks(sizes)
-        try:
-            views = [
-                self._view_for_block(block, shape, dtype)
-                for block, (shape, dtype) in zip(blocks, tensor_meta)
-            ]
-        except Exception:
-            self._free_multiple_blocks(blocks)
-            raise
-        return views, blocks
+    def allocate_regions(
+        self,
+        region_nbytes: Sequence[int],
+    ) -> Tuple[List["torch.Tensor"], List[MemoryBlock]]:
+        """Carve one contiguous pool region per requested byte count.
+
+        This is the receive-side counterpart to ``allocate_group``: the sender
+        packs tensors it already has, while the receiver only knows how many
+        bytes each incoming NIXL descriptor carries. One region per descriptor
+        keeps the read contiguous, and the caller lays the individual tensors
+        out inside a region with ``packed_offsets``, which works because blocks
+        start on ``_MAX_ALIGNMENT``.
+
+        Unlike ``allocate_group`` this copies nothing and takes no ``obj_id``.
+        Receive buffers live for exactly one transfer, so the caller owns the
+        returned blocks and returns them with ``copy_out_and_free`` once the
+        transfer lands, or ``free_blocks`` if it fails.
+
+        Args:
+            region_nbytes: Byte count of each region, in descriptor order.
+
+        Returns:
+            (regions, blocks) in the requested order. Each region is a ``uint8``
+            view sized exactly as requested; its block may be slightly larger
+            because of alignment.
+
+        Raises:
+            NixlOutOfMemoryError: If the pool has insufficient space.
+        """
+        # Snapshot the free list so the whole group is atomic: a later region
+        # that does not fit leaves the real free list untouched.
+        temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
+        blocks: List[MemoryBlock] = []
+
+        for nbytes in region_nbytes:
+            # Prefer the smallest block that fits so large holes stay intact
+            # for whichever region needs them.
+            free_idx = min(
+                (i for i, b in enumerate(temp_free) if b.size >= nbytes),
+                key=lambda i: temp_free[i].size,
+                default=None,
+            )
+            if free_idx is None:
+                largest = max((b.size for b in temp_free), default=0)
+                raise NixlOutOfMemoryError(
+                    f"NIXL memory pool out of memory: cannot allocate a "
+                    f"contiguous receive buffer of {nbytes} bytes (largest free "
+                    f"block is {largest} bytes). Consider increasing the pool "
+                    f"size when calling register_nixl_memory_pool."
+                )
+
+            free_block = temp_free[free_idx]
+            block_offset = free_block.offset
+            # Round up so the next block still starts aligned, but never past
+            # the end of the hole we are carving from.
+            carved = min(_align_up(nbytes, _MAX_ALIGNMENT), free_block.size)
+            if carved == free_block.size:
+                temp_free.pop(free_idx)
+            else:
+                free_block.offset += carved
+                free_block.size -= carved
+            blocks.append(MemoryBlock(block_offset, carved))
+
+        # Commit only after every region has been placed.
+        temp_free.sort(key=lambda b: b.offset)
+        self._free_blocks = temp_free
+
+        regions = [
+            self._pool_tensor[b.offset : b.offset + nbytes]
+            for b, nbytes in zip(blocks, region_nbytes)
+        ]
+        return regions, blocks
 
     def copy_out_and_free(
         self,
-        views: List["torch.Tensor"],
+        tensors: List["torch.Tensor"],
         blocks: List[MemoryBlock],
         target_device: Optional[Union[str, "torch.device"]] = None,
     ) -> List["torch.Tensor"]:
-        """Copy pool-backed views into independent tensors and free their blocks.
+        """Copy pool-backed tensors into independent tensors and free their blocks.
 
         This decouples the returned tensors from the pool, so their lifetime is
         no longer tied to the pool's free list. Callers can hand the copies to
         user code and the blocks are immediately reusable by the next transfer.
 
         Args:
-            views: Pool-backed views returned by ``allocate_for_tensor_meta``.
+            tensors: Views into pool regions from ``allocate_regions``.
             blocks: The blocks backing those views.
             target_device: Device the copies should land on. Defaults to the
                 pool's own device. Staging through a pool on a different device
                 costs nothing extra, since the copy out happens either way.
 
         Returns:
-            One independently allocated tensor per view, in the same order.
+            One independently allocated tensor per input, in the same order.
         """
         import torch
 
         device = self.device if target_device is None else target_device
         try:
+            # copy=True because .to() is a no-op when the device already
+            # matches, which would keep the result aliasing the pool block we
+            # are about to hand back.
             # TODO(#65828): Allow a user to specify a stream for the copies.
-            copies = [view.to(device, copy=True) for view in views]
+            copies = [tensor.to(device, copy=True) for tensor in tensors]
             if self.device.type == "cuda":
-                # The clones are queued on the current stream, while the pool
+                # The copies are queued on the current stream, while the pool
                 # block is reused by NIXL outside of any stream ordering, so
                 # wait for the copies before the block becomes reusable.
-                # TODO(#65829): Synchronize lazily. The copy only has to finish before
-                # the next NIXL transfer writes into the block, not before this
-                # returns
+                # TODO(#65829): Synchronize lazily. The copy only has to finish
+                # before the next NIXL transfer writes into the block, not
+                # before this returns.
                 torch.cuda.synchronize(self.device)
         finally:
             self.free_blocks(blocks)
         return copies
 
     def free_blocks(self, blocks: List[MemoryBlock]) -> None:
-        """Return the given blocks to the pool.
+        """Return blocks from ``allocate_regions`` to the free list.
 
         Args:
             blocks: Memory blocks to free. An empty list is a no-op.
         """
         if not blocks:
             return
-        self._free_multiple_blocks(blocks)
+        self._free_blocks.extend(blocks)
+        _merge_free_blocks(self._free_blocks)
 
-    def _view_for_block(
-        self,
-        block: MemoryBlock,
-        shape: Union["torch.Size", Tuple[int, ...]],
-        dtype: "torch.dtype",
-    ) -> "torch.Tensor":
-        """Build a typed tensor view over a pool block.
+    def free_object(self, obj_id: str) -> bool:
+        """Return pool blocks for ``obj_id`` if any.
 
         Args:
-            block: The pool block to view.
-            shape: Shape of the resulting tensor.
-            dtype: Data type of the resulting tensor.
+            obj_id: Object ID whose allocation should be released.
 
         Returns:
-            A pool-backed tensor view with the requested shape and dtype.
+            True if blocks were freed, False if ``obj_id`` had no allocation.
         """
-        import torch
-
-        numel = 1
-        for dim in shape:
-            numel *= dim
-        view_byte_size = numel * torch.tensor([], dtype=dtype).element_size()
-        pool_bytes = self._pool_tensor[block.offset : block.offset + view_byte_size]
-        return pool_bytes.view(dtype).reshape(shape)
-
-    def free_tensors(self, tensors: List["torch.Tensor"]) -> None:
-        """Return pool blocks for the given tensors back to the pool.
-
-        The caller is responsible for calling this method on the same tensors that were previously allocated in the pool before those tensors go out of scope.
-
-        Args:
-            tensors: Tensors whose pool blocks should be freed.
-        """
-        with self._allocator_lock:
-            blocks = []
-            for tensor in tensors:
-                ptr = tensor.untyped_storage().data_ptr()
-                if ptr in self._allocated_blocks:
-                    blocks.append(self._allocated_blocks.pop(ptr))
-            if blocks:
-                self._free_multiple_blocks(blocks)
-
-    def allocate_for_tensors(
-        self, tensors: List["torch.Tensor"]
-    ) -> List["torch.Tensor"]:
-        """Allocate pool blocks for unique storages, copy data in,
-        and return pool-backed tensor views for each input tensor. The caller is responsible for calling free on the original tensors to return the allocated tensor views back to the pool before the original tensors go out of scope.
-
-        Handles storage-level deduplication: views of the same storage share
-        one pool block within a single call, and the same storage reuses its
-        existing pool slot across calls.
-
-        Args:
-            tensors: Source tensors to allocate pool memory for.
-
-        Returns:
-            List of pool-backed tensor views, one per input tensor,
-            in the same order.
-
-        Raises:
-            NixlOutOfMemoryError: If the pool has insufficient space.
-        """
-        new_allocations = None
-        newly_tracked_ptrs: List[int] = []
-        with self._allocator_lock:
-            try:
-                import torch
-
-                pool_ptr = self._pool_tensor.untyped_storage().data_ptr()
-
-                # Deduplicate storages: group tensors by storage data_ptr so
-                # views of the same storage share one pool allocation.
-                # Maps storage data_ptr -> index in alloc_sizes/new_allocations,
-                # or -1 for storages that already have a pool block (cache hit).
-                storage_idx: Dict[int, int] = {}
-                # Maps storage data_ptr -> a representative tensor (for copy).
-                ptr_to_tensor: Dict[int, "torch.Tensor"] = {}
-                alloc_sizes: List[int] = []
-
-                for tensor in tensors:
-                    ptr = tensor.untyped_storage().data_ptr()
-                    if ptr == pool_ptr:
-                        # Already pool-backed; nothing to allocate or copy.
-                        continue
-                    if ptr in storage_idx:
-                        continue
-                    ptr_to_tensor[ptr] = tensor
-                    if ptr in self._allocated_blocks:
-                        storage_idx[ptr] = -1
-                    else:
-                        storage_idx[ptr] = len(alloc_sizes)
-                        alloc_sizes.append(tensor.untyped_storage().nbytes())
-
-                # Allocate new (non-cached) storages atomically.
-                if alloc_sizes:
-                    new_allocations = self._allocate_memory_blocks(alloc_sizes)
-
-                # Track and copy newly allocated blocks. Cache hits keep the
-                # originally copied data -- any mutations to the source storage
-                # since the first ray.put are not reflected in outstanding refs.
-                for ptr, idx in storage_idx.items():
-                    if idx < 0:
-                        continue
-                    blk = new_allocations[idx]
-                    self._allocated_blocks[ptr] = blk
-                    newly_tracked_ptrs.append(ptr)
-                    # Copy the tensor's full underlying storage into the pool block.
-                    src = ptr_to_tensor[ptr]
-                    storage_size = src.untyped_storage().nbytes()
-                    storage_bytes = torch.tensor(
-                        [], dtype=torch.uint8, device=src.device
-                    ).set_(src.untyped_storage())
-                    self._pool_tensor[blk.offset : blk.offset + storage_size].copy_(
-                        storage_bytes
-                    )
-
-                # Build pool-backed tensor views for each input tensor.
-                pool_views: List["torch.Tensor"] = []
-                for tensor in tensors:
-                    ptr = tensor.untyped_storage().data_ptr()
-                    if ptr == pool_ptr:
-                        # Already pool-backed; return the tensor as-is.
-                        pool_views.append(tensor)
-                        continue
-                    blk = self._allocated_blocks[ptr]
-                    byte_offset = tensor.storage_offset() * tensor.element_size()
-                    view_block = MemoryBlock(
-                        blk.offset + byte_offset,
-                        tensor.numel() * tensor.element_size(),
-                    )
-                    pool_views.append(
-                        self._view_for_block(view_block, tensor.shape, tensor.dtype)
-                    )
-
-                return pool_views
-
-            except Exception:
-                # Roll back any pool mutations made in this call, then re-raise.
-                try:
-                    if new_allocations is not None:
-                        self._free_multiple_blocks(new_allocations)
-                    for ptr in newly_tracked_ptrs:
-                        self._allocated_blocks.pop(ptr, None)
-                except Exception as cleanup_err:
-                    logger.error(f"Memory pool cleanup failed: {cleanup_err}.")
-                raise
-
-    def _free_multiple_blocks(self, blocks: List[MemoryBlock]) -> None:
-        """Free multiple memory blocks back to the pool.
-
-        Args:
-            blocks: Memory blocks to free.
-        """
-        with self._allocator_lock:
-            if not blocks:
-                raise ValueError("Invalid free request")
-            self._free_blocks.extend(blocks)
-
-            # Single pass: merge all adjacent free blocks
-            self._free_blocks.sort(key=lambda b: b.offset)
-            i = 0
-            while i < len(self._free_blocks) - 1:
-                curr = self._free_blocks[i]
-                next_block = self._free_blocks[i + 1]
-                if curr.offset + curr.size == next_block.offset:
-                    curr.size += next_block.size
-                    self._free_blocks.pop(i + 1)
-                else:
-                    i += 1
+        blocks = self._allocated_by_obj.pop(obj_id, None)
+        if blocks is None:
+            return False
+        self.free_blocks(blocks)
+        return True

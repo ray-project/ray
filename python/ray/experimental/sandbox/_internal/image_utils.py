@@ -62,6 +62,60 @@ _DOCKER_HUB_REGISTRIES = (
 )
 
 
+_REGISTRY_MIRROR_ENV = "RAY_SANDBOX_REGISTRY_MIRROR"
+
+
+def registry_base_url(registry: str) -> str:
+    """Return the registry as a base URL.
+
+    Bare hosts default to https. An explicit ``http://`` scheme is honored,
+    which in-cluster pull-through proxies (a plain ``registry:2``) need.
+
+    Args:
+        registry: Registry host, optionally carrying an explicit scheme.
+
+    Returns:
+        The registry with a scheme, without a trailing slash.
+    """
+    if registry.startswith(("http://", "https://")):
+        return registry
+    return f"https://{registry}"
+
+
+def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
+    """Route Docker Hub pulls through a configured pull-through mirror.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` names a registry that mirrors Docker Hub
+    as ``host[:port][/repo-prefix]`` — e.g. an ECR pull-through cache
+    (``<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub``), an Artifact
+    Registry remote repository, or an in-cluster ``registry:2`` proxy. It
+    avoids Docker Hub's anonymous rate limits and pulls over the local
+    network instead of the WAN. Only Docker Hub pulls are rewritten; other
+    registries pass through untouched. When set, the mirror is
+    authoritative (no fallback to the upstream), and it is used with the
+    same anonymous token flow as any registry.
+
+    Args:
+        registry: Registry host chosen by ``parse_image_ref``.
+        repo: Repository path chosen by ``parse_image_ref``.
+
+    Returns:
+        The possibly rewritten ``(registry, repo)`` pair.
+    """
+    mirror = os.environ.get(_REGISTRY_MIRROR_ENV, "").strip().strip("/")
+    if not mirror or registry != "registry-1.docker.io":
+        return registry, repo
+    scheme = ""
+    for candidate in ("http://", "https://"):
+        if mirror.startswith(candidate):
+            scheme, mirror = candidate, mirror[len(candidate) :]
+            break
+    host, _, prefix = mirror.partition("/")
+    if scheme:
+        host = scheme + host
+    return host, f"{prefix}/{repo}" if prefix else repo
+
+
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
@@ -120,7 +174,7 @@ def get_registry_auth_headers(
     timeout: float = 30.0,
 ) -> Dict[str, str]:
     """Retrieve bearer authentication token headers for registry repository."""
-    url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+    url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         urllib.request.urlopen(req, timeout=timeout)
@@ -180,6 +234,7 @@ def extract_tar_layer(
     else:
         tar_fileobj = tar_input
 
+    dir_mtimes = []
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
@@ -261,8 +316,23 @@ def extract_tar_layer(
                         shutil.copyfileobj(f_in, f_out)
                 if member.mode:
                     os.chmod(target_path, member.mode)
+                # Preserve the archived mtime: tools inside the sandbox rely
+                # on it (apt revalidates its package lists with
+                # If-Modified-Since from the file mtime, and a reset-to-now
+                # mtime makes mirrors answer 304 for stale baked lists).
+                # Best-effort, like the directory pass below.
+                try:
+                    os.utime(target_path, (member.mtime, member.mtime))
+                except OSError:
+                    pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
+                # Deferred to the post-loop pass: tar lists a directory
+                # before its contents, so a restrictive archived mode (0500)
+                # applied here would break extracting the children. Preserved
+                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
+                if not os.path.islink(target_path):
+                    dir_mtimes.append((target_path, member.mode, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -279,6 +349,15 @@ def extract_tar_layer(
                         os.link(link_target, target_path)
                     except OSError:
                         pass
+
+    # Children first, so a parent's restrictive mode cannot block them.
+    for dir_path, mode, mtime in reversed(dir_mtimes):
+        try:
+            if mode:
+                os.chmod(dir_path, mode)
+            os.utime(dir_path, (mtime, mtime))
+        except OSError:
+            pass
 
 
 def pull_and_extract_container_image(
@@ -359,6 +438,7 @@ def pull_and_extract_container_image(
                     )
                 try:
                     registry, repo, reference = parse_image_ref(image)
+                    registry, repo = apply_registry_mirror(registry, repo)
                     auth_headers = get_registry_auth_headers(
                         registry,
                         repo,
@@ -376,7 +456,9 @@ def pull_and_extract_container_image(
                     }
                     auth_header = auth_headers.get("Authorization")
 
-                    manifest_url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+                    manifest_url = (
+                        f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+                    )
                     req = _registry_request(manifest_url, headers, auth_header)
                     with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                         manifest_data = json.loads(resp.read().decode("utf-8"))
@@ -397,7 +479,7 @@ def pull_and_extract_container_image(
                             chosen_digest = manifest_data["manifests"][0]["digest"]
 
                         sub_req = _registry_request(
-                            f"https://{registry}/v2/{repo}/manifests/{chosen_digest}",
+                            f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
                             headers,
                             auth_header,
                         )
@@ -410,9 +492,7 @@ def pull_and_extract_container_image(
                     config_desc = manifest_data.get("config")
                     if config_desc and "digest" in config_desc:
                         config_digest = config_desc["digest"]
-                        config_url = (
-                            f"https://{registry}/v2/{repo}/blobs/{config_digest}"
-                        )
+                        config_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
                         config_req = _registry_request(config_url, headers, auth_header)
                         try:
                             with urllib.request.urlopen(
@@ -435,7 +515,9 @@ def pull_and_extract_container_image(
 
                     for layer in layers:
                         digest = layer["digest"]
-                        blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
+                        blob_url = (
+                            f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
+                        )
                         blob_req = _registry_request(blob_url, headers, auth_header)
                         with urllib.request.urlopen(
                             blob_req, timeout=timeout_seconds

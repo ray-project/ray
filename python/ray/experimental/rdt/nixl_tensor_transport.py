@@ -1,19 +1,26 @@
 import functools
 import glob
 import logging
+import math
 import os
 import threading
 import time
 import traceback
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
 )
-from ray.experimental.rdt.nixl_memory_pool import MemoryBlock, MemoryPoolManager
+from ray.experimental.rdt.nixl_memory_pool import (
+    MemoryBlock,
+    MemoryPoolManager,
+    TensorLayout,
+    group_tensors_by_desc,
+    packed_offsets,
+)
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     FetchRequest,
@@ -98,9 +105,7 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 @dataclass
 class TensorDesc:
-    # nixlRegDList handle, or None for pool-managed tensors (pool memory is
-    # registered once at pool creation, so individual tensors don't need their
-    # own NIXL registration).
+    # nixlRegDList handle.
     reg_desc: Any
     # tracks the number of NIXL metadata containing the tensor.
     metadata_count: int
@@ -119,11 +124,14 @@ class NixlFetchRequest(FetchRequest):
         nixl_agent: Reference to the NIXL agent.
         remote_name: Name of the remote NIXL agent.
         remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
-        pool_blocks: Memory pool blocks backing the receive buffers, or None if
-            the receive-side pool was not used. Cleared once the blocks have
-            been returned to the pool.
-        pool_target_device: Device the pool-backed buffers should be copied out
-            to, which may differ from the pool's own device.
+        registered_tensors: Tensors that were registered with NIXL, to deregister
+            on cleanup. These are the buffers behind ``tensors``, which for a
+            group transfer are views into fewer, larger buffers. Empty when the
+            receive-side pool is used, since the pool is registered as a whole.
+        pool_blocks: Pool blocks backing the receive buffers, or None if the
+            receive-side pool was not used. Cleared once returned to the pool.
+        pool_target_device: Device the pool-backed buffers are copied out to,
+            which may differ from the pool's own device.
     """
 
     xfer_handle: Any = None
@@ -131,6 +139,7 @@ class NixlFetchRequest(FetchRequest):
     remote_name: Optional[str] = None
     remove_tensor_descs: bool = False
     transport: Any = None
+    registered_tensors: List["torch.Tensor"] = field(default_factory=list)
     pool_blocks: Optional[List[MemoryBlock]] = None
     pool_target_device: Optional[str] = None
 
@@ -148,7 +157,7 @@ class NixlFetchRequest(FetchRequest):
         pool_blocks, self.pool_blocks = self.pool_blocks, None
         transport._cleanup_transfer(
             self.obj_id,
-            self.tensors,
+            self.registered_tensors,
             self.xfer_handle,
             self.remote_name,
             self.remove_tensor_descs,
@@ -167,7 +176,6 @@ class NixlTensorTransport(TensorTransportManager):
         self._aborted_transfer_obj_ids_lock = threading.Lock()
         # Mapping from tensor storage data pointer to the NIXL descriptor and reference count.
         # Unlike _managed_meta_nixl, we only deregister tensors when ALL metadata containing the tensor is freed.
-        # For pool-managed tensors, reg_desc is None and the pool block is returned instead of deregistering.
         self._tensor_desc_cache: Dict[int, TensorDesc] = {}
         # Mapping from object ID to the NIXL managed meta.
         # The lifetime of _managed_meta_nixl is tied to the object ref and freed when the ref goes out of scope.
@@ -353,7 +361,7 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                 )
                 if pool_eligible:
-                    xfer_descs = self._allocate_pool_xfer_descs(rdt_object)
+                    xfer_descs = self._allocate_pool_xfer_descs(obj_id, rdt_object)
                 else:
                     self._add_tensor_descs(rdt_object)
                     xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
@@ -407,15 +415,15 @@ class NixlTensorTransport(TensorTransportManager):
         Returns:
             A NixlFetchRequest carrying the async transfer state.
         """
-        from ray.experimental.rdt.util import (
-            create_empty_tensors_from_metadata,
-        )
+        import torch
 
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
 
         nixl_serialized_descs = tensor_transport_metadata.nixl_serialized_descs
         remote_nixl_agent_meta = tensor_transport_metadata.nixl_agent_meta
+        tensor_meta = tensor_transport_metadata.tensor_meta
+        device = tensor_transport_metadata.tensor_device
 
         with self._aborted_transfer_obj_ids_lock:
             if obj_id in self._aborted_transfer_obj_ids:
@@ -425,36 +433,84 @@ class NixlTensorTransport(TensorTransportManager):
         remote_name = None
         xfer_handle = None
         added_tensor_descs = False
-        tensors = None
-        pool_blocks = None
-        pool_target_device = None
+        registered_tensors: List["torch.Tensor"] = []
+        tensors: List["torch.Tensor"] = []
+        pool_blocks: Optional[List[MemoryBlock]] = None
+        pool_target_device: Optional[str] = None
 
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            packed_group_nbytes = [
+                remote_xfer_descs[i][1] for i in range(remote_xfer_descs.descCount())
+            ]
 
-            recv_pool_eligible = (
-                target_buffers is None and self._memory_pool is not None
-            )
-            if recv_pool_eligible:
-                # The pool-backed buffers are only used for the transfer
-                # itself. wait_fetch_complete copies them out into independent
-                # tensors on the target device before returning them, so the
-                # pool's own device doesn't have to match.
-                pool_target_device = tensor_transport_metadata.tensor_device
-                tensors, pool_blocks = self._memory_pool.allocate_for_tensor_meta(
-                    tensor_transport_metadata.tensor_meta
-                )
-            else:
-                tensors = target_buffers or create_empty_tensors_from_metadata(
-                    tensor_transport_metadata
-                )
-                # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
+            tensor_layouts = [
+                TensorLayout(math.prod(shape) * dtype.itemsize, dtype.itemsize)
+                for shape, dtype in tensor_meta
+            ]
+
+            desc_groups = group_tensors_by_desc(tensor_layouts, packed_group_nbytes)
+
+            if target_buffers:
+                tensors = target_buffers
+                # NIXL requires the local and remote lists to agree on descriptor
+                # count and length, so build both together, one per tensor.
+                mem_type = "cuda" if device == "cuda" else "cpu"
+                local_descs = []
+                remote_descs = []
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    addr, _length, dev_id = remote_xfer_descs[desc_idx]
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
+                    for offset, tensor_i in zip(offsets, desc_group):
+                        buf = tensors[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
+                        local_descs.append(
+                            (buf.data_ptr(), nbytes, max(buf.get_device(), 0))
+                        )
+                        remote_descs.append((addr + offset, nbytes, dev_id))
                 self._add_tensor_descs(tensors)
                 added_tensor_descs = True
+                registered_tensors = tensors
+                local_xfer_descs = nixl_agent.get_xfer_descs(
+                    local_descs, mem_type=mem_type
+                )
+                remote_xfer_descs = nixl_agent.get_xfer_descs(
+                    remote_descs, mem_type=mem_type
+                )
+            else:
+                # One buffer per remote descriptor; views at recovered offsets.
+                if self._memory_pool is not None:
+                    # Carve the group buffers out of the pool, which is already
+                    # registered with NIXL. wait_fetch_complete copies them out
+                    # into independent tensors before returning, so the pool's
+                    # own device doesn't have to be the tensors' device.
+                    pool_target_device = device
+                    group_buffers, pool_blocks = self._memory_pool.allocate_regions(
+                        packed_group_nbytes
+                    )
+                else:
+                    group_buffers = [
+                        torch.empty(nbytes, dtype=torch.uint8, device=device)
+                        for nbytes in packed_group_nbytes
+                    ]
+                    self._add_tensor_descs(group_buffers)
+                    added_tensor_descs = True
+                    registered_tensors = group_buffers
 
-            assert tensors
-            local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
+                tensors = [None] * len(tensor_meta)  # type: ignore[list-item]
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
+                    for offset, tensor_i in zip(offsets, desc_group):
+                        shape, dtype = tensor_meta[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
+                        tensors[tensor_i] = (
+                            group_buffers[desc_idx][offset : offset + nbytes]
+                            .view(dtype)
+                            .reshape(shape)
+                        )
+
+                local_xfer_descs = nixl_agent.get_xfer_descs(group_buffers)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
             remote_agent_meta_version = (
@@ -499,13 +555,14 @@ class NixlTensorTransport(TensorTransportManager):
                 remote_name=remote_name,
                 remove_tensor_descs=added_tensor_descs,
                 transport=self,
+                registered_tensors=registered_tensors,
                 pool_blocks=pool_blocks,
                 pool_target_device=pool_target_device,
             )
         except Exception:
             self._cleanup_transfer(
                 obj_id,
-                tensors or [],
+                registered_tensors,
                 xfer_handle,
                 remote_name,
                 added_tensor_descs,
@@ -568,8 +625,9 @@ class NixlTensorTransport(TensorTransportManager):
                     break
 
             if fetch_request.pool_blocks is not None:
-                blocks = fetch_request.pool_blocks
-                fetch_request.pool_blocks = None
+                blocks, fetch_request.pool_blocks = fetch_request.pool_blocks, None
+                # The tensors are views into pool blocks that the next transfer
+                # can overwrite, so copy them out before the caller sees them.
                 fetch_request.tensors = self._memory_pool.copy_out_and_free(
                     fetch_request.tensors, blocks, fetch_request.pool_target_device
                 )
@@ -658,7 +716,8 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            self._remove_tensor_descs(tensors)
+            if self._memory_pool is None or not self._memory_pool.free_object(obj_id):
+                self._remove_tensor_descs(tensors)
 
     def abort_transport(
         self,
@@ -691,11 +750,9 @@ class NixlTensorTransport(TensorTransportManager):
     def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
         Decrements the reference count for each tensor. If the count reaches 0,
-        traditionally-registered memory is deregistered from NIXL, while
-        pool-managed blocks (reg_desc is None) are returned to the pool.
+        the memory is deregistered from NIXL.
         """
         with self._cache_lock:
-            pool_return_tensors: List["torch.Tensor"] = []
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
                 if key not in self._tensor_desc_cache:
@@ -704,15 +761,8 @@ class NixlTensorTransport(TensorTransportManager):
                 tensor_desc.metadata_count -= 1
                 if tensor_desc.metadata_count == 0:
                     self._tensor_desc_cache.pop(key)
-                    if tensor_desc.reg_desc is not None:
-                        # Traditional path: deregister NIXL memory.
-                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
-                        self._nixl_agent_meta_version += 1
-                    else:
-                        # Pool path: return block to pool.
-                        pool_return_tensors.append(tensor)
-            if pool_return_tensors and self._memory_pool is not None:
-                self._memory_pool.free_tensors(pool_return_tensors)
+                    self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                    self._nixl_agent_meta_version += 1
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
@@ -780,55 +830,16 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
         """Check if the tensor's memory has been registered with NIXL."""
-        entry = self._tensor_desc_cache.get(t.untyped_storage().data_ptr())
-        return entry is not None and entry.reg_desc is not None
+        return t.untyped_storage().data_ptr() in self._tensor_desc_cache
 
-    def _add_pool_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """Add pool-managed tensor entries to the unified _tensor_desc_cache.
-
-        Pool-managed tensors use reg_desc=None since pool memory is registered
-        once at pool creation. The metadata_count tracks reference counting
-        just like traditional tensors.
-
-        Note: Entries are keyed by the source tensor's storage ``data_ptr()``.
-        If PyTorch frees and reallocates that storage address before GC runs,
-        a stale cache entry could map to an unrelated tensor. This is the same
-        constraint as the traditional (non-pool) path and is mitigated by the
-        fact that pool blocks hold a reference to pool memory, not the source
-        storage.
-        """
-        with self._cache_lock:
-            for tensor in tensors:
-                key = tensor.untyped_storage().data_ptr()
-                if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].metadata_count += 1
-                else:
-                    self._tensor_desc_cache[key] = TensorDesc(
-                        reg_desc=None, metadata_count=1
-                    )
-
-    def _allocate_pool_xfer_descs(self, tensors: List["torch.Tensor"]) -> Any:
-        """Allocate pool memory for tensors and return NIXL transfer descriptors.
-
-        Handles rollback of newly allocated pool blocks if get_xfer_descs
-        fails, without disturbing cached blocks from prior calls.
-        """
+    def _allocate_pool_xfer_descs(
+        self, obj_id: str, tensors: List["torch.Tensor"]
+    ) -> Any:
+        """Allocate pool memory for tensors and return NIXL transfer descriptors."""
         pool = self._memory_pool
-        # Remember which storages already have a pool block (cache hits)
-        # so we don't free them on rollback.
-        pre_existing = {
-            t.untyped_storage().data_ptr() for t in tensors if pool.has_block(t)
-        }
-        pool_tensor_views = pool.allocate_for_tensors(tensors)
+        regions = pool.allocate_group(obj_id, tensors)
         try:
-            xfer_descs = self._nixl_agent.get_xfer_descs(pool_tensor_views)
+            return self._nixl_agent.get_xfer_descs(regions)
         except Exception:
-            # Only free newly allocated blocks, not cache hits.
-            new_tensors = [
-                t for t in tensors if t.untyped_storage().data_ptr() not in pre_existing
-            ]
-            if new_tensors:
-                pool.free_tensors(new_tensors)
+            pool.free_object(obj_id)
             raise
-        self._add_pool_tensor_descs(tensors)
-        return xfer_descs
