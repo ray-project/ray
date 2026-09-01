@@ -13,9 +13,10 @@ crawl draws transient rejections from hosts that rate-limit or bot-filter by
 source IP, so each reported-broken link is re-checked once, serially, after a
 cooldown:
 
-* 2xx/3xx, or 403 (bot filtering, not a dead link): recovered, dropped.
+* 2xx, or 403 (bot filtering, not a dead link): recovered, dropped.
 * 429 (rate limited): inconclusive, reported but not counted as broken.
-* anything else: confirmed broken.
+* anything else, including a 3xx from a failed redirect chain: confirmed
+  broken.
 
 The script never fails the build; the Slack alert is the signal.
 """
@@ -60,22 +61,32 @@ def recheck(url: str) -> int:
 def load_broken(path: str) -> list:
     """Return the reported-broken external links from a linkcheck output file.
 
+    Sphinx 8.2 reports an unreachable host that hangs as ``timeout`` rather than
+    ``broken`` (``linkcheck_report_timeouts_as_broken`` defaults to False), so
+    both statuses are collected and left to the re-check to confirm.
+
     Args:
         path: Path to the Sphinx linkcheck ``output.json``.
 
     Returns:
-        The records whose status is ``broken`` and whose URI is external.
+        The records whose status is ``broken`` or ``timeout`` and whose URI is
+        external.
     """
     broken = []
-    with open(path) as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            record = json.loads(line)
-            uri = record.get("uri", "")
-            if record.get("status") == "broken" and uri.startswith("http"):
-                broken.append(record)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                uri = record.get("uri", "")
+                if record.get("status") in ("broken", "timeout") and uri.startswith(
+                    "http"
+                ):
+                    broken.append(record)
+    except FileNotFoundError:
+        print(f"::warning:: {path} not found; skipping report.")
     return broken
 
 
@@ -89,19 +100,27 @@ def confirm(broken: list) -> tuple:
         A ``(confirmed, inconclusive)`` pair of record lists.
     """
     confirmed, inconclusive = [], []
+    cache = {}
     for record in broken:
-        code = recheck(record["uri"])
-        if code == 429:
-            time.sleep(BACKOFF)
-            code = recheck(record["uri"])
-        if 200 <= code < 400 or code in ACCEPT_CODES:
+        uri = record["uri"]
+        if uri in cache:
+            code = cache[uri]
+        else:
+            code = recheck(uri)
+            if code == 429:
+                time.sleep(BACKOFF)
+                code = recheck(uri)
+            cache[uri] = code
+            time.sleep(1)
+        # urlopen follows redirects to a 2xx, so a 3xx that reaches here is a
+        # failed chain (redirect loop or too many hops) and stays broken.
+        if 200 <= code < 300 or code in ACCEPT_CODES:
             continue
         if code == 429:
             inconclusive.append(record)
         else:
             record["recheck_code"] = code
             confirmed.append(record)
-        time.sleep(1)
     return confirmed, inconclusive
 
 
@@ -148,9 +167,12 @@ def post_to_slack(text: str) -> None:
     request = urllib.request.Request(
         webhook, data=payload, headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(request, timeout=30) as resp:
-        if resp.status != 200:
-            print(f"::warning:: Slack webhook returned HTTP {resp.status}.")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as resp:
+            if resp.status != 200:
+                print(f"::warning:: Slack webhook returned HTTP {resp.status}.")
+    except Exception as err:
+        print(f"::warning:: Failed to post to Slack: {err}")
 
 
 def main(path: str) -> int:
