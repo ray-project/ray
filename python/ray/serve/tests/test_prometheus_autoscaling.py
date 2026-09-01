@@ -29,7 +29,10 @@ class _MockPrometheusHandler(BaseHTTPRequestHandler):
             "data": {
                 "resultType": "vector",
                 "result": [
-                    {"value": [0, str(_PROMETHEUS_VALUE["value"])]},
+                    {
+                        "metric": {},
+                        "value": [0, str(_PROMETHEUS_VALUE["value"])],
+                    },
                 ],
             },
         }
