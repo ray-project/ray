@@ -736,6 +736,59 @@ def test_report_stats_gpu_without_power_temperature(tmp_path):
     assert len(temp_records) == 0
 
 
+def test_report_stats_gpu_without_memory_info(tmp_path):
+    """GPUs that report no memory pool skip GRAM metrics but keep the rest.
+
+    Unified-memory parts (e.g. GB10) leave memory_used/memory_total as None.
+    Emitting 0 would be indistinguishable from an idle GPU, so no GRAM record
+    should be produced at all.
+    """
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-ddd",
+            "name": "NVIDIA GB10",
+            "utilization_gpu": 30,
+            "memory_used": None,
+            "memory_total": None,
+            "processes": [],
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    gram_records = [
+        r for r in records if r.gauge.name in ("node_gram_used", "node_gram_available")
+    ]
+    assert len(gram_records) == 0
+
+    # The GPU itself is still reported.
+    available_records = [r for r in records if r.gauge.name == "node_gpus_available"]
+    utilization_records = [
+        r for r in records if r.gauge.name == "node_gpus_utilization"
+    ]
+    assert len(available_records) == 1
+    assert available_records[0].value == 1
+    assert len(utilization_records) == 1
+    assert utilization_records[0].value == 30
+
+    # Regression test: the stats payload is validated against a pydantic model,
+    # so a None memory value must not break serialization for the whole node.
+    stats_payload = agent._generate_stats_payload(stats)
+    assert stats_payload is not None
+    assert isinstance(stats_payload, str)
+    assert json.loads(stats_payload)["gpus"][0]["memoryTotal"] is None
+
+
 def test_get_tpu_usage(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)

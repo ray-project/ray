@@ -389,6 +389,112 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["memory_total"], 4 * 1024)  # 4GB in MB
         self.assertEqual(gpu_info["processes_pids"], {})
 
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_memory_not_supported(self, mock_pynvml):
+        """Devices with no separate memory pool still report everything else.
+
+        Unified-memory parts (e.g. GB10) raise NVML_ERROR_NOT_SUPPORTED from
+        `nvmlDeviceGetMemoryInfo`. The GPU should still be reported, with memory
+        left as None rather than dropping the device entirely.
+        """
+        mock_handle = Mock()
+
+        class MockNVMLError(Exception):
+            pass
+
+        mock_pynvml.NVMLError = MockNVMLError
+
+        mock_utilization_info = Mock()
+        mock_utilization_info.gpu = 42
+
+        mock_process = Mock()
+        mock_process.pid = 1234
+        mock_process.usedGpuMemory = 256 * MB
+
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = mock_handle
+        # Take the regular (non-MIG) code path.
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (False, False)
+        mock_pynvml.nvmlDeviceGetMemoryInfo.side_effect = MockNVMLError("Not Supported")
+        mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = mock_utilization_info
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = [mock_process]
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetPowerUsage.return_value = 100000
+        mock_pynvml.nvmlDeviceGetTemperature.return_value = 60
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA GB10"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = (
+            b"GPU-12345678-1234-1234-1234-123456789abc"
+        )
+        mock_pynvml.nvmlShutdown.return_value = None
+
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        gpu_info = result[0]
+
+        # Memory is unknown, not zero.
+        self.assertIsNone(gpu_info["memory_used"])
+        self.assertIsNone(gpu_info["memory_total"])
+
+        # Everything else is still reported.
+        self.assertEqual(gpu_info["index"], 0)
+        self.assertEqual(gpu_info["name"], "NVIDIA GB10")
+        self.assertEqual(gpu_info["uuid"], "GPU-12345678-1234-1234-1234-123456789abc")
+        self.assertEqual(gpu_info["utilization_gpu"], 42)
+        self.assertEqual(gpu_info["power_mw"], 100000)
+        self.assertEqual(gpu_info["temperature_c"], 60)
+        self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 256)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_mig_memory_not_supported(self, mock_pynvml):
+        """A MIG device is still reported when its memory query is unsupported."""
+        mock_gpu_handle = Mock()
+        mock_mig_handle = Mock()
+
+        class MockNVMLError(Exception):
+            pass
+
+        mock_pynvml.NVMLError = MockNVMLError
+
+        mock_mig_utilization_info = Mock()
+        mock_mig_utilization_info.gpu = 80
+
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = mock_gpu_handle
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (True, True)
+        mock_pynvml.nvmlDeviceGetMaxMigDeviceCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetMigDeviceHandleByIndex.return_value = mock_mig_handle
+        mock_pynvml.nvmlDeviceGetMemoryInfo.side_effect = MockNVMLError("Not Supported")
+        mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = (
+            mock_mig_utilization_info
+        )
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA A100-SXM4-40GB MIG 1g.5gb"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = (
+            b"MIG-12345678-1234-1234-1234-123456789abc"
+        )
+        mock_pynvml.nvmlShutdown.return_value = None
+
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        gpu_info = result[0]
+
+        self.assertIsNone(gpu_info["memory_used"])
+        self.assertIsNone(gpu_info["memory_total"])
+        self.assertEqual(gpu_info["index"], 0)
+        self.assertEqual(gpu_info["name"], "NVIDIA A100-SXM4-40GB MIG 1g.5gb")
+        self.assertEqual(gpu_info["utilization_gpu"], 80)
+
 
 class TestAmdGpuProvider(unittest.TestCase):
     """Test AmdGpuProvider class."""
