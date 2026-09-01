@@ -81,10 +81,6 @@ def _set_fast_path(enabled):
     chunked_tensor_take.ENABLE_CHUNKED_TENSOR_TAKE = enabled
 
 
-def _take(table, indices):
-    return take_table(table, indices)
-
-
 def _time_operation(operation, *, iterations, warmup):
     for _ in range(warmup):
         operation()
@@ -172,7 +168,7 @@ def _shuffle_result_signature(batches):
 
 
 def _check_correctness(table, values, indices):
-    result = _take(table, indices)
+    result = take_table(table, indices)
     result_values = result.column("tensor").combine_chunks().to_numpy()
     np.testing.assert_array_equal(result_values, values[indices])
 
@@ -211,7 +207,7 @@ def _run_memory_arm(args):
         )
 
         def operation():
-            return _take(table, indices)
+            return take_table(table, indices)
 
     gc.collect()
     try:
@@ -292,7 +288,7 @@ def _run_case(args, *, single_chunk):
     _check_correctness(table, values, indices)
 
     measurement = _time_operation(
-        lambda: _take(table, indices),
+        lambda: take_table(table, indices),
         iterations=args.iterations,
         warmup=args.warmup,
     )
