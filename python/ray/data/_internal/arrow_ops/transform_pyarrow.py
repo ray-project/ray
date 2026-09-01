@@ -17,9 +17,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    is_chunked_tensor_take_candidate,
     is_chunked_tensor_take_enabled,
-    try_take_chunked_tensor,
+    try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
@@ -270,13 +269,13 @@ def take_table(
     extension arrays. Keeping the operation at table level also allows callers
     to use it on intermediate tables without constructing an ArrowBlockAccessor.
 
-    When the operational fast path is enabled and an eligible multi-chunk
-    tensor column is present, indices are normalized and validated once before
-    the per-column loop. The normalized representation is shared by all tensor
-    fast-path columns; each column then checks only its own layout and
-    output-size constraints. If the feature is disabled, normalization fails,
-    or a column check fails, the original ``indices`` object is passed
-    unchanged to the standard Arrow fallback.
+    When the operational fast path is enabled, eligible multi-chunk tensor
+    columns are prepared once before the per-column loop. Indices are normalized
+    only if at least one preparation succeeds, and the normalized representation
+    is shared by all prepared columns. If the feature is disabled, preparation
+    or normalization fails, or a prepared take cannot serve the request, the
+    original ``indices`` object is passed unchanged to the standard Arrow
+    fallback.
     """
     from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
@@ -285,16 +284,24 @@ def take_table(
     )
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
-        candidate_columns = (
-            {
-                index
-                for index, column in enumerate(table.columns)
-                if is_chunked_tensor_take_candidate(column)
-            }
-            if is_chunked_tensor_take_enabled()
-            else set()
-        )
-        if candidate_columns:
+        prepared_takes = {}
+        if is_chunked_tensor_take_enabled():
+            try:
+                expected_output_rows = len(indices)
+            except TypeError:
+                expected_output_rows = None
+            if expected_output_rows is not None:
+                for index, column in enumerate(table.columns):
+                    if not _is_multi_chunk_extension_column(column):
+                        continue
+                    prepared = try_prepare_chunked_tensor_take(
+                        column,
+                        expected_output_rows=expected_output_rows,
+                    )
+                    if prepared is not None:
+                        prepared_takes[index] = prepared
+
+        if prepared_takes:
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
         else:
             normalized_indices = None
@@ -302,8 +309,9 @@ def take_table(
         new_cols = []
         for index, col in enumerate(table.columns):
             if _is_multi_chunk_extension_column(col):
-                if normalized_indices is not None and index in candidate_columns:
-                    taken = try_take_chunked_tensor(col, normalized_indices)
+                prepared = prepared_takes.get(index)
+                if normalized_indices is not None and prepared is not None:
+                    taken = prepared.try_take(normalized_indices)
                     if taken is not None:
                         new_cols.append(taken)
                         continue

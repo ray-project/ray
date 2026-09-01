@@ -26,7 +26,6 @@ from ray.data._internal.tensor_extensions.arrow import (
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     TENSOR_TAKE_SCRATCH_CAP_BYTES,
     try_prepare_chunked_tensor_take,
-    try_take_chunked_tensor,
 )
 
 
@@ -189,10 +188,9 @@ def test_chunked_tensor_take(tensor_cls, chunks):
 
     assert plan is not None
     row_bytes = math.prod(column.type.shape) * np.dtype(np.float32).itemsize
-    assert (
-        plan.subbatch_rows
-        * (row_bytes + chunked_tensor_take._INDEX_SCRATCH_BYTES_PER_ROW)
-        <= TENSOR_TAKE_SCRATCH_CAP_BYTES
+    assert plan.subbatch_rows == max(
+        1,
+        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
     output = plan.try_take(indices)
     assert output is not None
@@ -322,16 +320,13 @@ def test_chunked_tensor_take_allows_one_row_to_exceed_scratch_cap():
     assert output.storage.values[0].as_py() == pytest.approx(math.prod(shape))
 
 
-def test_chunked_tensor_take_output_owns_source_lifetime():
+def test_take_table_output_owns_source_lifetime():
     column, values = _chunked_tensor(4096, 64, 5)
-    expected = values[[4095, 1, 2048]].copy()
+    indices = np.array([4095, 1, 2048], dtype=np.int64)
+    expected = values[indices].copy()
 
-    output = try_take_chunked_tensor(
-        column,
-        np.array([4095, 1, 2048], dtype=np.int64),
-    )
+    output = take_table(pa.table({"tensor": column}), indices).column("tensor").chunk(0)
 
-    assert output is not None
     del column
     del values
     gc.collect()
@@ -361,6 +356,8 @@ def test_prepared_chunked_tensor_take_owns_source_lifetime():
 
     output = plan.try_take(indices)
     assert output is not None
+    del plan
+    gc.collect()
     np.testing.assert_array_equal(output.to_numpy(), expected)
 
 
@@ -412,28 +409,31 @@ def test_chunked_tensor_take_eligibility_uses_row_and_source_size():
     )
 
 
-def test_take_table_only_prepares_candidate_columns(monkeypatch):
+def test_take_table_prepares_each_column_once(monkeypatch):
     eligible, eligible_values = _chunked_tensor(4096, 64, 4)
     ineligible, ineligible_values = _chunked_tensor(4096, 8, 4)
     indices = np.array([4095, 1, 2048], dtype=np.int64)
     calls = []
-    original_try_take = transform_pyarrow.try_take_chunked_tensor
+    original_prepare = transform_pyarrow.try_prepare_chunked_tensor_take
 
-    def record_try_take(column, normalized_indices):
+    def record_prepare(column, *, expected_output_rows):
         calls.append(column.type)
-        return original_try_take(column, normalized_indices)
+        return original_prepare(
+            column,
+            expected_output_rows=expected_output_rows,
+        )
 
     monkeypatch.setattr(
         transform_pyarrow,
-        "try_take_chunked_tensor",
-        record_try_take,
+        "try_prepare_chunked_tensor_take",
+        record_prepare,
     )
     output = take_table(
         pa.table({"eligible": eligible, "ineligible": ineligible}),
         indices,
     )
 
-    assert calls == [eligible.type]
+    assert calls == [eligible.type, ineligible.type]
     np.testing.assert_array_equal(
         output.column("eligible").combine_chunks().to_numpy(),
         eligible_values[indices],
@@ -832,15 +832,15 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
         lambda *args, **kwargs: True,
     )
 
-    def fail_generic_tensor_take(*args, **kwargs):
+    def fail_generic_tensor_prepare(*args, **kwargs):
         raise AssertionError("Prepared shuffle buffer entered generic tensor take")
 
     # Both normal batches and rows carried through a later compaction must use
     # the plan owned by their immutable buffer, never re-enter table preparation.
     monkeypatch.setattr(
         transform_pyarrow,
-        "try_take_chunked_tensor",
-        fail_generic_tensor_take,
+        "try_prepare_chunked_tensor_take",
+        fail_generic_tensor_prepare,
     )
     tensor_table = _tensor_table(79, 64, 20)
     plain_table = tensor_table.select(["row_id"])

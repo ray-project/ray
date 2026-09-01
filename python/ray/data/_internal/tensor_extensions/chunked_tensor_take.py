@@ -16,10 +16,10 @@ ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     True,
 )
 
-# Cap for simultaneously allocated per-subbatch NumPy gather/index buffers.
-# The final output, Arrow offsets, and zero-copy chunk-view metadata are excluded.
-# A source row is the gather's irreducible unit, so one row may exceed this soft
-# cap; in that case subbatching still limits scratch to exactly one row.
+# Soft cap for temporary tensor payload produced by each gather subbatch. The
+# final output and index, offset, and zero-copy view metadata are excluded. A
+# source row is irreducible, so an oversized row uses a one-row subbatch and may
+# exceed the cap.
 TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # Narrow rows do not copy enough payload per grouped NumPy operation, while a
 # small source column does not amortize preparation even when its rows are wide.
@@ -30,9 +30,6 @@ _MIN_FAST_SOURCE_BYTES = 1024 * 1024
 # Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
 # the number of chunks makes repeated full-subbatch masks expensive.
 _MAX_MASK_GROUP_CHUNKS = 16
-# Conservative per-row budget for temporary chunk IDs, local indices, masks,
-# ordering positions, and NumPy comparison results used while gathering.
-_INDEX_SCRATCH_BYTES_PER_ROW = 64
 
 
 def is_chunked_tensor_take_enabled() -> bool:
@@ -46,21 +43,6 @@ def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
         row_bytes >= _MIN_FAST_ROW_BYTES
         and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
     )
-
-
-def is_chunked_tensor_take_candidate(column: pa.ChunkedArray) -> bool:
-    """Return whether source-copy savings can justify index normalization.
-
-    This intentionally cheap preflight uses only source metadata. Logical
-    offsets and output offset capacity remain validated during preparation.
-    """
-    if column.num_chunks <= 1 or column.null_count > 0:
-        return False
-    layout = _try_get_tensor_layout(column.type)
-    if layout is None:
-        return False
-    _, row_bytes, _ = layout
-    return _passes_source_size_gates(len(column), row_bytes)
 
 
 class PreparedChunkedTensorTake(NamedTuple):
@@ -207,13 +189,10 @@ def try_prepare_chunked_tensor_take(
     Callers check ``is_chunked_tensor_take_enabled`` before performing any
     fast-path-specific index normalization or column preparation.
     """
-    if column.num_chunks <= 1:
+    if column.num_chunks <= 1 or column.null_count > 0:
         return None
 
     tensor_type = column.type
-    if column.null_count > 0:
-        return None
-
     layout = _try_get_tensor_layout(tensor_type)
     if layout is None:
         return None
@@ -238,7 +217,7 @@ def try_prepare_chunked_tensor_take(
 
     subbatch_rows = max(
         1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // (row_bytes + _INDEX_SCRATCH_BYTES_PER_ROW),
+        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
 
     chunk_views = []
@@ -266,34 +245,6 @@ def try_prepare_chunked_tensor_take(
         chunk_views=tuple(chunk_views),
         chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
     )
-
-
-def try_take_chunked_tensor(
-    column: pa.ChunkedArray,
-    indices: np.ndarray,
-) -> Optional[pa.Array]:
-    """Take rows from an eligible Ray tensor column without concatenating chunks.
-
-    Args:
-        column: Source chunked tensor column.
-        indices: One-dimensional, native ``np.int64`` row indices already
-            validated to be within the bounds of ``column``.
-
-    Returns:
-        A single tensor extension array when the fast path supports the input.
-        Otherwise, ``None`` so the caller can use Ray's standard column path.
-
-    Index type, shape, and bounds are caller invariants rather than fallback
-    conditions here. The fast path supports non-null, numeric, fixed-shape Ray
-    V1/V2 tensor columns. It gathers from validated zero-copy chunk views into
-    one output buffer in bounded subbatches. Unexpected allocation and internal
-    errors propagate.
-    """
-    prepared = try_prepare_chunked_tensor_take(
-        column,
-        expected_output_rows=len(indices),
-    )
-    return prepared.try_take(indices) if prepared is not None else None
 
 
 def _try_get_tensor_layout(tensor_type):
