@@ -4,6 +4,7 @@ import pyarrow
 import pyarrow.fs
 import pytest
 from fsspec.implementations.http import HTTPFileSystem
+from fsspec.implementations.memory import MemoryFileSystem
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 
 from ray.data._internal.util import RetryingPyFileSystem
@@ -14,6 +15,7 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _resolve_single_path_with_fallback,
     _rewrite_azure_blob_https_url,
+    _unwrap_protocol,
 )
 from ray.util.annotations import RayDeprecationWarning
 
@@ -53,6 +55,36 @@ def test_resolve_http_paths(filesystem):
     assert isinstance(resolve_filesystem, pyarrow.fs.PyFileSystem)
     assert isinstance(resolve_filesystem.handler, pyarrow.fs.FSSpecHandler)
     assert isinstance(resolve_filesystem.handler.fs, HTTPFileSystem)
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        ("hdfs://namenode.example/path/file", "/path/file"),
+        ("viewfs://cluster/path/file", "/path/file"),
+        ("s3://bucket/path/file", "bucket/path/file"),
+        ("gs://bucket/path/file", "bucket/path/file"),
+        ("abfs://container/path/file", "container/path/file"),
+        ("file:///path/file", "/path/file"),
+        ("https://example.com/path/file", "example.com/path/file"),
+    ],
+)
+def test_unwrap_protocol(path: str, expected: str) -> None:
+    assert _unwrap_protocol(path) == expected
+
+
+def test_resolve_hdfs_uri_with_explicit_filesystem() -> None:
+    class HdfsMemoryFileSystem(MemoryFileSystem):
+        protocol = "hdfs"
+
+    resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+        paths="hdfs://namenode.example/path/file",
+        filesystem=HdfsMemoryFileSystem(),
+    )
+
+    assert resolved_paths == ["/path/file"]
+    assert isinstance(resolved_filesystem, PyFileSystem)
+    assert isinstance(resolved_filesystem.handler.fs, HdfsMemoryFileSystem)
 
 
 @pytest.mark.parametrize(
