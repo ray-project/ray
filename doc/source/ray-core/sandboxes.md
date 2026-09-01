@@ -239,13 +239,13 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and reuses that cache for every later sandbox on the node that names the same image. The sandbox filesystem is an overlay on top of this root filesystem.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and caches it for reuse by subsequent sandboxes on that node using the same image. Each sandbox gets its own writable overlay on top of the cached root filesystem.
 
 ### Route Docker Hub pulls through a mirror
 
-Because the pulls are anonymous, every node's Docker Hub pull counts against Docker Hub's anonymous rate limits and crosses the WAN. A cluster whose nodes concurrently pull distinct multi-GB images runs into both at once, and image pulls may start failing.
+Because image pulls are anonymous, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.
 
-Set `RAY_SANDBOX_REGISTRY_MIRROR` on the worker nodes to a registry that mirrors Docker Hub, and Ray rewrites Docker Hub pulls to it. Pulls from any other registry, such as GHCR or a private registry, pass through untouched.
+Set `RAY_SANDBOX_REGISTRY_MIRROR` to route Docker Hub pulls through a registry mirror. Ray rewrites only Docker Hub image references. Pulls from other registries, such as GHCR or a private registry, are left unchanged.
 
 The value is `host[:port][/repo-prefix]`. Ray prepends the repository prefix to the repository path, which is the form pull-through caches expect:
 
@@ -258,8 +258,8 @@ The value is `host[:port][/repo-prefix]`. Ray prepends the repository prefix to 
 Keep the following in mind:
 
 * **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
-* **The mirror is authoritative.** This setting follows Docker's own `registry-mirrors` semantics minus the fallback: when it's set, a mirror that's unreachable or missing the image fails the pull rather than falling back to Docker Hub.
-* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow, and never sends credentials. Reach a mirror that requires a login through network-level access instead, such as a VPC endpoint or a cluster-internal service.
+* **The mirror is authoritative.** The mirror is authoritative. Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
+* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
 
 ## Networking and DNS
 
