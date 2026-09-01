@@ -854,6 +854,10 @@ RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
 # connect that takes seconds means the node is gone rather than busy; bounding
 # it lets `retry-on conn-failure` + `option redispatch` reach another replica
 # while the request still has budget.
+#
+# Set to 0 to disable. HAProxy stores an unset timeout as 0, so `timeout
+# connect 0s` is indistinguishable from omitting the directive: an infinite
+# connect timeout, plus HAProxy's "missing timeouts" startup warning.
 RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", 5
 )
