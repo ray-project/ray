@@ -104,18 +104,25 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
-    def _wait_for_metric_summary(self, metric_name, expected, timeseries):
+    def _scrape(self, timeseries):
+        return fetch_prometheus_metric_timeseries(
+            ["localhost:9999"], timeseries, timeout=PROMETHEUS_METRICS_TIMEOUT_S
+        )
+
+    def _wait_for_metric_summary(self, metric_names, expected, timeseries):
         """Deployments export independently, so wait for all of them rather than
         asserting on whichever happen to have reported already."""
 
         def check():
-            routes, apps = self._generate_metrics_summary(
-                get_metric_dictionaries(metric_name, timeseries=timeseries, wait=False)
-            )
-            msg = f"Incorrect metrics for {metric_name}"
-            for deployment, (route, app) in expected.items():
-                assert routes[deployment] == route, msg
-                assert apps[deployment] == app, msg
+            samples = self._scrape(timeseries)
+            for name in metric_names:
+                routes, apps = self._generate_metrics_summary(
+                    [sample.labels for sample in samples[name]]
+                )
+                msg = f"Incorrect metrics for {name}"
+                for deployment, (route, app) in expected.items():
+                    assert routes[deployment] == route, msg
+                    assert apps[deployment] == app, msg
             return True
 
         wait_for_metric(check)
@@ -125,7 +132,7 @@ class TestRequestContextMetrics:
     ):
         """Waits for app name and route to appear in deployment's metric."""
         self._wait_for_metric_summary(
-            metric_name, {deployment_name: ({route}, app_name)}, timeseries
+            [metric_name], {deployment_name: ({route}, app_name)}, timeseries
         )
 
     def _wait_for_labeled_metric(self, metric_name, expected_labels, timeseries):
@@ -145,29 +152,26 @@ class TestRequestContextMetrics:
     def _wait_for_proxy_routes(self, metric_names, expected_routes, timeseries):
         """Proxy metrics export on their own cycle, so they can still be missing
         once the deployment metrics waited on above have arrived."""
-        for metric_name in metric_names:
 
-            def check(name=metric_name):
-                routes = {
-                    sample.labels["route"]
-                    for sample in fetch_prometheus_metric_timeseries(
-                        ["localhost:9999"],
-                        timeseries,
-                        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-                    )[name]
-                }
+        def check():
+            samples = self._scrape(timeseries)
+            for name in metric_names:
+                routes = {sample.labels["route"] for sample in samples[name]}
                 assert routes == expected_routes, f"Incorrect routes for {name}"
-                return True
+            return True
 
-            wait_for_metric(check)
+        wait_for_metric(check)
 
     def _wait_for_handle_metrics(self, expected, timeseries):
-        for metric_name in [
-            "ray_serve_handle_request_counter_total",
-            "ray_serve_num_router_requests_total",
-            "ray_serve_deployment_processing_latency_ms_sum",
-        ]:
-            self._wait_for_metric_summary(metric_name, expected, timeseries)
+        self._wait_for_metric_summary(
+            [
+                "ray_serve_handle_request_counter_total",
+                "ray_serve_num_router_requests_total",
+                "ray_serve_deployment_processing_latency_ms_sum",
+            ],
+            expected,
+            timeseries,
+        )
 
     @skip_if_haproxy(
         "direct ingress invokes the ingress deployment without a handle or router "
@@ -393,7 +397,7 @@ class TestRequestContextMetrics:
             timeout=40,
         )
         self._wait_for_metric_summary(
-            "ray_serve_deployment_request_counter_total",
+            ["ray_serve_deployment_request_counter_total"],
             {
                 "G": ({"/api", "/api2"}, "app"),
                 "g1": ({"/api"}, "app"),
