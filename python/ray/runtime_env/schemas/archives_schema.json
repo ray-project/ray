@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://github.com/ray-project/ray/runtime_env/archives_schema.json",
+  "title": "archives",
+  "description": "Remote archives made available to Ray workers.",
+  "oneOf": [
+    {
+      "type": "string",
+      "minLength": 1
+    },
+    {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  ]
+}

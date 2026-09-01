@@ -8,6 +8,9 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.constants import (
+    RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR,
+)
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
@@ -243,6 +246,10 @@ class RuntimeEnv(dict):
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
             Supported formats for remote URIs: ``.zip``, ``.tar.gz``, and ``.tgz``.
+        archives: A remote archive URI, or a dictionary mapping names to remote
+            archive URIs. Ray downloads and unpacks each archive on every node that
+            runs a task or actor with this runtime environment. Supported formats are
+            ``.zip``, ``.tar.gz``, and ``.tgz``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
@@ -299,6 +306,7 @@ class RuntimeEnv(dict):
         "py_executable",
         "java_jars",
         "working_dir",
+        "archives",
         "conda",
         "pip",
         "uv",
@@ -327,6 +335,7 @@ class RuntimeEnv(dict):
         py_modules: Optional[List[str]] = None,
         py_executable: Optional[str] = None,
         working_dir: Optional[str] = None,
+        archives: Optional[Union[str, Dict[str, str]]] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
@@ -349,6 +358,8 @@ class RuntimeEnv(dict):
             runtime_env["py_executable"] = py_executable
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
+        if archives is not None:
+            runtime_env["archives"] = archives
         if pip is not None:
             runtime_env["pip"] = pip
         if uv is not None:
@@ -420,6 +431,14 @@ class RuntimeEnv(dict):
             if option_val is not None:
                 del self[option]
                 self[option] = option_val
+
+        if self.get("archives") is not None and (
+            RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR in self.env_vars()
+        ):
+            raise ValueError(
+                f"{RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR!r} is managed by the "
+                "archives runtime environment and cannot be set in env_vars."
+            )
 
         if "_ray_commit" not in self:
             if self.get("pip") or self.get("conda"):
@@ -517,6 +536,9 @@ class RuntimeEnv(dict):
 
     def working_dir(self) -> str:
         return self.get("working_dir", "")
+
+    def archives(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("archives")
 
     def py_modules(self) -> List[str]:
         if "py_modules" in self:

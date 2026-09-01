@@ -858,6 +858,7 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
+                "runtime_env/schemas/*.json",
                 "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },

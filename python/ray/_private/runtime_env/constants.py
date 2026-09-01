@@ -26,3 +26,6 @@ RAY_RUNTIME_ENV_PLUGIN_SCHEMAS_ENV_VAR = "RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"
 
 # The file suffix of runtime env plugin schemas.
 RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX = ".json"
+
+# The env var used to expose unpacked archive paths to workers.
+RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR = "RAY_RUNTIME_ENV_ARCHIVES_PATHS"

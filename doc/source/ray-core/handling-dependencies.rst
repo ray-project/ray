@@ -632,6 +632,39 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   ``ray list runtime-envs`` and the Python SDK still receive the plaintext values. See
   :ref:`Runtime environment redaction <runtime-env-redaction>` to change this behavior.
 
+- ``archives`` (str | Dict[str, str]): Specifies one or more remote archives to download and unpack on every node that runs a worker with this runtime environment. Supported formats are ``.zip``, ``.tar.gz``, and ``.tgz``. Unlike ``working_dir``, this field doesn't change the worker's current directory. Unlike ``py_modules``, it doesn't add the archive contents to ``PYTHONPATH``.
+
+  - Example: ``{"archives": "https://example.com/resources.zip"}``
+
+  - Example: ``{"archives": {"model": "s3://bucket/model.tar.gz", "config": "https://example.com/config.zip"}}``
+
+  Use :func:`ray.runtime_env.get_archive_paths` in the worker to get the local unpacked paths. A string input returns one string path. A dictionary input returns a dictionary with the same keys and local paths as values.
+
+  .. code-block:: python
+
+    import os
+
+    import ray
+    from ray.runtime_env import get_archive_paths
+
+    @ray.remote
+    def read_resource():
+        archive_path = get_archive_paths()
+        with open(os.path.join(archive_path, "resource.json")) as resource_file:
+            return resource_file.read()
+
+    result = ray.get(
+        read_resource.options(
+            runtime_env={
+                "archives": "https://example.com/resources.zip",
+            }
+        ).remote()
+    )
+
+  The returned paths are local to the current node and remain valid only while the runtime environment is in use. Treat the contents as read-only because workers using the same URI share a cache directory. ``archives`` isn't compatible with ``container`` or ``image_uri``.
+
+  Don't embed passwords or tokens in archive URIs because runtime environment fields and setup logs may expose the URI. Use the authentication mechanisms described in :ref:`runtime-env-auth` instead.
+
 - ``nsight`` (Union[str, Dict[str, str]]): specifies the config for the Nsight System Profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, or (2) a dict of Nsight System Profiler options and their values.
   See :ref:`here <profiling-nsight-profiler>` for more details on setup and usage.
 

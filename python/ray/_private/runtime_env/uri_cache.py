@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import weakref
 from typing import Callable, Optional, Set
 
 default_logger = logging.getLogger(__name__)
@@ -34,6 +36,9 @@ class URICache:
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Set[str] = set()
         self._unused_uris: Set[str] = set()
+        # Avoid serializing setup for unrelated URIs while ensuring that concurrent
+        # runtime environments only create and account for a shared URI once.
+        self._uri_locks = weakref.WeakValueDictionary()
 
         if delete_fn is None:
             self._delete_fn = lambda uri, logger: 0
@@ -57,6 +62,13 @@ class URICache:
         logger.info(f"Marked URI {uri} unused.")
         self._evict_if_needed(logger)
         self._check_valid()
+
+    def get_uri_lock(self, uri: str) -> asyncio.Lock:
+        lock = self._uri_locks.get(uri)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._uri_locks[uri] = lock
+        return lock
 
     def mark_used(self, uri: str, logger: logging.Logger = default_logger):
         """Mark a URI as in use. URIs in use will not be deleted."""
