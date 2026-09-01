@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from vllm.entrypoints.openai.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
-from vllm.v1.engine.exceptions import EngineDeadError, EngineGenerateError
+from vllm.v1.engine.exceptions import EngineDeadError
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -836,38 +836,6 @@ class TestBuildAsgiApp:
 
         assert response.status_code == 500
         assert "EngineCore encountered an issue" in response.json()["error"]["message"]
-
-    # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
-    @pytest.mark.asyncio
-    async def test_wrapped_bad_request_is_400(self):
-        from vllm.platforms import current_platform
-
-        if not current_platform.device_type:
-            current_platform.device_type = "cpu"
-
-        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
-        engine = VLLMEngine.__new__(VLLMEngine)
-        engine._vllm_args = vllm_args
-        engine._engine_client = SimpleNamespace(model_config=None)
-        engine._token_receiver = None
-
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
-        app.state.args = vllm_args
-        app.state.engine_client = SimpleNamespace(errored=False, is_running=True)
-
-        @app.get("/bad_request")
-        async def bad_request():
-            exc = EngineGenerateError()
-            exc.__cause__ = ValueError('Grammar error: unsupported type "str"')
-            raise exc
-
-        response = TestClient(app, raise_server_exceptions=False).get("/bad_request")
-
-        assert response.status_code == 400
 
 
 if __name__ == "__main__":
