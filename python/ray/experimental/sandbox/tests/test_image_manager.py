@@ -510,6 +510,52 @@ def test_prepare_oci_bundle_no_resolv_without_host_side_networking(tmp_path):
         assert _prepare(mgr, tmp_path, network=network) is None
 
 
+def test_registry_mirror_rewrites_docker_hub_only(monkeypatch):
+    """RAY_SANDBOX_REGISTRY_MIRROR reroutes Docker Hub pulls (with an
+    optional repository prefix, as ECR pull-through caches require) and
+    leaves every other registry untouched."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        apply_registry_mirror,
+    )
+
+    monkeypatch.delenv("RAY_SANDBOX_REGISTRY_MIRROR", raising=False)
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "registry-1.docker.io",
+        "library/python",
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "mirror.local:5000")
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "mirror.local:5000",
+        "library/python",
+    )
+
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR",
+        "123.dkr.ecr.us-east-2.amazonaws.com/dockerhub/",
+    )
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "123.dkr.ecr.us-east-2.amazonaws.com",
+        "dockerhub/library/python",
+    )
+    # Non-Docker-Hub registries are never rewritten.
+    assert apply_registry_mirror("ghcr.io", "org/repo") == ("ghcr.io", "org/repo")
+
+    # An explicit scheme is honored (plain-HTTP in-cluster proxies) and
+    # flows through URL construction; https is stripped to the default.
+    from ray.experimental.sandbox._internal.image_utils import registry_base_url
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "http://mirror.local:5000")
+    registry, _ = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert registry == "http://mirror.local:5000"
+    assert registry_base_url(registry) == "http://mirror.local:5000"
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "https://mirror.local/dockerhub")
+    registry, repo = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert (registry, repo) == ("https://mirror.local", "dockerhub/library/python")
+    assert registry_base_url("plain.host") == "https://plain.host"
+
+
 def test_extract_tar_layer_preserves_mtimes(tmp_path):
     """Archived mtimes survive extraction: apt inside the sandbox validates
     its package lists with If-Modified-Since from the file mtime, so a

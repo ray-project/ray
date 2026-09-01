@@ -17,15 +17,18 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <iostream>
 #include <list>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
@@ -165,7 +168,10 @@ class WorkerPoolMock : public WorkerPool {
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients,
                           WorkerPoolMetrics &worker_pool_metrics,
-                          ClockInterface &clock)
+                          ClockInterface &clock,
+                          int min_worker_port = 0,
+                          int max_worker_port = 0,
+                          const std::vector<int> &worker_ports = {})
       : WorkerPool(
             io_service,
             PeriodicalRunner::Create(io_service),
@@ -174,9 +180,9 @@ class WorkerPoolMock : public WorkerPool {
             [this]() { return num_available_cpus_; },
             PYTHON_PRESTART_WORKERS,
             MAXIMUM_STARTUP_CONCURRENCY,
-            0,
-            0,
-            {},
+            min_worker_port,
+            max_worker_port,
+            worker_ports,
             gcs_client,
             worker_commands,
             "",
@@ -501,13 +507,19 @@ class WorkerPoolTest : public ::testing::Test {
     return driver;
   }
 
-  void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
+  void SetWorkerCommands(const WorkerCommandMap &worker_commands,
+                         int min_worker_port = 0,
+                         int max_worker_port = 0,
+                         const std::vector<int> &worker_ports = {}) {
     worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_,
                                                     worker_commands,
                                                     *mock_gcs_client_,
                                                     mock_worker_rpc_clients_,
                                                     worker_pool_metrics_,
-                                                    fake_clock_);
+                                                    fake_clock_,
+                                                    min_worker_port,
+                                                    max_worker_port,
+                                                    worker_ports);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -2554,6 +2566,180 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   };
   RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
+}
+
+// Tests for the worker port pool that raylet hands ports out from.
+TEST(WorkerPortPoolTest, PortRangeIsAPermutationOfTheRange) {
+  std::mt19937 gen(42);
+  auto ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                   /*min_worker_port=*/20000,
+                                   /*max_worker_port=*/20100,
+                                   gen);
+  std::vector<int> expected_ports;
+  expected_ports.reserve(101);
+  for (int port = 20000; port <= 20100; port++) {
+    expected_ports.push_back(port);
+  }
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(expected_ports));
+}
+
+TEST(WorkerPortPoolTest, ExplicitPortListIsAPermutationOfTheList) {
+  const std::vector<int> worker_ports = {30003, 30000, 30002, 30001};
+  std::mt19937 gen(42);
+  auto ports = BuildWorkerPortPool(
+      worker_ports, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAre(30000, 30001, 30002, 30003));
+}
+
+TEST(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
+  const std::vector<int> worker_ports = {30000, 30001};
+  std::mt19937 gen(42);
+  auto ports = BuildWorkerPortPool(
+      worker_ports, /*min_worker_port=*/20000, /*max_worker_port=*/20100, gen);
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(worker_ports));
+}
+
+TEST(WorkerPortPoolTest, MaxPortDefaultsToTheHighestValidPort) {
+  std::mt19937 gen(42);
+  auto ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                   /*min_worker_port=*/65530,
+                                   /*max_worker_port=*/0,
+                                   gen);
+  ASSERT_EQ(ports.size(), 6);
+  ASSERT_EQ(*std::max_element(ports.begin(), ports.end()), 65535);
+  ASSERT_EQ(*std::min_element(ports.begin(), ports.end()), 65530);
+}
+
+TEST(WorkerPortPoolTest, NoPortPoolIsBuiltWhenNoPortsAreConfigured) {
+  std::mt19937 gen(42);
+  ASSERT_TRUE(BuildWorkerPortPool(/*worker_ports=*/{},
+                                  /*min_worker_port=*/0,
+                                  /*max_worker_port=*/0,
+                                  gen)
+                  .empty());
+}
+
+// The point of the shuffle: raylets must not all start at the lower bound of the
+// range. Seeds are fixed, so this is deterministic rather than flaky.
+TEST(WorkerPortPoolTest, AllocationDoesNotAlwaysStartAtTheLowerBound) {
+  std::vector<int> ascending_ports;
+  ascending_ports.reserve(101);
+  for (int port = 20000; port <= 20100; port++) {
+    ascending_ports.push_back(port);
+  }
+
+  bool saw_non_ascending_order = false;
+  bool saw_non_lower_bound_start = false;
+  for (uint32_t seed = 1; seed <= 5; seed++) {
+    std::mt19937 gen(seed);
+    auto ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                     /*min_worker_port=*/20000,
+                                     /*max_worker_port=*/20100,
+                                     gen);
+    saw_non_ascending_order |= (ports != ascending_ports);
+    saw_non_lower_bound_start |= (ports.front() != 20000);
+  }
+  ASSERT_TRUE(saw_non_ascending_order);
+  ASSERT_TRUE(saw_non_lower_bound_start);
+}
+
+// Two raylets seeded independently must not walk the range in the same order.
+TEST(WorkerPortPoolTest, DifferentSeedsProduceDifferentOrders) {
+  std::mt19937 first_gen(1);
+  std::mt19937 second_gen(2);
+  auto first_ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                         /*min_worker_port=*/20000,
+                                         /*max_worker_port=*/20100,
+                                         first_gen);
+  auto second_ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                          /*min_worker_port=*/20000,
+                                          /*max_worker_port=*/20100,
+                                          second_gen);
+  ASSERT_NE(first_ports, second_ports);
+}
+
+TEST(WorkerPortPoolTest, PortRangeBelow1024IsAllowed) {
+  std::mt19937 gen(42);
+  auto range_ports = BuildWorkerPortPool(/*worker_ports=*/{},
+                                         /*min_worker_port=*/1,
+                                         /*max_worker_port=*/3,
+                                         gen);
+  EXPECT_THAT(range_ports, ::testing::UnorderedElementsAre(1, 2, 3));
+}
+
+class WorkerPoolExplicitZeroPortTest : public WorkerPoolTest {
+ public:
+  void SetUp() override {
+    WorkerPoolTest::SetUp();
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
+                      /*min_worker_port=*/0,
+                      /*max_worker_port=*/0,
+                      /*worker_ports=*/{0});
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    worker_pool_->HandleJobStarted(JOB_ID, rpc::JobConfig());
+  }
+};
+
+TEST_F(WorkerPoolExplicitZeroPortTest, ReusesOsAssignedPortAfterWorkerDisconnect) {
+  for (int i = 0; i < 2; i++) {
+    auto status = PopWorkerStatus::OK;
+    auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    ASSERT_EQ(status, PopWorkerStatus::OK);
+    auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker->AssignedPort(), 0);
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
+  }
+}
+
+TEST_F(WorkerPoolExplicitZeroPortTest, ReusesOsAssignedPortAfterDriverDisconnect) {
+  for (int i = 0; i < 2; i++) {
+    auto driver = RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
+    ASSERT_EQ(driver->AssignedPort(), 0);
+    worker_pool_->DisconnectDriver(driver);
+  }
+}
+
+constexpr int kMinTestWorkerPort = 45000;
+constexpr int kMaxTestWorkerPort = 45019;
+
+// Exercises the wiring between the shuffled port pool and port assignment.
+class WorkerPoolPortRangeTest : public WorkerPoolTest {
+ public:
+  void SetUp() override {
+    WorkerPoolTest::SetUp();
+    // Rebuild the pool with a port range so that ports come from the free port
+    // pool instead of being left to the OS.
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
+                      kMinTestWorkerPort,
+                      kMaxTestWorkerPort);
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
+  }
+};
+
+TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
+  PopWorkerStatus status;
+  absl::flat_hash_set<int> assigned_ports;
+  for (int i = 0; i < 3; i++) {
+    auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    const int port = worker->AssignedPort();
+    ASSERT_GE(port, kMinTestWorkerPort);
+    ASSERT_LE(port, kMaxTestWorkerPort);
+    ASSERT_TRUE(assigned_ports.insert(port).second)
+        << "Port " << port << " was assigned to two workers.";
+  }
 }
 
 }  // namespace ray::raylet
