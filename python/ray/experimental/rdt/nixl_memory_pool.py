@@ -471,15 +471,14 @@ class MemoryPoolManager:
             # TODO(#65828): Allow a user to specify a stream for the copies.
             copies = [tensor.to(device, copy=True) for tensor in tensors]
         finally:
-            if self.device.type == "cuda":
-                # The copies are queued on the current stream, while the pool
-                # block is reused by NIXL outside of any stream ordering, so
-                # wait for the copies before the block becomes reusable.
-                # TODO(#65829): Synchronize lazily. The copy only has to finish
-                # before the next NIXL transfer writes into the block, not
-                # before this returns.
-                torch.cuda.synchronize(self.device)
-            self.free_blocks(blocks)
+            try:
+                if self.device.type == "cuda":
+                    # TODO(#65829): Synchronize lazily. The copy only has to
+                    # finish before the next NIXL transfer writes into the
+                    # block, not before this returns.
+                    torch.cuda.synchronize(self.device)
+            finally:
+                self.free_blocks(blocks)
         return copies
 
     def free_blocks(self, blocks: List[MemoryBlock]) -> None:
