@@ -52,7 +52,8 @@ class ClusterResourceMonitor:
 
         self._peak_cpu_count: float = 0
         self._peak_gpu_count: float = 0
-        self._peak_node_counts = NodeCounts(cpu=0, gpu=0)
+        self._peak_cpu_nodes: int = 0
+        self._peak_gpu_nodes: int = 0
 
     def __repr__(self):
         return "ClusterResourceMonitor()"
@@ -67,9 +68,13 @@ class ClusterResourceMonitor:
     def get_peak_cluster_resources(self) -> ExecutionResources:
         return ExecutionResources(cpu=self._peak_cpu_count, gpu=self._peak_gpu_count)
 
-    def get_peak_node_counts(self) -> NodeCounts:
-        """Get the peak number of alive worker nodes, excluding the head node."""
-        return self._peak_node_counts
+    def get_peak_cpu_nodes(self) -> int:
+        """Get the peak number of alive CPU worker nodes."""
+        return self._peak_cpu_nodes
+
+    def get_peak_gpu_nodes(self) -> int:
+        """Get the peak number of alive GPU worker nodes."""
+        return self._peak_gpu_nodes
 
     def _start_background_thread(
         self, interval_s: float = 5.0
@@ -90,10 +95,8 @@ class ClusterResourceMonitor:
                     )
 
                     node_counts = _count_worker_nodes()
-                    self._peak_node_counts = NodeCounts(
-                        cpu=max(self._peak_node_counts.cpu, node_counts.cpu),
-                        gpu=max(self._peak_node_counts.gpu, node_counts.gpu),
-                    )
+                    self._peak_cpu_nodes = max(self._peak_cpu_nodes, node_counts.cpu)
+                    self._peak_gpu_nodes = max(self._peak_gpu_nodes, node_counts.gpu)
                 except Exception:
                     logger.warning("Failed to sample cluster state.", exc_info=True)
 
