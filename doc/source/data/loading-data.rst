@@ -1238,7 +1238,7 @@ datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more detai
     ds.write_datasink(YourCustomDatasink())
 
 Community-maintained connectors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+===============================
 
 The following connectors are maintained by the community and provide integrations
 with additional data systems:
