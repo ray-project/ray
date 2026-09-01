@@ -15,7 +15,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.batcher import (
     ShufflingBatcher,
     _prepare_local_shuffle_arrow_table,
-    _take_prepared_arrow_table,
+    _try_take_prepared_arrow_table,
 )
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import (
@@ -1039,7 +1039,9 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
         "try_take",
         lambda *args, **kwargs: None,
     )
-    assert _take_prepared_arrow_table(prepared_table, indices, prepared_takes) is None
+    assert (
+        _try_take_prepared_arrow_table(prepared_table, indices, prepared_takes) is None
+    )
 
     def raise_take(*args, **kwargs):
         raise RuntimeError("injected take failure")
@@ -1050,7 +1052,7 @@ def test_local_shuffle_tensor_fallbacks_and_prepared_take_errors(monkeypatch):
         raise_take,
     )
     with pytest.raises(RuntimeError, match="injected take failure"):
-        _take_prepared_arrow_table(prepared_table, indices, prepared_takes)
+        _try_take_prepared_arrow_table(prepared_table, indices, prepared_takes)
 
 
 def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
@@ -1092,7 +1094,7 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
 
     monkeypatch.setattr(
         batcher_module,
-        "_take_prepared_arrow_table",
+        "_try_take_prepared_arrow_table",
         fail_prepared_table_take,
     )
 

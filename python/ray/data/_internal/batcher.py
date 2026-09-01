@@ -61,7 +61,7 @@ def _prepare_local_shuffle_arrow_table(
             columns.append(column)
             continue
 
-        prepared = (
+        take_plan = (
             try_prepare_chunked_tensor_take(
                 column,
                 expected_output_rows=expected_output_rows,
@@ -69,8 +69,8 @@ def _prepare_local_shuffle_arrow_table(
             if fast_path_enabled and _is_multi_chunk_extension_column(column)
             else None
         )
-        if prepared is not None:
-            prepared_takes[index] = prepared
+        if take_plan is not None:
+            prepared_takes[index] = take_plan
             columns.append(column)
             continue
 
@@ -78,21 +78,7 @@ def _prepare_local_shuffle_arrow_table(
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
 
 
-def _combine_prepared_arrow_table(
-    table: pa.Table,
-    prepared_takes: Dict[int, PreparedChunkedTensorTake],
-) -> pa.Table:
-    """Materialize prepared columns once after a runtime fast-path fallback."""
-    columns = [
-        transform_pyarrow.combine_chunked_array(column)
-        if index in prepared_takes
-        else column
-        for index, column in enumerate(table.columns)
-    ]
-    return pa.Table.from_arrays(columns, schema=table.schema)
-
-
-def _take_prepared_arrow_table(
+def _try_take_prepared_arrow_table(
     table: pa.Table,
     indices: np.ndarray,
     prepared_takes: Dict[int, PreparedChunkedTensorTake],
@@ -116,11 +102,11 @@ def _take_prepared_arrow_table(
 
     columns = []
     for index, column in enumerate(table.columns):
-        prepared = prepared_takes.get(index)
-        if prepared is None:
+        take_plan = prepared_takes.get(index)
+        if take_plan is None:
             columns.append(column.take(indices))
             continue
-        taken = prepared.try_take(indices)
+        taken = take_plan.try_take(indices)
         if taken is None:
             return None
         columns.append(taken)
@@ -165,24 +151,37 @@ class _ShuffleBufferState:
 
     def _take(self, indices: np.ndarray) -> Block:
         """Take rows, combining a failed prepared column at most once."""
-        if self.prepared_tensor_takes:
-            assert isinstance(self.block, pa.Table)
-            batch = _take_prepared_arrow_table(
-                self.block,
-                indices,
-                self.prepared_tensor_takes,
-            )
-            if batch is not None:
-                return batch
-            # A prepared take should remain valid for one logical generation.
-            # If it cannot serve a take, combine its columns once and stop
-            # retrying the plan for subsequent rows in this generation.
-            self.block = _combine_prepared_arrow_table(
-                self.block,
-                self.prepared_tensor_takes,
-            )
-            self.prepared_tensor_takes = {}
+        if not self.prepared_tensor_takes:
+            return self._take_standard(indices)
+
+        assert isinstance(self.block, pa.Table)
+        batch = _try_take_prepared_arrow_table(
+            self.block,
+            indices,
+            self.prepared_tensor_takes,
+        )
+        if batch is not None:
+            return batch
+
+        self._fall_back_to_standard_arrow_take()
+        return self._take_standard(indices)
+
+    def _take_standard(self, indices) -> Block:
+        """Take rows through the standard block accessor path."""
         return BlockAccessor.for_block(self.block).take(indices)
+
+    def _fall_back_to_standard_arrow_take(self) -> None:
+        """Materialize prepared columns and disable their plans once."""
+        assert isinstance(self.block, pa.Table)
+        table = self.block
+        columns = [
+            transform_pyarrow.combine_chunked_array(column)
+            if index in self.prepared_tensor_takes
+            else column
+            for index, column in enumerate(table.columns)
+        ]
+        self.block = pa.Table.from_arrays(columns, schema=table.schema)
+        self.prepared_tensor_takes.clear()
 
 
 class BatcherInterface:
