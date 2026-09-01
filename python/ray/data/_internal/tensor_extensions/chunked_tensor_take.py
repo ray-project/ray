@@ -37,11 +37,83 @@ def is_chunked_tensor_take_enabled() -> bool:
     return ENABLE_CHUNKED_TENSOR_TAKE
 
 
-def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
-    """Return whether the source can amortize fast-path setup work."""
-    return (
-        row_bytes >= _MIN_FAST_ROW_BYTES
-        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
+def try_prepare_chunked_tensor_take(
+    column: pa.ChunkedArray,
+    *,
+    expected_output_rows: Optional[int],
+) -> Optional["PreparedChunkedTensorTake"]:
+    """Prepare an immutable chunked tensor source for repeated row takes.
+
+    Args:
+        column: Source chunked tensor column.
+        expected_output_rows: Rows expected in each take. When provided,
+            operational source-size gates are applied and Arrow output offset
+            capacity is checked. Pass ``None`` explicitly for a capability-only
+            plan.
+
+    Returns:
+        Validated source metadata when the fast path supports the column.
+        Otherwise, ``None`` so the caller can use the standard Arrow fallback.
+
+    This capability check is independent of the operational feature flag.
+    Callers check ``is_chunked_tensor_take_enabled`` before performing any
+    fast-path-specific index normalization or column preparation.
+    """
+    if column.num_chunks <= 1 or column.null_count > 0:
+        return None
+
+    tensor_type = column.type
+    layout = _try_get_tensor_layout(tensor_type)
+    if layout is None:
+        return None
+    values_per_row, row_bytes, value_dtype = layout
+
+    if expected_output_rows is not None and not _passes_source_size_gates(
+        len(column), row_bytes
+    ):
+        return None
+
+    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
+    max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
+    if (
+        expected_output_rows is not None
+        and expected_output_rows > max_supported_output_rows
+    ):
+        return None
+
+    chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
+    if len(chunks) <= 1:
+        return None
+
+    subbatch_rows = max(
+        1,
+        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+    )
+
+    chunk_views = []
+    chunk_starts = []
+    row_offset = 0
+    for chunk in chunks:
+        view = _try_get_zero_copy_chunk_view(
+            chunk,
+            tensor_type,
+            values_per_row,
+            value_dtype,
+        )
+        if view is None:
+            return None
+        chunk_views.append(view)
+        chunk_starts.append(row_offset)
+        row_offset += len(chunk)
+
+    return PreparedChunkedTensorTake(
+        tensor_type=tensor_type,
+        max_supported_output_rows=max_supported_output_rows,
+        values_per_row=values_per_row,
+        value_dtype=value_dtype,
+        subbatch_rows=subbatch_rows,
+        chunk_views=tuple(chunk_views),
+        chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
     )
 
 
@@ -167,83 +239,11 @@ class PreparedChunkedTensorTake(NamedTuple):
         return self.tensor_type.wrap_array(storage)
 
 
-def try_prepare_chunked_tensor_take(
-    column: pa.ChunkedArray,
-    *,
-    expected_output_rows: Optional[int],
-) -> Optional[PreparedChunkedTensorTake]:
-    """Prepare an immutable chunked tensor source for repeated row takes.
-
-    Args:
-        column: Source chunked tensor column.
-        expected_output_rows: Rows expected in each take. When provided,
-            operational source-size gates are applied and Arrow output offset
-            capacity is checked. Pass ``None`` explicitly for a capability-only
-            plan.
-
-    Returns:
-        Validated source metadata when the fast path supports the column.
-        Otherwise, ``None`` so the caller can use the standard Arrow fallback.
-
-    This capability check is independent of the operational feature flag.
-    Callers check ``is_chunked_tensor_take_enabled`` before performing any
-    fast-path-specific index normalization or column preparation.
-    """
-    if column.num_chunks <= 1 or column.null_count > 0:
-        return None
-
-    tensor_type = column.type
-    layout = _try_get_tensor_layout(tensor_type)
-    if layout is None:
-        return None
-    values_per_row, row_bytes, value_dtype = layout
-
-    if expected_output_rows is not None and not _passes_source_size_gates(
-        len(column), row_bytes
-    ):
-        return None
-
-    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
-    max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
-    if (
-        expected_output_rows is not None
-        and expected_output_rows > max_supported_output_rows
-    ):
-        return None
-
-    chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
-    if len(chunks) <= 1:
-        return None
-
-    subbatch_rows = max(
-        1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
-    )
-
-    chunk_views = []
-    chunk_starts = []
-    row_offset = 0
-    for chunk in chunks:
-        view = _try_get_zero_copy_chunk_view(
-            chunk,
-            tensor_type,
-            values_per_row,
-            value_dtype,
-        )
-        if view is None:
-            return None
-        chunk_views.append(view)
-        chunk_starts.append(row_offset)
-        row_offset += len(chunk)
-
-    return PreparedChunkedTensorTake(
-        tensor_type=tensor_type,
-        max_supported_output_rows=max_supported_output_rows,
-        values_per_row=values_per_row,
-        value_dtype=value_dtype,
-        subbatch_rows=subbatch_rows,
-        chunk_views=tuple(chunk_views),
-        chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
+def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
+    """Return whether the source can amortize fast-path setup work."""
+    return (
+        row_bytes >= _MIN_FAST_ROW_BYTES
+        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
     )
 
 
