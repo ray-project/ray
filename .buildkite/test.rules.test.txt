@@ -112,8 +112,11 @@ doc/source/ray-core/examples/highly_parallel.ipynb: doc
 doc/external/test_hashes.py: ml_doc
 doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
+# This holds for both the doc subtree and the repo-root .claude/.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
+.claude/skills/backport-docs/SKILL.md:
+.claude/settings.json:
 doc/source/llm/doc_code/example.py: llm
 # Unowned doc dirs and doc-root executables fall to the core docs example step.
 doc/source/cluster/example.py: core_doc
