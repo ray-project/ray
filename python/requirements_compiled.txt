@@ -2407,7 +2407,7 @@ torchvision==0.24.0
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.5.5
+tornado==6.5.8
     # via
     #   -r python/requirements/test-requirements.txt
     #   bokeh
