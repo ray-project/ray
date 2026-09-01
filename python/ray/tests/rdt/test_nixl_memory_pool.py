@@ -574,6 +574,35 @@ class TestCopyOutAndFree:
 
         assert sum(b.size for b in pool._free_blocks) == 64
 
+    def test_syncs_before_freeing_when_a_copy_fails(self, monkeypatch):
+        """A failure partway through still has to wait for the queued copies.
+
+        Copies for earlier tensors are only ordered on the CUDA stream, so
+        freeing the block first would let the next NIXL transfer overwrite
+        memory they are still reading.
+        """
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        regions, blocks = pool.allocate_regions([16])
+        # Take the CUDA path without a GPU: the copy fails on the bad target
+        # device before any real device work is queued.
+        pool.device = torch.device("cuda")
+
+        order = []
+        free_blocks = pool.free_blocks
+
+        def record_free(freed):
+            order.append("free")
+            free_blocks(freed)
+
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda *_: order.append("sync"))
+        monkeypatch.setattr(pool, "free_blocks", record_free)
+
+        with pytest.raises(RuntimeError):
+            pool.copy_out_and_free(regions, blocks, target_device="not_a_device")
+
+        assert order == ["sync", "free"]
+        assert sum(b.size for b in pool._free_blocks) == 64
+
     def test_free_blocks_is_noop_for_empty_list(self):
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
         pool.free_blocks([])

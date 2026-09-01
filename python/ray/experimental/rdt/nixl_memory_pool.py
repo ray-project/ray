@@ -1,5 +1,6 @@
 """Memory pool management for NIXL RDT optimization."""
 
+import threading
 from typing import (
     TYPE_CHECKING,
     Dict,
@@ -202,6 +203,10 @@ class MemoryPoolManager:
             pool_size, dtype=torch.uint8, device=self.device
         )
 
+        # Guards _free_blocks and _allocated_by_obj. This is the innermost lock:
+        # the pool never calls back into the transport, so it is always safe to
+        # take while holding the transport's cache lock.
+        self._lock = threading.Lock()
         # List of MemoryBlock for free blocks, sorted by offset.
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
         # Blocks allocated per object ID.
@@ -244,91 +249,94 @@ class MemoryPoolManager:
         ]
         sizes = [layout.nbytes for layout in tensor_layouts]
 
-        # Snapshot the free list so the whole group is atomic. If this obj_id
-        # already owns blocks (re-extract), treat them as free for packing so
-        # the new allocation can reuse that space; on failure the real state
-        # is left untouched.
-        temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
-        prior = self._allocated_by_obj.get(obj_id)
-        if prior:
-            temp_free.extend(MemoryBlock(b.offset, b.size) for b in prior)
-            _merge_free_blocks(temp_free)
+        with self._lock:
+            # Snapshot the free list so the whole group is atomic. If this obj_id
+            # already owns blocks (re-extract), treat them as free for packing so
+            # the new allocation can reuse that space; on failure the real state
+            # is left untouched.
+            temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
+            prior = self._allocated_by_obj.get(obj_id)
+            if prior:
+                temp_free.extend(MemoryBlock(b.offset, b.size) for b in prior)
+                _merge_free_blocks(temp_free)
 
-        if sum(b.size for b in temp_free) < sum(sizes):
-            raise NixlOutOfMemoryError(
-                f"NIXL memory pool out of memory: cannot allocate {len(sizes)} "
-                f"tensor(s) totaling {sum(sizes)} bytes. Consider increasing the "
-                f"pool size when calling register_nixl_memory_pool."
-            )
+            if sum(b.size for b in temp_free) < sum(sizes):
+                raise NixlOutOfMemoryError(
+                    f"NIXL memory pool out of memory: cannot allocate {len(sizes)} "
+                    f"tensor(s) totaling {sum(sizes)} bytes. Consider increasing the "
+                    f"pool size when calling register_nixl_memory_pool."
+                )
 
-        blocks: List[MemoryBlock] = []
-        # Bytes actually packed into each block, and the absolute pool offset of
-        # each tensor. Tensors are taken in order, so pool_starts ends up in
-        # tensor order.
-        block_nbytes: List[int] = []
-        pool_starts: List[int] = []
-        remaining = list(range(len(tensors)))
+            blocks: List[MemoryBlock] = []
+            # Bytes actually packed into each block, and the absolute pool offset
+            # of each tensor. Tensors are taken in order, so pool_starts ends up
+            # in tensor order.
+            block_nbytes: List[int] = []
+            pool_starts: List[int] = []
+            remaining = list(range(len(tensors)))
 
-        while remaining:
-            rem_layouts = [tensor_layouts[i] for i in remaining]
-            offsets, total_nbytes = packed_offsets(rem_layouts)
+            while remaining:
+                rem_layouts = [tensor_layouts[i] for i in remaining]
+                offsets, total_nbytes = packed_offsets(rem_layouts)
 
-            # Prefer the smallest free block that fits everything remaining.
-            free_idx = min(
-                (i for i, b in enumerate(temp_free) if b.size >= total_nbytes),
-                key=lambda i: temp_free[i].size,
-                default=None,
-            )
-            if free_idx is not None:
-                take_count = len(remaining)
-                placed_nbytes = total_nbytes
-            else:
-                # Take the largest free block and pack as many as fit in order.
-                free_idx = max(
-                    range(len(temp_free)),
+                # Prefer the smallest free block that fits everything remaining.
+                free_idx = min(
+                    (i for i, b in enumerate(temp_free) if b.size >= total_nbytes),
                     key=lambda i: temp_free[i].size,
                     default=None,
                 )
-                hole_size = 0 if free_idx is None else temp_free[free_idx].size
-                take_count = 0
-                placed_nbytes = 0
-                for n, layout in enumerate(rem_layouts):
-                    if offsets[n] + layout.nbytes > hole_size:
-                        break
-                    take_count = n + 1
-                    placed_nbytes = offsets[n] + layout.nbytes
-                if take_count == 0:
-                    raise NixlOutOfMemoryError(
-                        f"NIXL memory pool out of memory: cannot allocate next "
-                        f"tensor of {rem_layouts[0].nbytes} bytes (largest free "
-                        f"block is {hole_size} bytes). Consider increasing the "
-                        f"pool size when calling register_nixl_memory_pool."
+                if free_idx is not None:
+                    take_count = len(remaining)
+                    placed_nbytes = total_nbytes
+                else:
+                    # Take the largest free block and pack as many as fit in order.
+                    free_idx = max(
+                        range(len(temp_free)),
+                        key=lambda i: temp_free[i].size,
+                        default=None,
                     )
+                    hole_size = 0 if free_idx is None else temp_free[free_idx].size
+                    take_count = 0
+                    placed_nbytes = 0
+                    for n, layout in enumerate(rem_layouts):
+                        if offsets[n] + layout.nbytes > hole_size:
+                            break
+                        take_count = n + 1
+                        placed_nbytes = offsets[n] + layout.nbytes
+                    if take_count == 0:
+                        raise NixlOutOfMemoryError(
+                            f"NIXL memory pool out of memory: cannot allocate next "
+                            f"tensor of {rem_layouts[0].nbytes} bytes (largest free "
+                            f"block is {hole_size} bytes). Consider increasing the "
+                            f"pool size when calling register_nixl_memory_pool."
+                        )
 
-            # Round the carved block up so subsequent offsets stay aligned.
-            free_block = temp_free[free_idx]
-            block_offset = free_block.offset
-            carved = min(_align_up(placed_nbytes, _MAX_ALIGNMENT), free_block.size)
-            if carved == free_block.size:
-                temp_free.pop(free_idx)
-            else:
-                free_block.offset += carved
-                free_block.size -= carved
+                # Round the carved block up so subsequent offsets stay aligned.
+                free_block = temp_free[free_idx]
+                block_offset = free_block.offset
+                carved = min(_align_up(placed_nbytes, _MAX_ALIGNMENT), free_block.size)
+                if carved == free_block.size:
+                    temp_free.pop(free_idx)
+                else:
+                    free_block.offset += carved
+                    free_block.size -= carved
 
-            blocks.append(MemoryBlock(block_offset, carved))
-            block_nbytes.append(placed_nbytes)
-            pool_starts.extend(block_offset + off for off in offsets[:take_count])
-            remaining = remaining[take_count:]
+                blocks.append(MemoryBlock(block_offset, carved))
+                block_nbytes.append(placed_nbytes)
+                pool_starts.extend(block_offset + off for off in offsets[:take_count])
+                remaining = remaining[take_count:]
 
-        # Commit only after the full group packs successfully.
-        temp_free.sort(key=lambda b: b.offset)
-        self._free_blocks = temp_free
-        self._allocated_by_obj[obj_id] = blocks
+            # Commit only after the full group packs successfully.
+            temp_free.sort(key=lambda b: b.offset)
+            self._free_blocks = temp_free
+            self._allocated_by_obj[obj_id] = blocks
 
         regions = [
             self._pool_tensor[b.offset : b.offset + nbytes]
             for b, nbytes in zip(blocks, block_nbytes)
         ]
+        # Safe outside the lock: obj_id owns these blocks now, so no other
+        # thread can hand the same bytes out while they are being written.
         self._copy_into_pool(tensors, sizes, pool_starts)
         return regions
 
@@ -382,43 +390,44 @@ class MemoryPoolManager:
         Raises:
             NixlOutOfMemoryError: If the pool has insufficient space.
         """
-        # Snapshot the free list so the whole group is atomic: a later region
-        # that does not fit leaves the real free list untouched.
-        temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
-        blocks: List[MemoryBlock] = []
+        with self._lock:
+            # Snapshot the free list so the whole group is atomic: a later region
+            # that does not fit leaves the real free list untouched.
+            temp_free = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
+            blocks: List[MemoryBlock] = []
 
-        for nbytes in region_nbytes:
-            # Prefer the smallest block that fits so large holes stay intact
-            # for whichever region needs them.
-            free_idx = min(
-                (i for i, b in enumerate(temp_free) if b.size >= nbytes),
-                key=lambda i: temp_free[i].size,
-                default=None,
-            )
-            if free_idx is None:
-                largest = max((b.size for b in temp_free), default=0)
-                raise NixlOutOfMemoryError(
-                    f"NIXL memory pool out of memory: cannot allocate a "
-                    f"contiguous receive buffer of {nbytes} bytes (largest free "
-                    f"block is {largest} bytes). Consider increasing the pool "
-                    f"size when calling register_nixl_memory_pool."
+            for nbytes in region_nbytes:
+                # Prefer the smallest block that fits so large holes stay intact
+                # for whichever region needs them.
+                free_idx = min(
+                    (i for i, b in enumerate(temp_free) if b.size >= nbytes),
+                    key=lambda i: temp_free[i].size,
+                    default=None,
                 )
+                if free_idx is None:
+                    largest = max((b.size for b in temp_free), default=0)
+                    raise NixlOutOfMemoryError(
+                        f"NIXL memory pool out of memory: cannot allocate a "
+                        f"contiguous receive buffer of {nbytes} bytes (largest free "
+                        f"block is {largest} bytes). Consider increasing the pool "
+                        f"size when calling register_nixl_memory_pool."
+                    )
 
-            free_block = temp_free[free_idx]
-            block_offset = free_block.offset
-            # Round up so the next block still starts aligned, but never past
-            # the end of the hole we are carving from.
-            carved = min(_align_up(nbytes, _MAX_ALIGNMENT), free_block.size)
-            if carved == free_block.size:
-                temp_free.pop(free_idx)
-            else:
-                free_block.offset += carved
-                free_block.size -= carved
-            blocks.append(MemoryBlock(block_offset, carved))
+                free_block = temp_free[free_idx]
+                block_offset = free_block.offset
+                # Round up so the next block still starts aligned, but never past
+                # the end of the hole we are carving from.
+                carved = min(_align_up(nbytes, _MAX_ALIGNMENT), free_block.size)
+                if carved == free_block.size:
+                    temp_free.pop(free_idx)
+                else:
+                    free_block.offset += carved
+                    free_block.size -= carved
+                blocks.append(MemoryBlock(block_offset, carved))
 
-        # Commit only after every region has been placed.
-        temp_free.sort(key=lambda b: b.offset)
-        self._free_blocks = temp_free
+            # Commit only after every region has been placed.
+            temp_free.sort(key=lambda b: b.offset)
+            self._free_blocks = temp_free
 
         regions = [
             self._pool_tensor[b.offset : b.offset + nbytes]
@@ -451,12 +460,17 @@ class MemoryPoolManager:
         import torch
 
         device = self.device if target_device is None else target_device
+        # The copies run without the pool lock. The blocks stay allocated until
+        # the free below, so no other thread can hand these bytes out while they
+        # are being read, and the device sync does not block every other
+        # allocation behind it.
         try:
             # copy=True because .to() is a no-op when the device already
             # matches, which would keep the result aliasing the pool block we
             # are about to hand back.
             # TODO(#65828): Allow a user to specify a stream for the copies.
             copies = [tensor.to(device, copy=True) for tensor in tensors]
+        finally:
             if self.device.type == "cuda":
                 # The copies are queued on the current stream, while the pool
                 # block is reused by NIXL outside of any stream ordering, so
@@ -465,7 +479,6 @@ class MemoryPoolManager:
                 # before the next NIXL transfer writes into the block, not
                 # before this returns.
                 torch.cuda.synchronize(self.device)
-        finally:
             self.free_blocks(blocks)
         return copies
 
@@ -477,6 +490,11 @@ class MemoryPoolManager:
         """
         if not blocks:
             return
+        with self._lock:
+            self._free_blocks_locked(blocks)
+
+    def _free_blocks_locked(self, blocks: List[MemoryBlock]) -> None:
+        """Return blocks to the free list. Caller must hold ``_lock``."""
         self._free_blocks.extend(blocks)
         _merge_free_blocks(self._free_blocks)
 
@@ -489,8 +507,9 @@ class MemoryPoolManager:
         Returns:
             True if blocks were freed, False if ``obj_id`` had no allocation.
         """
-        blocks = self._allocated_by_obj.pop(obj_id, None)
-        if blocks is None:
-            return False
-        self.free_blocks(blocks)
-        return True
+        with self._lock:
+            blocks = self._allocated_by_obj.pop(obj_id, None)
+            if blocks is None:
+                return False
+            self._free_blocks_locked(blocks)
+            return True
