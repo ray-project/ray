@@ -165,8 +165,8 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
-def suspend_patch(should_suspend: bool) -> Dict[str, Any]:
-    return {"spec": {"suspend": should_suspend}}
+def idle_terminate_patch(should_idle_terminate: bool) -> Dict[str, Any]:
+    return {"spec": {"idleTerminate": should_idle_terminate}}
 
 
 def finalizer_patch(finalizers: List[str]) -> Dict[str, Any]:
@@ -398,7 +398,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
-        if not result.status_code == 200:
+        if result.status_code not in {200, 404}:
             result.raise_for_status()
         return result.json()
 

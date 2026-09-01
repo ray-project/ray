@@ -916,21 +916,21 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert self.provider._no_driver_observed_since == 50.0
         assert self.provider._last_seen_job_end_time == 42
 
-    def test_refresh_no_driver_timeout_seconds_reads_value(self):
+    def test_refresh_no_driver_config_reads_value(self):
         self.provider._ray_cluster = {
             "spec": {"autoscalerOptions": {"noDriverTimeoutSeconds": 1800}}
         }
-        self.provider._refresh_no_driver_timeout_seconds()
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds == 1800.0
 
-    def test_refresh_no_driver_timeout_seconds_unset(self):
+    def test_refresh_no_driver_config_unset(self):
         self.provider._ray_cluster = {"spec": {"autoscalerOptions": {}}}
-        self.provider._refresh_no_driver_timeout_seconds()
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds is None
 
-    def test_refresh_no_driver_timeout_seconds_no_autoscaler_options(self):
+    def test_refresh_no_driver_config_no_autoscaler_options(self):
         self.provider._ray_cluster = {"spec": {}}
-        self.provider._refresh_no_driver_timeout_seconds()
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds is None
 
     def test_scale_down_with_multi_host_group(self):
