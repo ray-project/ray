@@ -88,12 +88,15 @@ def test_shuffling_batcher():
     add_and_check(15, expect_has_batch=True)  # total=35
 
     # All 35 rows are still uncompacted since no next_batch() has been called.
-    assert batcher._shuffle_buffer is None
+    assert batcher._buffer_state is None
     assert batcher._builder.num_rows() == 35
 
     # Consume one batch — this triggers the first compaction.
     next_and_check(expect_full_batch=True, expect_has_batch_after=True)
-    assert batcher._shuffle_buffer is not None  # compaction happened
+    assert batcher._buffer_state is not None  # compaction happened
+    assert batcher._buffer_state.batch_head == batch_size
+    assert batcher._buffer_state.remaining_rows == 30
+    first_buffer_state = batcher._buffer_state
     assert batcher._builder.num_rows() == 0  # all rows moved to compacted buffer
 
     # Add more data while consuming.
@@ -104,6 +107,10 @@ def test_shuffling_batcher():
         batch = batcher.next_batch()
         assert len(batch) == batch_size
         total_yielded += batch_size
+
+    # Carrying remaining rows through a later compaction atomically replaces
+    # the buffer generation rather than resetting its fields independently.
+    assert batcher._buffer_state is not first_buffer_state
 
     # Streaming exhausted: remaining rows <= batch_size (not enough to trigger
     # has_batch without more data or done_adding).

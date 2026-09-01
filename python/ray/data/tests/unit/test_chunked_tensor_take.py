@@ -869,11 +869,13 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
         np.testing.assert_array_equal(tensor[:, 0], ids.astype(np.float32))
 
     assert sum(len(ids) for ids in tensor_ids) == len(tensor_table)
-    assert batcher._shuffled_indices is not None
-    assert batcher._batch_head == len(batcher._shuffled_indices)
-    assert batcher._prepared_tensor_takes
+    assert batcher._buffer_state is not None
+    assert batcher._buffer_state.batch_head == len(
+        batcher._buffer_state.shuffled_indices
+    )
+    assert batcher._buffer_state.prepared_tensor_takes
     assert not hasattr(batcher, "_prefetched_block")
-    for prepared in batcher._prepared_tensor_takes.values():
+    for prepared in batcher._buffer_state.prepared_tensor_takes.values():
         assert prepared.max_supported_output_rows >= 9
 
 
@@ -1096,9 +1098,10 @@ def test_local_shuffle_stops_retrying_invalid_prepared_take(monkeypatch):
 
     assert len(batcher.next_batch()) == 10
     assert calls == 1
-    assert not batcher._prepared_tensor_takes
-    assert isinstance(batcher._shuffle_buffer, pa.Table)
-    assert batcher._shuffle_buffer.column("tensor").num_chunks == 1
+    assert batcher._buffer_state is not None
+    assert not batcher._buffer_state.prepared_tensor_takes
+    assert isinstance(batcher._buffer_state.block, pa.Table)
+    assert batcher._buffer_state.block.column("tensor").num_chunks == 1
     assert combine_calls == 1
 
     assert len(batcher.next_batch()) == 10
