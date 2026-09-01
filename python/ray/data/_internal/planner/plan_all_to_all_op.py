@@ -24,6 +24,9 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_operator import (  # noqa: E501
+    SortSamplingOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
     SortShuffleMapOp,
 )
@@ -162,8 +165,18 @@ def _plan_sort_v2(
     else:
         num_partitions = data_context.default_hash_shuffle_parallelism
 
+    map_input_op = input_physical_op
+    if not sort_key.boundaries:
+        map_input_op = SortSamplingOp(
+            input_physical_op,
+            data_context,
+            num_partitions=num_partitions,
+            sort_key=sort_key,
+            name=f"SortSample(partitions={num_partitions})",
+        )
+
     map_op = SortShuffleMapOp(
-        input_physical_op,
+        map_input_op,
         data_context,
         num_partitions=num_partitions,
         sort_key=sort_key,
