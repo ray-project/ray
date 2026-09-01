@@ -338,6 +338,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # fall back to html_baseurl for local builds. (DOC-1130)
 llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
 
+# Read the Docs serves a Markdown rendering of any page from that page's own
+# `.html` URL, under an `Accept: text/markdown` request — there is no separate
+# `.md` file to link to (`page.md`, `page.html.md`, and `?format=md` all 404).
+# So the `.html` links in llms.txt are already the Markdown links; nothing in
+# the file tells an agent that, hence this pointer. Content negotiation happens
+# on the rendered HTML, so it works the same whether a page's source is .rst or
+# .md, and it stays correct as pages migrate between the two.
+llms_txt_markdown_hint = True
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
@@ -478,6 +487,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
