@@ -154,10 +154,14 @@ Configure the History Server with the following environment variables and comman
   - `--use-kubernetes-proxy`
   - `false`
   - Use a local kubeconfig instead of the in-cluster configuration. Intended for running the History Server outside the cluster during development.
+* -
+  - `--enable-live-clusters`
+  - `false`
+  - Serve Ray clusters that are still running by reverse-proxying requests to their head dashboards.
 * - 
   - `--use-auth-token-mode`
   - `false`
-  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
+  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. This flag only has an effect when `--enable-live-clusters` is enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
 * - 
   - `--kube-api-qps`
   - `100`
@@ -184,6 +188,9 @@ Configure the History Server with the following environment variables and comman
   - Duration that a terminated session snapshot stays cached after its last access. A value of `0` disables TTL-based eviction, so sessions leave the cache only through LRU or memory-cap eviction.
 :::
 
+:::{warning}
+The History Server doesn't authenticate its own callers, and a client-supplied cookie determines which RayCluster it proxies to. When `--enable-live-clusters` is enabled, anyone who can reach the History Server can reach the Ray Dashboard API of every RayCluster that the History Server can access. Only enable live cluster access when you restrict access to the History Server by other means.
+:::
 
 :::{note}
 **Sizing the session cache**: the cap that `--session-cache-max-memory` sets is a soft bound on cached snapshots, not on total Pod memory. Set the Pod memory limit above it to leave headroom for decoding sessions the History Server hasn't cached yet. The example manifest pairs `--session-cache-max-memory=8Gi` with a `12Gi` memory limit for this reason.
