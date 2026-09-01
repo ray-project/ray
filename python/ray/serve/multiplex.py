@@ -3,7 +3,7 @@ import inspect
 import logging
 import time
 from collections import OrderedDict
-from typing import Any, Callable, List, Set
+from typing import Any, Callable, Dict, List, Set
 
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
@@ -107,13 +107,14 @@ class _ModelMultiplexWrapper:
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
 
-        # Model cache lock to ensure that only one model is loading/unloading at a time.
+        # Protect capacity checks, eviction, reservations, and load-task creation.
+        # The lock is not held while executing the user-provided model loader.
         self._model_cache_lock = asyncio.Lock()
-        # The set of model IDs that are being loaded. This is used to early push
-        # model ids info to the controller. The tasks will be added when there is cache
-        # miss, and will be removed when the model is loaded successfully or
-        # failed to load.
-        self._model_load_tasks: Set[str] = set()
+        self._model_cache_condition = asyncio.Condition(self._model_cache_lock)
+
+        # Map each loading model ID to its shared single-flight task.
+        self._model_load_tasks: Dict[str, asyncio.Task[Any]] = {}
+        self._model_load_reservations: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_or_update_task(
@@ -155,7 +156,20 @@ class _ModelMultiplexWrapper:
             )
 
     async def shutdown(self):
-        """Unload all the models when the model multiplexer is deleted."""
+        """Cancel active loads and unload all cached models."""
+
+        async with self._model_cache_condition:
+            load_tasks = list(self._model_load_tasks.values())
+            self._model_load_tasks.clear()
+            self._model_load_reservations.clear()
+
+            for task in load_tasks:
+                task.cancel()
+
+            self._model_cache_condition.notify_all()
+
+        await asyncio.gather(*load_tasks, return_exceptions=True)
+
         while len(self.models) > 0:
             try:
                 await self.unload_model_lru()
@@ -190,53 +204,95 @@ class _ModelMultiplexWrapper:
             # key as missing during the brief window between pop and reinsert.
             self.models.move_to_end(model_id)
             return self.models[model_id]
-        else:
-            # Set the flag to push the multiplexed replica info to the controller
-            # before loading the model. This is to make sure we can push the model
-            # id info to the controller/router early, so that requests can be routed to
-            # the replica.
-            self._push_multiplexed_replica_info = True
-            self._model_load_tasks.add(model_id)
-            async with self._model_cache_lock:
-                # Check if the model has been loaded by another request.
-                if model_id in self.models:
-                    return self.models[model_id]
-                try:
-                    # If the number of models per replica is specified, check
-                    # if the number of models on the current replica has
-                    # reached the limit.
-                    if (
-                        self.max_num_models_per_replica > 0
-                        and len(self.models) >= self.max_num_models_per_replica
-                    ):
-                        # Unload the least recently used model.
+
+        async with self._model_cache_condition:
+            # Another request may have loaded the model while we waited for the lock.
+            if model_id in self.models:
+                self.models.move_to_end(model_id)
+                return self.models[model_id]
+
+            task = self._model_load_tasks.get(model_id)
+
+            if task is None:
+                task = asyncio.create_task(self._load_model_and_cache(model_id))
+                task.add_done_callback(self._retrieve_load_task_exception)
+                self._model_load_tasks[model_id] = task
+                self._push_multiplexed_replica_info = True
+
+        # The wrapper owns the shared load task. Shield it so cancellation of an
+        # individual caller does not cancel cache warming or other waiters.
+        return await asyncio.shield(task)
+
+    @staticmethod
+    def _retrieve_load_task_exception(task: asyncio.Task[Any]) -> None:
+        """Retrieve detached load failures to avoid unhandled-task warnings."""
+        if not task.cancelled():
+            # Calling exception() marks it as retrieved without changing what
+            # callers awaiting the task receive.
+            task.exception()
+
+    async def _load_model_and_cache(self, model_id: str) -> Any:
+        """Load and cache one model using a reserved capacity slot."""
+        finalized = False
+
+        try:
+            # Stage 1: reserve capacity.
+            async with self._model_cache_condition:
+                while (
+                    self.max_num_models_per_replica > 0
+                    and len(self.models) + len(self._model_load_reservations)
+                    >= self.max_num_models_per_replica
+                ):
+                    if self.models:
                         await self.unload_model_lru()
                         self._push_multiplexed_replica_info = True
-
-                    # Load the model.
-                    logger.debug(f"Loading model '{model_id}'.")
-                    self.models_load_counter.inc()
-                    load_start_time = time.time()
-                    if self.self_arg is None:
-                        self.models[model_id] = await self._func(model_id)
                     else:
-                        self.models[model_id] = await self._func(
-                            self.self_arg, model_id
-                        )
-                    load_latency_ms = (time.time() - load_start_time) * 1000.0
-                    logger.debug(
-                        f"Successfully loaded model '{model_id}' in "
-                        f"{load_latency_ms:.1f}ms."
-                    )
-                    self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_ms.observe(load_latency_ms)
-                    return self.models[model_id]
-                except Exception as e:
-                    logger.error(
-                        f"Failed to load model '{model_id}'. Error: {e}",
-                    )
-                    self._model_load_tasks.discard(model_id)
-                    raise e
+                        # Capacity is occupied entirely by unfinished loads.
+                        # Release the lock and sleep until one finishes/fails.
+                        await self._model_cache_condition.wait()
+
+                self._model_load_reservations.add(model_id)
+
+            # Stage 2: slow work occurs with no global lock held.
+            logger.debug(f"Loading model '{model_id}'.")
+            self.models_load_counter.inc()
+            load_start_time = time.time()
+
+            if self.self_arg is None:
+                model = await self._func(model_id)
+            else:
+                model = await self._func(self.self_arg, model_id)
+
+            load_latency_ms = (time.time() - load_start_time) * 1000.0
+
+            # Stage 3: atomically publish the result and release its reservation.
+            async with self._model_cache_condition:
+                self.models[model_id] = model
+                self._model_load_reservations.discard(model_id)
+                self._model_load_tasks.pop(model_id, None)
+                self._model_cache_condition.notify_all()
+                finalized = True
+
+            self.model_load_latency_ms.observe(load_latency_ms)
+            logger.debug(
+                f"Successfully loaded model '{model_id}' in "
+                f"{load_latency_ms:.1f}ms."
+            )
+            return model
+        except Exception as e:
+            logger.error(f"Failed to load model '{model_id}'. Error: {e}")
+            raise
+        finally:
+            if not finalized:
+                async with self._model_cache_condition:
+                    self._model_load_reservations.discard(model_id)
+                    current_task = asyncio.current_task()
+
+                    if self._model_load_tasks.get(model_id) is current_task:
+                        self._model_load_tasks.pop(model_id)
+                        self._push_multiplexed_replica_info = True
+
+                    self._model_cache_condition.notify_all()
 
     async def unload_model_lru(self) -> None:
         """Unload the least recently used model."""

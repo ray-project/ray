@@ -72,12 +72,16 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
-        multiplexer._model_load_tasks = {"3"}
-        assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
-            "1",
-            "2",
-            "3",
-        ]
+        load_task = asyncio.create_task(asyncio.sleep(0))
+        multiplexer._model_load_tasks = {"3": load_task}
+        try:
+            assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
+                "1",
+                "2",
+                "3",
+            ]
+        finally:
+            await load_task
 
     async def test_multiplex_wrapper(self, start_serve_with_context):
         """Test multiplex wrapper with LRU caching."""
@@ -187,6 +191,88 @@ class TestMultiplexWrapper:
         assert multiplexer._push_multiplexed_replica_info
         signal.send.remote()
 
+    async def test_shutdown_cancels_in_flight_loads(self, start_serve_with_context):
+        """Test that shutdown cancels wrapper-owned model loads."""
+
+        entered = asyncio.Event()
+        cancelled = asyncio.Event()
+        block_load = asyncio.Event()
+
+        async def model_load_func(model_id: str):
+            entered.set()
+            try:
+                await block_load.wait()
+            finally:
+                cancelled.set()
+
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        request_task = asyncio.create_task(multiplexer.load_model("1"))
+
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            await multiplexer.shutdown()
+            await asyncio.wait_for(cancelled.wait(), timeout=5)
+        finally:
+            if not request_task.done():
+                request_task.cancel()
+            results = await asyncio.gather(request_task, return_exceptions=True)
+
+        assert isinstance(results[0], asyncio.CancelledError)
+        assert not multiplexer.models
+        assert not multiplexer._model_load_tasks
+        assert not multiplexer._model_load_reservations
+
+    async def test_load_same_model_single_flight(self, start_serve_with_context):
+        """Test that same-model callers share one cancellation-safe load task."""
+
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        load_count = 0
+
+        async def model_load_func(model_id: str):
+            nonlocal load_count
+            load_count += 1
+            entered.set()
+            await release.wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        tasks = [
+            asyncio.create_task(multiplexer.load_model("1")),
+            asyncio.create_task(multiplexer.load_model("1")),
+        ]
+
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+
+            tasks[0].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[0]
+
+            release.set()
+            assert await tasks[1] == "1"
+        finally:
+            release.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert load_count == 1
+        assert multiplexer.models == {"1": "1"}
+        assert not multiplexer._model_load_tasks
+        assert not multiplexer._model_load_reservations
+
     async def test_load_models_concurrently(self, start_serve_with_context):
         """
         Test load models concurrently. models info should include loading models and
@@ -221,6 +307,129 @@ class TestMultiplexWrapper:
         assert len(multiplexer.models) == 1
         assert "3" in multiplexer.models
         assert len(multiplexer._model_load_tasks) == 0
+
+    async def test_concurrent_loads_respect_capacity(self, start_serve_with_context):
+        """Test that in-flight reservations bound concurrent model loads."""
+
+        entered = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
+        release = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
+
+        async def model_load_func(model_id: str):
+            entered[model_id].set()
+            await release[model_id].wait()
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=2
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        tasks = {
+            model_id: asyncio.create_task(multiplexer.load_model(model_id))
+            for model_id in ("1", "2")
+        }
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(entered["1"].wait(), entered["2"].wait()),
+                timeout=5,
+            )
+
+            tasks["3"] = asyncio.create_task(multiplexer.load_model("3"))
+            await asyncio.sleep(0)
+
+            assert not entered["3"].is_set()
+            assert len(multiplexer._model_load_reservations) == 2
+            assert (
+                len(multiplexer.models) + len(multiplexer._model_load_reservations) <= 2
+            )
+
+            release["1"].set()
+            await asyncio.wait_for(entered["3"].wait(), timeout=5)
+
+            release["2"].set()
+            release["3"].set()
+            assert await asyncio.gather(*tasks.values()) == ["1", "2", "3"]
+        finally:
+            for event in release.values():
+                event.set()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+        assert len(multiplexer.models) == 2
+        assert not multiplexer._model_load_tasks
+        assert not multiplexer._model_load_reservations
+
+    async def test_load_failure_releases_capacity_and_allows_retry(
+        self, start_serve_with_context
+    ):
+        """Test that a failed load releases capacity and can be retried."""
+
+        first_load_entered = asyncio.Event()
+        fail_first_load = asyncio.Event()
+        second_model_entered = asyncio.Event()
+        first_model_attempts = 0
+
+        async def model_load_func(model_id: str):
+            nonlocal first_model_attempts
+
+            if model_id == "1":
+                first_model_attempts += 1
+                if first_model_attempts == 1:
+                    first_load_entered.set()
+                    await fail_first_load.wait()
+                    raise RuntimeError("model load failed")
+            else:
+                second_model_entered.set()
+
+            return model_id
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        first_tasks = [
+            asyncio.create_task(multiplexer.load_model("1")),
+            asyncio.create_task(multiplexer.load_model("1")),
+        ]
+        second_task = None
+
+        try:
+            await asyncio.wait_for(first_load_entered.wait(), timeout=5)
+
+            second_task = asyncio.create_task(multiplexer.load_model("2"))
+            await asyncio.sleep(0)
+
+            assert not second_model_entered.is_set()
+            assert multiplexer._model_load_reservations == {"1"}
+
+            fail_first_load.set()
+
+            first_results = await asyncio.gather(*first_tasks, return_exceptions=True)
+            assert all(isinstance(result, RuntimeError) for result in first_results)
+            assert first_model_attempts == 1
+
+            await asyncio.wait_for(second_model_entered.wait(), timeout=5)
+            assert await second_task == "2"
+
+            assert await multiplexer.load_model("1") == "1"
+        finally:
+            fail_first_load.set()
+            tasks = first_tasks.copy()
+
+            if second_task is not None:
+                tasks.append(second_task)
+
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert first_model_attempts == 2
+        assert multiplexer.models == {"1": "1"}
+        assert not multiplexer._model_load_tasks
+        assert not multiplexer._model_load_reservations
 
 
 class TestBasicAPI:
