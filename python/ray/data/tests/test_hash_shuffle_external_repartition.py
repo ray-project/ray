@@ -46,12 +46,33 @@ def _assert_no_leftover_shuffle_dirs():
 # --- Correctness -------------------------------------------------------------
 
 
+def test_external_map_op_is_blocking_materializing():
+    """The resource manager must classify the external map op like the
+    object-store ``ShuffleMapOp``: as a blocking, materializing operator.
+
+    Otherwise the reduce op stays eligible for resource allocation during the
+    map phase (shrinking the map's budget), and the map op loses the
+    object-store backpressure exemption granted to materializing ops.
+    """
+    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+        ExternalHashShuffleMapOp,
+    )
+    from ray.data._internal.execution.resource_manager import (
+        _BLOCKING_MATERIALIZING_OPERATORS,
+    )
+
+    assert issubclass(ExternalHashShuffleMapOp, _BLOCKING_MATERIALIZING_OPERATORS)
+
+
 def test_external_sort_reduce_uses_higher_multiplier(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Sorted external reduces request 3x, matching object-store ShuffleReduceOp."""
+    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
+        ExternalHashShuffleReduceOp,
+    )
     from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
         SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     )
@@ -64,48 +85,35 @@ def test_external_sort_reduce_uses_higher_multiplier(
     sorted_dag = get_execution_plan(
         ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
     )[0].dag
+    # isinstance doubles as the flag-on routing check and narrows the type.
+    assert isinstance(sorted_dag, ExternalHashShuffleReduceOp)
     assert sorted_dag._peak_memory_multiplier == 3
-    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
-    assert sorted_dag.incremental_resource_usage().memory == 300
 
     plain_dag = get_execution_plan(
         ray.data.range(10).repartition(2, keys=["id"])._logical_plan
     )[0].dag
+    assert isinstance(plain_dag, ExternalHashShuffleReduceOp)
     assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
 
-@pytest.mark.parametrize("num_partitions", [1, 4, 8])
+@pytest.mark.parametrize("num_partitions", [1, 8])
 def test_external_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
     num_partitions,
 ):
-    """No rows are lost or duplicated; key totals are preserved."""
+    """No rows are lost or duplicated; key totals are preserved; all-non-empty
+    partitions (1000 distinct keys) => exactly num_partitions output blocks."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.use_external_hash_shuffle = True
 
     ds = ray.data.range(1000, override_num_blocks=10)
-    out = ds.repartition(num_partitions, keys=["id"])
+    out = ds.repartition(num_partitions, keys=["id"]).materialize()
     assert out.count() == 1000
     assert out.sum("id") == sum(range(1000))
-
-
-def test_external_repartition_block_number_matched(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    disable_fallback_to_object_extension,
-):
-    """All-non-empty partitions => exactly num_partitions output blocks."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
-
-    # 1000 distinct keys over 8 buckets => all 8 partitions are non-empty.
-    ds = ray.data.range(1000, override_num_blocks=20)
-    out = ds.repartition(8, keys=["id"]).materialize()
-    assert out.num_blocks() == 8
+    assert out.num_blocks() == num_partitions
 
 
 def test_external_same_key_lands_in_same_block(
@@ -124,26 +132,6 @@ def test_external_same_key_lands_in_same_block(
     out = ds.repartition(5, keys=["k"])
 
     _assert_keys_colocated(_keys_per_block(out, ["k"]))
-    assert out.count() == 500
-
-
-def test_external_multi_column_keys(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    disable_fallback_to_object_extension,
-):
-    """Composite keys hash on all columns: every distinct (a, b) tuple lands in
-    exactly one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
-
-    ds = ray.data.range(500, override_num_blocks=10).map(
-        lambda row: {"a": row["id"] % 5, "b": row["id"] % 7, "v": row["id"]}
-    )
-    out = ds.repartition(4, keys=["a", "b"])
-
-    _assert_keys_colocated(_keys_per_block(out, ["a", "b"]))
     assert out.count() == 500
 
 

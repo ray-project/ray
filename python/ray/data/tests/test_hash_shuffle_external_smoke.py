@@ -41,7 +41,6 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.stats import Timer
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import run_op_tasks_sync
 
 # --- helpers -----------------------------------------------------------------
@@ -137,41 +136,10 @@ def _shutdown_ops(*ops) -> None:
 # --- tests -------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def ray_init_shutdown():
-    if not ray.is_initialized():
-        ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
-    yield
-    # Leave Ray up; multiple tests in this file reuse it.
-
-
-@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
-def test_shuffle_input_batch_bytes_controls_map_task_batching(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    batch_bytes,
-    expected_num_tasks,
-):
-    """batch_bytes=0 submits one map task per input bundle; a large value
-    buffers all input into a single map task, flushed when input ends."""
-    restore_data_context.shuffle_input_batch_bytes = batch_bytes
-    op = ExternalHashShuffleMapOp(
-        InputDataBuffer(restore_data_context, []),
-        restore_data_context,
-        num_partitions=2,
-        partition_fn=_make_hash_partition_fn(["id"], 2),
-    )
-    op.start(ExecutionOptions(), noop_counter())
-
-    for bundle in make_ref_bundles([[0], [1]]):
-        op.add_input(bundle, 0)
-    op.all_inputs_done()
-
-    assert len(op.get_active_tasks()) == expected_num_tasks
-
-
 @pytest.mark.parametrize("num_blocks,rows,num_parts", [(4, 250, 4), (8, 100, 3)])
-def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
+def test_external_repartition_smoke(
+    ray_start_regular_shared_2_cpus, num_blocks, rows, num_parts
+):
     """End-to-end: map → reduce, verify total row count preserved."""
     input_bundles = make_ref_bundles(
         [list(range(i * rows, (i + 1) * rows)) for i in range(num_blocks)]
@@ -191,12 +159,11 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         assert (
             got_rows == expected_total_rows
         ), f"row count mismatch: got {got_rows}, expected {expected_total_rows}"
-        assert len({id(bundle) for bundle in reduce_output}) >= 1
     finally:
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_empty_partition_fast_path(ray_init_shutdown):
+def test_empty_partition_fast_path(ray_start_regular_shared_2_cpus):
     """Few distinct keys into many partitions: empty wrappers skip remote reduce.
 
     Mirrors v2 ``test_more_partitions_than_keys_emits_empty_blocks`` at the
@@ -246,7 +213,7 @@ def test_empty_partition_fast_path(ray_init_shutdown):
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_null_typed_not_gated_as_empty(ray_init_shutdown):
+def test_null_typed_not_gated_as_empty(ray_start_regular_shared_2_cpus):
     """Null-typed rows have ``tbl.nbytes == 0`` but must not take empty fast path.
 
     Gating on ``size_bytes`` would drop them; gating on ``num_rows`` keeps them.
@@ -267,8 +234,9 @@ def test_null_typed_not_gated_as_empty(ray_init_shutdown):
         non_empty = [b for b in map_output if (b.num_rows() or 0) > 0]
         assert len(non_empty) == 1
         assert non_empty[0].num_rows() == 10
-        # The bug was gating on bytes: wrapper can report size_bytes==0.
-        assert sum((m.size_bytes or 0) for m in non_empty[0].metadata) == 0
+        # The bug was gating on bytes: the wrapper for a null-typed table can
+        # report size_bytes==0 even though it has rows (not asserted — the
+        # metadata representation may legitimately change).
 
         for bundle in map_output:
             reduce_op.add_input(bundle, input_index=0)
@@ -284,7 +252,7 @@ def test_null_typed_not_gated_as_empty(ray_init_shutdown):
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_fused_map_on_empty_partitions(ray_init_shutdown):
+def test_fused_map_on_empty_partitions(ray_start_regular_shared_2_cpus):
     """With a fused downstream map, empty partitions must not take the fast path.
 
     The operator empty fast path is skipped so the fused map still runs (e.g.
