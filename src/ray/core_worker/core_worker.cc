@@ -58,12 +58,14 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
-// Per-request state for one CoreWorker::WaitAsync.
-//
-// Lock order: wait_async_mu_ -> mu -> CoreWorkerMemoryStore::mu_. `mu` is
-// held across memory_store_->GetAsync() so that registering a callback and
-// recording its cancellation token cannot interleave with completion.
-// `unregister` and `cancel_pending_callbacks` run with `mu` released.
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Lock order: wait_async_mu_ -> mu -> CoreWorkerMemoryStore::mu_. `mu` is
+ * held across memory_store_->GetAsync() so that registering a callback and
+ * recording its cancellation token cannot interleave with completion.
+ * `unregister` and `cancel_pending_callbacks` run with `mu` released.
+ */
 struct WaitAsyncState {
   uint64_t handle = 0;
   // Erase from wait_async_requests_. Run before the user callback.

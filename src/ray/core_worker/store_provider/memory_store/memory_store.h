@@ -114,19 +114,29 @@ class CoreWorkerMemoryStore {
   /// \return Pointer to the object if it exists, otherwise nullptr.
   std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
 
-  /// Asynchronously get an object from the object store. The object will not be removed
-  /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
-  ///
-  /// \param[in] object_id The object id to get.
-  /// \param[in] callback The callback to run with the reference to the retrieved
-  ///            object value once available.
-  /// Returns a non-zero cancellation token when the callback is queued. Returns zero when
-  /// the object is already present and the callback has been posted to the io context.
+  /**
+   * @brief Asynchronously get an object from the object store.
+   *
+   * The object is not removed from storage after GetAsync (TODO(ekl): integrate
+   * this with object GC).
+   *
+   * @param[in] object_id The object id to get.
+   * @param[in] callback Invoked with the retrieved object once it is available.
+   * @return Non-zero cancellation token when the callback is queued. Zero when
+   * the object is already present and the callback has been posted to the io
+   * context.
+   */
   AsyncGetCallbackId GetAsync(const ObjectID &object_id,
                               std::function<void(std::shared_ptr<RayObject>)> callback);
 
-  /// Remove a callback previously queued by GetAsync. It is harmless to cancel a token
-  /// that has already been posted or invoked.
+  /**
+   * @brief Remove a callback previously queued by GetAsync.
+   *
+   * Harmless if the token has already been posted or invoked.
+   *
+   * @param[in] object_id The object id passed to GetAsync.
+   * @param[in] callback_id Token returned by GetAsync. Zero is a no-op.
+   */
   void CancelGetAsync(const ObjectID &object_id, AsyncGetCallbackId callback_id);
 
   /// Delete a list of objects from the object store.

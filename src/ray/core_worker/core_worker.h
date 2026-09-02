@@ -62,7 +62,11 @@
 
 namespace ray::core {
 
-// Defined in core_worker.cc; opaque to callers.
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Defined in core_worker.cc; opaque to callers.
+ */
 struct WaitAsyncState;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
