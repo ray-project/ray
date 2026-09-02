@@ -3,24 +3,26 @@
 Inverts the pull model of ``stream_split_iterator.py``: instead of each
 consumer calling ``coordinator.get.remote(...)`` per block, the coordinator
 runs one pusher thread per split that pulls bundles from the streaming
-executor's output iterator and pushes the blocks to a registered consumer
-actor via ``consumer.receive_block.remote(...)``. The consumer buffers
-received blocks in a local queue and iterates batches from it.
+executor's output iterator and pushes them to the consumer actor. The
+consumer can be ANY Ray actor (e.g. a Ray Train worker): delivery goes
+through the actor's built-in ``__ray_call__`` into a process-local receiver
+registry, so the actor class needs no new methods. Bundles are pushed with
+their block refs NESTED (not materialized), and ``PushBasedDataIterator``
+drains the receiver queue through the standard DataIterator pipeline
+(prefetch -> resolve -> batch -> collate, including iter_torch_batches).
 
-Flow control is poll-based: each pusher periodically calls
-``consumer.poll.remote()`` to learn how many rows the consumer has drained
-from its queue and how many rows it wants buffered (``target_buffer_rows``),
-and only pushes while ``rows_pushed - rows_consumed < target_buffer_rows``.
+Flow control is poll-based: each pusher periodically polls the consumer to
+learn how many rows it has drained from its queue and how many rows it wants
+buffered (``target_buffer_rows``), and only pushes while
+``rows_pushed - rows_consumed < target_buffer_rows``.
 
-Ordering: the consumer is a multi-threaded actor, and multi-threaded actors
+Ordering: the consumer actor may be multi-threaded, and multi-threaded actors
 execute tasks out of order (dispatch follows argument readiness; see
-``allow_out_of_order_execution`` in ``ray.actor``). A small local block could
-therefore be dispatched before an earlier large/remote one, and an argless
-``receive_eof`` could overtake ``receive_block`` tasks still fetching their
-blocks. Every push therefore carries a per-split sequence number, and the
-consumer's "data" thread re-sequences items through a reorder buffer before
-they enter the local queue — restoring the pull path's per-split ordering and
-making EOF safe.
+``allow_out_of_order_execution`` in ``ray.actor``); an argless EOF delivery
+could even overtake block deliveries. Every push therefore carries a
+per-split sequence number (EOF included), and the receiver re-sequences items
+through a reorder buffer before they enter the local queue — preserving the
+pull path's per-split ordering and making EOF safe.
 
 Pipeline overview::
 
@@ -42,27 +44,27 @@ Pipeline overview::
                        |                |
      data plane        |                |  flow control (per push burst)
      (fire-and-forget) |                |
-       receive_block(  |                |  (1) poll() -> rows_consumed,
-         epoch, seq,   |                |      target_buffer_rows, iterating
-         block_ref,    |                |  (2) credit = target_buffer_rows
-         rows, bytes)  |                |        - (rows_pushed - rows_consumed)
-       receive_eof(    |                |  (3) credit > 0: push blocks;
-         epoch, seq)   |                |      else sleep POLL_INTERVAL_S,
-       receive_error   |                |      re-poll
+       __ray_call__(   |                |  (1) __ray_call__(_receiver_poll)
+         _receiver_    |                |      -> rows_consumed,
+         deliver, key, |                |      target_buffer_rows, iterating
+         epoch, seq,   |                |  (2) credit = target_buffer_rows
+         bundle w/     |                |        - (rows_pushed - rows_consumed)
+         nested refs)  |                |  (3) credit > 0: push bundles;
+       EOF: same, seq'd|                |      else sleep POLL_INTERVAL_S,
+       errors unseq'd  |                |      re-poll
                        v                |
     +--------------------------------------------------------------------+
-    |    PushSplitConsumer actor i (one per split, e.g. a train worker)  |
+    |      consumer actor i (any Ray actor, e.g. a Ray Train worker)     |
     |                                                                    |
-    |  "data" thread (1):  receive_block/eof -> reorder buffer (by seq)  |
-    |                      -> local queue; receive_error jumps the queue |
-    |                      (block ref was a top-level task arg, so the   |
-    |                       queue holds materialized Blocks, in order)   |
-    |  "flow" thread (1):  poll                                          |
-    |  "consume" thread:   user loop over iter_batches()                 |
-    |     _gen_blocks: start_epoch (barrier RPC, all n splits sync)      |
-    |                  -> pop local queue -> yield block                 |
-    |     -> blocks_to_batches -> format_batches -> yield batch.data     |
-    |     finally: notify_split_finished(epoch, i) RPC -> coordinator    |
+    |  actor task thread(s): __ray_call__ deliveries -> reorder buffer   |
+    |      (by seq) -> _PushReceiver.queue (bundles w/ nested refs);     |
+    |      errors jump the queue; polls read the receiver counters       |
+    |  iteration thread (e.g. Train's ThreadRunner):                     |
+    |      PushBasedDataIterator: register(current_actor) ->             |
+    |      start_epoch (barrier RPC, all n splits sync) ->               |
+    |      pop queue -> standard DataIterator pipeline                   |
+    |      (prefetch -> resolve/ray.get -> batch -> collate)             |
+    |      finally: notify_split_finished(epoch, i) RPC -> coordinator   |
     +--------------------------------------------------------------------+
 
 For contrast, the pull model (``stream_split_iterator.py``) has each consumer
@@ -76,8 +78,8 @@ Liveness note: the pusher threads block inside
 executor's ``_num_waiting_consumers`` / ``OutputBackpressureGuard`` machinery
 keeps working unchanged.
 
-Not implemented (prototype): stats/metrics export, collate/finalize fns,
-preserve_order, locality-aware pushing, consumer re-registration.
+Not implemented (prototype): stats/metrics export, byte-based credit,
+locality-aware pushing, replacing a dead consumer mid-run.
 """
 
 import logging
@@ -88,11 +90,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
-from ray.data._internal.block_batching.interfaces import ResolvedBlock
-from ray.data._internal.block_batching.util import blocks_to_batches, format_batches
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.util.debug import log_once
@@ -103,18 +102,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
-
-# Concurrency groups a consumer actor must declare, e.g.:
-#   @ray.remote(num_cpus=0, concurrency_groups=PUSH_CONSUMER_CONCURRENCY_GROUPS)
-#   class MyConsumer(PushSplitConsumer): ...
-# "data": receive_block/receive_eof/receive_error — a single thread
-#   serializes them, but does NOT guarantee submission-order dispatch
-#   (multi-threaded actors execute out of order); order is restored by the
-#   seq-based reorder buffer in _deliver_in_order.
-# "flow": poll — isolated so flow control is never head-of-line blocked
-#   behind a large block deserialization queued in "data".
-# "consume": the caller-defined long-running iteration method.
-PUSH_CONSUMER_CONCURRENCY_GROUPS = {"data": 1, "flow": 1, "consume": 1}
 
 
 @dataclass
@@ -146,11 +133,18 @@ def create_push_split(
 ) -> ray.actor.ActorHandle:
     """Create a push-based split coordinator for ``base_dataset``.
 
-    Replicates the split-dataset construction of ``Dataset.streaming_split``
-    (see dataset.py) without touching it, then creates the coordinator actor
-    pinned to the calling node. The caller is responsible for creating ``n``
-    consumer actors (subclasses of ``PushSplitConsumer``), whose constructors
-    register themselves with the returned coordinator.
+    The caller hands each of the ``n`` consumers a
+    ``PushBasedDataIterator(coord_actor, i, n)``; iterating it registers the
+    hosting actor with the coordinator.
+
+    The ``StreamingSplit`` wrapping below is NOT push-specific: it is the
+    same split-dataset construction ``Dataset.streaming_split`` performs
+    before creating the pull-model ``SplitCoordinator`` (dataset.py). The
+    logical ``StreamingSplit`` op plans to the physical ``OutputSplitter``
+    operator, which assigns each bundle an ``output_split_idx`` and gives the
+    executor per-split output queues — without it,
+    ``output_iterator.get_next(split_idx)`` has nothing to route on. It is
+    replicated here only so the prototype doesn't touch ``dataset.py``.
     """
     from ray.data._internal.logical.interfaces import LogicalPlan
     from ray.data._internal.logical.operators.streaming_split_operator import (
@@ -178,234 +172,6 @@ def create_push_split(
         },
     ).remote(split_dataset, n)
     return coord_actor
-
-
-class PushSplitConsumer:
-    """Base class for actors that receive pushed blocks and iterate batches.
-
-    Subclass it and decorate the subclass with::
-
-        @ray.remote(num_cpus=0, concurrency_groups=PUSH_CONSUMER_CONCURRENCY_GROUPS)
-
-    The subclass's long-running iteration method should be decorated with
-    ``@ray.method(concurrency_group="consume")`` and call
-    ``self.iter_batches(...)`` locally.
-    """
-
-    def __init__(
-        self,
-        coord_actor: ray.actor.ActorHandle,
-        split_idx: int,
-        target_buffer_rows: Optional[int] = None,
-    ):
-        self._coord_actor = coord_actor
-        self._split_idx = split_idx
-        # Resolved lazily in iter_batches (default: 4 * batch_size).
-        self._target_buffer_rows = target_buffer_rows
-        self._effective_target_rows = target_buffer_rows or 0
-
-        # Blocks pushed by the coordinator. Unbounded on purpose: boundedness
-        # comes from the credit protocol (<= target_buffer_rows + one block of
-        # overshoot), so receive_block never blocks the "data" thread.
-        self._queue: "queue.Queue" = queue.Queue()
-
-        # Written by the "consume" thread, read by the "flow" thread.
-        self._counter_lock = threading.Lock()
-        self._rows_consumed = 0
-        self._bytes_consumed = 0
-        self._queued_rows = 0
-        self._queued_bytes = 0
-        self._peak_queue_rows = 0
-        self._peak_queue_bytes = 0
-
-        self._iterating = False
-        self._cur_epoch: Optional[int] = None
-
-        # Reorder buffer, owned exclusively by the "data" thread. The
-        # consumer is a multi-threaded actor, and multi-threaded actors
-        # execute tasks out of order (dispatch follows argument readiness;
-        # see ``allow_out_of_order_execution`` in ``ray.actor``), so pushes
-        # are re-sequenced by ``seq`` before entering the local queue.
-        self._reorder_epoch: Optional[int] = None
-        self._reorder_next_seq = 0
-        self._reorder_pending: Dict[int, Any] = {}
-
-        ray.get(
-            coord_actor.register.remote(
-                split_idx, ray.get_runtime_context().current_actor
-            )
-        )
-
-    # ------------------------------------------------------------------
-    # Called by the coordinator's pusher thread.
-    # ------------------------------------------------------------------
-
-    @ray.method(concurrency_group="data")
-    def receive_block(
-        self, epoch_id: int, seq: int, block: Block, num_rows: int, size_bytes: int
-    ) -> None:
-        """Receive one materialized block.
-
-        The pusher passes the block's ObjectRef as a top-level task arg, so
-        Ray resolves it and this method receives the materialized ``Block``
-        (zero-copy for Arrow blocks in the local object store).
-        """
-        self._deliver_in_order(epoch_id, seq, (block, num_rows, size_bytes))
-
-    @ray.method(concurrency_group="data")
-    def receive_eof(self, epoch_id: int, seq: int) -> None:
-        # EOF is sequenced like a block: without a seq it has no object args
-        # and could be dispatched before receive_block tasks still fetching
-        # theirs, ending the epoch early and silently dropping those blocks.
-        self._deliver_in_order(epoch_id, seq, _EndOfEpoch(epoch_id))
-
-    @ray.method(concurrency_group="data")
-    def receive_error(self, epoch_id: int, error: "_ExecutorError") -> None:
-        # ``error`` arrives wrapped in _ExecutorError: passing a bare
-        # RayTaskError as a task arg would make Ray treat it as a failed
-        # dependency and fail this task instead of executing it.
-        # Errors are deliberately NOT sequenced: fail fast, jump the queue.
-        if epoch_id == self._cur_epoch:
-            self._queue.put(error)
-
-    def _deliver_in_order(self, epoch_id: int, seq: int, item: Any) -> None:
-        """Re-sequence pushes and release them to the local queue in order.
-
-        Runs only on the single "data" thread, so the reorder state needs no
-        locking. Items from a dead epoch are dropped; the buffer resets
-        lazily on the first item of a new epoch (which also discards any
-        pending items a previous, early-exited epoch left behind).
-        """
-        if epoch_id != self._cur_epoch:
-            return
-        if self._reorder_epoch != epoch_id:
-            self._reorder_epoch = epoch_id
-            self._reorder_next_seq = 0
-            self._reorder_pending = {}
-        self._reorder_pending[seq] = item
-        while self._reorder_next_seq in self._reorder_pending:
-            self._release(self._reorder_pending.pop(self._reorder_next_seq))
-            self._reorder_next_seq += 1
-
-    def _release(self, item: Any) -> None:
-        if not isinstance(item, _EndOfEpoch):
-            _, num_rows, size_bytes = item
-            with self._counter_lock:
-                self._queued_rows += num_rows
-                self._queued_bytes += size_bytes
-                self._peak_queue_rows = max(self._peak_queue_rows, self._queued_rows)
-                self._peak_queue_bytes = max(self._peak_queue_bytes, self._queued_bytes)
-        self._queue.put(item)
-
-    @ray.method(concurrency_group="flow")
-    def poll(self) -> _PollResponse:
-        with self._counter_lock:
-            return _PollResponse(
-                rows_consumed=self._rows_consumed,
-                bytes_consumed=self._bytes_consumed,
-                target_buffer_rows=self._effective_target_rows,
-                iterating=self._iterating,
-            )
-
-    @ray.method(concurrency_group="flow")
-    def debug_stats(self) -> Dict[str, int]:
-        with self._counter_lock:
-            return {
-                "rows_consumed": self._rows_consumed,
-                "bytes_consumed": self._bytes_consumed,
-                "queued_rows": self._queued_rows,
-                "peak_queue_rows": self._peak_queue_rows,
-                "peak_queue_bytes": self._peak_queue_bytes,
-            }
-
-    # ------------------------------------------------------------------
-    # Local iteration (runs on the "consume" thread via a subclass method).
-    # ------------------------------------------------------------------
-
-    def _gen_blocks(self) -> Iterator[ResolvedBlock]:
-        # Reset state from any previous epoch before arriving at the barrier.
-        # Stragglers that arrive between the drain and the epoch bump are
-        # dropped by receive_block's epoch check (_cur_epoch is None here).
-        self._cur_epoch = None
-        while True:
-            try:
-                self._queue.get_nowait()
-            except queue.Empty:
-                break
-        with self._counter_lock:
-            self._rows_consumed = 0
-            self._bytes_consumed = 0
-            self._queued_rows = 0
-            self._queued_bytes = 0
-
-        epoch = ray.get(self._coord_actor.start_epoch.remote(self._split_idx))
-        # Order matters: set _cur_epoch BEFORE _iterating. The pusher only
-        # starts sending once it observes iterating=True in a poll, so no
-        # block can arrive while _cur_epoch is stale.
-        self._cur_epoch = epoch
-        self._iterating = True
-        try:
-            while True:
-                try:
-                    item = self._queue.get(timeout=1.0)
-                except queue.Empty:
-                    # Loop (rather than block forever) so a hung coordinator
-                    # is debuggable via thread dumps / logs.
-                    continue
-                if isinstance(item, _EndOfEpoch):
-                    logger.debug(f"Split {self._split_idx}: epoch {epoch} exhausted.")
-                    return
-                if isinstance(item, _ExecutorError):
-                    raise item.error
-                block, num_rows, size_bytes = item
-                with self._counter_lock:
-                    self._rows_consumed += num_rows
-                    self._bytes_consumed += size_bytes
-                    self._queued_rows -= num_rows
-                    self._queued_bytes -= size_bytes
-                yield ResolvedBlock(block=block)
-        finally:
-            self._iterating = False
-            self._coord_actor.notify_split_finished.remote(epoch, self._split_idx)
-
-    def iter_batches(
-        self,
-        *,
-        batch_size: Optional[int] = 256,
-        batch_format: Optional[str] = "default",
-        drop_last: bool = False,
-        local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[DataBatch]:
-        """Iterate formatted batches for one epoch (call again for the next).
-
-        Must be called from the "consume" concurrency group. Prefetch/resolve
-        stages of the pull pipeline are intentionally absent: blocks arrive
-        already materialized via receive_block. Stats plumbing is a prototype
-        non-goal (stats=None below); a real implementation would thread a
-        DatasetStats through and report to _StatsManager.
-        """
-        if self._target_buffer_rows is not None:
-            self._effective_target_rows = self._target_buffer_rows
-        else:
-            self._effective_target_rows = 4 * (batch_size or 256)
-
-        blocks = self._gen_blocks()
-        try:
-            batches = blocks_to_batches(
-                blocks,
-                stats=None,
-                batch_size=batch_size,
-                drop_last=drop_last,
-                shuffle_buffer_min_size=local_shuffle_buffer_size,
-                shuffle_seed=local_shuffle_seed,
-            )
-            for batch in format_batches(batches, batch_format=batch_format, stats=None):
-                yield batch.data
-        finally:
-            # Ensure _gen_blocks' finally (notify_split_finished) runs
-            # promptly on early break instead of at GC time.
-            blocks.close()
 
 
 @ray.remote(num_cpus=0)
@@ -444,15 +210,22 @@ class PushSplitCoordinator:
         self._finished_splits: Set[int] = set()
         self._gen_epoch_error: Optional[Exception] = None
 
-        # split_idx -> (handle, mode, key); see register().
+        # split_idx -> (handle, key); see register().
         self._consumers: Dict[int, Any] = {}
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
-        # Push accounting. Guarded by _push_lock ONLY (never nest _lock
-        # inside a pusher thread — pushers must stay joinable while _lock is
-        # held during epoch transitions).
-        self._push_lock = threading.Lock()
+        # Push accounting, deliberately lock-free:
+        # - Each per-split entry has a single writer: its own pusher thread
+        #   (_bytes_consumed_reported is additionally written once, benignly
+        #   last-writer-wins, by _finish_split when zeroing a finished
+        #   split's contribution).
+        # - Cross-thread readers only compute the heuristic sum in
+        #   _update_external_consumer_bytes, where GIL-atomic int stores and
+        #   slight staleness across splits are acceptable.
+        # - Keys are fixed (dict.fromkeys at reset), so dict iteration never
+        #   races a resize; _reset_state reassigns only after the old
+        #   pushers have been joined by _teardown_epoch.
         self._rows_pushed: Dict[int, int] = dict.fromkeys(range(n), 0)
         self._bytes_pushed: Dict[int, int] = dict.fromkeys(range(n), 0)
         self._bytes_consumed_reported: Dict[int, int] = dict.fromkeys(range(n), 0)
@@ -467,25 +240,20 @@ class PushSplitCoordinator:
         self,
         split_idx: int,
         consumer: ray.actor.ActorHandle,
-        mode: str = "methods",
-        key: Optional[str] = None,
+        key: str,
     ) -> None:
         """Register the consumer actor for a split.
 
-        mode="methods": the consumer implements receive_block/receive_eof/
-        receive_error/poll (PushSplitConsumer). Blocks are pushed as
-        top-level ref args, so they arrive materialized.
-
-        mode="generic": the consumer is ANY Ray actor (e.g. a Ray Train
-        worker); delivery goes through the actor's built-in ``__ray_call__``
-        into the process-local ``_RECEIVER_REGISTRY`` under ``key``, and
-        bundles are pushed with their refs NESTED (not materialized) so the
-        standard DataIterator prefetch/resolve pipeline handles them.
+        The consumer is ANY Ray actor (e.g. a Ray Train worker); delivery
+        goes through the actor's built-in ``__ray_call__`` into the
+        process-local ``_RECEIVER_REGISTRY`` under ``key``, and bundles are
+        pushed with their refs NESTED (not materialized) so the standard
+        DataIterator prefetch/resolve pipeline handles them.
         Re-registering the same split is allowed (e.g. once per epoch).
         """
         with self._lock:
-            self._consumers[split_idx] = (consumer, mode, key)
-        logger.debug(f"Registered consumer for split {split_idx} ({mode=}).")
+            self._consumers[split_idx] = (consumer, key)
+        logger.debug(f"Registered consumer for split {split_idx}.")
 
     def start_epoch(self, split_idx: int) -> int:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
@@ -559,8 +327,8 @@ class PushSplitCoordinator:
         if is_last_arrival:
             # Tear down the previous epoch (stop + join pushers, shutdown
             # executor) BEFORE releasing the other splits from the barrier.
-            # Done outside self._lock so pushers can still take _push_lock /
-            # finish in-flight bookkeeping while we join them.
+            # Done outside self._lock so pushers can still finish in-flight
+            # bookkeeping (e.g. _finish_split takes _lock) while we join them.
             self._teardown_epoch()
             with self._lock:
                 self._teardown_complete_for = starting_epoch
@@ -573,7 +341,7 @@ class PushSplitCoordinator:
             if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
                 if log_once(f"push_split_blocked_{split_idx}_{starting_epoch}"):
                     logger.warning(
-                        f"PushSplitConsumer(epoch={starting_epoch}, "
+                        f"PushBasedDataIterator(epoch={starting_epoch}, "
                         f"split={split_idx}) blocked waiting on other clients "
                         f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
                         "clients must iterate their splits at the same time."
@@ -648,10 +416,12 @@ class PushSplitCoordinator:
         self._num_unarrived_splits_at_barrier = self._n
         self._finished_splits.clear()
         self._gen_epoch_error = None
-        with self._push_lock:
-            self._rows_pushed = dict.fromkeys(range(self._n), 0)
-            self._bytes_pushed = dict.fromkeys(range(self._n), 0)
-            self._bytes_consumed_reported = dict.fromkeys(range(self._n), 0)
+        # Safe without a lock: the previous epoch's pushers were joined in
+        # _teardown_epoch before the barrier released, so no other thread
+        # touches these dicts here.
+        self._rows_pushed = dict.fromkeys(range(self._n), 0)
+        self._bytes_pushed = dict.fromkeys(range(self._n), 0)
+        self._bytes_consumed_reported = dict.fromkeys(range(self._n), 0)
 
     def _spawn_pushers(self) -> None:
         self._pusher_stop_events = {i: threading.Event() for i in range(self._n)}
@@ -673,58 +443,34 @@ class PushSplitCoordinator:
     def _make_consumer_ops(self, epoch_id: int, split_idx: int):
         """Build (poll, push_block, push_eof, push_error) for a consumer.
 
-        "methods" mode targets a PushSplitConsumer subclass; "generic" mode
-        targets any actor via __ray_call__ + the process-local receiver
-        registry (blocks stay as NESTED refs inside a one-block RefBundle,
-        so the consumer's standard prefetch/resolve pipeline handles them).
+        Targets any actor via __ray_call__ + the process-local receiver
+        registry; blocks stay as NESTED refs inside a one-block RefBundle,
+        so the consumer's standard prefetch/resolve pipeline handles them.
         """
-        consumer, mode, key = self._consumers[split_idx]
-        if mode == "generic":
+        consumer, key = self._consumers[split_idx]
 
-            def poll():
-                return ray.get(
-                    consumer.__ray_call__.remote(_receiver_poll, key), timeout=30
-                )
+        def poll():
+            return ray.get(
+                consumer.__ray_call__.remote(_receiver_poll, key), timeout=30
+            )
 
-            def push_block(seq, entry, schema, num_rows, size_bytes):
-                sub_bundle = RefBundle(
-                    blocks=(entry,), owns_blocks=False, schema=schema
-                )
-                consumer.__ray_call__.remote(
-                    _receiver_deliver,
-                    key,
-                    epoch_id,
-                    seq,
-                    (sub_bundle, num_rows, size_bytes),
-                )
+        def push_block(seq, entry, schema, num_rows, size_bytes):
+            sub_bundle = RefBundle(blocks=(entry,), owns_blocks=False, schema=schema)
+            consumer.__ray_call__.remote(
+                _receiver_deliver,
+                key,
+                epoch_id,
+                seq,
+                (sub_bundle, num_rows, size_bytes),
+            )
 
-            def push_eof(seq):
-                consumer.__ray_call__.remote(
-                    _receiver_deliver, key, epoch_id, seq, _EndOfEpoch(epoch_id)
-                )
+        def push_eof(seq):
+            consumer.__ray_call__.remote(
+                _receiver_deliver, key, epoch_id, seq, _EndOfEpoch(epoch_id)
+            )
 
-            def push_error(error):
-                consumer.__ray_call__.remote(
-                    _receiver_deliver_error, key, epoch_id, error
-                )
-
-        else:
-
-            def poll():
-                return ray.get(consumer.poll.remote(), timeout=30)
-
-            def push_block(seq, entry, schema, num_rows, size_bytes):
-                # Top-level ref arg: Ray resolves it, so the consumer
-                # receives the materialized Block.
-                consumer.receive_block.remote(
-                    epoch_id, seq, entry.ref, num_rows, size_bytes
-                )
-
-            def push_eof(seq):
-                consumer.receive_eof.remote(epoch_id, seq)
-
-            def push_error(error):
-                consumer.receive_error.remote(epoch_id, error)
+        def push_error(error):
+            consumer.__ray_call__.remote(_receiver_deliver_error, key, epoch_id, error)
 
         return poll, push_block, push_eof, push_error
 
@@ -746,6 +492,11 @@ class PushSplitCoordinator:
                 try:
                     resp: _PollResponse = poll()
                 except Exception as e:
+                    # TODO(push-split): support replacing a dead consumer.
+                    # Today the pusher drains and exits; instead it could
+                    # park on the stop event (a waiting thread is cheap) and
+                    # resume pushing when a replacement train worker
+                    # re-registers for this split_idx.
                     logger.warning(
                         f"Split {split_idx} epoch {epoch_id}: consumer poll "
                         f"failed ({e}); treating consumer as dead."
@@ -753,9 +504,8 @@ class PushSplitCoordinator:
                     consumer_dead = True
                     break
 
-                with self._push_lock:
-                    self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
-                    rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
+                self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
+                rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
                 self._update_external_consumer_bytes()
 
                 # 2) Compute credit. Our push counters are exact; the polled
@@ -782,9 +532,9 @@ class PushSplitCoordinator:
                         push_block(seq, entry, bundle.schema, num_rows, size_bytes)
                         seq += 1
                         credit_rows -= num_rows
-                        with self._push_lock:
-                            self._rows_pushed[split_idx] += num_rows
-                            self._bytes_pushed[split_idx] += size_bytes
+                        # Single-writer (this thread); see __init__.
+                        self._rows_pushed[split_idx] += num_rows
+                        self._bytes_pushed[split_idx] += size_bytes
                     self._update_external_consumer_bytes()
         except StopIteration:
             if not stop.is_set():
@@ -825,9 +575,10 @@ class PushSplitCoordinator:
             if epoch_id != self._cur_epoch:
                 return
             self._finished_splits.add(split_idx)
-            with self._push_lock:
-                # Zero this split's contribution to external consumer bytes.
-                self._bytes_consumed_reported[split_idx] = self._bytes_pushed[split_idx]
+            # Zero this split's contribution to external consumer bytes.
+            # Races the split's own pusher at worst last-writer-wins; the
+            # pusher is stopping at this point and the value is heuristic.
+            self._bytes_consumed_reported[split_idx] = self._bytes_pushed[split_idx]
             if (
                 len(self._finished_splits) == self._n
                 and self._current_executor is not None
@@ -846,15 +597,22 @@ class PushSplitCoordinator:
 
         Push-model analog of SplitCoordinator._report_prefetched_bytes_to_executor;
         keeps DownstreamCapacityBackpressurePolicy working.
+
+        TODO(push-split): verify set_external_consumer_bytes is still needed
+        under push. The pushers already gate consumption with credit and only
+        block in get_next when a consumer wants data, so the executor's
+        natural output-queue backpressure may suffice; this feed exists to
+        keep DownstreamCapacityBackpressurePolicy pacing the terminal op the
+        same way the pull model does. Benchmark with it removed.
         """
         executor = self._current_executor
         if executor is None:
             return
-        with self._push_lock:
-            total = sum(
-                max(0, self._bytes_pushed[i] - self._bytes_consumed_reported[i])
-                for i in range(self._n)
-            )
+        # Lock-free heuristic sum; see the accounting comment in __init__.
+        total = sum(
+            max(0, self._bytes_pushed[i] - self._bytes_consumed_reported[i])
+            for i in range(self._n)
+        )
         try:
             executor.set_external_consumer_bytes(total)
         except Exception:
@@ -978,8 +736,7 @@ def _receiver_poll(_actor: Any, key: str) -> _PollResponse:
 class PushBasedDataIterator(DataIterator):
     """PROTOTYPE: DataIterator over one split of a push-based streaming split.
 
-    Unlike ``PushSplitConsumer`` (a dedicated actor class), this iterator is
-    picklable and can be shipped into ANY Ray actor — e.g. a Ray Train
+    Picklable, and can be shipped into ANY Ray actor — e.g. a Ray Train
     worker. At iteration time it registers the hosting actor's own handle
     (``ray.get_runtime_context().current_actor``) with the coordinator, and
     the coordinator delivers bundles via the actor's built-in
@@ -1039,7 +796,7 @@ class PushBasedDataIterator(DataIterator):
             # Re-registering every epoch is fine (idempotent overwrite).
             ray.get(
                 self._coord_actor.register.remote(
-                    self._output_split_idx, self_handle, mode="generic", key=key
+                    self._output_split_idx, self_handle, key=key
                 )
             )
             epoch = ray.get(
