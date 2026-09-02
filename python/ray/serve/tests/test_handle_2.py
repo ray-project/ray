@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
 )
 from ray.serve._private.test_utils import check_num_replicas_eq
+from ray.serve._private.utils import _wait_for_object_ref_ready
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
@@ -760,6 +761,56 @@ def test_convert_to_object_ref(serve_instance):
     obj_ref = handle.remote()._to_object_ref_sync()
     ray.get(signal.send.remote())
     assert ray.get(identity_task.remote(obj_ref)) == "hello"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
+def test_composition_arg_waits_for_upstream_result(serve_instance):
+    """By-reference composition args must not be enqueued before they're ready.
+
+    `_to_object_ref` returns a peeked ref without waiting for the value.
+    `deployment_response_to_object_ref` then waits via `_wait_for_object_ref_ready`
+    so unresolved args stay out of the router's queued-request metrics.
+
+    Peek and wait are split so a hang-on-peek and a skip-the-wait fail
+    differently.
+    """
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    def downstream():
+        ray.get(signal.wait.remote())
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle
+
+        async def __call__(self):
+            # Peek must return while downstream is still blocked.
+            obj_ref = await self._handle.remote()._to_object_ref()
+
+            wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
+            _, pending = await asyncio.wait({wait_task}, timeout=1)
+            still_waiting = wait_task in pending
+
+            await signal.send.remote()
+            await asyncio.wait_for(wait_task, timeout=30)
+            return still_waiting, await obj_ref
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    still_waiting, result = handle.remote().result()
+    assert still_waiting, "wait resolved before the upstream result was produced"
+    assert result == "hello"
 
 
 _WAIT_FOR_OBJECT_REF_READY_SHUTDOWN_DRIVER = """

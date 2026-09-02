@@ -43,7 +43,7 @@ def _consume_generator_ref_when_ready(
         ref: Peeked ref that must become ready before consuming.
 
     Returns:
-        Wait handle for ``cancel_wait_async`` (0 if already completed).
+        Wait handle for ``cancel_wait_async``.
     """
 
     def _on_complete(exc):
@@ -200,6 +200,7 @@ class ActorReplicaResult(ReplicaResult):
                 rejection_response = pickle.loads(response)
                 self._obj_ref_gen._consume_next_ref_n(1)
                 self._rejection_response = rejection_response
+                self._rejection_response_ref = None
 
             # Rejected unary never writes a user result; do not wait on it.
             # Own guard so a failed peek/wait retries without re-consuming.
@@ -325,10 +326,9 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             self._is_streaming
         ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
-        if self._obj_ref_gen is None:
-            raise RuntimeError(
-                "Streaming ActorReplicaResult has no ObjectRefGenerator."
-            )
+
+        # Streaming invariant (asserted in the constructor).
+        assert self._obj_ref_gen is not None
         if self._with_rejection and self._rejection_response is None:
             raise RuntimeError(
                 "get_rejection_response() must be awaited before "

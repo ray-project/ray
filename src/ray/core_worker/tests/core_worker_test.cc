@@ -1791,9 +1791,12 @@ TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
                      reference_counter_->HasReference(object_id));
 
   WaitAsyncCallbackResult result;
-  // Already-present memory objects complete in the synchronous pre-pass.
+  // Already-present objects still complete asynchronously: GetAsync posts the
+  // callback to the io context rather than running it on the calling thread.
   uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
-  ASSERT_EQ(handle, 0u);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
 }
@@ -1825,7 +1828,8 @@ TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReady) {
 
   WaitAsyncCallbackResult result;
   uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
-  ASSERT_EQ(handle, 0u);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
 }
@@ -1853,7 +1857,8 @@ TEST_F(CoreWorkerTest, WaitAsyncCancel) {
                      object_id,
                      reference_counter_->HasReference(object_id));
   uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
-  ASSERT_EQ(handle2, 0u);
+  ASSERT_NE(handle2, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result2);
   ASSERT_EQ(result2.calls, 1);
   ASSERT_TRUE(result2.status.ok());
 }
@@ -1874,16 +1879,30 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
   // Second shutdown is a no-op (callback already ran; map is empty).
   core_worker_->CancelAllWaitAsync();
   ASSERT_EQ(result.calls, 1);
+}
 
-  // A later wait on the same ref can still complete.
-  WaitAsyncCallbackResult result2;
+TEST_F(CoreWorkerTest, WaitAsyncAfterShutdownFailsFast) {
+  // Once CancelAllWaitAsync has latched, io_service_ is about to stop. A new
+  // wait must report shutdown synchronously instead of registering a callback
+  // that would never be posted -- otherwise the caller hangs forever.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  core_worker_->CancelAllWaitAsync();
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsUnknownError());
+
+  // Nothing was registered with the memory store, so the object arriving
+  // afterwards must not invoke the callback a second time.
   memory_store_->Put(*MakeRayObject("data", "meta"),
                      object_id,
                      reference_counter_->HasReference(object_id));
-  uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
-  ASSERT_EQ(handle2, 0u);
-  ASSERT_EQ(result2.calls, 1);
-  ASSERT_TRUE(result2.status.ok());
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {

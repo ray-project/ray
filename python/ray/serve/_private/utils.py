@@ -797,9 +797,6 @@ async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
     future = loop.create_future()
 
     def _on_complete(exc):
-        if future.done():
-            return
-
         def _set_result():
             if future.done():
                 return

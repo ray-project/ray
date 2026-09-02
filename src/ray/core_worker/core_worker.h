@@ -808,14 +808,19 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * An object is ready when it is in the in-process memory store or a plasma
    * marker is present. This does not pull plasma objects locally.
    *
-   * The callback is invoked at most once. It may run on the calling thread
-   * or on ``io_service_``. ``Status::OK`` means the object is ready.
+   * The callback is invoked at most once, on ``io_service_``, even when the
+   * object is already present. ``Status::OK`` means the object is ready.
+   *
+   * The caller must keep a reference to ``object_id`` alive until the callback
+   * runs; if the last reference is dropped the object can be deleted from the
+   * memory store and the wait will never complete.
    *
    * \param[in] object_id ID of the object to wait for.
    * \param[in] callback Invoked with status and ``user``.
    * \param[in] user Opaque pointer passed through to ``callback``.
    * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
-   * already invoked synchronously (validation error or immediate completion).
+   * already invoked synchronously on the calling thread (unknown owner, or the
+   * worker is shutting down).
    */
   uint64_t WaitAsync(const ObjectID &object_id,
                      void (*callback)(Status status, void *user),
@@ -834,7 +839,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /**
    * Complete every in-flight ``WaitAsync`` with a shutdown error.
    *
-   * Invokes each pending callback once. Safe to call more than once.
+   * Invokes each pending callback once. Safe to call more than once. Also
+   * latches the shutdown, so any later ``WaitAsync`` fails fast rather than
+   * registering a wait that the stopped ``io_service_`` can never complete.
    * The embedding runtime must still be alive — see ``~CoreWorker``.
    */
   void CancelAllWaitAsync();
@@ -1955,6 +1962,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       ObjectID object_id,
                       void *py_future);
 
+  /**
+   * Complete a ``WaitAsync`` request and invoke its callback at most once.
+   *
+   * Unregisters the handle and cancels the memory-store registration before
+   * running the callback. All three run with ``state->mu`` released.
+   *
+   * \param[in] state Shared wait state for the request.
+   * \param[in] status Status passed to the user callback.
+   */
+  void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -2178,6 +2196,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
   absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>> wait_async_requests_
       ABSL_GUARDED_BY(wait_async_mu_);
+  // Set by CancelAllWaitAsync; no new waits are accepted afterwards.
+  bool wait_async_shutdown_ ABSL_GUARDED_BY(wait_async_mu_) = false;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.

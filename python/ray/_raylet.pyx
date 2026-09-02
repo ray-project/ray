@@ -3771,6 +3771,16 @@ cdef class CoreWorker:
         An object is ready when it exists anywhere in the cluster (memory
         store or plasma marker). This does not pull plasma objects locally.
 
+        ``callback`` normally runs on the core worker's io thread, never
+        inline, even when the object is already available. It only runs on the
+        calling thread when the wait is rejected outright (unknown owner, or
+        the worker is shutting down), in which case 0 is returned.
+
+        The caller must keep ``object_ref`` alive until ``callback`` runs.
+        This does not hold a reference to it: if the last one is dropped the
+        object can be deleted from the memory store and the wait will never
+        complete.
+
         Args:
             object_ref: ObjectRef to wait on.
             callback: Called as ``callback(exc)``. ``exc`` is None when the
@@ -3778,7 +3788,7 @@ cdef class CoreWorker:
 
         Returns:
             A non-zero handle for ``cancel_wait_async``, or 0 if ``callback``
-            already ran synchronously (validation error / immediate completion).
+            already ran synchronously.
         """
         cdef:
             CObjectID wait_id
