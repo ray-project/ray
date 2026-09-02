@@ -176,9 +176,7 @@ def test_chained_transforms_dont_double_count_udf_time():
 
     scope = TransformClock()
     start_s = time.perf_counter()
-    blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, clock=scope)
-    )
+    blocks = list(transformer.apply_transform(make_input_blocks(), ctx, clock=scope))
     wall_s = time.perf_counter() - start_s
 
     # Assert on rows rather than block count, which depends on block shaping.
@@ -244,9 +242,7 @@ def test_chained_transforms_total_is_independent_of_distribution():
 
     scope = TransformClock()
     start_s = time.perf_counter()
-    blocks = list(
-        transformer.apply_transform(make_input_blocks(), ctx, clock=scope)
-    )
+    blocks = list(transformer.apply_transform(make_input_blocks(), ctx, clock=scope))
     wall_s = time.perf_counter() - start_s
 
     assert sum(BlockAccessor.for_block(b).num_rows() for b in blocks) == NUM_BATCHES
@@ -264,6 +260,43 @@ def test_chained_transforms_total_is_independent_of_distribution():
     assert reported_s >= slept_s * 0.9, (
         f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across stages {calls_per_stage}"
+    )
+
+
+def test_every_output_block_is_timed():
+    """Draining must not stop the chain from measuring the next block.
+
+    `_map_task` drains once per output block, so a drain that rebound its
+    totals instead of clearing them left the steps writing to a list nobody
+    read again: a task's first block reported its time and every block after it
+    reported zero.
+    """
+    NUM_BLOCKS = 3
+    SLEEP_S = 0.05
+
+    def udf(batch: DataBatch) -> DataBatch:
+        time.sleep(SLEEP_S)
+        return pd.DataFrame({"id": batch["id"]})
+
+    transformer = _create_chained_transformer(udf, 1, is_udf=True)
+    ctx = TaskContext(task_idx=0, op_name="test")
+
+    def make_input_blocks():
+        for i in range(NUM_BLOCKS):
+            yield pd.DataFrame({"id": [i]})
+
+    clock = TransformClock()
+    # `_create_chained_transformer` shapes one batch per output block, so each
+    # `next()` here is one output block, drained the way `_map_task` drains it.
+    out = iter(transformer.apply_transform(make_input_blocks(), ctx, clock=clock))
+    reported_s = []
+    for _ in range(NUM_BLOCKS):
+        next(out)
+        reported_s.append(clock.drain().total_s)
+
+    assert all(s >= SLEEP_S * 0.9 for s in reported_s), (
+        f"per-block UDF times {[round(s, 4) for s in reported_s]} do not all "
+        f"cover the {SLEEP_S}s slept while producing each block"
     )
 
 

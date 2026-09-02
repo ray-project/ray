@@ -406,7 +406,11 @@ class TransformClock:
             )
         else:
             times = MapTransformPhaseTimes(total_s=sum(own))
-        self.inclusive = [0.0] * len(self._steps)
+        # Zero in place. Every `_TimedStep` in the chain holds a reference to
+        # this list, so rebinding it here would leave them adding to a list
+        # this clock no longer reads -- and `_map_task` drains after every
+        # output block, so only a task's first block would report any time.
+        self.inclusive[:] = [0.0] * len(self.inclusive)
         return times
 
 
