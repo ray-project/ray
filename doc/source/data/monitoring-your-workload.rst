@@ -393,9 +393,11 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
-* **UDF time**: The UDF time is the total time an operator spends transforming one output block. It covers the functions you
-  pass into Ray Data methods, including :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`,
-  :meth:`~ray.data.Dataset.filter`, etc., plus the work around those calls that feeds them and collects what they return.
+* **UDF time**: The time an operator spends transforming data, measured **per output block** -- so the min, max and mean are
+  across blocks and the total is the operator's. It is not the same as the task's total time, which also covers scheduling and
+  writing blocks to the object store. It covers the functions you pass into Ray Data methods, including
+  :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`, etc., plus the work
+  around those calls that feeds them and collects what they return.
   Set ``DataContext.verbose_stats_logs`` to break it into the following phases, which sum to this total:
 
   * **Input prep**: Time spent turning input blocks into the batches or rows your functions receive, including converting them
@@ -458,8 +460,9 @@ By enabling verbosity Ray Data adds a few more outputs:
   operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took
   to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
   they show how long running each of the operators is in the context of the full dataset execution.
-* **UDF time breakdown**: Each operator's **UDF time** is split into the input prep, function body, output block build and
-  built-in stage phases described above, so you can see which part of the transform the time actually went to.
+* **UDF time breakdown**: Each operator's **UDF time**, which is measured per output block, is split into the input prep,
+  function body, output block build and built-in stage phases described above, so you can see which part of the transform the
+  time actually went to.
 
 Example stats
 ~~~~~~~~~~~~~
