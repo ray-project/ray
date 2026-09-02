@@ -350,8 +350,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """Detects NCCL hangs via the RAS subsystem (see module docstring for the
     topology and the hard/soft model).
 
-    Default-on: registered by the trainer unless the hang detector
-    (``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR``).
+    Default-off: the trainer only registers this callback when
+    ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` is set on the driver.
 
     To confirm that a NCCL anomaly isn't a single-snapshot blip, a communicator
     must stay frozen for consecutive polls, tracked as a per-communicator
@@ -526,7 +526,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # Handle confirmed comm hangs
         if confirmed_comm_hangs:
             ras_human_output = self.query_ras_on_workers("text")
-            logger.warning("%s", ras_human_output)
+            if ras_human_output:
+                logger.warning("%s", ras_human_output)
 
             try:
                 dump_dir = self.dump_workers_stack_traces()
@@ -617,7 +618,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     remaining_polls = self._confirm_poll_counts - max_count
                     remaining_s = remaining_polls * self._poll_interval_s
                     periodic_escalation = (
-                        f"A NCCLHangError will be raised in {remaining_s} seconds"
+                        f"A NCCLHangError will be raised in {remaining_s:.0f} seconds "
                         f"({remaining_polls} more polls) if this persists."
                     )
                 logger.warning(
@@ -636,8 +637,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Drive the throttled JSON RAS poll without blocking the event loop.
 
         Only the periodic JSON poll goes through here. The one-off human-readable
-        ``-f text`` report fetched at hang time uses :meth:`query_ras_text`
-        directly so it doesn't share this method's single-in-flight future or
+        ``-f text`` report fetched at hang time calls
+        :meth:`query_ras_on_workers` directly (synchronously, on the poll loop)
+        so it doesn't share this method's single-in-flight future or
         poll-interval throttle.
 
         Returns:

@@ -32,8 +32,8 @@ if shutil.which(os.environ.get("RAY_TRAIN_NCCLRAS_PATH", "ncclras")) is None:
 
 
 # Fast detection so a hang is confirmed in seconds instead of the 10 min default.
-# The confirmation window is converted to consecutive polls (a floor of
-# ``_MIN_CONFIRM_POLLS`` samples applies), so this confirms in ~8s.
+# The confirmation window is converted to consecutive polls
+# (ceil(4s / 2s) = 2 frozen polls after the first diff), so this confirms in ~6s.
 RAS_ENV = {
     "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR": "1",
     "RAY_TRAIN_NCCL_RAS_ACTION": "fail",

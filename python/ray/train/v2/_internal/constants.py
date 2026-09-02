@@ -168,7 +168,7 @@ DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
 # Action to take on a confirmed hang
 NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
 NCCL_RAS_ACTION_FAIL = "fail"  # raises (non-retryable) NCCLHangError
-NCCL_RAS_ACTION_OBSERVE = "observe"  # only emits metrics and captures stacks
+NCCL_RAS_ACTION_OBSERVE = "observe"  # logs the hang and captures stacks, never raises
 DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE
 
 
