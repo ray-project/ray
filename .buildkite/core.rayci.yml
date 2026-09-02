@@ -158,6 +158,7 @@ steps:
         --install-mask all-ray-libraries
         --privileged
         --test-env=TEST_SANDBOX=1
+        --except-tags gpu,multi_gpu
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: memory pressure tests"
@@ -680,3 +681,41 @@ steps:
     depends_on:
       - block-core-gpu-tests
       - coregpu-cu130-build-multipy(python=3.10)
+
+  - label: ":ray: core: sandbox gpu tests"
+    key: core-sandbox-gpu-tests
+    tags:
+      - sandbox_tests
+      - gpu
+    instance_type: gpu
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
+        --gpus 1
+        --privileged
+        --test-env=TEST_SANDBOX=1
+        --only-tags gpu
+        --install-mask all-ray-libraries
+        --build-name coregpubuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - block-core-gpu-tests
+      - coregpubuild-multipy(python=3.10)
+
+  - label: ":ray: core: sandbox multi gpu tests"
+    key: core-sandbox-multi-gpu-tests
+    tags:
+      - sandbox_tests
+      - multi_gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
+        --gpus 4
+        --privileged
+        --test-env=TEST_SANDBOX=1
+        --only-tags multi_gpu
+        --install-mask all-ray-libraries
+        --build-name coregpubuild-py3.10
+        --python-version 3.10
+    depends_on:
+      - block-core-gpu-tests
+      - coregpubuild-multipy(python=3.10)
