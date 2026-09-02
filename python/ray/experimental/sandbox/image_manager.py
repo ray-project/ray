@@ -394,6 +394,10 @@ class ImageManager(BaseImageManager):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            rootfs_path: Optional host rootfs directory to mount instead of the
+                shared worker-owned image extraction (e.g. the ownership-true
+                idmapped tree for a multi-uid sandbox). None uses the image's
+                own rootfs.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -601,6 +605,10 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            rootfs_path: Optional host rootfs directory forwarded to
+                create_oci_spec, overriding the image's shared extraction
+                (e.g. a per-sandbox idmapped tree). None uses the image's
+                own rootfs.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
