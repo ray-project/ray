@@ -184,7 +184,7 @@ ray.get(pool.close.remote())
 
 ### Pass custom OCI configurations to gVisor
 
-For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
+For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
 
 :::{note}
 `_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. To help shape them, open an issue describing your use case.
@@ -195,7 +195,7 @@ The `_oci_spec_transform_fn` callable receives the fully generated OCI specifica
 * **Host mounts**: Mount host directories, read-only datasets, or model weights into the sandbox container.
 * **Namespace and mount details**: Configure namespace or mount behavior that the first-class options don't cover.
 
-Internet access, DNS, and Linux capabilities each have a first-class option: `network=`, `dns=`, and `capabilities=`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
+Internet access, DNS, and Linux capabilities each have a first-class option: `network`, `dns`, and `capabilities`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
 
 ```python
 import ray
@@ -237,6 +237,30 @@ print(result.stdout)
 ray.get(sb.delete.remote())
 ```
 
+## Container images
+
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and caches it for reuse by subsequent sandboxes on that node using the same image. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem.
+
+### Route Docker Hub pulls through a mirror
+
+Because image pulls are anonymous, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.
+
+Set `RAY_SANDBOX_REGISTRY_MIRROR` to route Docker Hub pulls through a registry mirror. Ray rewrites only Docker Hub image references. Pulls from other registries, such as GHCR or a private registry, are left unchanged.
+
+The value is `host[:port][/repo-prefix]`. Ray prepends the repository prefix to the repository path, which is the form pull-through caches expect:
+
+| Mirror | Example value | `python:3.10-slim` resolves to |
+| --- | --- | --- |
+| [ECR pull-through cache](https://docs.aws.amazon.com/AmazonECR/latest/userguide/pull-through-cache.html) | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub` | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub/library/python` |
+| [Artifact Registry remote repository](https://cloud.google.com/artifact-registry/docs/repositories/remote-repo) | `<region>-docker.pkg.dev/<project>/<repo>` | `<region>-docker.pkg.dev/<project>/<repo>/library/python` |
+| In-cluster [`registry:2`](https://distribution.github.io/distribution/recipes/mirror/) proxy | `http://registry.default.svc.cluster.local:5000` | `http://registry.default.svc.cluster.local:5000/library/python` |
+
+Keep the following in mind:
+
+* **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
+* **The mirror is authoritative.** Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
+* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
+
 ## Networking and DNS
 
 Sandboxes support four network modes. The default is `none`, which follows the safe-defaults principle. Use `public` when a sandbox needs internet access.
@@ -245,7 +269,7 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 | --- | --- | --- | --- |
 | `none` *(default)* | None | untouched | No egress. |
 | `public` | Host egress | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Egress works, but the sandbox inherits nothing from the host's resolver configuration. No internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. |
-| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
 
 To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
@@ -264,7 +288,7 @@ sb = sandbox.create(
 
 ### DNS in locked-down networks
 
-Some VPCs block outbound port 53 to public resolvers, where the `public` defaults can't resolve. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
+Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `public` DNS settings can't resolve queries. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture
 
@@ -331,7 +355,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
-* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`.
+* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 
 ## Next steps
 
