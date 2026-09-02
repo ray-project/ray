@@ -5,7 +5,8 @@ def register_ray():
     """Register Ray Backend to be called with ``parallel_backend("ray")``.
 
     Pass ``min_size``, ``max_size``, or ``idle_timeout_s`` to opt into elastic
-    actor capacity. Joblib's ``n_jobs`` remains the concurrency ceiling.
+    actor capacity. ``maxtasksperchild`` can recycle actors in either fixed or
+    elastic pools. Joblib's ``n_jobs`` remains the concurrency ceiling.
     """
     try:
         from ray.util.joblib.ray_backend import RayBackend

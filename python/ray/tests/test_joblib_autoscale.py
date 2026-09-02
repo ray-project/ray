@@ -94,9 +94,13 @@ def _assert_actor_set_invariants(actor_set):
         assert len(actor_set._slots) == actor_set.max_size
         for slot in actor_set._slots:
             assert slot.outstanding >= 0
+            assert slot.tasks_submitted >= 0
+            if actor_set._maxtasksperchild is not None:
+                assert slot.tasks_submitted <= actor_set._maxtasksperchild
             if slot.state is _ElasticSlotState.EMPTY:
                 assert slot.actor is None
                 assert slot.outstanding == 0
+                assert slot.tasks_submitted == 0
                 assert slot.idle_since is None
                 assert slot.readiness_ref is None
                 assert slot.exit_ref is None
@@ -168,6 +172,86 @@ def test_draining_slot_is_not_reused_before_exit_confirmation():
     actors[1].exit_ref.completion.set_result(None)
     actor_set.join()
     submitter.join()
+
+
+def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
+    actors = []
+
+    def create_actor():
+        actor = _FakeActor()
+        actors.append(actor)
+        return actor
+
+    actor_set = _ElasticActorSet(
+        create_actor,
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=2,
+    )
+
+    first_refs = [actor_set.submit(None, []) for _ in range(2)]
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 2)]
+    assert actor_set._slots[0].tasks_submitted == 2
+    _assert_actor_set_invariants(actor_set)
+
+    submitted = threading.Event()
+    replacement_refs = []
+
+    def submit_again():
+        replacement_refs.append(actor_set.submit(None, []))
+        submitted.set()
+
+    submitter = threading.Thread(target=submit_again)
+    submitter.start()
+    assert not submitted.wait(0.05)
+
+    for ref in first_refs:
+        ref.completion.set_result([])
+    actors[0].exit_ref.completion.set_result(None)
+
+    assert submitted.wait(1)
+    assert len(actors) == 2
+    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 1)]
+    assert actor_set._slots[0].tasks_submitted == 1
+    _assert_actor_set_invariants(actor_set)
+
+    replacement_refs[0].completion.set_result([])
+    actor_set.close()
+    actors[1].exit_ref.completion.set_result(None)
+    actor_set.join()
+    submitter.join()
+
+
+def test_maxtasksperchild_restores_min_size_after_actor_exit():
+    actors = []
+
+    def create_actor():
+        actor = _FakeActor()
+        actors.append(actor)
+        return actor
+
+    actor_set = _ElasticActorSet(
+        create_actor,
+        min_size=1,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=1,
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 1)]
+    batch_ref.completion.set_result([])
+    actors[0].exit_ref.completion.set_result(None)
+
+    assert len(actors) == 2
+    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set._slots[0].tasks_submitted == 0
+    _assert_actor_set_invariants(actor_set)
+
+    actor_set.close()
+    actors[1].exit_ref.completion.set_result(None)
+    actor_set.join()
 
 
 def test_actor_creation_failure_leaves_slot_reusable():
@@ -640,10 +724,48 @@ def test_elastic_pool_validates_capacity(shutdown_only, options):
         Pool(**options)
 
 
-def test_elastic_pool_rejects_maxtasksperchild(shutdown_only):
-    ray.init(num_cpus=1)
+@pytest.mark.parametrize("maxtasksperchild", [0, -1, 1.5])
+def test_pool_validates_maxtasksperchild(maxtasksperchild):
     with pytest.raises(ValueError, match="maxtasksperchild"):
-        Pool(max_size=1, maxtasksperchild=1)
+        Pool(max_size=1, maxtasksperchild=maxtasksperchild)
+    assert not ray.is_initialized()
+
+
+def test_elastic_pool_recycles_actors_after_maxtasksperchild(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=2,
+    )
+
+    pids = [pool.apply(os.getpid) for _ in range(4)]
+
+    assert pids[0] == pids[1]
+    assert pids[2] == pids[3]
+    assert pids[0] != pids[2]
+    pool.close()
+    pool.join()
+
+
+def test_joblib_elastic_pool_supports_maxtasksperchild(shutdown_only):
+    ray.init(num_cpus=1)
+    register_ray()
+
+    with joblib.parallel_backend(
+        "ray",
+        n_jobs=2,
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=1,
+    ):
+        pids = joblib.Parallel(batch_size=1, pre_dispatch=1)(
+            joblib.delayed(os.getpid)() for _ in range(3)
+        )
+
+    assert len(set(pids)) == 3
 
 
 @pytest.mark.parametrize(
@@ -1188,10 +1310,11 @@ def test_joblib_pool_argument_filter_is_explicit():
         {
             "min_size": 0,
             "idle_timeout_s": 1,
+            "maxtasksperchild": 2,
             "temp_folder": "/joblib-only",
             "context": "spawn",
         }
-    ) == {"min_size": 0, "idle_timeout_s": 1}
+    ) == {"min_size": 0, "idle_timeout_s": 1, "maxtasksperchild": 2}
 
     with pytest.raises(TypeError, match="unexpected Pool argument: max_sze"):
         _configure_pool_args({"max_sze": 2})

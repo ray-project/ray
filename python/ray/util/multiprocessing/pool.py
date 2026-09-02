@@ -212,6 +212,7 @@ class _ElasticSlot:
     state: _ElasticSlotState = _ElasticSlotState.EMPTY
     actor: Any = None
     outstanding: int = 0
+    tasks_submitted: int = 0
     idle_since: Optional[float] = None
     readiness_ref: Any = None
     exit_ref: Any = None
@@ -222,7 +223,7 @@ class _ElasticActorSet:
 
     Ray actor mailboxes remain the task queue and ObjectRefs remain the result
     protocol. This class only chooses an actor, counts its outstanding calls,
-    and retires it after an idle deadline.
+    and retires it after an idle deadline or per-actor task limit.
     """
 
     def __init__(
@@ -231,10 +232,12 @@ class _ElasticActorSet:
         min_size: int,
         max_size: int,
         idle_timeout_s: float,
+        maxtasksperchild: Optional[int] = None,
     ):
         self._create_actor = create_actor
         self._min_size = min_size
         self._idle_timeout_s = idle_timeout_s
+        self._maxtasksperchild = maxtasksperchild
         self._slots = [_ElasticSlot() for _ in range(max_size)]
         self._condition = threading.Condition()
         self._closed = False
@@ -335,6 +338,7 @@ class _ElasticActorSet:
             generation = slot.generation
             object_ref = slot.actor.run_batch.remote(func, batch)
             slot.outstanding += 1
+            slot.tasks_submitted += 1
             slot.idle_since = None
             try:
                 object_ref.future().add_done_callback(
@@ -349,6 +353,15 @@ class _ElasticActorSet:
                 self._error = error
                 self._condition.notify_all()
                 logger.exception("Failed to observe a submitted Pool actor call")
+            if (
+                self._maxtasksperchild is not None
+                and slot.tasks_submitted == self._maxtasksperchild
+                and slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+            ):
+                # Actor calls are serial and the termination request is queued
+                # after every accepted batch. Mark the slot as draining now so
+                # no later submission can exceed the per-actor task limit.
+                self._begin_draining_locked(slot)
             return object_ref
 
     def close(self) -> None:
@@ -431,6 +444,7 @@ class _ElasticActorSet:
         slot.state = _ElasticSlotState.STARTING
         slot.actor = actor
         slot.outstanding = 0
+        slot.tasks_submitted = 0
         slot.idle_since = None
         slot.readiness_ref = None
         slot.exit_ref = None
@@ -630,6 +644,7 @@ class _ElasticActorSet:
         slot.state = _ElasticSlotState.EMPTY
         slot.actor = None
         slot.outstanding = 0
+        slot.tasks_submitted = 0
         slot.idle_since = None
         slot.readiness_ref = None
         slot.exit_ref = None
@@ -1156,9 +1171,10 @@ class Pool:
             otherwise the number of cores on this machine.
         initializer: function to be run in each actor when it starts up.
         initargs: iterable of arguments to the initializer function.
-        maxtasksperchild: maximum number of tasks to run in each actor process.
-            After a process has executed this many tasks, it will be killed and
-            replaced with a new one.
+        maxtasksperchild: maximum number of Pool task batches accepted by each
+            actor process. After accepting this many tasks, the actor is retired.
+            Fixed pools replace it immediately; elastic pools replace it when
+            required by ``min_size`` or later demand.
         context: Accepted for ``multiprocessing.Pool`` API compatibility but
             ignored; Ray controls process initialization. A warning is logged
             if a non-None value is supplied.
@@ -1196,6 +1212,10 @@ class Pool:
         self._pool_lock = threading.Lock()
         self._initializer = initializer
         self._initargs = initargs
+        if maxtasksperchild is not None and (
+            not isinstance(maxtasksperchild, int) or maxtasksperchild <= 0
+        ):
+            raise ValueError("maxtasksperchild must be a positive integer or None")
         self._maxtasksperchild = maxtasksperchild or -1
         self._actor_deletion_ids = []
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
@@ -1219,10 +1239,6 @@ class Pool:
 
         processes, ray_cpus = self._init_ray(processes, ray_address)
         if self._autoscale:
-            if maxtasksperchild is not None:
-                raise ValueError(
-                    "maxtasksperchild is not supported by elastic Ray Pools"
-                )
             max_size = max_size if max_size is not None else processes
             max_size = ray_cpus if max_size is None else max_size
             min_size = 0 if min_size is None else min_size
@@ -1241,6 +1257,7 @@ class Pool:
                 min_size,
                 max_size,
                 idle_timeout_s,
+                maxtasksperchild,
             )
         else:
             self._pool_size = processes

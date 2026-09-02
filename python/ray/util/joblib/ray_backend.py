@@ -45,6 +45,7 @@ class RayBackend(MultiprocessingBackend):
         min_size: Optional[int] = None,
         max_size: Optional[int] = None,
         idle_timeout_s: Optional[float] = None,
+        maxtasksperchild: Optional[int] = None,
         **kwargs,
     ):
         """``ray_remote_args`` will be used to configure Ray Actors
@@ -52,6 +53,7 @@ class RayBackend(MultiprocessingBackend):
         usage_lib.record_library_usage("util.joblib")
 
         self.ray_remote_args = ray_remote_args
+        self.maxtasksperchild = maxtasksperchild
         self._elastic_kwargs = {
             "min_size": min_size,
             "max_size": max_size,
@@ -80,6 +82,8 @@ class RayBackend(MultiprocessingBackend):
             **getattr(self, "backend_kwargs", {}),
             **memmappingpool_args,
         }
+        if self.maxtasksperchild is not None:
+            memmappingpool_args.setdefault("maxtasksperchild", self.maxtasksperchild)
 
         if n_jobs == -1:
             configured_max = self._elastic_kwargs["max_size"]
