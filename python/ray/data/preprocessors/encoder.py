@@ -22,6 +22,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.block import BlockAccessor
+from ray.data.datatype import DataType
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -1226,14 +1227,25 @@ def compute_unique_value_indices(
                 counter = Counter()
 
                 def update_counter(element):
-                    counter.update(element)
+                    # A missing row contributes no tokens. `Counter.update`
+                    # iterates its argument, and a missing value is not
+                    # iterable: `pd.NA` raises `TypeError: 'NAType' object is
+                    # not iterable`, and `None` fails the same way.
+                    if not _is_null(element):
+                        counter.update(element)
                     return element
 
                 col.map(update_counter)
                 return counter
             else:
-                # convert to tuples to make lists hashable
-                col = col.map(lambda x: tuple(x))
+                # convert to tuples to make lists hashable. A missing row has no
+                # list to convert: `tuple(pd.NA)` raises `TypeError: 'NAType'
+                # object is not iterable` here in `fit`, so `na_action="ignore"`
+                # carries the null through to `unique_post_fn` instead, where it
+                # reaches the documented "consider imputing missing values
+                # first" `ValueError`. This mirrors the `encode_lists=True`
+                # branch above.
+                col = col.map(lambda x: tuple(x), na_action="ignore")
         return Counter(col.value_counts(dropna=False).to_dict())
 
     def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
@@ -1271,6 +1283,25 @@ def compute_unique_value_indices(
             unique_values_by_col[key_gen(col)].update(counter.keys())
 
     return unique_values_by_col
+
+
+def _is_null(value: Any) -> bool:
+    """``is_null``, extended to pandas' missing-value sentinels.
+
+    ``ray.data._internal.util.is_null`` qualifies ``None`` and ``np.nan``. It
+    does not recognise ``pd.NA`` or ``pd.NaT``, which is what an Arrow-backed
+    column uses, and ``pd.NA`` is not a float so ``is_nan`` cannot catch it.
+
+    An unrecognised null survives the filter in ``gen_value_index`` below and
+    reaches ``sorted()``, where comparing it against a real category raises
+    ``TypeError: boolean value of NA is ambiguous`` -- obscuring the
+    ``ValueError`` that is supposed to tell the user to impute first.
+
+    Both sentinels are singletons, so identity comparison is exact and cheap.
+    ``pd.isna`` is deliberately not used: it returns an array for array-like
+    input, and the values here may be lists when ``encode_lists`` is set.
+    """
+    return is_null(value) or value is pd.NA or value is pd.NaT
 
 
 # FIXME: the arrow format path is broken: https://anyscale1.atlassian.net/browse/DATA-1788
@@ -1312,13 +1343,13 @@ def unique_post_fn(
         """
         # NOTE: We special-case null here since it prevents provided
         #       values sequence from being sortable
-        if any(is_null(v) for v in values) and not drop_na_values:
+        if any(_is_null(v) for v in values) and not drop_na_values:
             raise ValueError(
                 "Unable to fit column because it contains null"
                 " values. Consider imputing missing values first."
             )
 
-        non_null_values = [v for v in values if not is_null(v)]
+        non_null_values = [v for v in values if not _is_null(v)]
 
         return {
             (v if not isinstance(v, list) else tuple(v)): i
@@ -1413,9 +1444,23 @@ def _validate_arrow(table: pa.Table, *columns: str) -> None:
 
 
 def _is_series_composed_of_lists(series: pd.Series) -> bool:
+    # An Arrow-backed column states its element type in its dtype, so it can be
+    # recognised without inspecting a value. The `is_object_dtype` check below
+    # is False for such a column -- its dtype is `list<item: string>[pyarrow]`,
+    # not `object` -- so without this check a list column would be treated as
+    # scalar. That sends it to `value_counts`, which has no pyarrow kernel for
+    # list types and raises `ArrowNotImplementedError`.
+    #
+    # `from_dtype` returns None for a dtype it cannot model and `is_list_type`
+    # is False for a NumPy-backed one, so an object column of lists still falls
+    # through to the check below.
+    dtype = DataType.from_dtype(series.dtype)
+    if dtype is not None and dtype.is_list_type():
+        return True
+
     # we assume that all elements are a list here
     first_not_none_element = next(
-        (element for element in series if element is not None), None
+        (element for element in series if not _is_null(element)), None
     )
     return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
         first_not_none_element, (list, np.ndarray)

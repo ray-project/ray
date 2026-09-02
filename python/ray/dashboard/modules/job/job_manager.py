@@ -73,8 +73,6 @@ class JobManager:
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
-        self._gcs_address = gcs_client.address
-        self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self._timeout_check_timer = timeout_check_timer or Timer()
@@ -603,8 +601,6 @@ class JobManager:
                 submission_id,
                 entrypoint,
                 metadata or {},
-                self._gcs_address,
-                self._cluster_id_hex,
                 self._logs_dir,
             )
             supervisor.run.remote(
