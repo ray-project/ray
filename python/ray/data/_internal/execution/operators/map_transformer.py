@@ -92,26 +92,6 @@ class MapTransformFnDataType(Enum):
     Batch = 2
 
 
-# Hook that wraps one phase of one stage, returning the iterable to chain into
-# the next. `MapTransformer.apply_transform` passes one that times.
-#
-# It takes a thunk rather than the iterable: a stage that consumes its input
-# eagerly does its work while building the iterable, so the hook has to own the
-# call to time it at all.
-PhaseWrapFn = Callable[
-    ["MapTransformPhase", Callable[[], Iterable[MapTransformFnData]]],
-    Iterable[MapTransformFnData],
-]
-
-
-def _no_phase_wrapping(
-    phase: "MapTransformPhase",
-    make_data: Callable[[], Iterable[MapTransformFnData]],
-) -> Iterable[MapTransformFnData]:
-    """Default `PhaseWrapFn`, for chains that only time their total."""
-    return make_data()
-
-
 class MapTransformFn(ABC):
     """Represents a single transform function in a MapTransformer."""
 
@@ -174,23 +154,59 @@ class MapTransformFn(ABC):
             results, self._input_type, self._output_block_size_option
         )
 
+    def timed_steps(
+        self,
+        ctx: TaskContext,
+        report_custom_op_stats: CustomOpStatsReportFn,
+        stage_idx: int,
+    ) -> List["TimedStep"]:
+        """This transform as a flat list of timed pipeline steps.
+
+        `_pre_process` and `_post_process` are already `Iterable -> Iterable`,
+        so they are the step bodies as-is; only the wrapped fn needs a closure
+        to bind the task context.
+        """
+        name = repr(self)
+        body = MapTransformPhase.UDF_BODY if self._is_udf else MapTransformPhase.OTHER
+        return [
+            TimedStep(
+                f"{name} input prep",
+                MapTransformPhase.INPUT_PREP,
+                stage_idx,
+                self._pre_process,
+            ),
+            TimedStep(
+                f"{name} body",
+                body,
+                stage_idx,
+                lambda it: self._apply_transform(ctx, it, report_custom_op_stats),
+            ),
+            TimedStep(
+                f"{name} output build",
+                MapTransformPhase.OUTPUT_BUILD,
+                stage_idx,
+                self._post_process,
+            ),
+        ]
+
     def __call__(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
-        wrap_phase: "PhaseWrapFn" = _no_phase_wrapping,
     ) -> Iterable[Block]:
-        batches = wrap_phase(
-            MapTransformPhase.INPUT_PREP, lambda: self._pre_process(blocks)
-        )
-        results = wrap_phase(
-            MapTransformPhase.UDF_BODY,
-            lambda: self._apply_transform(ctx, batches, report_custom_op_stats),
-        )
-        return wrap_phase(
-            MapTransformPhase.OUTPUT_BUILD, lambda: self._post_process(results)
-        )
+        """Apply this transform's steps in order, untimed.
+
+        Timing belongs to the chain rather than to a transform:
+        :meth:`MapTransformer.apply_transform` wraps these same steps in a
+        :class:`TransformClock`. A caller driving one transform on its own --
+        ``generate_collect_write_stats_fn``, and tests -- gets the plain
+        composition.
+        """
+        data: Iterable[Any] = blocks
+        for step in self.timed_steps(ctx, report_custom_op_stats, 0):
+            data = step.apply(data)
+        return data
 
     @property
     def output_block_size_option(self):
@@ -226,7 +242,7 @@ class MapTransformFn(ABC):
 class MapTransformPhase(Enum):
     """The phases a :class:`MapTransformFn` splits its work into.
 
-    Values index into :attr:`UDFTimeScope.phase_totals`.
+    Steps carry one of these; the summary groups their times by it.
     """
 
     # Turning input blocks into the batches or rows the transform consumes.
@@ -237,6 +253,71 @@ class MapTransformPhase(Enum):
     OUTPUT_BUILD = 2
     # A transform body that isn't a UDF, such as a read or a write.
     OTHER = 3
+
+
+@dataclass(frozen=True)
+class TimedStep:
+    """One ``Iterable -> Iterable`` link in a map task's pipeline.
+
+    A task's whole transform is a flat list of these. ``apply`` is the work;
+    everything else is metadata the summary groups by.
+
+    ``bucket`` is ``None`` for a step that spans more than one phase, which is
+    what a row transform gets when it is timed a stage at a time rather than a
+    phase at a time. A phase no step carries is reported as "not measured"
+    rather than as zero, so the ``None`` here is what produces the ``None``
+    there.
+    """
+
+    label: str
+    bucket: Optional[MapTransformPhase]
+    stage_idx: int
+    apply: Callable[[Iterable[Any]], Iterable[Any]]
+
+
+class _TimedStep(Iterator[Any]):
+    """Times one step, inclusive of everything upstream of it.
+
+    Deliberately does not coordinate with the other steps: it starts a clock,
+    pulls, and adds the elapsed time to its own slot. Because the chain is
+    linear -- step ``k`` is only ever pulled by step ``k + 1`` -- all of a
+    step's time lies inside its consumer's windows, so subtracting neighbouring
+    totals at drain time recovers each step's own work. Doing that arithmetic
+    once, over a list, is easier to follow than threading a shared cursor
+    through every ``__next__``.
+    """
+
+    __slots__ = ("_apply", "_upstream", "_iter", "_totals", "_idx")
+
+    def __init__(
+        self,
+        apply: Callable[[Iterable[Any]], Iterable[Any]],
+        upstream: Iterable[Any],
+        totals: List[float],
+        idx: int,
+    ):
+        self._apply = apply
+        self._upstream = upstream
+        self._iter: Optional[Iterator[Any]] = None
+        self._totals = totals
+        self._idx = idx
+
+    def __iter__(self) -> "_TimedStep":
+        return self
+
+    def __next__(self) -> Any:
+        start = time.perf_counter()
+        try:
+            if self._iter is None:
+                # Building the iterable is the step's work too, and for some
+                # steps it is all of it: a write performs its whole upload here
+                # and hands back a buffer. Deferring the call to the first pull
+                # puts that inside the same window as the pulls, so an eagerly
+                # consuming stage needs no special case.
+                self._iter = iter(self._apply(self._upstream))
+            return next(self._iter)
+        finally:
+            self._totals[self._idx] += time.perf_counter() - start
 
 
 @dataclass(frozen=True)
@@ -259,89 +340,96 @@ class MapTransformPhaseTimes:
     other_s: Optional[float] = None
 
 
-class UDFTimeScope:
-    """Running total of UDF time for one task, and the nesting state to get it.
+class TransformClock:
+    """Per-task timing for one map transform chain.
 
-    Must stay per task, not per :class:`MapTransformer`: an actor pool reuses one
-    transformer for every task the actor runs, and ``max_concurrent_calls_per_actor
-    > 1`` runs several of those at once, so a shared total would mix their
-    timings and let one task's :meth:`drain` discard another's. ``_map_task``
-    creates one per task and threads it into ``apply_transform``, the same way it
-    threads a :class:`CustomOpStatsReporter`.
+    Must stay per task, not per :class:`MapTransformer`: an actor pool reuses
+    one transformer for every task the actor runs, and
+    ``max_concurrent_calls_per_actor > 1`` runs several at once, so a shared
+    total would mix their timings and let one task's :meth:`drain` discard
+    another's.
 
-    ``attributed_s`` is a single running total that every timer in the chain adds
-    to, holding the time accumulated since the last :meth:`drain` (``_map_task``
-    drains after each output block). It covers the whole transform: input
-    batching, the UDF bodies, and output block building.
-
-    It is also the cursor each timer uses to find its own share. Stages are
-    chained behind lazy iterators, so a stage's ``next()`` runs everything
-    upstream of it before returning, and a timer can only measure inclusive
-    time. The change in ``attributed_s`` across that call is what the upstream
-    timers added during it, so subtracting it leaves this stage's own
-    contribution. Three fused UDFs sleeping 1s, 2s and 3s measure 1s, 3s and 6s
-    inclusive, subtract 0s, 1s and 3s, and add 1s, 2s and 3s.
-
-    ``phase_totals`` splits that same time by :class:`MapTransformPhase` when the
-    chain is timing phases; a chain timing only its total leaves it at zero.
+    Holds one inclusive total per step. :meth:`drain` turns those into each
+    step's own time and groups them, so a step measures itself and nothing
+    else while data is flowing.
     """
 
-    __slots__ = ("attributed_s", "phase_totals", "decomposed")
+    __slots__ = ("inclusive", "_steps")
 
     def __init__(self) -> None:
-        self.attributed_s: float = 0.0
-        self.phase_totals: List[float] = [0.0] * len(MapTransformPhase)
-        # Set by `apply_transform`; False when only the total was measured.
-        self.decomposed: bool = False
+        self._steps: List["TimedStep"] = []
+        self.inclusive: List[float] = []
 
-    def attribute_call(
-        self,
-        phase: Optional["MapTransformPhase"],
-        make_data: Callable[[], Iterable[MapTransformFnData]],
-    ) -> Iterable[MapTransformFnData]:
-        """Run ``make_data()`` inside an attribution window and return its result.
+    def chain(self, steps: List["TimedStep"], blocks: Iterable[Any]) -> Iterable[Any]:
+        """Build the timed pipeline over ``blocks``."""
+        self._steps = steps
+        self.inclusive = [0.0] * len(steps)
+        data = blocks
+        for idx, step in enumerate(steps):
+            data = _TimedStep(step.apply, data, self.inclusive, idx)
+        return data
 
-        A stage that streams does its work in ``__next__``, which the timing
-        iterator covers. A stage that consumes its input eagerly -- a write
-        performs its whole upload before handing back a buffer -- does it here
-        instead, where no iterator can see it. Timing the call is what puts that
-        work in the total.
+    def _self_times(self) -> List[float]:
+        """Each step's own time: its window less its upstream's.
 
-        Runs once per stage per task, so unlike ``__next__`` it is off the hot
-        path and its cost does not scale with rows.
+        A step's window contains everything upstream of it, and step ``k`` is
+        only ever pulled by step ``k + 1``, so neighbouring totals differ by
+        exactly the step's own work. The clamp absorbs floating-point rounding
+        on that subtraction; the difference is otherwise non-negative.
         """
-        before_s = self.attributed_s
-        start = time.perf_counter()
-        try:
-            return make_data()
-        finally:
-            inclusive_s = time.perf_counter() - start
-            # An eager stage pulls its input through the timers already in the
-            # chain, so subtract what they credited to leave its own work.
-            exclusive_s = max(0.0, inclusive_s - (self.attributed_s - before_s))
-            self.attributed_s += exclusive_s
-            if phase is not None:
-                self.phase_totals[phase.value] += exclusive_s
+        return [
+            max(0.0, total - (self.inclusive[i - 1] if i else 0.0))
+            for i, total in enumerate(self.inclusive)
+        ]
 
     def drain(self) -> "MapTransformPhaseTimes":
         """Return the time accumulated since the last drain, and reset."""
-        totals = self.phase_totals
-        if self.decomposed:
+        own = self._self_times()
+        by_bucket: Dict[MapTransformPhase, float] = {}
+        for step, seconds in zip(self._steps, own):
+            if step.bucket is not None:
+                by_bucket[step.bucket] = by_bucket.get(step.bucket, 0.0) + seconds
+
+        # A step spanning all three phases carries no bucket, so if any step
+        # carries one this chain was timed phase by phase. Deriving that from
+        # the steps beats storing it: there is no flag to set inconsistently.
+        if any(step.bucket is not None for step in self._steps):
+            # Measured. A phase this chain happens not to run really did take
+            # no time, so report zero -- `None` is reserved for "not measured",
+            # which a consumer has to be able to tell apart.
             times = MapTransformPhaseTimes(
-                total_s=self.attributed_s,
-                input_prep_s=totals[MapTransformPhase.INPUT_PREP.value],
-                udf_body_s=totals[MapTransformPhase.UDF_BODY.value],
-                output_build_s=totals[MapTransformPhase.OUTPUT_BUILD.value],
-                other_s=totals[MapTransformPhase.OTHER.value],
+                total_s=sum(own),
+                input_prep_s=by_bucket.get(MapTransformPhase.INPUT_PREP, 0.0),
+                udf_body_s=by_bucket.get(MapTransformPhase.UDF_BODY, 0.0),
+                output_build_s=by_bucket.get(MapTransformPhase.OUTPUT_BUILD, 0.0),
+                other_s=by_bucket.get(MapTransformPhase.OTHER, 0.0),
             )
         else:
-            times = MapTransformPhaseTimes(total_s=self.attributed_s)
-        self.attributed_s = 0.0
-        # Zero in place: the timers hold this list, and `_map_task` drains after
-        # every output block, mid-iteration.
-        for i in range(len(totals)):
-            totals[i] = 0.0
+            times = MapTransformPhaseTimes(total_s=sum(own))
+        self.inclusive = [0.0] * len(self._steps)
         return times
+
+
+def _coalesce_stage(
+    steps: List["TimedStep"], transform_fn: "MapTransformFn"
+) -> "TimedStep":
+    """Fold a stage's three steps into one, timed as a unit."""
+    applies = [step.apply for step in steps]
+
+    def apply(data: Iterable[Any]) -> Iterable[Any]:
+        for fn in applies:
+            data = fn(data)
+        return data
+
+    return TimedStep(
+        label=f"{transform_fn!r} stage",
+        # Spans input prep, body and output build, so it belongs to no single
+        # phase -- which is what makes the phase figures report as "not
+        # measured" for a chain timed this way.
+        bucket=None,
+        stage_idx=steps[0].stage_idx,
+        apply=apply,
+    )
 
 
 class MapTransformer:
@@ -352,49 +440,6 @@ class MapTransformer:
     the last MapTransformFn must output blocks. The intermediate data types can
     be blocks, rows, or batches.
     """
-
-    class _UDFTimingIterator(Iterator[MapTransformFnData]):
-        """Times one UDF stage, net of the stages feeding it.
-
-        ``__next__`` can only measure inclusive time: the stages are chained
-        behind lazy iterators, so pulling one item also runs every stage
-        upstream. Subtracting what upstream stages credited to ``scope`` during
-        the same window leaves this stage's own time, which is what keeps
-        ``scope``'s total from counting a stage once per stage below it.
-        """
-
-        def __init__(
-            self,
-            input: Iterable[MapTransformFnData],
-            scope: "UDFTimeScope",
-            phase: Optional[MapTransformPhase] = None,
-        ):
-            # `input` is an Iterable, but `__next__` needs an Iterator, and some
-            # callers hand `apply_transform` a plain list.
-            self._input = iter(input)
-            self._scope = scope
-            # None when timing a whole stage rather than one of its phases.
-            self._phase_idx = None if phase is None else phase.value
-
-        def __iter__(self) -> "MapTransformer._UDFTimingIterator":
-            return self
-
-        def __next__(self) -> MapTransformFnData:
-            scope = self._scope
-            attributed_before_s = scope.attributed_s
-            start = time.perf_counter()
-            try:
-                return next(self._input)
-            finally:
-                inclusive_s = time.perf_counter() - start
-                upstream_s = scope.attributed_s - attributed_before_s
-                # Upstream stages' exclusive spans are disjoint sub-intervals of
-                # this window, so the difference is non-negative; clamp only to
-                # absorb floating-point rounding.
-                exclusive_s = max(0.0, inclusive_s - upstream_s)
-                scope.attributed_s += exclusive_s
-                if self._phase_idx is not None:
-                    scope.phase_totals[self._phase_idx] += exclusive_s
 
     def __init__(
         self,
@@ -450,27 +495,50 @@ class MapTransformer:
         """
         self._init_fn()
 
+    def get_timed_steps(
+        self,
+        ctx: TaskContext,
+        report_custom_op_stats: CustomOpStatsReportFn,
+        *,
+        decomposed: bool,
+    ) -> List["TimedStep"]:
+        """This task's whole transform, as a flat list of timed steps.
+
+        The answer to "what is getting timed?" is this list. It is ordinary
+        data: printable, and assertable in a unit test.
+
+        ``decomposed=False`` collapses each stage's three steps into one, which
+        is how a row transform pays one timer per stage instead of three -- a
+        rewrite of the list rather than a second code path.
+        """
+        steps: List[TimedStep] = []
+        for stage_idx, transform_fn in enumerate(self._transform_fns):
+            stage_steps = transform_fn.timed_steps(
+                ctx, report_custom_op_stats, stage_idx
+            )
+            if not decomposed:
+                stage_steps = [_coalesce_stage(stage_steps, transform_fn)]
+            steps.extend(stage_steps)
+        return steps
+
     def apply_transform(
         self,
         input_blocks: Iterable[Block],
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
         *,
-        udf_time_scope: "UDFTimeScope",
+        clock: "TransformClock",
     ) -> Iterable[Block]:
-        """Apply the transform functions to the input blocks.
+        """Chain this task's timed steps over the input blocks.
 
         Args:
             input_blocks: The blocks to transform.
             ctx: The task context for this transform.
             report_custom_op_stats: Callback a producing transform calls to report
-                its :class:`CustomOpStats`. ``_map_task`` passes its reporter's
-                ``report``; defaults to a stateless no-op for callers (e.g. tests)
-                that don't collect custom stats.
-            udf_time_scope: Where to accumulate this task's UDF time. Required and
-                keyword-only on purpose: a caller that silently skipped it would
-                report a UDF time of zero rather than fail. Callers that don't
-                collect timings pass a throwaway ``UDFTimeScope()``.
+                its :class:`CustomOpStats`.
+            clock: Where this task's timings accumulate. Keyword-only on
+                purpose: a caller that silently skipped it would report zero
+                rather than fail.
 
         Returns:
             An iterable of the transformed output blocks.
@@ -484,71 +552,31 @@ class MapTransformer:
                 self.target_max_block_size_override
             )
 
-        # Splitting a stage into phases means a timer around each of the three,
-        # and each timer costs a Python frame per item it yields. A batch or
-        # block transform yields whole batches, so that is noise. A row
-        # transform yields rows, where it is not -- roughly 1us per row across a
-        # three-stage chain. So row chains are timed a stage at a time, which
-        # reports the same total for a third of the wrappers, and
-        # `accurate_map_phase_timing` opts into the breakdown for them.
         from ray.data.context import DataContext
 
         # A chain with no UDF in it -- a standalone read, write or projection --
-        # has no user function to attribute time to, so it reports no UDF time at
-        # all, as it always has. Timing its stages would put its whole transform
-        # under "UDF time" on an operator that runs nothing the user wrote.
+        # has no user function to attribute time to, so it reports no UDF time,
+        # as it always has.
         has_udf = any(fn._is_udf for fn in self._transform_fns)
+        # Timing costs a Python frame per item. A batch transform yields whole
+        # batches, so three timers per stage is noise; a row transform yields
+        # rows, where it is not. Row chains get one timer per stage instead,
+        # and `accurate_map_phase_timing` opts them into the full split.
         per_row = any(
             fn._input_type is MapTransformFnDataType.Row for fn in self._transform_fns
         )
-        decomposed = has_udf and (
-            not per_row or DataContext.get_current().accurate_map_phase_timing
-        )
-        udf_time_scope.decomposed = decomposed
+        decomposed = not per_row or DataContext.get_current().accurate_map_phase_timing
 
-        iter = input_blocks
-        # Whether by phase or by stage, a timer has to be installed before the
-        # next stage is built: `MapTransformFn.__call__` runs `_pre_process`
-        # eagerly, and with `batch_size="auto"` that peeks at a real block to
-        # size batches, pulling data through the stages already in the chain.
-        for transform_fn in self._transform_fns:
-            if not has_udf:
-                # Nothing the user wrote runs in this chain, so there is nothing
-                # to attribute and no timer to pay for.
-                iter = transform_fn(iter, ctx, report_custom_op_stats)
-                continue
+        steps = self.get_timed_steps(ctx, report_custom_op_stats, decomposed=decomposed)
 
-            if decomposed:
-                is_udf = transform_fn._is_udf
+        if not has_udf:
+            # Nothing to attribute, so no timer to pay for.
+            data = input_blocks
+            for step in steps:
+                data = step.apply(data)
+            return data
 
-                def wrap_phase(
-                    phase: MapTransformPhase,
-                    make_data: Callable[[], Iterable[MapTransformFnData]],
-                    _is_udf: bool = is_udf,
-                ) -> Iterable[MapTransformFnData]:
-                    if phase is MapTransformPhase.UDF_BODY and not _is_udf:
-                        phase = MapTransformPhase.OTHER
-                    # Time building the iterable as well as draining it, so a
-                    # stage that consumes its input eagerly is not missed.
-                    data = udf_time_scope.attribute_call(phase, make_data)
-                    return self._UDFTimingIterator(data, udf_time_scope, phase)
-
-                iter = transform_fn(iter, ctx, report_custom_op_stats, wrap_phase)
-            else:
-                # Only UDF stages get a per-item timer here -- paying that per
-                # row is what this branch exists to avoid. The eager window is
-                # once per stage, so every stage gets one and the total stays
-                # the figure the decomposed branch would report.
-                iter = udf_time_scope.attribute_call(
-                    None,
-                    lambda fn=transform_fn, it=iter: fn(
-                        it, ctx, report_custom_op_stats
-                    ),
-                )
-                if transform_fn._is_udf:
-                    iter = self._UDFTimingIterator(iter, udf_time_scope)
-
-        return iter
+        return clock.chain(steps, input_blocks)
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
         """Fuse two `MapTransformer`s together."""
