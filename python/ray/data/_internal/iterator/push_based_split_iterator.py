@@ -12,6 +12,52 @@ Flow control is poll-based: each pusher periodically calls
 from its queue and how many rows it wants buffered (``target_buffer_rows``),
 and only pushes while ``rows_pushed - rows_consumed < target_buffer_rows``.
 
+Pipeline overview::
+
+                PushSplitCoordinator actor (pinned to the creating node)
+    +--------------------------------------------------------------------+
+    |  StreamingExecutor (recreated each epoch)                          |
+    |                                                                    |
+    |    read -> map -> ... -> OutputSplitter                            |
+    |                              | bundles tagged with split idx       |
+    |                              v                                     |
+    |          per-split output queues (OpBufferQueue)                   |
+    |           split 0         split 1      ...      split n-1          |
+    |              |               |                     |               |
+    |              v               v                     v               |
+    |          pusher 0        pusher 1      ...     pusher n-1          |
+    |  (one thread per split; blocks in output_iterator.get_next(i),     |
+    |   which keeps the executor's num_waiting_consumers signal alive)   |
+    +------------------|----------------^--------------------------------+
+                       |                |
+     data plane        |                |  flow control (per push burst)
+     (fire-and-forget) |                |
+       receive_block(  |                |  (1) poll() -> rows_consumed,
+         epoch,        |                |      target_buffer_rows, iterating
+         block_ref,    |                |  (2) credit = target_buffer_rows
+         rows, bytes)  |                |        - (rows_pushed - rows_consumed)
+       receive_eof     |                |  (3) credit > 0: push blocks;
+       receive_error   |                |      else sleep POLL_INTERVAL_S,
+                       v                |      re-poll
+    +--------------------------------------------------------------------+
+    |    PushSplitConsumer actor i (one per split, e.g. a train worker)  |
+    |                                                                    |
+    |  "data" thread (1):  receive_block/eof/error -> local queue        |
+    |                      (block ref was a top-level task arg, so the   |
+    |                       queue holds materialized Blocks, in order)   |
+    |  "flow" thread (1):  poll                                          |
+    |  "consume" thread:   user loop over iter_batches()                 |
+    |     _gen_blocks: start_epoch (barrier RPC, all n splits sync)      |
+    |                  -> pop local queue -> yield block                 |
+    |     -> blocks_to_batches -> format_batches -> yield batch.data     |
+    |     finally: notify_split_finished(epoch, i) RPC -> coordinator    |
+    +--------------------------------------------------------------------+
+
+For contrast, the pull model (``stream_split_iterator.py``) has each consumer
+repeatedly call ``coordinator.get.remote(epoch, split_idx, prefetched_bytes)``
+and block on the result; here the RPC direction is inverted and the consumer's
+iterator only reads its local queue.
+
 Liveness note: the pusher threads block inside
 ``output_iterator.get_next(split_idx)`` (ultimately
 ``OpState.get_output_blocking``) exactly like today's pull consumers, so the
