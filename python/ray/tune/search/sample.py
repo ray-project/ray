@@ -760,10 +760,8 @@ def lograndint(lower: int, upper: int, base: object = _MISSING):
 def qrandint(lower: int, upper: int, q: int = 1):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
-    ``lower`` is inclusive, ``upper`` is also inclusive (!).
-
-    ``lower`` is inclusive, ``upper`` is also inclusive except for q=1 where
-    its exclusive. The value will be quantized, i.e. it will be a multiple of
+    ``lower`` is inclusive, ``upper`` is also inclusive except for ``q=1`` where
+    it's exclusive. The value will be quantized, i.e. it will be a multiple of
     ``q``. The multiples of ``q`` between ``lower`` and ``upper`` are drawn
     uniformly.
 
@@ -780,8 +778,8 @@ def qrandint(lower: int, upper: int, q: int = 1):
 def qlograndint(lower: int, upper: int, q: int, base: object = _MISSING):
     """Sample an integer value log-uniformly between ``lower`` and ``upper``.
 
-    ``lower`` is inclusive, ``upper`` is also inclusive except for q=1 where
-    its exclusive. The value will be quantized, i.e. it will be a multiple of
+    ``lower`` is inclusive, ``upper`` is also inclusive except for ``q=1`` where
+    it's exclusive. The value will be quantized, i.e. it will be a multiple of
     ``q``. The multiples of ``q`` between ``lower`` and ``upper`` are drawn
     log-uniformly.
 
