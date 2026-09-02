@@ -1995,6 +1995,7 @@ jinja2==3.1.6 \
     #   nbclassic
     #   nbconvert
     #   notebook
+    #   ray
     #   torch
 jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
