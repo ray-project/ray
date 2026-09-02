@@ -276,14 +276,11 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
 
-    # Install MuJoCo.
+    # System libraries required for gymnasium rendering (MuJoCo, OpenGL, GLFW).
+    # The MuJoCo library itself ships with the `mujoco` pip package, which is
+    # pinned in rllib-test-requirements.txt.
     sudo apt-get update
-    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3 patchelf
-    wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
-    mkdir -p /root/.mujoco
-    mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
-    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
-    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin
+    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3
   fi
 
   # Additional Train test dependencies.
