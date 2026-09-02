@@ -3,6 +3,8 @@ import collections
 import inspect
 import logging
 import queue
+import uuid
+import warnings
 from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
@@ -64,6 +66,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.util.annotations import RayDeprecationWarning
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -233,6 +236,7 @@ def plan_filter_op(
 
     predicate_expr = op.predicate_expr
     compute = get_compute(op.compute)
+    map_task_kwargs = {}
     if predicate_expr is not None:
 
         def filter_block_fn(
@@ -251,17 +255,20 @@ def plan_filter_op(
         )
     else:
         udf_is_callable_class = isinstance(op.fn, CallableClass)
-        filter_fn, init_fn = _get_udf(
+        filter_fn, init_fn, resolve_fn_args, map_task_kwargs = _get_udf(
             op.fn,
             op.fn_args,
             op.fn_kwargs,
             op.fn_constructor_args if udf_is_callable_class else None,
             op.fn_constructor_kwargs if udf_is_callable_class else None,
             compute=compute,
+            dereference_object_refs_in_fn_args=(
+                data_context.enable_dereference_object_refs_in_fn_args
+            ),
         )
 
         transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
+            _generate_transform_fn_for_filter(filter_fn, resolve_fn_args),
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -274,6 +281,7 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
+        map_task_kwargs=map_task_kwargs,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
     )
@@ -298,18 +306,21 @@ def plan_udf_map_op(
 
     compute = get_compute(op.compute)
     udf_is_callable_class = isinstance(op.fn, CallableClass)
-    fn, init_fn = _get_udf(
+    fn, init_fn, resolve_fn_args, map_task_kwargs = _get_udf(
         op.fn,
         op.fn_args,
         op.fn_kwargs,
         op.fn_constructor_args if udf_is_callable_class else None,
         op.fn_constructor_kwargs if udf_is_callable_class else None,
         compute=compute,
+        dereference_object_refs_in_fn_args=(
+            data_context.enable_dereference_object_refs_in_fn_args
+        ),
     )
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(fn),
+            _generate_transform_fn_for_map_batches(fn, resolve_fn_args),
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
@@ -319,9 +330,9 @@ def plan_udf_map_op(
 
     else:
         if isinstance(op, MapRows):
-            udf_fn = _generate_transform_fn_for_map_rows(fn)
+            udf_fn = _generate_transform_fn_for_map_rows(fn, resolve_fn_args)
         elif isinstance(op, FlatMap):
-            udf_fn = _generate_transform_fn_for_flat_map(fn)
+            udf_fn = _generate_transform_fn_for_flat_map(fn, resolve_fn_args)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -340,6 +351,7 @@ def plan_udf_map_op(
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op.min_rows_per_bundled_input,
+        map_task_kwargs=map_task_kwargs,
         ray_remote_args_fn=op.ray_remote_args_fn,
         ray_remote_args=op.ray_remote_args,
         per_block_limit=op.per_block_limit,
@@ -353,13 +365,50 @@ def _get_udf(
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
     compute: Optional[ComputeStrategy],
+    *,
+    dereference_object_refs_in_fn_args: bool = False,
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
     # be serializable.
     udf = op_fn
-    fn_args = op_fn_args or ()
+    fn_args = list(op_fn_args or ())
     fn_kwargs = op_fn_kwargs or {}
+    fn_arg_task_keys = {}
+    map_task_kwargs = {}
+    fn_arg_key_prefix = f"__ray_data_fn_arg_{uuid.uuid4().hex}"
+
+    object_ref_indices = [
+        index for index, arg in enumerate(fn_args) if isinstance(arg, ray.ObjectRef)
+    ]
+    if object_ref_indices and not dereference_object_refs_in_fn_args:
+        warnings.warn(
+            "Passing an ObjectRef directly in `fn_args` currently passes the "
+            "reference to the UDF. This behavior is deprecated. To opt in to "
+            "automatic dereferencing, set "
+            "`DataContext.get_current().enable_dereference_object_refs_in_fn_args "
+            "= True` before creating the Dataset. To preserve reference semantics "
+            "after the default changes, wrap the ObjectRef in a container.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
+    elif dereference_object_refs_in_fn_args:
+        for index in object_ref_indices:
+            key = f"{fn_arg_key_prefix}_{index}"
+            fn_arg_task_keys[index] = key
+            map_task_kwargs[key] = fn_args[index]
+            fn_args[index] = None
+
+    fn_args = tuple(fn_args)
+
+    def resolve_fn_args(ctx: TaskContext) -> Tuple[Any, ...]:
+        if not fn_arg_task_keys:
+            return fn_args
+
+        resolved_args = list(fn_args)
+        for index, key in fn_arg_task_keys.items():
+            resolved_args[index] = ctx.kwargs[key]
+        return tuple(resolved_args)
 
     if isinstance(udf, CallableClass):
         from ray.data.expressions import _CallableClassSpec
@@ -403,7 +452,9 @@ def _get_udf(
 
         if inspect.iscoroutinefunction(udf.__call__):
             # Async coroutine UDF: wrapper must be async to work with async transform machinery
-            async def _wrapped_udf_map_fn(item: Any) -> Any:
+            async def _wrapped_udf_map_fn(
+                item: Any, resolved_fn_args: Tuple[Any, ...]
+            ) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
@@ -414,7 +465,7 @@ def _get_udf(
                     # Direct await - already in async context
                     return await udf_instance(
                         item,
-                        *fn_args,
+                        *resolved_fn_args,
                         **fn_kwargs,
                     )
                 except Exception as e:
@@ -422,7 +473,9 @@ def _get_udf(
 
         elif inspect.isasyncgenfunction(udf.__call__):
 
-            async def _wrapped_udf_map_fn(item: Any) -> Any:
+            async def _wrapped_udf_map_fn(
+                item: Any, resolved_fn_args: Tuple[Any, ...]
+            ) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert ray.data._map_actor_context.is_async
 
@@ -432,7 +485,7 @@ def _get_udf(
                     udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
                     gen = udf_instance(
                         item,
-                        *fn_args,
+                        *resolved_fn_args,
                         **fn_kwargs,
                     )
 
@@ -446,7 +499,9 @@ def _get_udf(
                 udf.__call__, Callable
             ), f"Expected Callable, got {udf.__call__} ({type(udf.__call__)})"
 
-            def _wrapped_udf_map_fn(item: Any) -> Any:
+            def _wrapped_udf_map_fn(
+                item: Any, resolved_fn_args: Tuple[Any, ...]
+            ) -> Any:
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
@@ -455,7 +510,7 @@ def _get_udf(
                     udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
                     return udf_instance(
                         item,
-                        *fn_args,
+                        *resolved_fn_args,
                         **fn_kwargs,
                     )
                 except Exception as e:
@@ -463,16 +518,16 @@ def _get_udf(
 
     else:
 
-        def _wrapped_udf_map_fn(item: Any) -> Any:
+        def _wrapped_udf_map_fn(item: Any, resolved_fn_args: Tuple[Any, ...]) -> Any:
             try:
-                return udf(item, *fn_args, **fn_kwargs)
+                return udf(item, *resolved_fn_args, **fn_kwargs)
             except Exception as e:
                 _try_wrap_udf_exception(e)
 
         def init_fn():
             pass
 
-    return _wrapped_udf_map_fn, init_fn
+    return _wrapped_udf_map_fn, init_fn, resolve_fn_args, map_task_kwargs
 
 
 def _try_wrap_udf_exception(e: Exception, item: Any = None):
@@ -548,9 +603,15 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
     rather than keeping them in an iterator.
     """
 
-    def __init__(self, batches: Iterable[DataBatch], fn: UserDefinedFunction):
+    def __init__(
+        self,
+        batches: Iterable[DataBatch],
+        fn: UserDefinedFunction,
+        fn_args: Optional[Tuple[Any, ...]],
+    ):
         self._input_iter = iter(batches)
         self._fn = fn
+        self._fn_args = fn_args
         self._cur_output_iter: Optional[Iterator[DataBatch]] = None
 
     def __iter__(self) -> "_TransformingBatchIterator":
@@ -586,7 +647,10 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
                 )
             else:
                 try:
-                    res = self._fn(input_batch)
+                    if self._fn_args is None:
+                        res = self._fn(input_batch)
+                    else:
+                        res = self._fn(input_batch, self._fn_args)
 
                     if not isinstance(res, GeneratorType):
                         # NOTE: It's critical that we're utilizing *releasing* iterator
@@ -621,6 +685,7 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    resolve_fn_args: Optional[Callable[[TaskContext], Tuple[Any, ...]]] = None,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
 
     if _is_async_udf(fn):
@@ -628,14 +693,16 @@ def _generate_transform_fn_for_map_batches(
             fn,
             _validate_batch_output,
             max_concurrency=DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
+            resolve_fn_args=resolve_fn_args,
         )
 
     else:
 
         def transform_fn(
-            batches: Iterable[DataBatch], _: TaskContext
+            batches: Iterable[DataBatch], ctx: TaskContext
         ) -> Iterable[DataBatch]:
-            return _TransformingBatchIterator(batches, fn)
+            fn_args = resolve_fn_args(ctx) if resolve_fn_args is not None else None
+            return _TransformingBatchIterator(batches, fn, fn_args)
 
     return transform_fn
 
@@ -700,6 +767,7 @@ def _validate_row_output(item):
 
 def _generate_transform_fn_for_map_rows(
     fn: UserDefinedFunction,
+    resolve_fn_args: Callable[[TaskContext], Tuple[Any, ...]],
 ) -> MapTransformCallable[Row, Row]:
 
     if _is_async_udf(fn):
@@ -708,13 +776,15 @@ def _generate_transform_fn_for_map_rows(
             _validate_row_output,
             # NOTE: UDF concurrency is limited
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
+            resolve_fn_args=resolve_fn_args,
         )
 
     else:
 
-        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+        def transform_fn(rows: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
+            fn_args = resolve_fn_args(ctx)
             for row in rows:
-                out_row = fn(row)
+                out_row = fn(row, fn_args)
                 _validate_row_output(out_row)
                 yield out_row
 
@@ -723,6 +793,7 @@ def _generate_transform_fn_for_map_rows(
 
 def _generate_transform_fn_for_flat_map(
     fn: UserDefinedFunction,
+    resolve_fn_args: Callable[[TaskContext], Tuple[Any, ...]],
 ) -> MapTransformCallable[Row, Iterable[Row]]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
@@ -731,13 +802,15 @@ def _generate_transform_fn_for_flat_map(
             _validate_row_output,
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
             is_flat_map=True,
+            resolve_fn_args=resolve_fn_args,
         )
 
     else:
 
-        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+        def transform_fn(rows: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
+            fn_args = resolve_fn_args(ctx)
             for row in rows:
-                for out_row in fn(row):
+                for out_row in fn(row, fn_args):
                     _validate_row_output(out_row)
                     yield out_row
 
@@ -746,10 +819,12 @@ def _generate_transform_fn_for_flat_map(
 
 def _generate_transform_fn_for_filter(
     fn: UserDefinedFunction,
+    resolve_fn_args: Callable[[TaskContext], Tuple[Any, ...]],
 ) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+    def transform_fn(rows: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
+        fn_args = resolve_fn_args(ctx)
         for row in rows:
-            if fn(row):
+            if fn(row, fn_args):
                 yield row
 
     return transform_fn
@@ -778,21 +853,22 @@ def _generate_transform_fn_for_async_map(
     *,
     max_concurrency: int,
     is_flat_map: bool = False,
+    resolve_fn_args: Optional[Callable[[TaskContext], Tuple[Any, ...]]] = None,
 ) -> MapTransformCallable:
     assert max_concurrency > 0, "Max concurrency must be positive"
 
     if inspect.isasyncgenfunction(fn):
 
-        async def _apply_udf(item: T) -> List[U]:
-            gen = fn(item)
+        async def _apply_udf(item: T, fn_args: Tuple[Any, ...]) -> List[U]:
+            gen = fn(item, fn_args) if resolve_fn_args is not None else fn(item)
             # NOTE: Async generator is unrolled inside the task to maintain
             #       requested concurrency level (`max_concurrent_batches`)
             return [out async for out in gen]
 
     elif inspect.iscoroutinefunction(fn):
 
-        async def _apply_udf(item: T) -> List[U]:
-            res = await fn(item)
+        async def _apply_udf(item: T, fn_args: Tuple[Any, ...]) -> List[U]:
+            res = await (fn(item, fn_args) if resolve_fn_args is not None else fn(item))
             return res if is_flat_map else [res]
 
     else:
@@ -833,7 +909,9 @@ def _generate_transform_fn_for_async_map(
     #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
     #     when consumer (Ray task itself) isn't able to keep up
     #
-    async def _execute_transform(it: Iterator[T], output_queue: queue.Queue) -> None:
+    async def _execute_transform(
+        it: Iterator[T], output_queue: queue.Queue, fn_args: Tuple[Any, ...]
+    ) -> None:
         loop = asyncio.get_running_loop()
 
         # NOTE: Individual tasks could complete in arbitrary order.
@@ -901,7 +979,7 @@ def _generate_transform_fn_for_async_map(
                         idx, item = next(enumerated_it)
                         # Launch async task while keeping track of its
                         # index in the enumerated sequence
-                        task = loop.create_task(_apply_udf(item))
+                        task = loop.create_task(_apply_udf(item, fn_args))
                         cur_task_map[task] = idx
                     except StopIteration:
                         consumed = True
@@ -943,11 +1021,12 @@ def _generate_transform_fn_for_async_map(
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)
+        fn_args = resolve_fn_args(task_context) if resolve_fn_args is not None else ()
 
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
 
         asyncio.run_coroutine_threadsafe(
-            _execute_transform(iter(batch_iter), output_queue), loop
+            _execute_transform(iter(batch_iter), output_queue, fn_args), loop
         )
 
         while True:

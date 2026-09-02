@@ -509,7 +509,12 @@ class Dataset:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
-                These arguments are top-level arguments to the underlying Ray task.
+                If ``DataContext.enable_dereference_object_refs_in_fn_args`` is
+                enabled, direct ``ObjectRef`` values are passed as top-level arguments
+                to the underlying Ray task and automatically dereferenced. Otherwise,
+                direct ``ObjectRef`` values are passed to ``fn`` unchanged; this legacy
+                behavior is deprecated. Wrap an ``ObjectRef`` in a container to
+                preserve reference semantics after the default changes.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
                 top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
@@ -815,7 +820,12 @@ class Dataset:
                 in place. It's recommended to copy only the data you need to
                 modify instead of resorting to copying the whole batch.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
-                These arguments are top-level arguments to the underlying Ray task.
+                If ``DataContext.enable_dereference_object_refs_in_fn_args`` is
+                enabled, direct ``ObjectRef`` values are passed as top-level arguments
+                to the underlying Ray task and automatically dereferenced. Otherwise,
+                direct ``ObjectRef`` values are passed to ``fn`` unchanged; this legacy
+                behavior is deprecated. Wrap an ``ObjectRef`` in a container to
+                preserve reference semantics after the default changes.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
                 top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
@@ -1942,7 +1952,12 @@ class Dataset:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
-                These arguments are top-level arguments to the underlying Ray task.
+                If ``DataContext.enable_dereference_object_refs_in_fn_args`` is
+                enabled, direct ``ObjectRef`` values are passed as top-level arguments
+                to the underlying Ray task and automatically dereferenced. Otherwise,
+                direct ``ObjectRef`` values are passed to ``fn`` unchanged; this legacy
+                behavior is deprecated. Wrap an ``ObjectRef`` in a container to
+                preserve reference semantics after the default changes.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
                 top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
@@ -2105,7 +2120,12 @@ class Dataset:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
-                These arguments are top-level arguments to the underlying Ray task.
+                If ``DataContext.enable_dereference_object_refs_in_fn_args`` is
+                enabled, direct ``ObjectRef`` values are passed as top-level arguments
+                to the underlying Ray task and automatically dereferenced. Otherwise,
+                direct ``ObjectRef`` values are passed to ``fn`` unchanged; this legacy
+                behavior is deprecated. Wrap an ``ObjectRef`` in a container to
+                preserve reference semantics after the default changes.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
                 top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
