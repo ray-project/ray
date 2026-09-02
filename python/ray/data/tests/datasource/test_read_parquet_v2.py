@@ -6,6 +6,9 @@ unsupported-option gating. They call ``ray.data.read_parquet`` which
 triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
+
+from dataclasses import dataclass
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -322,6 +325,191 @@ def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_c
     # partitioner groups them into read units.
     assert isinstance(list_files_op.file_partitioner, OnlineBinPacker)
     assert restore_ctx.read_op_min_num_blocks == original
+
+
+def _physical_row_groups(directory):
+    """``(path, rg_id)`` pairs and total rows from parquet footers on disk."""
+    pairs = []
+    total_rows = 0
+    for path in sorted(directory.glob("*.parquet")):
+        parquet_file = pq.ParquetFile(path)
+        total_rows += parquet_file.metadata.num_rows
+        pairs.extend((str(path), i) for i in range(parquet_file.num_row_groups))
+    return pairs, total_rows
+
+
+def _row_group_pairs(manifests):
+    """Expand each listing/bin row into ``(path, rg_id)`` pairs plus row count."""
+    pairs = []
+    total_rows = 0
+    for manifest in manifests:
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas):
+            assert md is not None and "row_group_ids" in md, (
+                "FooterFileIndexer must emit Parquet row-group metadata; "
+                "without it OnlineBinPacker falls back to whole-file bins"
+            )
+            pairs.extend((str(path), int(rg_id)) for rg_id in md["row_group_ids"])
+            total_rows += int(md["num_rows"])
+    return sorted(pairs), total_rows
+
+
+# 1 TiB: larger than any fixture row group, so coalescing merges a whole file
+# and packing with this cap puts every run in one shared bin.
+_UNLIMITED_BYTES = 1 << 40
+
+
+@dataclass(frozen=True)
+class _IndexerPackerCase:
+    num_files: int
+    rows_per_file: int
+    row_group_size: int
+    coalesce_bytes: int
+    max_bin_bytes: int
+    split_coalesced: bool
+    expected_bins: int
+
+    @property
+    def row_groups_per_file(self) -> int:
+        return self.rows_per_file // self.row_group_size
+
+    @property
+    def expected_listing_rows(self) -> int:
+        # Uncoalesced: one listing row per physical row group.
+        # Coalesced: one listing row per file.
+        if self.coalesce_bytes:
+            return self.num_files
+        return self.num_files * self.row_groups_per_file
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        # listing 12: f0:[0][1][2][3] f1:[0][1][2][3] f2:[0][1][2][3]
+        # bins     1: [ f0:0-3 | f1:0-3 | f2:0-3 ]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=3,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=0,
+                max_bin_bytes=_UNLIMITED_BYTES,
+                split_coalesced=False,
+                expected_bins=1,
+            ),
+            id="uncoalesced-light-files-share-one-bin",
+        ),
+        # listing 8: f0:[0][1][2][3] f1:[0][1][2][3]
+        # bins    8: [f0:0][f0:1][f0:2][f0:3] [f1:0][f1:1][f1:2][f1:3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,  # in number of rows
+                coalesce_bytes=0,
+                max_bin_bytes=1,
+                split_coalesced=False,
+                expected_bins=8,
+            ),
+            id="uncoalesced-tiny-bin-one-per-row-group",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    1: [ f0:0-3 | f1:0-3 ]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=_UNLIMITED_BYTES,
+                split_coalesced=False,
+                expected_bins=1,
+            ),
+            id="coalesced-files-share-one-bin",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    2: [f0:0-3] [f1:0-3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=1,
+                split_coalesced=False,
+                expected_bins=2,
+            ),
+            id="coalesced-tiny-bin-one-per-file",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    8: [f0:0][f0:1][f0:2][f0:3] [f1:0][f1:1][f1:2][f1:3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=1,
+                split_coalesced=True,
+                expected_bins=8,
+            ),
+            id="split-coalesced-tiny-bin-one-per-row-group",
+        ),
+    ],
+)
+def test_footer_indexer_feeds_online_bin_packer(tmp_path, case: _IndexerPackerCase):
+    """Listing rows from ``FooterFileIndexer`` are what ``OnlineBinPacker`` packs.
+
+    The indexer emits one manifest row per row-group run; the packer groups
+    those runs into read units. Coalescing happens in the indexer, splitting
+    coalesced runs back at physical boundaries happens in the packer.
+    """
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+        OnlineBinPacker,
+    )
+
+    _write_row_groups(
+        tmp_path,
+        num_files=case.num_files,
+        rows_per_file=case.rows_per_file,
+        row_group_size=case.row_group_size,
+    )
+    physical, physical_rows = _physical_row_groups(tmp_path)
+    assert physical_rows == case.num_files * case.rows_per_file
+
+    indexer = FooterFileIndexer(
+        ignore_missing_paths=False,
+        num_workers=1,
+        coalesce_bytes=case.coalesce_bytes,
+        footer_batch_size=2,
+    )
+    listed = list(
+        indexer.list_files(
+            pa.array([str(tmp_path)]),
+            filesystem=LocalFileSystem(),
+            preserve_order=True,
+        )
+    )
+    listed_pairs, listed_rows = _row_group_pairs(listed)
+    assert sum(len(manifest) for manifest in listed) == case.expected_listing_rows
+    assert listed_pairs == physical
+    assert listed_rows == physical_rows
+
+    packer = OnlineBinPacker(case.max_bin_bytes, split_coalesced=case.split_coalesced)
+    bins = []
+    for manifest in listed:
+        packer.add_input(manifest)
+        while packer.has_partition():
+            bins.append(packer.next_partition())
+    packer.finalize()
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    packed_pairs, packed_rows = _row_group_pairs(bins)
+    assert len(bins) == case.expected_bins
+    assert packed_pairs == physical
+    assert packed_rows == physical_rows
 
 
 def _write_row_groups(path, *, num_files, rows_per_file, row_group_size):
