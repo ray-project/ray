@@ -16,8 +16,6 @@ from ray_release.custom_byod_build_init_helper import (
     collect_rayci_select_keys,
 )
 from ray_release.scripts.custom_image_build_and_test_init import (
-    RAYCI_SELECT_NOOP_KEY,
-    _get_reusable_image_build_id,
     _split_into_batches,
     main,
 )
@@ -46,35 +44,6 @@ def _expected_rayci_select_keys(sample_yaml: str) -> set:
     )
     tests = [test for test, _ in filtered]
     return collect_rayci_select_keys(tests, gpu_map)
-
-
-@pytest.mark.parametrize(
-    ("environment", "expected"),
-    [
-        (
-            {"BUILDKITE_BRANCH": "master", "BUILDKITE_PULL_REQUEST": "123"},
-            "abcdef",
-        ),
-        (
-            {
-                "BUILDKITE_BRANCH": "releases/2.60.0",
-                "BUILDKITE_PULL_REQUEST": "false",
-            },
-            "2.60.0.abcdef",
-        ),
-        (
-            {"BUILDKITE_BRANCH": "feature", "BUILDKITE_PULL_REQUEST": "123"},
-            "pr-123.abcdef",
-        ),
-        (
-            {"BUILDKITE_BRANCH": "feature", "BUILDKITE_PULL_REQUEST": "false"},
-            "abcdef",
-        ),
-    ],
-)
-def test_get_reusable_image_build_id(environment, expected):
-    with patch.dict(os.environ, environment):
-        assert _get_reusable_image_build_id("abcdef1234567890") == expected
 
 
 @patch.dict("os.environ", {"BUILDKITE": "1"})
@@ -139,83 +108,6 @@ def test_custom_image_build_and_test_init(
         assert len(expected) == 3  # cpu base + gpu base + custom-BYOD
 
     assert result.exit_code == 0
-
-
-def test_custom_image_build_and_test_init_reuses_images_for_same_pr_commit():
-    runner = CliRunner()
-    custom_build_jobs_output_file = "custom_build_jobs_reuse.yaml"
-    test_jobs_output_file = "test_jobs_reuse.json"
-    rayci_select_output_file = "rayci_select_reuse.txt"
-
-    def _all_images_exist(tests):
-        return {
-            image
-            for test in tests
-            for image in (
-                test.get_anyscale_byod_image(),
-                test.get_anyscale_base_byod_image(),
-            )
-        }
-
-    environment = {
-        "AUTOMATIC": "0",
-        "BUILDKITE": "1",
-        "BUILDKITE_BRANCH": "400Ping:feature",
-        "BUILDKITE_COMMIT": "abcdef1234567890abcdef1234567890abcdef12",
-        "BUILDKITE_PULL_REQUEST": "65587",
-        "FORCE_REBUILD_RELEASE_TEST_IMAGES": "0",
-        "RAYCI_BUILD_ID": "unique-build-id",
-    }
-    with (
-        patch.dict(os.environ, environment),
-        patch("ray_release.test.Test.update_from_s3", return_value=None),
-        patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False),
-        patch(
-            "ray_release.scripts.custom_image_build_and_test_init.find_available_byod_images",
-            side_effect=_all_images_exist,
-        ) as mock_find_available,
-    ):
-        result = runner.invoke(
-            main,
-            [
-                "--test-collection-file",
-                "release/ray_release/tests/sample_tests.yaml",
-                "--global-config",
-                "oss_config.yaml",
-                "--frequency",
-                "nightly",
-                "--run-jailed-tests",
-                "--run-unstable-tests",
-                "--test-filters",
-                "prefix:hello_world",
-                "--custom-build-jobs-output-file",
-                custom_build_jobs_output_file,
-                "--test-jobs-output-file",
-                test_jobs_output_file,
-                "--rayci-select-output-file",
-                rayci_select_output_file,
-            ],
-            catch_exceptions=False,
-        )
-
-    assert result.exit_code == 0
-    assert mock_find_available.call_count == 1
-    assert not os.path.exists(
-        os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file)
-    )
-
-    with open(
-        os.path.join(
-            _bazel_workspace_dir, f"{os.path.splitext(test_jobs_output_file)[0]}_0.json"
-        )
-    ) as file:
-        test_jobs = json.load(file)
-    for step in test_jobs[0]["steps"]:
-        assert step["depends_on"] is None
-        assert step["env"]["RAYCI_BUILD_ID"] == "pr-65587.abcdef"
-
-    with open(os.path.join(_bazel_workspace_dir, rayci_select_output_file)) as file:
-        assert file.read() == RAYCI_SELECT_NOOP_KEY
 
 
 @patch.dict("os.environ", {"BUILDKITE": "1"})

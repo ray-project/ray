@@ -1,5 +1,4 @@
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -14,12 +13,9 @@ from ray_release.custom_byod_build_init_helper import (
     _get_step_name,
     _short_tag,
     build_short_gpu_map,
-    collect_rayci_select_keys,
     create_custom_build_yaml,
-    find_available_byod_images,
     generate_custom_build_step_key,
     get_prerequisite_step,
-    image_exists,
 )
 from ray_release.test import Test
 
@@ -205,64 +201,6 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             assert "--python-depset" not in env_only_cmd
 
 
-@mock.patch("ray_release.custom_byod_build_init_helper.get_images_from_tests")
-def test_create_custom_build_yaml_reuses_existing_images(mock_get_images_from_tests):
-    existing_image = "registry/anyscale/ray:pr-123.abc123-py310-cpu-existing"
-    image_to_build = "registry/anyscale/ray:pr-123.abc123-py310-cpu-new"
-    base_image = "registry/anyscale/ray:pr-123.abc123-py310-cpu"
-    mock_get_images_from_tests.return_value = (
-        [
-            (existing_image, base_image, "existing.sh", None, None),
-            (image_to_build, base_image, "new.sh", None, None),
-        ],
-        {existing_image: ["test_1"], image_to_build: ["test_2"]},
-    )
-    tests = [Test(name="test_1"), Test(name="test_2")]
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output = os.path.join(tmpdir, "custom_byod_build.rayci.yml")
-        create_custom_build_yaml(
-            output,
-            tests,
-            _GPU_MAP,
-            available_images={existing_image, base_image},
-            build_id="pr-123.abc123",
-        )
-        with open(output) as file:
-            content = yaml.safe_load(file)
-
-    assert len(content["steps"]) == 1
-    assert f"--image-name {image_to_build}" in content["steps"][0]["commands"][5]
-    assert "depends_on" not in content["steps"][0]
-    assert content["steps"][0]["env"] == {"RAYCI_BUILD_ID": "pr-123.abc123"}
-    mock_get_images_from_tests.assert_called_once_with(tests, "pr-123.abc123")
-
-
-@mock.patch("ray_release.custom_byod_build_init_helper.get_images_from_tests")
-def test_create_custom_build_yaml_removes_stale_file_when_all_images_exist(
-    mock_get_images_from_tests,
-):
-    image = "registry/anyscale/ray:pr-123.abc123-py310-cpu-custom"
-    base_image = "registry/anyscale/ray:pr-123.abc123-py310-cpu"
-    mock_get_images_from_tests.return_value = (
-        [(image, base_image, "custom.sh", None, None)],
-        {image: ["test_1"]},
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output = os.path.join(tmpdir, "custom_byod_build.rayci.yml")
-        with open(output, "w") as file:
-            file.write("stale")
-        create_custom_build_yaml(
-            output,
-            [Test(name="test_1")],
-            _GPU_MAP,
-            available_images={image},
-            build_id="pr-123.abc123",
-        )
-        assert not os.path.exists(output)
-
-
 _ECR = get_global_config()["byod_ecr"]
 
 
@@ -387,77 +325,6 @@ def test_short_gpu_map_built_from_ray_images_json():
         assert (
             _short_tag(full) == short
         ), f"_short_tag({full!r}) = {_short_tag(full)!r}, expected {short!r}"
-
-
-@mock.patch.dict(os.environ, {"RAYCI_BUILD_ID": "pr-123.abc123"})
-def test_collect_rayci_select_keys_reuses_final_and_base_images():
-    base_test = Test(
-        {
-            "name": "base",
-            "cluster": {"byod": {"type": "cpu"}},
-        }
-    )
-    custom_test = Test(
-        {
-            "name": "custom",
-            "cluster": {"byod": {"type": "cpu", "post_build_script": "custom.sh"}},
-        }
-    )
-    base_test_image = base_test.get_anyscale_byod_image()
-    custom_base_image = custom_test.get_anyscale_base_byod_image()
-
-    keys = collect_rayci_select_keys(
-        [base_test, custom_test],
-        _GPU_MAP,
-        available_images={base_test_image, custom_base_image},
-    )
-
-    assert keys == {
-        generate_custom_build_step_key(custom_test.get_anyscale_byod_image())
-    }
-
-
-@mock.patch(
-    "ray_release.custom_byod_build_init_helper.subprocess.run",
-    return_value=subprocess.CompletedProcess([], returncode=0),
-)
-def test_image_exists(mock_run):
-    assert image_exists("registry/anyscale/ray:tag")
-    mock_run.assert_called_once_with(
-        ["docker", "manifest", "inspect", "registry/anyscale/ray:tag"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=30,
-        check=False,
-    )
-
-
-@mock.patch(
-    "ray_release.custom_byod_build_init_helper.subprocess.run",
-    side_effect=subprocess.TimeoutExpired("docker", 30),
-)
-def test_image_exists_fails_closed(mock_run):
-    assert not image_exists("registry/anyscale/ray:tag")
-
-
-@mock.patch.dict(os.environ, {"RAYCI_BUILD_ID": "pr-123.abc123"})
-@mock.patch("ray_release.custom_byod_build_init_helper.image_exists")
-def test_find_available_byod_images(mock_image_exists):
-    test = Test(
-        {
-            "name": "custom",
-            "cluster": {"byod": {"type": "cpu", "post_build_script": "custom.sh"}},
-        }
-    )
-    final_image = test.get_anyscale_byod_image()
-    base_image = test.get_anyscale_base_byod_image()
-    mock_image_exists.side_effect = lambda image: image == base_image
-
-    assert find_available_byod_images([test]) == {base_image}
-    assert {call.args[0] for call in mock_image_exists.call_args_list} == {
-        final_image,
-        base_image,
-    }
 
 
 def test_get_step_name():

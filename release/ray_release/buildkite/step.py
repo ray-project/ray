@@ -1,7 +1,7 @@
 import copy
 import os
 import shlex
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -80,7 +80,6 @@ def get_step_for_test_group(
     is_concurrency_limit: bool = True,
     block_step_key: Optional[str] = None,
     gpu_map: Optional[Dict[str, str]] = None,
-    available_images: Optional[Set[str]] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -101,7 +100,6 @@ def get_step_for_test_group(
                     global_config=global_config,
                     block_step_key=block_step_key,
                     gpu_map=gpu_map,
-                    available_images=available_images,
                 )
 
                 if not is_concurrency_limit:
@@ -127,7 +125,6 @@ def get_step(
     global_config: Optional[str] = None,
     block_step_key: Optional[str] = None,
     gpu_map: Optional[Dict[str, str]] = None,
-    available_images: Optional[Set[str]] = None,
 ):
     env = env or {}
     step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
@@ -204,9 +201,7 @@ def get_step(
 
     image = test.get_anyscale_byod_image()
     base_image = test.get_anyscale_base_byod_image()
-    if image in (available_images or set()):
-        step["depends_on"] = None
-    elif test.require_custom_byod_image():
+    if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
         step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
