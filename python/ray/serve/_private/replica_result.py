@@ -131,7 +131,6 @@ class ActorReplicaResult(ReplicaResult):
         self._request_id: str = metadata.request_id
         self._with_rejection = with_rejection
         self._rejection_response = None
-        self._rejection_response_ref: Optional[ray.ObjectRef] = None
         self._consume_wait_handle: int = 0
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
@@ -143,11 +142,6 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
-
-        # Peek without consuming so to_object_ref* can return immediately.
-        # Unary without rejection is a plain ObjectRef, not a generator.
-        if self._with_rejection and self._obj_ref_gen is not None:
-            [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
 
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.cancel_on_parent_request_cancel:
@@ -191,16 +185,8 @@ class ActorReplicaResult(ReplicaResult):
 
         try:
             if self._rejection_response is None:
-                if self._rejection_response_ref is None:
-                    raise RuntimeError(
-                        "Rejection-enabled ActorReplicaResult has no rejection ref."
-                    )
-                response = await self._rejection_response_ref
-                # Publish after consume. If either fails, retry still sees index 0.
-                rejection_response = pickle.loads(response)
-                self._obj_ref_gen._consume_next_ref_n(1)
-                self._rejection_response = rejection_response
-                self._rejection_response_ref = None
+                response = await (await self._obj_ref_gen.__anext__())
+                self._rejection_response = pickle.loads(response)
 
             # Rejected unary never writes a user result; do not wait on it.
             # Own guard so a failed peek/wait retries without re-consuming.
