@@ -2,9 +2,10 @@
 
 Each invocation measures one configuration selected by ``--fast-path`` so the
 release system can compare the same metrics across builds. The width sweep uses
-the same 128-row take from rows ranging from 32 bytes to 64 KiB, including cases
-on both sides of the operational eligibility gates. Source payload is capped at
-about 128 MiB so wider cases remain comparable without unbounded allocation.
+takes of up to 128 rows at 128 B, 1 KiB, 8 KiB, 64 KiB, 512 KiB, 4 MiB, and
+32 MiB per row. Source payload is capped at about 128 MiB; very wide cases
+reduce their source rows, output rows, and nonempty chunks while retaining at
+least two chunks so they still exercise the multi-chunk path.
 
 A single-chunk control tracks the path used by ineligible columns. A complete
 ShufflingBatcher lifecycle uses a production-derived ``(2000, 1697)`` tensor
@@ -267,12 +268,14 @@ def _measure_memory(
     *,
     rows=None,
     width=None,
+    chunks=None,
     batch_size=None,
     single_chunk=False,
     memory_case="take",
 ):
     rows = args.rows if rows is None else rows
     width = args.width if width is None else width
+    chunks = args.chunks if chunks is None else chunks
     batch_size = args.batch_size if batch_size is None else batch_size
     command = [
         sys.executable,
@@ -284,7 +287,7 @@ def _measure_memory(
         "--width",
         str(width),
         "--chunks",
-        str(args.chunks),
+        str(chunks),
         "--batch-size",
         str(batch_size),
         "--shuffle-rows",
@@ -321,11 +324,12 @@ def _measure_memory(
     }
 
 
-def _run_case(args, *, rows, width, batch_size, single_chunk):
+def _run_case(args, *, rows, width, batch_size, single_chunk, chunks=None):
+    chunks = args.chunks if chunks is None else chunks
     table, values = _make_table(
         rows,
         width,
-        args.chunks,
+        chunks,
         single_chunk=single_chunk,
     )
     indices = np.random.default_rng(0).integers(
@@ -333,6 +337,13 @@ def _run_case(args, *, rows, width, batch_size, single_chunk):
         rows,
         size=batch_size,
         dtype=np.int64,
+    )
+    fast_path_prepared = (
+        chunked_tensor_take.try_prepare_chunked_tensor_take(
+            table.column("tensor"),
+            max_output_rows=batch_size,
+        )
+        is not None
     )
     _check_correctness(table, values, indices)
 
@@ -350,7 +361,11 @@ def _run_case(args, *, rows, width, batch_size, single_chunk):
         "row_bytes": width * np.dtype(np.float32).itemsize,
         "source_payload_bytes": rows * width * np.dtype(np.float32).itemsize,
         "source_chunks": table.column("tensor").num_chunks,
+        "nonempty_source_chunks": sum(
+            len(chunk) > 0 for chunk in table.column("tensor").chunks
+        ),
         "batch_size": batch_size,
+        "fast_path_prepared": fast_path_prepared,
     }
     if not args.no_memory:
         metrics.update(
@@ -358,6 +373,7 @@ def _run_case(args, *, rows, width, batch_size, single_chunk):
                 args,
                 rows=rows,
                 width=width,
+                chunks=chunks,
                 batch_size=batch_size,
                 single_chunk=single_chunk,
             )
@@ -368,16 +384,23 @@ def _run_case(args, *, rows, width, batch_size, single_chunk):
 def _run_width_sweep(args):
     results = {}
     float32_bytes = np.dtype(np.float32).itemsize
-    for width in args.sweep_widths:
-        row_bytes = width * float32_bytes
+    for row_bytes in args.sweep_row_bytes:
+        if row_bytes % float32_bytes != 0:
+            raise ValueError(
+                f"Sweep row size {row_bytes} is not divisible by float32 size"
+            )
+        width = row_bytes // float32_bytes
         rows = min(args.sweep_max_rows, args.sweep_max_source_bytes // row_bytes)
-        # Keep all configured chunks nonempty. Like the gather implementation,
-        # the benchmark treats one source row as an irreducible allocation.
-        rows = max(args.chunks, rows)
-        results[f"float32_width_{width}"] = _run_case(
+        # A row is irreducible, while two nonempty chunks are the minimum source
+        # that can exercise the fast path. Reduce the chunk count instead of
+        # exceeding the source-payload cap for very wide rows.
+        rows = max(2, rows)
+        chunks = min(args.chunks, rows)
+        results[f"row_bytes_{row_bytes}"] = _run_case(
             args,
             rows=rows,
             width=width,
+            chunks=chunks,
             batch_size=min(args.sweep_batch_size, rows),
             single_chunk=False,
         )
@@ -460,11 +483,19 @@ def _parse_args():
     parser.add_argument("--iterations", type=int, default=15)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument(
-        "--sweep-widths",
+        "--sweep-row-bytes",
         type=int,
         nargs="+",
-        default=(8, 32, 64, 128, 192, 256, 1024, 4096, 16384),
-        help="Float32 values per row in the direct-take width sweep.",
+        default=(
+            128,
+            1024,
+            8 * 1024,
+            64 * 1024,
+            512 * 1024,
+            4 * 1024 * 1024,
+            32 * 1024 * 1024,
+        ),
+        help="Payload bytes per float32 row in the direct-take width sweep.",
     )
     parser.add_argument("--sweep-max-rows", type=int, default=8192)
     parser.add_argument(
