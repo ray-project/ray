@@ -60,7 +60,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
@@ -77,7 +77,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
@@ -94,7 +94,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route, error_code}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method, error_code)',
                 legend="{{application, method, error_code}}",
             ),
         ],
@@ -111,11 +111,11 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket",application=~"$Application",application!~"",route!~"/-/.*",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -134,11 +134,11 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket",application=~"$Application",application!~"",route!~"/-/.*",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -157,11 +157,11 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, route}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (application, method, le))',
                 legend="{{application, method}}",
             ),
             Target(
-                expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_(http|grpc)_request_latency_ms_bucket",application=~"$Application",application!~"",route!~"/-/.*",method!~"/ray\\\\.serve\\\\.RayServeAPIService/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],

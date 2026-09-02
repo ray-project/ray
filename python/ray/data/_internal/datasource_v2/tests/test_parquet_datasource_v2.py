@@ -675,3 +675,9 @@ def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
     hashes = pa.concat_tables(reader.read(manifest)).column("row_hash").to_pylist()
     assert len(hashes) == expected_rows
     assert len(set(hashes)) == expected_rows
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
