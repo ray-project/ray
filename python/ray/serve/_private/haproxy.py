@@ -16,8 +16,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from jinja2 import Environment
-
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
@@ -1294,6 +1292,10 @@ class HAProxyApi(ProxyApi):
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
         try:
+            # Imported lazily so that a plain `import ray.serve` doesn't require
+            # jinja2; it's only needed when HAProxy mode is actually used.
+            from jinja2 import Environment
+
             env = Environment()
             # Escapes names before they are rendered into set-var-fmt values.
             env.filters["haproxy_fmt"] = _haproxy_fmt_literal
