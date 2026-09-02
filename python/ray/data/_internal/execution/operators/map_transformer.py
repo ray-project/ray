@@ -322,13 +322,20 @@ class _TimedStep(Iterator[Any]):
 
 @dataclass(frozen=True)
 class MapTransformPhaseTimes:
-    """Seconds a task spent in its map transform chain.
+    """Seconds a task spent in its map transform chain, per output block.
 
-    ``total_s`` is the whole chain, which is what Ray Data has always reported as
-    "UDF time". The rest decompose it and sum back to it, saying where inside the
-    chain the time went; they are all ``None`` when the chain measured only its
-    total. Each is summed over every stage of a (possibly fused) chain, so a
-    fused operator reports one figure per phase rather than one per stage.
+    ``total_s`` is the whole chain: forming batches or rows, the stage bodies,
+    and building output blocks, for every stage of a (possibly fused) chain. It
+    is deliberately not the time inside the functions the caller passed in --
+    that is the narrower ``udf_body_s``. ``ds.stats()`` has printed ``total_s``
+    as "UDF time" for many releases, which is misleading for exactly that
+    reason, and is why the breakdown gives the narrow figure its own line,
+    "Function body".
+
+    The four phase figures decompose ``total_s`` and sum back to it, saying
+    where inside the chain the time went; they are all ``None`` when the chain
+    measured only its total. Each is summed over every stage, so a fused
+    operator reports one figure per phase rather than one per stage.
     """
 
     total_s: float = 0.0

@@ -393,7 +393,7 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
-* **UDF time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max and
+* **UDF time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and
   mean are therefore across blocks, and the total is the operator's. This isn't the same as the task's total time, which also
   covers scheduling and writing blocks to the object store. It covers the functions you pass into Ray Data methods, including
   :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`, etc., plus the work
@@ -423,6 +423,58 @@ The following are descriptions of the various stats included at the operator lev
 * **Throughput**: The summary calculates the throughput for the operator, and for a point of comparison, it also computes an estimate of
   the throughput of the same task on a single node. This estimate assumes the total time of the work remains the same, but with no
   concurrency. The overall summary also calculates the throughput at the dataset level, including a single node estimate.
+
+Reading the UDF time breakdown
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Data fuses adjacent operators into one task, so a single **UDF time** breakdown often spans several stages, some of them
+yours and some of them Ray Data's. Take this pipeline:
+
+.. code-block:: python
+
+    import time
+    import ray
+    from ray.data.context import DataContext
+
+    DataContext.get_current().verbose_stats_logs = True
+
+    def map1(batch):
+        time.sleep(0.1)
+        return batch
+
+    def map2(batch):
+        time.sleep(0.2)
+        return batch
+
+    ds = (
+        ray.data.range(2, override_num_blocks=2)
+        .select_columns(["id"])
+        .map_batches(map1, batch_size=None)
+        .map_batches(map2, batch_size=None)
+        .materialize()
+    )
+    print(ds.stats())
+
+Ray Data fuses all four stages into one operator, and the breakdown splits that operator's time like this:
+
+.. code-block:: text
+
+    Operator 1 ReadRange->Project->MapBatches(map1)->MapBatches(map2): 2 tasks executed, 2 blocks produced in 0.72s
+    * Remote wall time: 308.96ms min, 391.19ms max, 350.07ms mean, 700.14ms total
+    * Remote cpu time: 3.97ms min, 33.05ms max, 18.51ms mean, 37.03ms total
+    * UDF time: 307.46ms min, 390.49ms max, 348.98ms mean, 697.95ms total
+        * Input prep: 297.96us min, 2.89ms max, 1.59ms mean, 3.19ms total
+        * Function body: 305.83ms min, 310.34ms max, 308.09ms mean, 616.17ms total
+        * Output block build: 945.29us min, 1.66ms max, 1.3ms mean, 2.61ms total
+        * Built-in stages: 391.92us min, 75.59ms max, 37.99ms mean, 75.99ms total
+    ...
+
+Each figure covers every stage that feeds it:
+
+* **Function body** holds ``map1`` and ``map2`` alone. Each task sleeps 0.1 then 0.2 seconds, and two tasks ran, so the
+  616 ms matches the 0.6 seconds the two functions slept.
+* **Built-in stages** holds ``ReadRange`` and ``Project``, the stages Ray Data adds for ``range`` and ``select_columns``.
+* **Input prep** and **Output block build** cover all four stages, not just the two you wrote. Every stage forms its own
+  batches and builds its own output blocks, and all four stages report into the same two buckets.
 
 Iterator stats
 ~~~~~~~~~~~~~~
