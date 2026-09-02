@@ -35,6 +35,7 @@ def create(
     image: str,
     cpu: Optional[float] = None,
     memory: Optional[Union[str, int, float]] = None,
+    num_gpus: Optional[float] = None,
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
     ttl_seconds: Optional[int] = None,
@@ -58,6 +59,11 @@ def create(
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
+        num_gpus: Number of GPUs to schedule the sandbox actor with, exposed
+            to the sandbox via CDI. Unlike cpu/memory, this is the only
+            place to request GPUs at all -- the sandbox always auto-inherits
+            exactly what Ray assigned the actor (``ray.get_gpu_ids()``),
+            with no separate value to override on the ``Sandbox`` side.
         env: Environment variables to inject into the sandbox.
         workdir: Working directory for commands; None uses the image's
             WORKDIR. On a readonly rootfs an explicit workdir is also the
@@ -94,6 +100,8 @@ def create(
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
+    if num_gpus is not None and num_gpus >= 0:
+        actor_opts["num_gpus"] = num_gpus
     if resources:
         actor_opts["resources"] = resources
 
