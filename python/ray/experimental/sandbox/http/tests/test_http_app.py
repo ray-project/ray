@@ -547,43 +547,43 @@ def test_list_includes_scheduling_sandboxes_as_pending(
 
 def test_shell_passthrough_to_runtime(fake_resolver: FakeResolver) -> None:
     """The create-level and per-exec shell fields reach the sandbox runtime."""
-    client = _client(fake_resolver)
-    info = _create_sandbox(client, shell="/bin/sh")
-    _wait_running(client, info["sandbox_id"])
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, shell="/bin/sh")
+        _wait_running(client, info["sandbox_id"])
 
-    response = client.post(
-        f"{BASE}/sandboxes/{info['sandbox_id']}/execs",
-        json={"command": "echo hi", "shell": "/bin/dash"},
-    )
-    assert response.status_code == 202, response.text
-    exec_id = response.json()["exec_id"]
-    result = client.get(
-        f"{BASE}/sandboxes/{info['sandbox_id']}/execs/{exec_id}",
-        params={"wait_seconds": 5},
-    ).json()
-    assert result["status"] == "completed"
+        response = client.post(
+            f"{BASE}/sandboxes/{info['sandbox_id']}/execs",
+            json={"command": "echo hi", "shell": "/bin/dash"},
+        )
+        assert response.status_code == 202, response.text
+        exec_id = response.json()["exec_id"]
+        result = client.get(
+            f"{BASE}/sandboxes/{info['sandbox_id']}/execs/{exec_id}",
+            params={"wait_seconds": 5},
+        ).json()
+        assert result["status"] == "completed"
 
-    runtime = fake_resolver.runtimes[0]
-    assert runtime.create_calls[0]["shell"] == "/bin/sh"
-    assert runtime.exec_calls[0]["shell"] == "/bin/dash"
+        runtime = fake_resolver.runtimes[0]
+        assert runtime.create_calls[0]["shell"] == "/bin/sh"
+        assert runtime.exec_calls[0]["shell"] == "/bin/dash"
 
 
 def test_exec_user_passthrough(fake_resolver: FakeResolver) -> None:
-    client = _client(fake_resolver)
-    info = _create_sandbox(client)
-    _wait_running(client, info["sandbox_id"])
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client)
+        _wait_running(client, info["sandbox_id"])
 
-    response = client.post(
-        f"{BASE}/sandboxes/{info['sandbox_id']}/execs",
-        json={"command": "id", "user": "1000:1000"},
-    )
-    assert response.status_code == 202, response.text
-    exec_id = response.json()["exec_id"]
-    client.get(
-        f"{BASE}/sandboxes/{info['sandbox_id']}/execs/{exec_id}",
-        params={"wait_seconds": 5},
-    )
-    assert fake_resolver.runtimes[0].exec_calls[0]["user"] == "1000:1000"
+        response = client.post(
+            f"{BASE}/sandboxes/{info['sandbox_id']}/execs",
+            json={"command": "id", "user": "1000:1000"},
+        )
+        assert response.status_code == 202, response.text
+        exec_id = response.json()["exec_id"]
+        client.get(
+            f"{BASE}/sandboxes/{info['sandbox_id']}/execs/{exec_id}",
+            params={"wait_seconds": 5},
+        )
+        assert fake_resolver.runtimes[0].exec_calls[0]["user"] == "1000:1000"
 
 
 def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
@@ -597,21 +597,23 @@ def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
 def test_chunked_file_upload_via_append(fake_resolver: FakeResolver) -> None:
     """PUT ?append=true extends the file, so clients can chunk large uploads
     under proxy body-size limits."""
-    client = _client(fake_resolver)
-    info = _create_sandbox(client)
-    _wait_running(client, info["sandbox_id"])
-    base = f"{BASE}/sandboxes/{info['sandbox_id']}/files"
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client)
+        _wait_running(client, info["sandbox_id"])
+        base = f"{BASE}/sandboxes/{info['sandbox_id']}/files"
 
-    assert client.put(base, params={"path": "/big"}, content=b"aaa").status_code == 204
-    assert (
-        client.put(
-            base, params={"path": "/big", "append": "true"}, content=b"bbb"
-        ).status_code
-        == 204
-    )
+        assert (
+            client.put(base, params={"path": "/big"}, content=b"aaa").status_code == 204
+        )
+        assert (
+            client.put(
+                base, params={"path": "/big", "append": "true"}, content=b"bbb"
+            ).status_code
+            == 204
+        )
 
-    runtime = fake_resolver.runtimes[0]
-    assert runtime.written_files["/big"] == b"aaabbb"
+        runtime = fake_resolver.runtimes[0]
+        assert runtime.written_files["/big"] == b"aaabbb"
 
 
 if __name__ == "__main__":
