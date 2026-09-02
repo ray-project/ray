@@ -405,7 +405,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent serializing blocks produced.",
         metrics_group=MetricsGroup.TASKS,
     )
-    udf_time_s: float = metric_field(
+    block_transform_time_s: float = metric_field(
         default=0,
         description=(
             "Time spent in the operator's map transform chain. The input prep, "
@@ -1087,7 +1087,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             self.block_generation_time += exec_stats.wall_time_s
             self.block_serialization_time_s += exec_stats.block_ser_time_s
-            self.udf_time_s += exec_stats.udf_time_s or 0
+            self.block_transform_time_s += exec_stats.block_transform_time_s or 0
             self.input_prep_time_s += exec_stats.input_prep_time_s or 0
             self.udf_body_time_s += exec_stats.udf_body_time_s or 0
             self.output_build_time_s += exec_stats.output_build_time_s or 0

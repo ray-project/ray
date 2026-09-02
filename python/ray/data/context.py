@@ -650,9 +650,10 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
-        accurate_map_phase_timing: Whether to break "UDF time" down into input prep,
-            function body, and output block build for row-based transforms such as
-            :meth:`~ray.data.Dataset.map` and :meth:`~ray.data.Dataset.filter`. Those
+        accurate_map_phase_timing: Whether to break "Block transform time" down
+            into input prep, function body, and output block build for row-based
+            transforms such as :meth:`~ray.data.Dataset.map` and
+            :meth:`~ray.data.Dataset.filter`. Those
             run once per row, and measuring each phase separately costs enough per row
             to slow the transform down, so by default Ray Data reports only their
             total. Batch-based transforms such as

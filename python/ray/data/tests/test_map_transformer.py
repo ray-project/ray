@@ -23,7 +23,7 @@ def _create_chained_transformer(udf, n, *, is_udf=False):
     """Create a MapTransformer with chained batch transforms that track intermediates.
 
     ``is_udf`` mirrors what the planner sets for real ``map_batches`` stages; it
-    gates UDF timing, so tests that assert on ``udf_time_s`` must pass True.
+    gates transform timing, so tests that assert on ``block_transform_time_s`` must pass True.
     """
     transform_fns = [
         BatchMapTransformFn(
@@ -148,7 +148,7 @@ def _trace_back_refs(intermediates: list, label: str = ""):
                     print(f"    -> {type(r).__name__}")
 
 
-def test_chained_transforms_dont_double_count_udf_time():
+def test_chained_transforms_dont_double_count_block_transform_time():
     """Chained UDF stages must not each re-count their upstream stages' time.
 
     Timing every stage and summing reported n(n+1)/2x the real time, which could
@@ -194,10 +194,10 @@ def test_chained_transforms_dont_double_count_udf_time():
     # absorbs timing noise; double counting shows up at ~2x for 3 stages.
     assert (
         reported_s <= wall_s * 1.05
-    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    ), f"reported block transform time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
     # ...and the stages' time must still be measured, not dropped.
     assert reported_s >= slept_s * 0.9, (
-        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        f"reported block transform time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across {num_calls} UDF calls"
     )
 
@@ -256,9 +256,9 @@ def test_chained_transforms_total_is_independent_of_distribution():
     # exactly, not approximately.
     assert (
         reported_s <= wall_s * 1.05
-    ), f"reported UDF time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
+    ), f"reported block transform time {reported_s:.4f}s exceeds chain wall time {wall_s:.4f}s"
     assert reported_s >= slept_s * 0.9, (
-        f"reported UDF time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
+        f"reported block transform time {reported_s:.4f}s is below the {slept_s:.4f}s slept "
         f"across stages {calls_per_stage}"
     )
 
@@ -295,7 +295,7 @@ def test_every_output_block_is_timed():
         reported_s.append(clock.drain().total_s)
 
     assert all(s >= SLEEP_S * 0.9 for s in reported_s), (
-        f"per-block UDF times {[round(s, 4) for s in reported_s]} do not all "
+        f"per-block transform times {[round(s, 4) for s in reported_s]} do not all "
         f"cover the {SLEEP_S}s slept while producing each block"
     )
 

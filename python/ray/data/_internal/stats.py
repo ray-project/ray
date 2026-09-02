@@ -1706,7 +1706,7 @@ class OperatorStatsSummary:
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
     # Time in the map transform chain. The four fields below decompose it.
-    udf_time: Optional[StatsSummary] = None
+    block_transform_time: Optional[StatsSummary] = None
     # Time turning input blocks into the batches or rows the transforms consume.
     input_prep_time: Optional[StatsSummary] = None
     # Time inside the UDF bodies themselves.
@@ -1762,7 +1762,7 @@ class OperatorStatsSummary:
         # Single pass over block_stats to collect all metrics.
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
-        udf_time_acc: _StatsAccumulator = _StatsAccumulator()
+        block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
         input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
         udf_body_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
@@ -1787,8 +1787,8 @@ class OperatorStatsSummary:
                     wall_time_acc.add(es.wall_time_s)
                 if es.cpu_time_s is not None:
                     cpu_time_acc.add(es.cpu_time_s)
-                if es.udf_time_s is not None:
-                    udf_time_acc.add(es.udf_time_s)
+                if es.block_transform_time_s is not None:
+                    block_transform_time_acc.add(es.block_transform_time_s)
                 if es.input_prep_time_s is not None:
                     input_prep_time_acc.add(es.input_prep_time_s)
                 if es.udf_body_time_s is not None:
@@ -1839,7 +1839,7 @@ class OperatorStatsSummary:
         # Execution stats.
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
-        udf_stats = udf_time_acc.get()
+        udf_stats = block_transform_time_acc.get()
         # A chain that measured only its total leaves the phase accumulators
         # empty. Report that as None rather than a zero-valued summary, so a
         # consumer can tell "not measured" from "measured as zero" -- the phases
@@ -1875,7 +1875,7 @@ class OperatorStatsSummary:
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
-            udf_time=udf_stats,
+            block_transform_time=udf_stats,
             input_prep_time=input_prep_stats,
             udf_body_time=udf_body_stats,
             output_build_time=output_build_stats,
@@ -1916,13 +1916,13 @@ class OperatorStatsSummary:
                 fmt(self.cpu_time.sum),
             )
 
-        if self.udf_time:
+        if self.block_transform_time:
             out += indent
-            out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(self.udf_time.min),
-                fmt(self.udf_time.max),
-                fmt(self.udf_time.mean),
-                fmt(self.udf_time.sum),
+            out += "* Block transform time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(self.block_transform_time.min),
+                fmt(self.block_transform_time.max),
+                fmt(self.block_transform_time.mean),
+                fmt(self.block_transform_time.sum),
             )
             # Breakdown of the line above, in execution order; these sum to
             # it. Verbose-only, like `extra_metrics` -- the figures are on the

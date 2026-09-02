@@ -882,7 +882,7 @@ def _map_task(
                     phase_times = clock.drain()
                     exec_stats = blk_exec_stats_builder.build(
                         block_ser_time_s=block_ser_time_s,
-                        udf_time_s=phase_times.total_s,
+                        block_transform_time_s=phase_times.total_s,
                         input_prep_time_s=phase_times.input_prep_s,
                         udf_body_time_s=phase_times.udf_body_s,
                         output_build_time_s=phase_times.output_build_s,

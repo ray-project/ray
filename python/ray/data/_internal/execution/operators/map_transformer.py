@@ -327,10 +327,9 @@ class MapTransformPhaseTimes:
     ``total_s`` is the whole chain: forming batches or rows, the stage bodies,
     and building output blocks, for every stage of a (possibly fused) chain. It
     is deliberately not the time inside the functions the caller passed in --
-    that is the narrower ``udf_body_s``. ``ds.stats()`` has printed ``total_s``
-    as "UDF time" for many releases, which is misleading for exactly that
-    reason, and is why the breakdown gives the narrow figure its own line,
-    "Function body".
+    that is the narrower ``udf_body_s``. ``ds.stats()`` printed this figure as
+    "UDF time" before it was renamed, which said the opposite; hence the rename,
+    and hence the narrow figure getting its own "Function body" line.
 
     The four phase figures decompose ``total_s`` and sum back to it, saying
     where inside the chain the time went; they are all ``None`` when the chain
@@ -566,7 +565,7 @@ class MapTransformer:
         from ray.data.context import DataContext
 
         # A chain with no UDF in it -- a standalone read, write or projection --
-        # has no user function to attribute time to, so it reports no UDF time,
+        # has no user function to attribute time to, so it reports no block transform time,
         # as it always has.
         has_udf = any(fn._is_udf for fn in self._transform_fns)
         # Timing costs a Python frame per item. A batch transform yields whole

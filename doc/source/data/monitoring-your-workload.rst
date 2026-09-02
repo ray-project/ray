@@ -393,7 +393,7 @@ The following are descriptions of the various stats included at the operator lev
   isn't processing data, sleeping, waiting for I/O, etc.
 * **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
   user and system CPU time.
-* **UDF time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and
+* **Block transform time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and
   mean are therefore across blocks, and the total is the operator's. This isn't the same as the task's total time, which also
   covers scheduling and writing blocks to the object store. It covers the functions you pass into Ray Data methods, including
   :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`, etc., plus the work
@@ -424,9 +424,9 @@ The following are descriptions of the various stats included at the operator lev
   the throughput of the same task on a single node. This estimate assumes the total time of the work remains the same, but with no
   concurrency. The overall summary also calculates the throughput at the dataset level, including a single node estimate.
 
-Reading the UDF time breakdown
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Data fuses adjacent operators into one task, so a single **UDF time** breakdown often spans several stages, some of them
+Reading the block transform time breakdown
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Data fuses adjacent operators into one task, so a single **block transform time** breakdown often spans several stages, some of them
 yours and some of them Ray Data's. Take this pipeline:
 
 .. code-block:: python
@@ -461,7 +461,7 @@ Ray Data fuses all four stages into one operator, and the breakdown splits that 
     Operator 1 ReadRange->Project->MapBatches(map1)->MapBatches(map2): 2 tasks executed, 2 blocks produced in 0.72s
     * Remote wall time: 308.96ms min, 391.19ms max, 350.07ms mean, 700.14ms total
     * Remote cpu time: 3.97ms min, 33.05ms max, 18.51ms mean, 37.03ms total
-    * UDF time: 307.46ms min, 390.49ms max, 348.98ms mean, 697.95ms total
+    * Block transform time: 307.46ms min, 390.49ms max, 348.98ms mean, 697.95ms total
         * Input prep: 297.96us min, 2.89ms max, 1.59ms mean, 3.19ms total
         * Function body: 305.83ms min, 310.34ms max, 308.09ms mean, 616.17ms total
         * Output block build: 945.29us min, 1.66ms max, 1.3ms mean, 2.61ms total
@@ -512,7 +512,7 @@ By enabling verbosity Ray Data adds a few more outputs:
   operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took
   to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
   they show how long running each of the operators is in the context of the full dataset execution.
-* **UDF time breakdown**: Ray Data splits each operator's **UDF time**, which it measures per output block, into the input
+* **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output block, into the input
   prep, function body, output block build and built-in stage phases, so you can see which part of the transform the time
   actually went to.
 
@@ -525,7 +525,7 @@ As a concrete example, below is a stats output from :doc:`Image Classification B
    Operator 1 ReadImage->Map(preprocess_image): 384 tasks executed, 386 blocks produced in 9.21s
    * Remote wall time: 33.55ms min, 2.22s max, 1.03s mean, 395.65s total
    * Remote cpu time: 34.93ms min, 3.36s max, 1.64s mean, 632.26s total
-   * UDF time: 535.1ms min, 2.16s max, 975.7ms mean, 376.62s total
+   * Block transform time: 535.1ms min, 2.16s max, 975.7ms mean, 376.62s total
    * Peak heap memory usage (MiB): 556.32 min, 1126.95 max, 655 mean
    * Output num rows per block: 4 min, 25 max, 24 mean, 9469 total
    * Output size bytes per block: 6060399 min, 105223020 max, 31525416 mean, 12168810909 total
@@ -538,7 +538,7 @@ As a concrete example, below is a stats output from :doc:`Image Classification B
    Operator 2 MapBatches(ResnetModel): 14 tasks executed, 48 blocks produced in 27.43s
    * Remote wall time: 523.93us min, 7.01s max, 1.82s mean, 87.18s total
    * Remote cpu time: 523.23us min, 6.23s max, 1.76s mean, 84.61s total
-   * UDF time: 4.49s min, 17.81s max, 10.52s mean, 505.08s total
+   * Block transform time: 4.49s min, 17.81s max, 10.52s mean, 505.08s total
    * Peak heap memory usage (MiB): 4025.42 min, 7920.44 max, 5803 mean
    * Output num rows per block: 84 min, 334 max, 197 mean, 9469 total
    * Output size bytes per block: 72317976 min, 215806447 max, 134739694 mean, 6467505318 total
@@ -569,7 +569,7 @@ For the same example with verbosity enabled, the stats output is:
    Operator 1 ReadImage->Map(preprocess_image): 384 tasks executed, 387 blocks produced in 9.49s
    * Remote wall time: 22.81ms min, 2.5s max, 999.95ms mean, 386.98s total
    * Remote cpu time: 24.06ms min, 3.36s max, 1.63s mean, 629.93s total
-   * UDF time: 552.79ms min, 2.41s max, 956.84ms mean, 370.3s total
+   * Block transform time: 552.79ms min, 2.41s max, 956.84ms mean, 370.3s total
    * Peak heap memory usage (MiB): 550.95 min, 1186.28 max, 651 mean
    * Output num rows per block: 4 min, 25 max, 24 mean, 9469 total
    * Output size bytes per block: 4444092 min, 105223020 max, 31443955 mean, 12168810909 total
@@ -583,7 +583,7 @@ For the same example with verbosity enabled, the stats output is:
    Operator 2 MapBatches(ResnetModel): 14 tasks executed, 48 blocks produced in 28.81s
    * Remote wall time: 134.84us min, 7.23s max, 1.82s mean, 87.16s total
    * Remote cpu time: 133.78us min, 6.28s max, 1.75s mean, 83.98s total
-   * UDF time: 4.56s min, 17.78s max, 10.28s mean, 493.48s total
+   * Block transform time: 4.56s min, 17.78s max, 10.28s mean, 493.48s total
    * Peak heap memory usage (MiB): 3925.88 min, 7713.01 max, 5688 mean
    * Output num rows per block: 125 min, 259 max, 197 mean, 9469 total
    * Output size bytes per block: 75531617 min, 187889580 max, 134739694 mean, 6467505318 total
