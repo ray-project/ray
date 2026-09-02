@@ -36,15 +36,16 @@ def api_base_url():
         pytest.skip("runsc is not on PATH")
 
     # Ray Serve is stripped from the core sandbox CI image (the sandbox
-    # test job installs with --install-mask all-ray-libraries), so this
-    # end-to-end test only runs where Serve is actually installed, e.g. a
-    # full dev container.
-    pytest.importorskip("ray.serve")
+    # test job installs with --install-mask all-ray-libraries): the module
+    # stays importable but loses serve.run, so this end-to-end test only
+    # runs where Serve is fully installed, e.g. a dev container.
+    serve = pytest.importorskip("ray.serve")
+    if not hasattr(serve, "run"):
+        pytest.skip("ray.serve is present but not fully installed")
 
     os.environ["RAY_SANDBOX_API_TOKEN"] = _TOKEN
 
     import ray
-    from ray import serve
     from ray.experimental.sandbox.http.app import build_app
 
     ray.init()
