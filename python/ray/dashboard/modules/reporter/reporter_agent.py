@@ -524,6 +524,7 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         self._open_telemetry_metric_recorder = None
+        self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -712,7 +713,7 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder.register_histogram_metric(
             metric.name,
             metric.description,
-            data_points[0].explicit_bounds,
+            list(data_points[0].explicit_bounds),
         )
         # Collect all data points and record using a single call
         batch_data_points = []
@@ -725,6 +726,7 @@ class ReporterAgent(
                 {
                     "tags": tags,
                     "bucket_counts": list(data_point.bucket_counts),
+                    "bucket_boundaries": list(data_point.explicit_bounds),
                 }
             )
 
@@ -788,10 +790,24 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+                    # Isolate failures per metric: a single bad metric must not
+                    # discard the rest of the batch, which would silently drop all
+                    # of the reporting component's remaining metrics.
+                    try:
+                        if metric.WhichOneof("data") == "histogram":
+                            self._export_histogram_data(metric)
+                        else:
+                            self._export_number_data(metric)
+                    except Exception as e:
+                        # A failing metric usually keeps failing every interval, so
+                        # warn once per name rather than on every export.
+                        if metric.name not in self._export_failure_warned:
+                            self._export_failure_warned.add(metric.name)
+                            logger.warning(
+                                "Failed to export metric %s, skipping it: %r",
+                                metric.name,
+                                e,
+                            )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
