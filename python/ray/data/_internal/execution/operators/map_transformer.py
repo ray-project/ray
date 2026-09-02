@@ -244,10 +244,16 @@ class MapTransformPhaseTimes:
     """Seconds a task spent in its map transform chain.
 
     ``total_s`` is the whole chain, which is what Ray Data has always reported as
-    "UDF time". The rest decompose it and sum back to it, saying where inside the
-    chain the time went; they are all ``None`` when the chain measured only its
-    total. Each is summed over every stage of a (possibly fused) chain, so a
-    fused operator reports one figure per phase rather than one per stage.
+    "UDF time". The phase figures decompose it and sum back to it, saying where
+    inside the chain the time went; they are all ``None`` when the chain measured
+    only its total. Each is summed over every stage of a (possibly fused) chain,
+    so a fused operator reports one figure per phase rather than one per stage.
+
+    ``stage_s`` splits the same time the other way: one entry per UDF stage, in
+    chain order, each covering that stage's own phases. Empty unless
+    ``DataContext.per_udf_stage_timing`` is set. Only UDF stages get an entry, so
+    ``sum(stage_s) <= total_s``; the remainder is whatever non-UDF stages fused
+    into the chain cost, such as a read's own prep, body and block building.
     """
 
     total_s: float = 0.0
@@ -257,6 +263,7 @@ class MapTransformPhaseTimes:
     udf_body_s: Optional[float] = None
     output_build_s: Optional[float] = None
     other_s: Optional[float] = None
+    stage_s: Tuple[float, ...] = ()
 
 
 class UDFTimeScope:
@@ -284,13 +291,18 @@ class UDFTimeScope:
 
     ``phase_totals`` splits that same time by :class:`MapTransformPhase` when the
     chain is timing phases; a chain timing only its total leaves it at zero.
+    ``stage_totals`` splits it per UDF stage instead, and stays empty unless
+    ``apply_transform`` sized it.
     """
 
-    __slots__ = ("attributed_s", "phase_totals", "decomposed")
+    __slots__ = ("attributed_s", "phase_totals", "stage_totals", "decomposed")
 
     def __init__(self) -> None:
         self.attributed_s: float = 0.0
         self.phase_totals: List[float] = [0.0] * len(MapTransformPhase)
+        # Sized by `apply_transform` to the number of UDF stages, and left empty
+        # when per-stage timing is off.
+        self.stage_totals: List[float] = []
         # Set by `apply_transform`; False when only the total was measured.
         self.decomposed: bool = False
 
@@ -298,6 +310,7 @@ class UDFTimeScope:
         self,
         phase: Optional["MapTransformPhase"],
         make_data: Callable[[], Iterable[MapTransformFnData]],
+        udf_stage_idx: Optional[int] = None,
     ) -> Iterable[MapTransformFnData]:
         """Run ``make_data()`` inside an attribution window and return its result.
 
@@ -322,10 +335,13 @@ class UDFTimeScope:
             self.attributed_s += exclusive_s
             if phase is not None:
                 self.phase_totals[phase.value] += exclusive_s
+            if udf_stage_idx is not None:
+                self.stage_totals[udf_stage_idx] += exclusive_s
 
     def drain(self) -> "MapTransformPhaseTimes":
         """Return the time accumulated since the last drain, and reset."""
         totals = self.phase_totals
+        stages = self.stage_totals
         if self.decomposed:
             times = MapTransformPhaseTimes(
                 total_s=self.attributed_s,
@@ -333,14 +349,19 @@ class UDFTimeScope:
                 udf_body_s=totals[MapTransformPhase.UDF_BODY.value],
                 output_build_s=totals[MapTransformPhase.OUTPUT_BUILD.value],
                 other_s=totals[MapTransformPhase.OTHER.value],
+                stage_s=tuple(stages),
             )
         else:
-            times = MapTransformPhaseTimes(total_s=self.attributed_s)
+            times = MapTransformPhaseTimes(
+                total_s=self.attributed_s, stage_s=tuple(stages)
+            )
         self.attributed_s = 0.0
-        # Zero in place: the timers hold this list, and `_map_task` drains after
-        # every output block, mid-iteration.
+        # Zero in place: the timers hold these lists, and `_map_task` drains
+        # after every output block, mid-iteration.
         for i in range(len(totals)):
             totals[i] = 0.0
+        for i in range(len(stages)):
+            stages[i] = 0.0
         return times
 
 
@@ -368,6 +389,7 @@ class MapTransformer:
             input: Iterable[MapTransformFnData],
             scope: "UDFTimeScope",
             phase: Optional[MapTransformPhase] = None,
+            udf_stage_idx: Optional[int] = None,
         ):
             # `input` is an Iterable, but `__next__` needs an Iterator, and some
             # callers hand `apply_transform` a plain list.
@@ -375,6 +397,9 @@ class MapTransformer:
             self._scope = scope
             # None when timing a whole stage rather than one of its phases.
             self._phase_idx = None if phase is None else phase.value
+            # Ordinal of the UDF stage this timer belongs to, when per-stage
+            # timing is on. Every phase of one stage shares it.
+            self._udf_stage_idx = udf_stage_idx
 
         def __iter__(self) -> "MapTransformer._UDFTimingIterator":
             return self
@@ -395,6 +420,8 @@ class MapTransformer:
                 scope.attributed_s += exclusive_s
                 if self._phase_idx is not None:
                     scope.phase_totals[self._phase_idx] += exclusive_s
+                if self._udf_stage_idx is not None:
+                    scope.stage_totals[self._udf_stage_idx] += exclusive_s
 
     def __init__(
         self,
@@ -497,14 +524,26 @@ class MapTransformer:
         # has no user function to attribute time to, so it reports no UDF time at
         # all, as it always has. Timing its stages would put its whole transform
         # under "UDF time" on an operator that runs nothing the user wrote.
+        data_context = DataContext.get_current()
         has_udf = any(fn._is_udf for fn in self._transform_fns)
         per_row = any(
             fn._input_type is MapTransformFnDataType.Row for fn in self._transform_fns
         )
         decomposed = has_udf and (
-            not per_row or DataContext.get_current().accurate_map_phase_timing
+            not per_row or data_context.accurate_map_phase_timing
         )
         udf_time_scope.decomposed = decomposed
+
+        # Per-stage timing needs no extra timers -- the ones above already know
+        # which stage they belong to -- but it does put a per-stage list on every
+        # block's metadata, so it stays opt-in.
+        num_udf_stages = sum(1 for fn in self._transform_fns if fn._is_udf)
+        if data_context.per_udf_stage_timing and num_udf_stages > 1:
+            udf_time_scope.stage_totals = [0.0] * num_udf_stages
+        else:
+            udf_time_scope.stage_totals = []
+        per_stage = bool(udf_time_scope.stage_totals)
+        udf_stage_idx = 0
 
         iter = input_blocks
         # Whether by phase or by stage, a timer has to be installed before the
@@ -518,20 +557,31 @@ class MapTransformer:
                 iter = transform_fn(iter, ctx, report_custom_op_stats)
                 continue
 
+            is_udf = transform_fn._is_udf
+            # Every phase of a UDF stage shares its ordinal, so a stage's figure
+            # covers its own prep and block building as well as its body.
+            stage_idx = udf_stage_idx if (per_stage and is_udf) else None
+            if is_udf:
+                udf_stage_idx += 1
+
             if decomposed:
-                is_udf = transform_fn._is_udf
 
                 def wrap_phase(
                     phase: MapTransformPhase,
                     make_data: Callable[[], Iterable[MapTransformFnData]],
                     _is_udf: bool = is_udf,
+                    _stage_idx: Optional[int] = stage_idx,
                 ) -> Iterable[MapTransformFnData]:
                     if phase is MapTransformPhase.UDF_BODY and not _is_udf:
                         phase = MapTransformPhase.OTHER
                     # Time building the iterable as well as draining it, so a
                     # stage that consumes its input eagerly is not missed.
-                    data = udf_time_scope.attribute_call(phase, make_data)
-                    return self._UDFTimingIterator(data, udf_time_scope, phase)
+                    data = udf_time_scope.attribute_call(
+                        phase, make_data, _stage_idx
+                    )
+                    return self._UDFTimingIterator(
+                        data, udf_time_scope, phase, _stage_idx
+                    )
 
                 iter = transform_fn(iter, ctx, report_custom_op_stats, wrap_phase)
             else:
@@ -544,9 +594,12 @@ class MapTransformer:
                     lambda fn=transform_fn, it=iter: fn(
                         it, ctx, report_custom_op_stats
                     ),
+                    stage_idx,
                 )
-                if transform_fn._is_udf:
-                    iter = self._UDFTimingIterator(iter, udf_time_scope)
+                if is_udf:
+                    iter = self._UDFTimingIterator(
+                        iter, udf_time_scope, None, stage_idx
+                    )
 
         return iter
 

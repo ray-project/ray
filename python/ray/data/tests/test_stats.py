@@ -2001,6 +2001,64 @@ def test_row_transform_phases_are_opt_in(
     assert op_on.udf_time.sum == pytest.approx(op_off.udf_time.sum, rel=0.25)
 
 
+def test_per_udf_stage_timing_splits_a_fused_chain(
+    ray_start_regular_shared, restore_data_context
+):
+    """A fused operator can say which of its UDFs the time went to.
+
+    Fusion is what makes this necessary: two ``map_batches`` calls become one
+    operator, and one figure for both is exactly what leaves you unable to tell
+    which function to optimise. Stage 1 sleeps 10x longer than stage 0 here, so
+    a correct split is unmistakable.
+    """
+    fast_s, slow_s = 0.02, 0.2
+    num_blocks = 4
+
+    def fast_stage(batch):
+        time.sleep(fast_s)
+        return batch
+
+    def slow_stage(batch):
+        time.sleep(slow_s)
+        return batch
+
+    def run():
+        ds = (
+            ray.data.range(num_blocks, override_num_blocks=num_blocks)
+            .map_batches(fast_stage, batch_size=None)
+            .map_batches(slow_stage, batch_size=None)
+            .materialize()
+        )
+        return get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+
+    DataContext.get_current().per_udf_stage_timing = False
+    off = run()
+    assert not off.udf_stage_time, "per-stage timing should be off by default"
+
+    DataContext.get_current().per_udf_stage_timing = True
+    on = run()
+    assert (
+        len(on.udf_stage_time) == 2
+    ), f"expected one entry per fused UDF stage, got {len(on.udf_stage_time)}"
+
+    stage0, stage1 = on.udf_stage_time
+    # The slow stage must be attributed the bulk of the time. The ratio is
+    # diluted by each stage's own prep and block building, so assert direction
+    # and a wide margin rather than the 10x the sleeps differ by.
+    assert stage1.sum > stage0.sum * 3, (
+        f"stage 0 {stage0.sum:.4f}s vs stage 1 {stage1.sum:.4f}s; the 10x slower "
+        "stage should dominate"
+    )
+    # Only UDF stages get an entry, so they account for at most the total.
+    stage_sum = stage0.sum + stage1.sum
+    assert stage_sum <= on.udf_time.sum + 1e-6
+    # ...and for nearly all of it, since the fused read is cheap here.
+    assert stage_sum >= on.udf_time.sum * 0.9
+
+    # Turning it on must not move the headline figure.
+    assert on.udf_time.sum == pytest.approx(off.udf_time.sum, rel=0.25)
+
+
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Test 1: Basic write_parquet - stats stored in _write_ds
     ds1 = ray.data.range(100, override_num_blocks=100)

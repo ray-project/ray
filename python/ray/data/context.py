@@ -180,6 +180,8 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
 
+DEFAULT_PER_UDF_STAGE_TIMING = False
+
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
@@ -650,6 +652,11 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        per_udf_stage_timing: Whether to report UDF time per fused stage as well as
+            per phase. Ray Data fuses adjacent map operators, so one operator's UDF
+            time can cover several of your functions; this splits it between them.
+            Off by default because it adds a per-stage list to every block's
+            metadata. Has no effect on an operator with a single UDF stage.
         accurate_map_phase_timing: Whether to break "UDF time" down into input prep,
             function body, and output block build for row-based transforms such as
             :meth:`~ray.data.Dataset.map` and :meth:`~ray.data.Dataset.filter`. Those
@@ -969,6 +976,7 @@ class DataContext:
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
+    per_udf_stage_timing: bool = DEFAULT_PER_UDF_STAGE_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory

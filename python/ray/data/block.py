@@ -259,6 +259,11 @@ class BlockExecStats:
     # Time spent in the bodies of non-UDF stages fused into the same chain, such
     # as a read or a write. Kept so the decomposition adds up.
     other_stage_time_s: Optional[float] = None
+    # Per-UDF-stage time, in chain order, when `per_udf_stage_timing` is on.
+    # Covers each stage's own phases. Only UDF stages get an entry, so this sums
+    # to at most `udf_time_s`; the rest is what non-UDF stages fused into the
+    # chain cost. None when off.
+    udf_stage_time_s: Optional[Tuple[float, ...]] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.

@@ -1715,6 +1715,9 @@ class OperatorStatsSummary:
     output_build_time: Optional[StatsSummary] = None
     # Time in the bodies of non-UDF stages fused into the same chain.
     other_stage_time: Optional[StatsSummary] = None
+    # One entry per fused UDF stage, in chain order, when
+    # `DataContext.per_udf_stage_timing` is set. Empty otherwise.
+    udf_stage_time: Optional[List[StatsSummary]] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1767,6 +1770,7 @@ class OperatorStatsSummary:
         udf_body_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
         other_stage_time_acc: _StatsAccumulator = _StatsAccumulator()
+        udf_stage_accs: List[_StatsAccumulator] = []
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1797,6 +1801,13 @@ class OperatorStatsSummary:
                     output_build_time_acc.add(es.output_build_time_s)
                 if es.other_stage_time_s is not None:
                     other_stage_time_acc.add(es.other_stage_time_s)
+                if es.udf_stage_time_s:
+                    # Sized on first sight; a fused chain has the same shape for
+                    # every block it produces.
+                    while len(udf_stage_accs) < len(es.udf_stage_time_s):
+                        udf_stage_accs.append(_StatsAccumulator())
+                    for acc, stage_s in zip(udf_stage_accs, es.udf_stage_time_s):
+                        acc.add(stage_s)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1850,6 +1861,7 @@ class OperatorStatsSummary:
         udf_body_stats = udf_body_time_acc.get() if phases_measured else None
         output_build_stats = output_build_time_acc.get() if phases_measured else None
         other_stage_stats = other_stage_time_acc.get() if phases_measured else None
+        udf_stage_stats = [acc.get() for acc in udf_stage_accs]
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1880,6 +1892,7 @@ class OperatorStatsSummary:
             udf_body_time=udf_body_stats,
             output_build_time=output_build_stats,
             other_stage_time=other_stage_stats,
+            udf_stage_time=udf_stage_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1949,6 +1962,24 @@ class OperatorStatsSummary:
                         fmt(stats.mean),
                         fmt(stats.sum),
                     )
+
+            # The same time split per fused UDF stage rather than per phase.
+            # Numbered in chain order, matching the order the stages appear in
+            # the operator name above. Verbose-only for the same reason as the
+            # phase breakdown, and collected only under
+            # `DataContext.per_udf_stage_timing`.
+            stage_times = self.udf_stage_time or []
+            if not DataContext.get_current().verbose_stats_logs:
+                stage_times = []
+            for i, stage_stats in enumerate(stage_times):
+                out += indent
+                out += ("\t* UDF stage {}: {} min, {} max, {} mean, {} total\n").format(
+                    i,
+                    fmt(stage_stats.min),
+                    fmt(stage_stats.max),
+                    fmt(stage_stats.mean),
+                    fmt(stage_stats.sum),
+                )
 
         if self.output_num_rows:
             out += indent
