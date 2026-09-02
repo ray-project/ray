@@ -205,7 +205,7 @@ For more on how to read this output, see :ref:`Monitoring Your Workload with the
     Operator 1 ReadParquet->SplitBlocks(32): 1 tasks executed, 32 blocks produced in 2.92s
     * Remote wall time: 103.38us min, 1.34s max, 42.14ms mean, 1.35s total
     * Remote cpu time: 102.0us min, 164.66ms max, 5.37ms mean, 171.72ms total
-    * Block transform time: 0us min, 0us max, 0.0us mean, 0us total
+    * Block transform time: 95.12us min, 1.31s max, 41.09ms mean, 1.31s total
     * Peak heap memory usage (MiB): 266375.0 min, 281875.0 max, 274491 mean
     * Output num rows per block: 1875 min, 1875 max, 1875 mean, 60000 total
     * Output size bytes per block: 537986 min, 555360 max, 545963 mean, 17470820 total

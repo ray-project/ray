@@ -395,7 +395,8 @@ The following are descriptions of the various stats included at the operator lev
   user and system CPU time.
 * **Block transform time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and
   mean are therefore across blocks, and the total is the operator's. This isn't the same as the task's total time, which also
-  covers scheduling and writing blocks to the object store. It covers the functions you pass into Ray Data methods, including
+  covers scheduling and writing blocks to the object store. Read, write and map operators all report it, because a read and a
+  write run functions too. It covers the functions you pass into Ray Data methods, including
   :meth:`~ray.data.Dataset.map`, :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.filter`, etc., plus the work
   around those calls that feeds them and collects what they return.
   Set ``DataContext.verbose_stats_logs`` to break it into the following phases, which sum to this total:

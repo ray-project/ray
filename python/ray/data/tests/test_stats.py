@@ -1932,25 +1932,27 @@ def test_eagerly_consuming_stage_body_is_timed(ray_start_regular_shared):
     assert op.block_transform_time.sum >= op.function_body_time.sum
 
 
-def test_operator_without_a_udf_reports_no_block_transform_time(
+def test_operator_without_a_udf_is_still_timed(
     ray_start_regular_shared, restore_data_context
 ):
-    """An operator that runs no user function reports no block transform time.
+    """A chain with no user function in it is measured like any other.
 
-    Every stage of a decomposed chain is timed, so without a guard a standalone
-    read would report its whole transform under "Block transform time" -- on an
-    operator that runs nothing the user wrote -- where it has always reported zero.
+    A read's body is a function like a UDF's, and "block transform time" names
+    what it measures rather than who wrote it, so there is nothing to gate on.
+    Master reported zero for a standalone read.
     """
     ds = ray.data.range(100, override_num_blocks=2).materialize()
     op = ds.get_stats_summary().operators_stats[-1]
 
-    assert (
-        op.block_transform_time.sum == 0.0
-    ), f"read reported {op.block_transform_time.sum}s of block transform time"
-    # Nothing was measured, so the phases are absent rather than a row of zeros.
-    assert op.input_prep_time is None
-    assert op.function_body_time is None
-    assert op.output_build_time is None
+    assert op.block_transform_time.sum > 0.0, "read reported no block transform time"
+    # The phases are measured rather than absent, and they still add up.
+    parts = _phase_components(op)
+    assert all(s is not None for s in parts.values()), parts
+    assert sum(s.sum for s in parts.values()) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+    # A read's I/O is inside the timed window, so it cannot exceed the wall time.
+    assert op.block_transform_time.sum <= op.wall_time.sum * 1.05
 
 
 def test_row_transform_phases_are_opt_in(

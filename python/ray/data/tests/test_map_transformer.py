@@ -19,16 +19,11 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data.block import BlockAccessor, DataBatch
 
 
-def _create_chained_transformer(udf, n, *, is_udf=False):
-    """Create a MapTransformer with chained batch transforms that track intermediates.
-
-    ``is_udf`` mirrors what the planner sets for real ``map_batches`` stages; it
-    gates transform timing, so tests that assert on ``block_transform_time_s`` must pass True.
-    """
+def _create_chained_transformer(udf, n):
+    """Create a MapTransformer with chained batch transforms that track intermediates."""
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(udf),
-            is_udf=is_udf,
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
@@ -166,8 +161,7 @@ def test_chained_transforms_dont_double_count_block_transform_time():
         time.sleep(SLEEP_S)
         return pd.DataFrame({"id": batch["id"]})
 
-    # is_udf=True is what gates timing; without it no stage is timed at all.
-    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS, is_udf=True)
+    transformer = _create_chained_transformer(udf, NUM_CHAINED_TRANSFORMS)
     ctx = TaskContext(task_idx=0, op_name="test")
 
     def make_input_blocks():
@@ -226,7 +220,6 @@ def test_chained_transforms_total_is_independent_of_distribution():
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(make_udf(i)),
-            is_udf=True,
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
@@ -278,7 +271,7 @@ def test_every_output_block_is_timed():
         time.sleep(SLEEP_S)
         return pd.DataFrame({"id": batch["id"]})
 
-    transformer = _create_chained_transformer(udf, 1, is_udf=True)
+    transformer = _create_chained_transformer(udf, 1)
     ctx = TaskContext(task_idx=0, op_name="test")
 
     def make_input_blocks():

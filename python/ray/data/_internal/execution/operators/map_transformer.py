@@ -100,7 +100,6 @@ class MapTransformFn(ABC):
         fn: Callable,
         input_type: MapTransformFnDataType,
         *,
-        is_udf: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
         should_report_custom_op_stats: bool = False,
     ):
@@ -111,7 +110,6 @@ class MapTransformFn(ABC):
                 ``(data, ctx, report_custom_op_stats)`` when
                 ``should_report_custom_op_stats=True``.
             input_type: Expected type of the input data.
-            is_udf: Whether this transformation is UDF or not.
             output_block_size_option: (Optional) Output block size configuration.
             should_report_custom_op_stats: If ``True``, the wrapped callable accepts a
                 third ``report_custom_op_stats`` callback argument and may report
@@ -122,7 +120,6 @@ class MapTransformFn(ABC):
         self._fn = fn
         self._input_type = input_type
         self._output_block_size_option = output_block_size_option
-        self._is_udf = is_udf
         self._should_report_custom_op_stats = should_report_custom_op_stats
 
     @abstractmethod
@@ -560,10 +557,6 @@ class MapTransformer:
 
         from ray.data.context import DataContext
 
-        # A chain with no UDF in it -- a standalone read, write or projection --
-        # has no user function to attribute time to, so it reports no block transform time,
-        # as it always has.
-        has_udf = any(fn._is_udf for fn in self._transform_fns)
         # Timing costs a Python frame per item. A batch transform yields whole
         # batches, so three timers per stage is noise; a row transform yields
         # rows, where it is not. Row chains get one timer per stage instead,
@@ -574,14 +567,6 @@ class MapTransformer:
         decomposed = not per_row or DataContext.get_current().accurate_map_phase_timing
 
         steps = self.get_timed_steps(ctx, report_custom_op_stats, decomposed=decomposed)
-
-        if not has_udf:
-            # Nothing to attribute, so no timer to pay for.
-            data = input_blocks
-            for step in steps:
-                data = step.apply(data)
-            return data
-
         return clock.chain(steps, input_blocks)
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
@@ -634,14 +619,12 @@ class RowMapTransformFn(MapTransformFn):
         self,
         row_fn: MapTransformCallable[Row, Row],
         *,
-        is_udf: bool = False,
         output_block_size_option: OutputBlockSizeOption,
         should_report_custom_op_stats: bool = False,
     ):
         super().__init__(
             row_fn,
             input_type=MapTransformFnDataType.Row,
-            is_udf=is_udf,
             output_block_size_option=output_block_size_option,
             should_report_custom_op_stats=should_report_custom_op_stats,
         )
@@ -693,7 +676,6 @@ class BatchMapTransformFn(MapTransformFn):
         self,
         batch_fn: MapTransformCallable[DataBatch, DataBatch],
         *,
-        is_udf: bool = False,
         batch_size: Union[Optional[int], Literal["auto"]] = None,
         batch_format: Optional[BatchFormat] = None,
         zero_copy_batch: bool = True,
@@ -704,7 +686,6 @@ class BatchMapTransformFn(MapTransformFn):
         super().__init__(
             batch_fn,
             input_type=MapTransformFnDataType.Batch,
-            is_udf=is_udf,
             output_block_size_option=output_block_size_option,
             should_report_custom_op_stats=should_report_custom_op_stats,
         )
@@ -745,7 +726,6 @@ class BlockMapTransformFn(MapTransformFn):
         self,
         block_fn: MapTransformCallable[Block, Block],
         *,
-        is_udf: bool = False,
         disable_block_shaping: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
         should_report_custom_op_stats: bool = False,
@@ -756,8 +736,6 @@ class BlockMapTransformFn(MapTransformFn):
 
         Args:
             block_fn: Callable function to apply a transformation to a block.
-            is_udf: Specifies if the transformation function is a user-defined
-                function (defaults to ``False``).
             disable_block_shaping: Disables block-shaping, making transformer to
                 produce blocks as is.
             output_block_size_option: (Optional) Configure output block sizing.
@@ -769,7 +747,6 @@ class BlockMapTransformFn(MapTransformFn):
         super().__init__(
             block_fn,
             input_type=MapTransformFnDataType.Block,
-            is_udf=is_udf,
             output_block_size_option=output_block_size_option,
             should_report_custom_op_stats=should_report_custom_op_stats,
         )
