@@ -107,6 +107,20 @@ py_test(
 )
 
 py_test(
+    name = "test_read_files_logical",
+    size = "small",
+    srcs = ["tests/test_read_files_logical.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_strict_mode",
     size = "small",
     srcs = ["tests/test_strict_mode.py"],
