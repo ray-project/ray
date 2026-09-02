@@ -11,6 +11,32 @@ build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
 # To distinguish different incompatible environments.
 build --action_env=RAY_BUILD_ENV
 
+# Let the invoking environment pick the Python package index that repository
+# rules resolve from, e.g. to point a CI fleet at a caching mirror instead of
+# pypi.org. All of these are deliberately valueless, so bazel inherits whatever
+# the client environment holds and pins nothing here. rules_python runs
+# whl_library's pip with --isolated, which makes pip ignore every PIP_* variable,
+# so RULES_PYTHON_PIP_ISOLATED=0 is what lets the others through. PIP_TRUSTED_HOST
+# is here because a mirror reached over plain HTTP is otherwise refused. None of
+# them is set in a plain checkout, and then pip resolves from PyPI as before.
+common --repo_env=PIP_INDEX_URL
+common --repo_env=PIP_EXTRA_INDEX_URL
+common --repo_env=PIP_TRUSTED_HOST
+common --repo_env=RULES_PYTHON_PIP_ISOLATED
+
+# The same again for test actions, which get a curated environment rather than the
+# client's: --repo_env covers repository rules only. //ci/raydepsets:test_cli shells
+# out to uv, so without these it resolves against PyPI no matter what the step is
+# configured to use, which is how a 502 reached it while every other resolve in the
+# same job went through the mirror. The proxy's address is fixed per image rather
+# than per job, so this does not churn test cache keys; unset in a plain checkout,
+# these forward nothing.
+test --test_env=PIP_INDEX_URL
+test --test_env=PIP_EXTRA_INDEX_URL
+test --test_env=PIP_TRUSTED_HOST
+test --test_env=UV_INDEX_URL
+test --test_env=UV_INSECURE_HOST
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
@@ -126,6 +152,13 @@ build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 build:tsan --no//:jemalloc_flag
+# RocksDB is a static library built by an out-of-band CMake action
+# (bazel/rocksdb.BUILD via rules_foreign_cc), so the --copt/--per_file_copt
+# above never reach it. Propagate a define that the RocksDB build reads to
+# turn on its native WITH_TSAN option (-fsanitize=thread), so ThreadSanitizer
+# can observe RocksDB's lock-free synchronization instead of reporting false
+# races on its uninstrumented memtable skiplist.
+build:tsan --define=ray_rocksdb_tsan=true
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
@@ -168,7 +201,7 @@ aquery:ci --noshow_progress
 
 test:ci-base --test_output=errors
 test:ci-base --test_verbose_timeout_warnings
-test:ci-base --flaky_test_attempts=3
+test:ci-base --flaky_test_attempts=2
 
 # Sending in PATH is required for tests to run on CI, after we enable
 # --incompatible_strict_action_env, until we either convert all Python tests to

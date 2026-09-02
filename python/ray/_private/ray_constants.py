@@ -29,6 +29,27 @@ RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
 
+# When `ray start --block` (which becomes PID 1 in a container) receives
+# SIGTERM, the number of seconds to mark the local node as draining and wait
+# before tearing down local processes. This gives drain-aware components (e.g.
+# Ray Serve proxies) time to stop accepting new traffic and finish in-flight
+# requests before the raylet and replicas are killed, avoiding HTTP 500s during
+# RayService upgrades (https://github.com/ray-project/ray/issues/64181).
+# Defaults to 30s; cluster managers (e.g. KubeRay) tune it, typically to just
+# under the pod termination grace period. 0 disables draining (immediate teardown).
+RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S = env_float(
+    "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", 30.0
+)
+
+# How often (seconds) the SIGTERM drain wait polls for the node having finished
+# draining (the raylet self-terminating once it is draining AND idle) before
+# falling back to RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S as an upper bound. Floored
+# at a small positive value so a misconfigured 0 (or negative) can never turn the
+# wait into a 100% busy-wait.
+RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S = max(
+    env_float("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", 0.5), 0.001
+)
+
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
@@ -389,6 +410,12 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
+# Environment variable key for GCS leader election.
+RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR = "RAY_ENABLE_GCS_LEADER_ELECTION"
+
+# Whether to enable active-passive GCS leader election for high availability.
+RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR, False)
+
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
 # Filename of "shim process" that sets up Python worker environment.
@@ -571,12 +598,12 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 
-# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+# Prometheus metric cardinality level setting: "legacy", "recommended", or "low".
 #
-# Legacy: report all metrics to prometheus with the set of labels that are reported by
-#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
-# Recommended: report only the node level metrics to prometheus. This means that the
-#   WorkerId will be removed from all metrics.
+# Legacy: report all metrics to Prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc.
+# Recommended: report metrics to Prometheus with high-cardinality labels removed.
+#   Currently, WorkerId will be removed from all metrics. This is the default.
 # Low: Same as recommended, but also drop the Name label for tasks and actors.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
     "RAY_metric_cardinality_level", "recommended"

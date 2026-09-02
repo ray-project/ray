@@ -1329,7 +1329,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
   pg_data->set_placement_group_id(pg_id.Binary());
-  pg_data->set_label_domain_key("ray.io/gpu-domain");
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
 
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["GPU"] = 4;
@@ -1368,8 +1369,9 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(2));
   pg_data->set_placement_group_id(pg_id.Binary());
-  pg_data->set_label_domain_key("ray.io/gpu-domain");
-  (*pg_data->mutable_label_domain_assignments())["ray.io/gpu-domain"] = "rack-1";
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
+  (*pg_data->mutable_topology_assignments())["ray.io/gpu-domain"] = "rack-1";
 
   // One placed bundle (has node_id) and one unplaced bundle.
   auto *placed_bundle = pg_data->add_bundles();
@@ -1413,7 +1415,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
-       TestGetPendingGangResourceRequestsNoLocalityWithoutLabelDomainKey) {
+       TestGetPendingGangResourceRequestsNoLocalityWithoutTopologyStrategyKey) {
   rpc::PlacementGroupLoad load;
   auto *pg_data = load.add_placement_group_data();
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
@@ -1432,7 +1434,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
   const auto &req = requests.Get(0);
   ASSERT_EQ(req.bundle_selectors_size(), 1);
-  // Does not use label-domain scheduling, so locality_requirement should not be set.
+  // Does not use a topology strategy, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
 }
 

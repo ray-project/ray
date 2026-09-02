@@ -262,7 +262,9 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletIpcClient::Wait(
 }
 
 Status RayletIpcClient::WaitForActorCallArgs(
-    const std::vector<rpc::ObjectReference> &references, int64_t tag) {
+    const std::vector<rpc::ObjectReference> &references,
+    const TaskID &task_id,
+    int32_t attempt_number) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> object_ids;
   std::vector<rpc::Address> owner_addresses;
@@ -274,7 +276,8 @@ Status RayletIpcClient::WaitForActorCallArgs(
       fbb,
       flatbuf::to_flatbuf(fbb, object_ids),
       AddressesToFlatbuffer(fbb, owner_addresses),
-      tag);
+      fbb.CreateString(task_id.Binary()),
+      attempt_number);
   fbb.Finish(message);
   return WriteMessage(MessageType::WaitForActorCallArgsRequest, &fbb);
 }

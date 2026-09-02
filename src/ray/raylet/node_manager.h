@@ -18,7 +18,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -30,7 +32,7 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
@@ -498,10 +500,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \param force true to destroy immediately, false to give time for the worker to
   /// clean up and exit gracefully.
+  /// \param memory_used_bytes_at_death The worker's memory usage at death; only set
+  /// for OOM kills.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
-                     bool force = false);
+                     bool force = false,
+                     std::optional<int64_t> memory_used_bytes_at_death = std::nullopt);
 
   /// Handles the event that a job is started.
   ///
@@ -754,12 +759,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///        closing the connection.
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
-  /// \param client_error_message Extra error messages about this disconnection
+  /// \param creation_task_exception Exception from the creation task, if the worker
+  /// died executing one.
+  /// \param memory_used_bytes_at_death The worker's memory usage at death; only set
+  /// for OOM kills.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         bool graceful,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
-                        const rpc::RayException *creation_task_exception = nullptr);
+                        const rpc::RayException *creation_task_exception = nullptr,
+                        std::optional<int64_t> memory_used_bytes_at_death = std::nullopt);
 
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();
@@ -829,6 +838,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Checks the expiry time of the worker failures and garbage collect them.
   void GCWorkerFailureReason();
+
+  /// Records a CancelWorkerLease tombstone so a later-arriving RequestWorkerLease
+  /// for the same lease ID is rejected. Evicts the oldest tombstones if the cap
+  /// is exceeded.
+  void AddCancelledLeaseTombstone(const LeaseID &lease_id);
+
+  /// Garbage-collects CancelWorkerLease tombstones past their TTL.
+  void GCCancelledLeaseTombstones();
 
   /// Creates a AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
@@ -925,6 +942,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
+
+  /// Lease IDs whose CancelWorkerLease we have already handled. Used to reject a
+  /// RequestWorkerLease that arrives after its cancellation due to message reordering.
+  absl::flat_hash_set<LeaseID> cancelled_lease_tombstones_;
+  /// Tombstones in insertion order, which is also expiry order because the TTL is
+  /// uniform. Used to evict the oldest entries first.
+  std::deque<std::pair<LeaseID, SteadyTimePoint>> cancelled_lease_tombstone_queue_;
 
   /// Whether to trigger global GC at the next gc check.
   /// This will broadcast a global GC message to all raylets except for this one.

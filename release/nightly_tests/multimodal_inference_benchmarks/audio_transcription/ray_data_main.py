@@ -17,6 +17,10 @@ SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 64
+# Ray Data can't prevent OOMs if you don't set `memory` for high-memory UDFs
+# like this one. We chose this value because it was the max USS we observed in
+# previous nightly test runs.
+PREPROCESS_MEMORY = 3_143_442_432  # ~3.1 GB
 
 ray.init()
 
@@ -92,9 +96,14 @@ def decoder(batch):
 
 
 def run_pipeline():
+    # These are best practices we recommend to avoid OOMs, though they're opt-in and
+    # not enabled by default.
+    ray.data.DataContext.get_current().isolate_read_workers = True
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
     ds = ray.data.read_parquet(INPUT_PATH)
-    ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess, batch_size="auto")
+    ds = ds.map(resample, memory=PREPROCESS_MEMORY)
+    ds = ds.map_batches(whisper_preprocess, batch_size="auto", memory=PREPROCESS_MEMORY)
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,

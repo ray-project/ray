@@ -39,6 +39,10 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
+RUNTIME_ENV_AGENT_PIP_PACKAGES = [
+    "aiohttp==3.14.3",
+    "idna==3.15",
+]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -254,7 +258,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.13.3",
+            "aiohttp >= 3.14.1",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -280,6 +284,7 @@ if setup_spec.type == SetupType.RAY:
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
+            "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
@@ -377,9 +382,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.23.0",
-                "nixl==1.2.0",
-                "nixl-cu13==1.2.0",
+                "vllm[audio]==0.26.0",
+                "nixl==1.3.1",
+                "nixl-cu13==1.3.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -578,7 +583,6 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
 
         # runtime env agent dependenceis
-        runtime_env_agent_pip_packages = ["aiohttp"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -589,7 +593,7 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "--target="
                 + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
             ]
-            + runtime_env_agent_pip_packages
+            + RUNTIME_ENV_AGENT_PIP_PACKAGES
         )
 
     bazel_targets = []
@@ -854,7 +858,6 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
-                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
                 "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },

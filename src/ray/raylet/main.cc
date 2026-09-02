@@ -465,6 +465,7 @@ int main(int argc, char *argv[]) {
       [raylet_node_id,
        &shutting_down,
        &node_manager,
+       &object_directory,
        &main_service,
        &raylet_socket_name,
        &gcs_client,
@@ -477,6 +478,17 @@ int main(int argc, char *argv[]) {
         }
         RAY_LOG(INFO) << "Raylet graceful shutdown triggered with death info: "
                       << node_death_info.DebugString();
+
+        // Signal shutdown to the object directory as early as possible, before
+        // UnregisterSelf and any client teardown. Otherwise, object-location
+        // subscription long-polls failed during shutdown (because our own gRPC
+        // client is being torn down) would be misclassified as the remote owner
+        // dying, surfacing as spurious OwnerDiedError on dependent tasks.
+        // object_directory may not be constructed yet if SIGTERM arrives during
+        // early startup (before the AsyncGetInternalConfig callback runs).
+        if (object_directory != nullptr) {
+          object_directory->MarkShuttingDown();
+        }
 
         auto unregister_done_callback = [&main_service,
                                          &raylet_socket_name,
@@ -763,7 +775,6 @@ int main(int argc, char *argv[]) {
         raylet_node_id,
         /*channels=*/
         std::vector<ray::rpc::ChannelType>{
-            ray::rpc::ChannelType::WORKER_OBJECT_EVICTION,
             ray::rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
             ray::rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         RayConfig::instance().max_command_batch_size(),
@@ -781,6 +792,14 @@ int main(int argc, char *argv[]) {
         [&](const ray::ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
           object_manager->MarkObjectFailed(obj_id, error_type);
         });
+
+    // Catch up: if SIGTERM arrived before this callback ran,
+    // shutdown_raylet_gracefully skipped MarkShuttingDown() because
+    // object_directory was still null. Set it now so teardown-induced
+    // subscription failures are not misclassified as remote owner deaths.
+    if (shutting_down.load()) {
+      object_directory->MarkShuttingDown();
+    }
 
     auto object_store_runner = std::make_unique<ray::ObjectStoreRunner>(
         object_manager_config,
@@ -869,8 +888,6 @@ int main(int argc, char *argv[]) {
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
         raylet_node_id,
-        node_manager_config.node_manager_address,
-        node_manager_config.node_manager_port,
         main_service,
         RayConfig::instance().free_objects_batch_size(),
         RayConfig::instance().free_objects_period_milliseconds(),
@@ -882,14 +899,12 @@ int main(int argc, char *argv[]) {
         /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
         /*on_objects_freed*/
         [&](const std::vector<ray::ObjectID> &object_ids) {
-          object_manager->FreeObjects(object_ids,
-                                      /*local_only=*/true);
+          object_manager->FreeObjects(object_ids);
         },
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {
           return object_manager->IsPlasmaObjectSpillable(object_id);
         },
-        /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
         object_store_memory_gauge,
         spill_manager_metrics,

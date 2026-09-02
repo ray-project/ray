@@ -897,8 +897,8 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}, {{operator}}",
+            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -912,8 +912,8 @@ ITERATION_BLOCKED_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -927,8 +927,8 @@ ITERATION_USER_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -942,8 +942,8 @@ ITERATION_GET_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -957,8 +957,8 @@ ITERATION_NEXT_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -972,8 +972,8 @@ ITERATION_FORMAT_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -987,8 +987,8 @@ ITERATION_COLLATE_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1002,8 +1002,8 @@ ITERATION_FINALIZE_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1017,8 +1017,8 @@ ITERATION_BLOCKS_LOCAL_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_blocks_local{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_blocks_local{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1032,8 +1032,8 @@ ITERATION_BLOCKS_REMOTE_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_blocks_remote{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_blocks_remote{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1047,8 +1047,8 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1062,8 +1062,8 @@ ITERATION_PREFETCHED_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset)",
-            legend="Prefetched Bytes: {{dataset}}",
+            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset, split)",
+            legend="Prefetched Bytes: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1077,8 +1077,8 @@ ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1092,8 +1092,8 @@ ITERATION_GET_REF_BUNDLES_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,

@@ -27,7 +27,9 @@ Cluster (heterogeneous_memory_compute.yaml):
 """
 
 import argparse
+import threading
 import time
+from typing import Optional
 
 import numpy as np
 from benchmark import Benchmark
@@ -36,6 +38,9 @@ import ray
 from ray.data import DataContext
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.datasource import Datasink
+
+# Use lock when creating dataset because dataset creation uses process-global DataContext.
+_DATASET_CREATION_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # UDFs
@@ -93,19 +98,35 @@ def build_and_run_pipeline(
     gpu_batch_size: int,
     gpu_concurrency: int,
     set_memory: bool,
+    subcluster: Optional[str] = None,
+    all_to_all_shuffle: bool = False,
 ):
-    if set_memory:
-        # Setting `default_map_logical_memory_enabled` is a best practice, and we
-        # recommend it in our docs, but it isn't enabled by default.
-        DataContext.get_current().default_map_logical_memory_enabled = True
-        # These are the values from logs of the nightly test run.
-        gen_memory = 3175944192  # ~3 GB
-        cpu_memory = 2151890944  # ~2 GB
-    else:
-        gen_memory = None
-        cpu_memory = None
+    with _DATASET_CREATION_LOCK:
+        if set_memory:
+            # Setting `default_map_logical_memory_enabled` is a best practice, and we
+            # recommend it in our docs, but it isn't enabled by default.
+            DataContext.get_current().default_map_logical_memory_enabled = True
+            # These are the values from logs of the nightly test run.
+            gen_memory = 3175944192  # ~3 GB
+            cpu_memory = 2151890944  # ~2 GB
+        else:
+            gen_memory = None
+            cpu_memory = None
+        if subcluster is not None:
+            # Set label_selector here so that dataset creation time tasks use it.
+            ray.data.DataContext.get_current().execution_options.label_selector = {
+                "ray-subcluster": subcluster
+            }
+        else:
+            ray.data.DataContext.get_current().execution_options.label_selector = None
+        ds = ray.data.range(num_rows)
 
-    ds = ray.data.range(num_rows)
+    if subcluster is not None:
+        # Also pin on the Dataset's own context so chained ops inherit it.
+        ds.context.execution_options.label_selector = {"ray-subcluster": subcluster}
+
+    if all_to_all_shuffle:
+        ds = ds.random_shuffle()
 
     ds = ds.map_batches(gen_data, batch_size=gen_batch_size, memory=gen_memory)
 
@@ -121,26 +142,17 @@ def build_and_run_pipeline(
 
     ds.write_datasink(NullDatasink())
 
+    # Tag each tenant's per-stage breakdown so multi-run logs (multiple
+    # threads writing to stdout) stay attributable.
+    tag = subcluster if subcluster is not None else "no-subcluster"
+    print(
+        f"\n===== ds.stats() [tenant={tag}] =====\n{ds.stats()}\n===== end stats =====\n"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
-
-def main(args):
-    build_and_run_pipeline(
-        num_rows=args.num_rows,
-        gen_batch_size=args.gen_batch_size,
-        cpu_batch_size=args.cpu_batch_size,
-        gpu_batch_size=args.gpu_batch_size,
-        gpu_concurrency=args.gpu_concurrency,
-        set_memory=args.set_memory,
-    )
-
-    return {
-        "num_rows_input": int(args.num_rows),
-        "gpu_concurrency": int(args.gpu_concurrency),
-    }
 
 
 def parse_args():
@@ -166,5 +178,20 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     benchmark = Benchmark()
-    benchmark.run_fn("heterogeneous-memory-batch-inference", main, args)
+    benchmark.run_fn(
+        "heterogeneous-memory-batch-inference",
+        build_and_run_pipeline,
+        num_rows=args.num_rows,
+        gen_batch_size=args.gen_batch_size,
+        cpu_batch_size=args.cpu_batch_size,
+        gpu_batch_size=args.gpu_batch_size,
+        gpu_concurrency=args.gpu_concurrency,
+        set_memory=args.set_memory,
+    )
+    benchmark.result["heterogeneous-memory-batch-inference"].update(
+        {
+            "num_rows_input": int(args.num_rows),
+            "gpu_concurrency": int(args.gpu_concurrency),
+        }
+    )
     benchmark.write_result()

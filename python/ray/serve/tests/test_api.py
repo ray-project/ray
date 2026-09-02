@@ -16,6 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.request_router.common import (
@@ -1322,6 +1323,13 @@ def test_max_ongoing_requests_none(serve_instance):
     assert get_max_ongoing_requests() == 12
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_deploy_app_with_custom_request_router(serve_instance):
     """Test deploying an app with a custom request router configured in the
     deployment decorator."""
@@ -1341,6 +1349,13 @@ class AppWithCustomRequestRouterAndKwargs:
         return "Hello, world!"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_custom_request_router_kwargs(serve_instance):
     """Check that custom kwargs can be passed to the request router."""
 

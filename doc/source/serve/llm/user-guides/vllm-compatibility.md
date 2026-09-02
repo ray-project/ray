@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, and vision language models."
+---
+
 (vllm-compatibility-guide)=
 # vLLM compatibility
 
@@ -14,7 +20,7 @@ This guide shows how to use vLLM features such as embeddings, structured output,
 
 ## Embeddings
 
-You can generate embeddings by setting the `task` parameter to `"embed"` in the engine arguments. Models supporting this use case are listed in the [vLLM text embedding models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed).
+In vLLM, embedding generation falls in the category of [Pooling Models](https://docs.vllm.ai/en/stable/models/pooling_models/). You can generate embeddings by setting the 'pooler_config' [parameter](https://docs.vllm.ai/en/stable/models/pooling_models/#pooling-tasks) to '{"task": "embed"}' in the engine arguments. Models supporting this use case are listed in the [vLLM embedding models documentation](https://docs.vllm.ai/en/stable/models/pooling_models/embed/#supported-models).
 
 
 ### Deploy an embedding model
@@ -34,7 +40,7 @@ llm_config = LLMConfig(
         model_source="Qwen/Qwen2.5-0.5B-Instruct",
     ),
     engine_kwargs=dict(
-        task="embed",
+        pooler_config=dict(task="embed"),
     ),
 )
 

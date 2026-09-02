@@ -24,6 +24,7 @@ pre_commit() {
     black
     prettier
     mypy
+    pyrefly-serve
     rst-directive-colons
     rst-inline-touching-normal
     python-check-mock-methods
@@ -60,10 +61,6 @@ code_format() {
 semgrep_lint() {
   pip install -c python/requirements_compiled.txt semgrep pre-commit
   pre-commit run semgrep --all-files --show-diff-on-failure
-}
-
-banned_words() {
-  ./ci/lint/check-banned-words.sh
 }
 
 # Use system python to avoid conflicts with uv python in forge image
@@ -121,15 +118,34 @@ api_annotations() {
 }
 
 api_policy_check() {
-  # install ray and compile doc to generate API files
-  echo "--- Build doc pages"
-  make -C doc/ html
-
   echo "--- Install Ray"
   _install_ray_no_deps
 
+  echo "--- Generate API doc stubs"
+  # The consistency check reads autosummary stub .rst files. Generate only those
+  # stubs instead of a full `make -C doc/ html` (which built the entire site just
+  # to produce them). This exits nonzero if generation produces nothing, so a
+  # broken autogen step fails here instead of silently. Stubs are generated after
+  # installing Ray so they reflect the checkout's source.
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python doc/source/api_autogen.py
+
   echo "--- Check API/doc consistency"
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
+  # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310
+  # (cp310) wheels can't import under the py3.11 docbuild image (e.g. rpds).
+  # TODO(elliot-barn): #64070 switch back to bazel once hermetic python 3.11 is setup
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
+}
+
+api_param_coverage() {
+  # Static, diff-scoped check: fail a PR that adds a new @PublicAPI callable, or
+  # a new parameter on an existing one, without a docstring Args: entry.
+  # Pre-existing gaps are grandfathered. Parses source only, so no Ray build or
+  # install is needed. Non-blocking by default; pass --blocking to gate.
+  echo "--- Check new-parameter documentation coverage"
+  local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+  git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_param_coverage.py \
+    "$(pwd)" --base-ref "origin/${base_branch}" "$@"
 }
 
 documentation_style() {

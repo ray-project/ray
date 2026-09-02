@@ -15,19 +15,16 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import SharedCounter
+from ray.serve._private.test_utils import (
+    SharedCounter,
+    alive_actor_counts,
+    expected_proxy_actors,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
-
-
-# Some tests are not possible to run if proxy is not available on every node.
-# We skip them if proxy is not available.
-def is_proxy_on_every_node() -> bool:
-    client = _get_global_client()
-    return client._http_config.location == "EveryNode"
 
 
 @pytest.fixture
@@ -283,19 +280,22 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
-    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    # The second replica needs more CPU than the head node has free, so the autoscaler
+    # brings up the worker node. Requiring two proxies waits for that node to join.
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        "ServeReplica:app_f:A": 2,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Stop all deployment replicas.
     serve.delete("app_f")
 
-    # The http proxy on worker node should exit as well.
-    wait_for_condition(
-        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
-    )
+    # The worker node and its proxy exit, leaving only the head-node proxy.
+    expected_actors = {"ServeController": 1, **expected_proxy_actors(num_proxy_nodes=1)}
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
 
     client = _get_global_client()
 
@@ -360,10 +360,12 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel": 2,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -421,11 +423,12 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Check expected actors based on mode
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel": 2,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.

@@ -1,0 +1,21 @@
+# Windows-only torch pin.
+#
+# torch 2.8/2.9 Windows wheels are built without libuv, and gloo's TCP
+# transport is Linux-only, so torch.distributed's gloo backend cannot
+# initialize on Windows ("makeDeviceForHostname(): unsupported gloo device",
+# pytorch/pytorch#150381). Fixed upstream in torch 2.10 (pytorch/gloo#472).
+# Keep Windows CI on 2.7.0 until the repo-wide torch pin reaches >=2.10, then
+# delete this file and the windows torch2.7 depsets in ci_windows.depsets.yaml.
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
+
+torch==2.7.0
+torchvision==0.22.0
+
+# PyG binary extensions are ABI-coupled to the torch minor version. Pin the
+# +pt27cpu local builds explicitly: the relaxed base lock still emits the
+# torch-2.9.0 find-links, and unsafe-best-match would otherwise prefer the
+# +pt29cpu wheels.
+torch-scatter==2.1.2+pt27cpu
+torch-sparse==0.6.18+pt27cpu
+torch-cluster==1.6.3+pt27cpu
+torch-spline-conv==1.2.2+pt27cpu

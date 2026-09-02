@@ -466,6 +466,35 @@ def test_report_stats(tmp_path):
     assert isinstance(stats_payload, str)
 
 
+def test_generate_stats_payload_normalizes_none_process_cmdline(tmp_path):
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+
+    if not PYDANTIC_INSTALLED:
+        pytest.skip("Pydantic is not installed")
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["workers"][0]["cmdline"] = None
+    stats["raylet"]["cmdline"] = None
+    stats["agent"]["cmdline"] = None
+    stats["gcs"]["cmdline"] = None
+    stats["cmdline"] = None
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+
+    assert stats_payload["workers"][0]["cmdline"] == []
+    assert stats_payload["raylet"]["cmdline"] == []
+    assert stats_payload["agent"]["cmdline"] == []
+    assert stats_payload["gcs"]["cmdline"] == []
+    assert stats_payload["cmdline"] == []
+
+
 def test_report_stats_gpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
@@ -519,7 +548,7 @@ def test_report_stats_gpu(tmp_path):
         {
             "index": 3,
             "name": "NVIDIA A10G",
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b399",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
@@ -555,6 +584,7 @@ def test_report_stats_gpu(tmp_path):
                 # The tag value must be string for prometheus.
                 "GpuIndex": str(index),
                 "GpuDeviceName": "NVIDIA A10G",
+                "GpuUuid": f"GPU-36e1567d-37ed-051e-f8ff-df807517b39{6 + index}",
                 "RayNodeType": "head",
                 "IsHeadNode": "true",
             }
@@ -633,10 +663,12 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
     assert temp_by_index["0"] == 65
     assert temp_by_index["1"] == 72
 
-    # Tags should include GpuIndex and GpuDeviceName
+    # Tags should include GpuIndex, GpuDeviceName and GpuUuid
+    expected_uuids = {"0": "GPU-aaa", "1": "GPU-bbb"}
     for r in power_records + temp_records:
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+        assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

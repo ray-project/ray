@@ -8,7 +8,7 @@ import time
 from abc import ABC, abstractmethod
 from asyncio import run_coroutine_threadsafe
 from functools import wraps
-from typing import Any, AsyncIterator, Callable, Coroutine, Iterator, Optional, Union
+from typing import Any, AsyncIterator, Callable, Iterator, Optional, Union
 
 import grpc
 
@@ -120,7 +120,7 @@ class ActorReplicaResult(ReplicaResult):
                 )
             )
 
-    def _process_response(f: Union[Callable, Coroutine]):
+    def _process_response(f: Callable):  # type: ignore[misc]
         @wraps(f)
         def wrapper(self, *args, **kwargs):
             try:
@@ -192,6 +192,8 @@ class ActorReplicaResult(ReplicaResult):
             self._is_streaming
         ), "next() can only be called on a streaming ActorReplicaResult."
 
+        # Streaming invariant (asserted in the constructor).
+        assert self._obj_ref_gen is not None
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
@@ -201,6 +203,8 @@ class ActorReplicaResult(ReplicaResult):
             self._is_streaming
         ), "__anext__() can only be called on a streaming ActorReplicaResult."
 
+        # Streaming invariant (asserted in the constructor).
+        assert self._obj_ref_gen is not None
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
@@ -208,7 +212,7 @@ class ActorReplicaResult(ReplicaResult):
         if self._obj_ref_gen is not None:
             self._obj_ref_gen.completed()._on_completed(callback)
         else:
-            self._obj_ref._on_completed(callback)
+            self._obj_ref._on_completed(callback)  # type: ignore[union-attr]
 
     def cancel(self):
         if self._obj_ref_gen is not None:
@@ -216,7 +220,9 @@ class ActorReplicaResult(ReplicaResult):
         else:
             ray.cancel(self._obj_ref)
 
-    def to_object_ref(self, *, timeout_s: Optional[float] = None) -> ray.ObjectRef:
+    def to_object_ref(  # type: ignore[override]
+        self, *, timeout_s: Optional[float] = None
+    ) -> ray.ObjectRef:
         assert (
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
@@ -227,7 +233,7 @@ class ActorReplicaResult(ReplicaResult):
         # See: https://github.com/ray-project/ray/issues/43879.
         with self._object_ref_or_gen_sync_lock:
             if self._obj_ref is None:
-                obj_ref = self._obj_ref_gen._next_sync(timeout_s=timeout_s)
+                obj_ref = self._obj_ref_gen._next_sync(timeout_s=timeout_s)  # type: ignore[union-attr]
                 if obj_ref.is_nil():
                     raise TimeoutError("Timed out resolving to ObjectRef.")
 
@@ -266,7 +272,7 @@ class ActorReplicaResult(ReplicaResult):
                 try:
                     # Double-check under lock
                     if self._obj_ref is None:
-                        self._obj_ref = await self._obj_ref_gen.__anext__()
+                        self._obj_ref = await self._obj_ref_gen.__anext__()  # type: ignore[union-attr]
                     return self._obj_ref
                 finally:
                     self._object_ref_or_gen_sync_lock.release()
@@ -288,7 +294,7 @@ class gRPCReplicaResult(ReplicaResult):
         call: grpc.aio.Call,
         metadata: RequestMetadata,
         actor_id: ray.ActorID,
-        loop: asyncio.AbstractEventLoop = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
         *,
         with_rejection: bool = False,
     ):
@@ -300,10 +306,10 @@ class gRPCReplicaResult(ReplicaResult):
         self._grpc_call_loop = loop or asyncio._get_running_loop()
         self._is_streaming = metadata.is_streaming
         self._with_rejection = with_rejection
-        self._rejection_response = None
+        self._rejection_response: Optional[ReplicaQueueLengthInfo] = None
 
         self._gen = None
-        self._fut = None
+        self._fut: Optional[concurrent.futures.Future] = None
 
         # NOTE(zcin): for now, these two concepts will be synonymous.
         # In other words, using a queue means the router is running on
@@ -325,6 +331,8 @@ class gRPCReplicaResult(ReplicaResult):
         # explicitly consuming the response.
         self._consume_task = None
         if self._use_queue:
+            # `_grpc_call_loop` is always set when `_use_queue` is.
+            assert self._grpc_call_loop is not None
             self._consume_task = self._grpc_call_loop.create_task(
                 self.consume_messages_from_gen()
             )
@@ -341,7 +349,7 @@ class gRPCReplicaResult(ReplicaResult):
             )
         )
 
-    def _process_grpc_response(f: Union[Callable, Coroutine]):
+    def _process_grpc_response(f: Callable):  # type: ignore[misc]
         def deserialize_or_raise_error(
             grpc_response: ASGIResponse,
             metadata: RequestMetadata,
@@ -410,6 +418,8 @@ class gRPCReplicaResult(ReplicaResult):
 
     async def consume_messages_from_gen(self):
         try:
+            # Only scheduled when a generator is present.
+            assert self._gen is not None
             async for resp in self._gen:
                 self._result_queue.put_nowait(resp)
         except BaseException as e:
@@ -528,8 +538,11 @@ class gRPCReplicaResult(ReplicaResult):
             )
 
         if self._fut is None:
+            # Sync `get()` is only legal in separate-loop mode, where
+            # `_grpc_call_loop` is set.
             self._fut = run_coroutine_threadsafe(
-                self._get_internal(), self._grpc_call_loop
+                self._get_internal(),
+                self._grpc_call_loop,  # pyrefly: ignore[bad-argument-type]
             )
 
         try:
@@ -543,8 +556,10 @@ class gRPCReplicaResult(ReplicaResult):
             if self._calling_from_same_loop:
                 return await self._get_internal()
             else:
+                # Non-None in separate-loop mode (checked above).
                 self._fut = run_coroutine_threadsafe(
-                    self._get_internal(), self._grpc_call_loop
+                    self._get_internal(),
+                    self._grpc_call_loop,  # pyrefly: ignore[bad-argument-type]
                 )
 
         return await asyncio.wrap_future(self._fut)
@@ -557,7 +572,11 @@ class gRPCReplicaResult(ReplicaResult):
                 "`asyncio` event loop. Use `__anext__()` instead."
             )
 
-        fut = run_coroutine_threadsafe(self._get_internal(), loop=self._grpc_call_loop)
+        # Sync `__next__()` is only legal in separate-loop mode.
+        fut = run_coroutine_threadsafe(
+            self._get_internal(),
+            loop=self._grpc_call_loop,  # pyrefly: ignore[bad-argument-type]
+        )
         try:
             return fut.result()
         except StopAsyncIteration:
@@ -569,8 +588,10 @@ class gRPCReplicaResult(ReplicaResult):
         if self._calling_from_same_loop:
             return await self._get_internal()
         else:
+            # Non-None in separate-loop mode (checked above).
             fut = run_coroutine_threadsafe(
-                self._get_internal(), loop=self._grpc_call_loop
+                self._get_internal(),
+                loop=self._grpc_call_loop,  # pyrefly: ignore[bad-argument-type]
             )
             return await asyncio.wrap_future(fut)
 
