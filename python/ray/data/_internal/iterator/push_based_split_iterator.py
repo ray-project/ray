@@ -12,6 +12,16 @@ Flow control is poll-based: each pusher periodically calls
 from its queue and how many rows it wants buffered (``target_buffer_rows``),
 and only pushes while ``rows_pushed - rows_consumed < target_buffer_rows``.
 
+Ordering: the consumer is a multi-threaded actor, and multi-threaded actors
+execute tasks out of order (dispatch follows argument readiness; see
+``allow_out_of_order_execution`` in ``ray.actor``). A small local block could
+therefore be dispatched before an earlier large/remote one, and an argless
+``receive_eof`` could overtake ``receive_block`` tasks still fetching their
+blocks. Every push therefore carries a per-split sequence number, and the
+consumer's "data" thread re-sequences items through a reorder buffer before
+they enter the local queue — restoring the pull path's per-split ordering and
+making EOF safe.
+
 Pipeline overview::
 
                 PushSplitCoordinator actor (pinned to the creating node)
@@ -33,16 +43,18 @@ Pipeline overview::
      data plane        |                |  flow control (per push burst)
      (fire-and-forget) |                |
        receive_block(  |                |  (1) poll() -> rows_consumed,
-         epoch,        |                |      target_buffer_rows, iterating
+         epoch, seq,   |                |      target_buffer_rows, iterating
          block_ref,    |                |  (2) credit = target_buffer_rows
          rows, bytes)  |                |        - (rows_pushed - rows_consumed)
-       receive_eof     |                |  (3) credit > 0: push blocks;
-       receive_error   |                |      else sleep POLL_INTERVAL_S,
-                       v                |      re-poll
+       receive_eof(    |                |  (3) credit > 0: push blocks;
+         epoch, seq)   |                |      else sleep POLL_INTERVAL_S,
+       receive_error   |                |      re-poll
+                       v                |
     +--------------------------------------------------------------------+
     |    PushSplitConsumer actor i (one per split, e.g. a train worker)  |
     |                                                                    |
-    |  "data" thread (1):  receive_block/eof/error -> local queue        |
+    |  "data" thread (1):  receive_block/eof -> reorder buffer (by seq)  |
+    |                      -> local queue; receive_error jumps the queue |
     |                      (block ref was a top-level task arg, so the   |
     |                       queue holds materialized Blocks, in order)   |
     |  "flow" thread (1):  poll                                          |
@@ -73,7 +85,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set
 
 import ray
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
@@ -92,8 +104,10 @@ BLOCKED_CLIENT_WARN_TIMEOUT = 30
 # Concurrency groups a consumer actor must declare, e.g.:
 #   @ray.remote(num_cpus=0, concurrency_groups=PUSH_CONSUMER_CONCURRENCY_GROUPS)
 #   class MyConsumer(PushSplitConsumer): ...
-# "data": receive_block/receive_eof/receive_error — single thread so the
-#   pusher's calls execute in submission order.
+# "data": receive_block/receive_eof/receive_error — a single thread
+#   serializes them, but does NOT guarantee submission-order dispatch
+#   (multi-threaded actors execute out of order); order is restored by the
+#   seq-based reorder buffer in _deliver_in_order.
 # "flow": poll — isolated so flow control is never head-of-line blocked
 #   behind a large block deserialization queued in "data".
 # "consume": the caller-defined long-running iteration method.
@@ -204,6 +218,15 @@ class PushSplitConsumer:
         self._iterating = False
         self._cur_epoch: Optional[int] = None
 
+        # Reorder buffer, owned exclusively by the "data" thread. The
+        # consumer is a multi-threaded actor, and multi-threaded actors
+        # execute tasks out of order (dispatch follows argument readiness;
+        # see ``allow_out_of_order_execution`` in ``ray.actor``), so pushes
+        # are re-sequenced by ``seq`` before entering the local queue.
+        self._reorder_epoch: Optional[int] = None
+        self._reorder_next_seq = 0
+        self._reorder_pending: Dict[int, Any] = {}
+
         ray.get(
             coord_actor.register.remote(
                 split_idx, ray.get_runtime_context().current_actor
@@ -216,7 +239,7 @@ class PushSplitConsumer:
 
     @ray.method(concurrency_group="data")
     def receive_block(
-        self, epoch_id: int, block: Block, num_rows: int, size_bytes: int
+        self, epoch_id: int, seq: int, block: Block, num_rows: int, size_bytes: int
     ) -> None:
         """Receive one materialized block.
 
@@ -224,28 +247,52 @@ class PushSplitConsumer:
         Ray resolves it and this method receives the materialized ``Block``
         (zero-copy for Arrow blocks in the local object store).
         """
-        if epoch_id != self._cur_epoch:
-            # Straggler push from a dead epoch; drop it.
-            return
-        with self._counter_lock:
-            self._queued_rows += num_rows
-            self._queued_bytes += size_bytes
-            self._peak_queue_rows = max(self._peak_queue_rows, self._queued_rows)
-            self._peak_queue_bytes = max(self._peak_queue_bytes, self._queued_bytes)
-        self._queue.put((block, num_rows, size_bytes))
+        self._deliver_in_order(epoch_id, seq, (block, num_rows, size_bytes))
 
     @ray.method(concurrency_group="data")
-    def receive_eof(self, epoch_id: int) -> None:
-        if epoch_id == self._cur_epoch:
-            self._queue.put(_EndOfEpoch(epoch_id))
+    def receive_eof(self, epoch_id: int, seq: int) -> None:
+        # EOF is sequenced like a block: without a seq it has no object args
+        # and could be dispatched before receive_block tasks still fetching
+        # theirs, ending the epoch early and silently dropping those blocks.
+        self._deliver_in_order(epoch_id, seq, _EndOfEpoch(epoch_id))
 
     @ray.method(concurrency_group="data")
     def receive_error(self, epoch_id: int, error: "_ExecutorError") -> None:
         # ``error`` arrives wrapped in _ExecutorError: passing a bare
         # RayTaskError as a task arg would make Ray treat it as a failed
         # dependency and fail this task instead of executing it.
+        # Errors are deliberately NOT sequenced: fail fast, jump the queue.
         if epoch_id == self._cur_epoch:
             self._queue.put(error)
+
+    def _deliver_in_order(self, epoch_id: int, seq: int, item: Any) -> None:
+        """Re-sequence pushes and release them to the local queue in order.
+
+        Runs only on the single "data" thread, so the reorder state needs no
+        locking. Items from a dead epoch are dropped; the buffer resets
+        lazily on the first item of a new epoch (which also discards any
+        pending items a previous, early-exited epoch left behind).
+        """
+        if epoch_id != self._cur_epoch:
+            return
+        if self._reorder_epoch != epoch_id:
+            self._reorder_epoch = epoch_id
+            self._reorder_next_seq = 0
+            self._reorder_pending = {}
+        self._reorder_pending[seq] = item
+        while self._reorder_next_seq in self._reorder_pending:
+            self._release(self._reorder_pending.pop(self._reorder_next_seq))
+            self._reorder_next_seq += 1
+
+    def _release(self, item: Any) -> None:
+        if not isinstance(item, _EndOfEpoch):
+            _, num_rows, size_bytes = item
+            with self._counter_lock:
+                self._queued_rows += num_rows
+                self._queued_bytes += size_bytes
+                self._peak_queue_rows = max(self._peak_queue_rows, self._queued_rows)
+                self._peak_queue_bytes = max(self._peak_queue_bytes, self._queued_bytes)
+        self._queue.put(item)
 
     @ray.method(concurrency_group="flow")
     def poll(self) -> _PollResponse:
@@ -597,6 +644,10 @@ class PushSplitCoordinator:
         consumer = self._consumers[split_idx]
         output_iterator = self._output_iterator
         consumer_dead = False
+        # Per-split push sequence number. The consumer is a multi-threaded
+        # actor, so Ray may execute receive_* tasks out of order (dispatch
+        # follows argument readiness); the consumer re-sequences by ``seq``.
+        seq = 0
         try:
             while not stop.is_set():
                 # 1) Poll the consumer.
@@ -639,8 +690,9 @@ class PushSplitCoordinator:
                         # Top-level ref arg: Ray resolves it, so the consumer
                         # receives the materialized Block.
                         consumer.receive_block.remote(
-                            epoch_id, entry.ref, num_rows, size_bytes
+                            epoch_id, seq, entry.ref, num_rows, size_bytes
                         )
+                        seq += 1
                         credit_rows -= num_rows
                         with self._push_lock:
                             self._rows_pushed[split_idx] += num_rows
@@ -651,7 +703,10 @@ class PushSplitCoordinator:
                 logger.debug(
                     f"Split {split_idx} epoch {epoch_id} exhausted; sending EOF."
                 )
-                consumer.receive_eof.remote(epoch_id)
+                # EOF takes the next seq so it cannot overtake pending blocks
+                # (it has no object args, so it would otherwise always be
+                # dispatchable first).
+                consumer.receive_eof.remote(epoch_id, seq)
             return
         except Exception as e:
             if not stop.is_set():
