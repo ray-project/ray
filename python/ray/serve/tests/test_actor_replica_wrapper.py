@@ -295,11 +295,11 @@ async def test_send_request_with_rejection(
 async def test_rejection_does_not_wait_async_until_accepted(
     setup_fake_replica, accepted: bool, is_streaming: bool
 ):
-    """Rejection consumes the system ref via __anext__; wait_async starts
-    after accept.
+    """Consume-wait starts only after an accepted unary rejection frame.
 
-    Constructor must not wait_async-consume: that races get_rejection_response
-    (streaming) or waits for a user ref that is never written (rejected unary).
+    The constructor must not peek or ``_on_ready``-consume: that races
+    ``get_rejection_response`` on streaming, and hangs on rejected unary
+    (no user ref is written). Streaming never starts a consume-wait.
     """
     actor_handle = setup_fake_replica.get_actor_handle()
     replica = RunningReplica(setup_fake_replica)

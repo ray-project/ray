@@ -794,8 +794,6 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.
-    For by-reference args, wait until the peeked ref is ready so unresolved
-    composition args are not counted in queued-request autoscaling metrics.
     """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 

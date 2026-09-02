@@ -306,8 +306,8 @@ async def test_object_ref_ready(ray_start_regular_shared):
 
     ref = wait.remote()
     ready_task = asyncio.create_task(ref._ready())
-    await asyncio.sleep(0)
-    assert not ready_task.done()
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
     await signal.send.remote()
     assert await ready_task is ref
     assert await ref == "secret"
@@ -324,7 +324,8 @@ async def test_object_ref_ready_cancel(ray_start_regular_shared):
 
     ref = wait.remote()
     ready_task = asyncio.create_task(ref._ready())
-    await asyncio.sleep(0)
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
     ready_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await ready_task
