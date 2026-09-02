@@ -32,9 +32,43 @@ py_test_module_list(
         exclude = [
             "tests/conftest.py",
             "tests/__init__.py",
+            "tests/test_gvisor_gpu.py",
+            "tests/test_gvisor_multi_gpu.py",
         ],
     ),
     tags = [
+        "sandbox_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        ":sandbox_lib",
+    ],
+)
+
+# Needs a real GPU + nvidia-ctk. Only scheduled on a GPU CI runner -- see
+# .buildkite/core.rayci.yml's "core: sandbox gpu tests" job.
+py_test_module_list(
+    size = "medium",
+    files = ["tests/test_gvisor_gpu.py"],
+    tags = [
+        "gpu",
+        "sandbox_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        ":sandbox_lib",
+    ],
+)
+
+# Needs 4 real GPUs + nvidia-ctk. Only scheduled on a gpu-large CI runner --
+# see .buildkite/core.rayci.yml's "core: sandbox multi-gpu tests" job.
+py_test_module_list(
+    size = "medium",
+    files = ["tests/test_gvisor_multi_gpu.py"],
+    tags = [
+        "multi_gpu",
         "sandbox_tests",
         "team:core",
     ],
