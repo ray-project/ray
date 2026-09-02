@@ -319,11 +319,6 @@ async def test_rejection_does_not_wait_async_until_accepted(
     )
     replica_result = replica.try_send_request(pr, with_rejection=True)
     assert replica_result._consume_wait_handle == 0
-    if not is_streaming:
-        with pytest.raises(RuntimeError, match="get_rejection_response"):
-            replica_result.to_object_ref()
-        with pytest.raises(RuntimeError, match="get_rejection_response"):
-            await replica_result.to_object_ref_async()
 
     info = await replica_result.get_rejection_response()
     assert info.accepted == accepted

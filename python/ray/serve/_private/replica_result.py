@@ -276,21 +276,9 @@ class ActorReplicaResult(ReplicaResult):
     def to_object_ref(  # type: ignore[override]
         self, *, timeout_s: Optional[float] = None
     ) -> ray.ObjectRef:
-        """Return the peeked unary ObjectRef.
-
-        ``timeout_s`` is unused. The ref is available after construction
-        (no rejection) or after ``get_rejection_response()`` (rejection).
-        """
         assert (
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
-        if self._with_rejection and self._rejection_response is None:
-            raise RuntimeError(
-                "get_rejection_response() must be awaited before "
-                "to_object_ref() when request rejection is enabled."
-            )
-        if self._obj_ref is None:
-            raise RuntimeError("Unary ActorReplicaResult has no ObjectRef.")
 
         return self._obj_ref
 
@@ -298,13 +286,6 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             not self._is_streaming
         ), "to_object_ref_async can only be called on a unary ReplicaActorResult."
-        if self._with_rejection and self._rejection_response is None:
-            raise RuntimeError(
-                "get_rejection_response() must be awaited before "
-                "to_object_ref_async() when request rejection is enabled."
-            )
-        if self._obj_ref is None:
-            raise RuntimeError("Unary ActorReplicaResult has no ObjectRef.")
 
         return self._obj_ref
 
@@ -312,14 +293,6 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             self._is_streaming
         ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
-
-        # Streaming invariant (asserted in the constructor).
-        assert self._obj_ref_gen is not None
-        if self._with_rejection and self._rejection_response is None:
-            raise RuntimeError(
-                "get_rejection_response() must be awaited before "
-                "to_object_ref_gen() when request rejection is enabled."
-            )
 
         return self._obj_ref_gen
 
