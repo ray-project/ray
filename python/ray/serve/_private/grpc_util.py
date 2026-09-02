@@ -60,6 +60,9 @@ class gRPCGenericServer(Server):
 
         Handlers for a passthrough service (e.g., gRPC server reflection) are
         registered unmodified instead of being overridden to route to replicas.
+        Must be called before the service's handlers are registered; user-defined
+        servicers always register while this set is still empty, so they can
+        never match it and always get the replica-routing override.
         NOTE: passthrough handlers bypass the service handler factory, so any
         logic implemented inside the factory (e.g., auth) does not apply to
         them; server interceptors would.
