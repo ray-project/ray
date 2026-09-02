@@ -480,18 +480,7 @@ class _ElasticActorSet:
                 if isinstance(error, ray.exceptions.ActorDiedError):
                     # Ray has confirmed that this actor can no longer execute
                     # work, so its bounded slot is safe to reuse.
-                    self._clear_slot_locked(slot)
-                    capacity = sum(
-                        candidate.state
-                        in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
-                        for candidate in self._slots
-                    )
-                    if capacity < self._min_size:
-                        # Automatically recreating a permanently failing
-                        # initializer would create an unbounded actor-start
-                        # loop. Converge explicitly instead of silently
-                        # violating the configured capacity floor.
-                        self._error = error
+                    self._release_dead_actor_locked(slot, error)
                 else:
                     # An ObjectRef can fail while its actor remains alive (for
                     # example, if the readiness task is cancelled). Retain the
@@ -525,10 +514,7 @@ class _ElasticActorSet:
                 self._condition.notify_all()
                 return
             if isinstance(error, ray.exceptions.ActorDiedError):
-                restore_capacity_floor = slot.state is _ElasticSlotState.ACTIVE
-                self._clear_slot_locked(slot)
-                if restore_capacity_floor:
-                    self._restore_min_size_locked()
+                self._release_dead_actor_locked(slot, error)
                 self._condition.notify_all()
                 return
             if isinstance(error, ray.exceptions.RayActorError):
@@ -550,7 +536,7 @@ class _ElasticActorSet:
                         pending_slot.state is _ElasticSlotState.STARTING
                         and pending_slot.outstanding == 0
                     ):
-                        self._cancel_starting_locked(pending_slot)
+                        self._begin_draining_locked(pending_slot)
             self._condition.notify_all()
 
     def _yield_to_pending_work_locked(self, slot: _ElasticSlot) -> None:
@@ -563,9 +549,13 @@ class _ElasticActorSet:
             self._begin_draining_locked(slot)
 
     def _begin_draining_locked(self, slot: _ElasticSlot) -> None:
-        if slot.state is _ElasticSlotState.STARTING and slot.outstanding == 0:
-            self._cancel_starting_locked(slot)
-            return
+        assert slot.state in (
+            _ElasticSlotState.STARTING,
+            _ElasticSlotState.ACTIVE,
+        )
+        # For a STARTING slot with no work, readiness success cannot prove that
+        # the actor exited. The termination ref below is still required before
+        # the bounded slot can be reused.
         try:
             exit_ref = slot.actor.__ray_terminate__.remote()
         except BaseException as error:
@@ -590,29 +580,6 @@ class _ElasticActorSet:
             self._error = error
             self._condition.notify_all()
 
-    def _cancel_starting_locked(self, slot: _ElasticSlot) -> None:
-        # A readiness ref can succeed before ray.kill() has physically removed
-        # the actor, so it cannot confirm actor exit. Submit a dedicated
-        # termination ref; close/terminate may separately force cancellation.
-        try:
-            exit_ref = slot.actor.__ray_terminate__.remote()
-        except BaseException as error:
-            slot.state = _ElasticSlotState.DRAINING
-            slot.exit_ref = None
-            self._error = error
-            return
-        slot.state = _ElasticSlotState.DRAINING
-        slot.exit_ref = exit_ref
-        generation = slot.generation
-        try:
-            exit_ref.future().add_done_callback(
-                lambda future, target=slot, expected=generation: self._actor_exited(
-                    target, expected, future
-                )
-            )
-        except BaseException as error:
-            self._error = error
-
     def _actor_exited(self, slot: _ElasticSlot, generation: int, future) -> None:
         with self._condition:
             if (
@@ -635,9 +602,33 @@ class _ElasticActorSet:
                 self._error = error
                 self._condition.notify_all()
                 return
-            self._clear_slot_locked(slot)
-            self._restore_min_size_locked()
+            self._release_dead_actor_locked(slot)
             self._condition.notify_all()
+
+    def _release_dead_actor_locked(
+        self,
+        slot: _ElasticSlot,
+        startup_error: Optional[BaseException] = None,
+    ) -> None:
+        """Release one actor whose exit Ray has unambiguously confirmed."""
+        previous_state = slot.state
+        assert previous_state in (
+            _ElasticSlotState.STARTING,
+            _ElasticSlotState.ACTIVE,
+            _ElasticSlotState.DRAINING,
+        )
+        self._clear_slot_locked(slot)
+        if self._closed:
+            return
+        if previous_state is _ElasticSlotState.STARTING:
+            if self._capacity_locked() < self._min_size:
+                # Automatically recreating a permanently failing initializer
+                # would create an unbounded actor-start loop. Converge
+                # explicitly instead of silently violating the capacity floor.
+                assert startup_error is not None
+                self._error = startup_error
+            return
+        self._restore_min_size_locked()
 
     @staticmethod
     def _clear_slot_locked(slot: _ElasticSlot) -> None:
@@ -652,10 +643,7 @@ class _ElasticActorSet:
     def _restore_min_size_locked(self) -> None:
         if self._closed:
             return
-        capacity = sum(
-            slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
-            for slot in self._slots
-        )
+        capacity = self._capacity_locked()
         while capacity < self._min_size:
             empty = next(
                 (slot for slot in self._slots if slot.state is _ElasticSlotState.EMPTY),
@@ -669,6 +657,12 @@ class _ElasticActorSet:
                 self._error = error
                 return
             capacity += 1
+
+    def _capacity_locked(self) -> int:
+        return sum(
+            slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+            for slot in self._slots
+        )
 
     def _reap_idle_actors(self) -> None:
         while True:

@@ -561,6 +561,38 @@ def test_min_size_startup_death_fails_closed_without_retry_churn():
     actor_set.join()
 
 
+@pytest.mark.parametrize("first_callback", ["batch", "readiness"])
+def test_min_size_startup_death_is_callback_order_independent(first_callback):
+    failed_actor = _FakeActor(ready=False)
+    replacement_actor = _FakeActor()
+    actors = [failed_actor, replacement_actor]
+    actor_set = _ElasticActorSet(
+        lambda: actors.pop(0), min_size=1, max_size=1, idle_timeout_s=60
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    startup_error = ray.exceptions.ActorDiedError()
+    readiness_error = ray.exceptions.ActorDiedError()
+    callbacks = {
+        "batch": lambda: batch_ref.completion.set_exception(startup_error),
+        "readiness": lambda: failed_actor.readiness_ref.completion.set_exception(
+            readiness_error
+        ),
+    }
+    callbacks[first_callback]()
+    callbacks["readiness" if first_callback == "batch" else "batch"]()
+
+    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    expected_error = startup_error if first_callback == "batch" else readiness_error
+    assert actor_set._error is expected_error
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+    assert actors == [replacement_actor]
+
+    actor_set.close()
+    actor_set.join()
+
+
 def test_startup_death_above_min_size_keeps_pool_available():
     active_actor = _FakeActor()
     failed_actor = _FakeActor(ready=False)
@@ -570,6 +602,7 @@ def test_startup_death_above_min_size_keeps_pool_available():
     )
 
     refs = [actor_set.submit(None, []) for _ in range(3)]
+    refs[2].completion.set_exception(ray.exceptions.ActorDiedError())
     failed_actor.readiness_ref.completion.set_exception(ray.exceptions.ActorDiedError())
 
     assert actor_set.snapshot() == [
@@ -580,7 +613,6 @@ def test_startup_death_above_min_size_keeps_pool_available():
 
     refs[0].completion.set_result([])
     refs[1].completion.set_result([])
-    refs[2].completion.set_exception(ray.exceptions.ActorDiedError())
     continuation_ref = actor_set.submit(None, [])
     continuation_ref.completion.set_result([])
 

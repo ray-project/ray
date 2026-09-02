@@ -97,6 +97,11 @@ The actor bound, shutdown behavior, and failure boundaries are the same as for
 elastic capacity is not a distributed transaction or a transparent recovery
 mechanism for a replaced Ray session.
 
+Joblib's ``maxtasksperchild`` backend argument is forwarded to the elastic
+pool. The limit counts accepted Joblib batches per actor. An actor that reaches
+the limit drains its accepted batches before Ray confirms its exit; replacement
+then follows ``min_size`` and subsequent demand.
+
 Run on a Cluster
 ----------------
 

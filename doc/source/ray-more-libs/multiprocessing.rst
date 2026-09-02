@@ -73,8 +73,9 @@ Elastic slot ownership relies on a serial, non-restarting actor mailbox, so
 elastic pools reject non-default ``max_concurrency``, ``max_restarts``, and
 ``max_task_retries`` actor options.
 
-Elastic pools do not currently support ``maxtasksperchild``. Fixed pools retain
-their existing construction, scheduling, and ``maxtasksperchild`` behavior.
+``maxtasksperchild`` also applies to elastic pools. An elastic actor retires
+after accepting that many batches. Its slot remains occupied until Ray confirms
+the actor exit, then ``min_size`` or later demand creates a replacement.
 
 Guarantees and failure boundaries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
