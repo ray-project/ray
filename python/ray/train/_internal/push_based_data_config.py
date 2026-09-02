@@ -19,10 +19,6 @@ iteration, and delivery goes through the actor's built-in ``__ray_call__``.
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 from ray.actor import ActorHandle
-from ray.data._internal.iterator.push_based_split_iterator import (
-    PushBasedDataIterator,
-    create_push_split,
-)
 from ray.train._internal.data_config import DataConfig
 
 if TYPE_CHECKING:
@@ -68,7 +64,7 @@ class PushBasedDataConfig(DataConfig):
         **kwargs,
     ) -> List[Dict[str, "DataIterator"]]:
         # Mirrors DataConfig.configure, swapping streaming_split for
-        # create_push_split + PushBasedDataIterator.
+        # streaming_split_push_based.
         output = [{} for _ in range(world_size)]
 
         for dataset_name, dataset in datasets.items():
@@ -86,16 +82,15 @@ class PushBasedDataConfig(DataConfig):
             ds.context.execution_options = self._resolve_execution_options(name)
 
             if name in datasets_to_split:
-                coord_actor = create_push_split(
-                    ds, world_size, equal=True, locality_hints=locality_hints
-                )
-                for i in range(world_size):
-                    output[i][name] = PushBasedDataIterator(
-                        coord_actor,
-                        i,
+                for i, split in enumerate(
+                    ds.streaming_split_push_based(
                         world_size,
+                        equal=True,
+                        locality_hints=locality_hints,
                         target_buffer_rows=self._target_buffer_rows,
                     )
+                ):
+                    output[i][name] = split
             else:
                 for i in range(world_size):
                     output[i][name] = ds.iterator()

@@ -90,7 +90,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -122,56 +122,6 @@ class _EndOfEpoch:
 @dataclass
 class _ExecutorError:
     error: Exception
-
-
-def create_push_split(
-    base_dataset: "Dataset",
-    n: int,
-    *,
-    equal: bool = False,
-    locality_hints: Optional[List[NodeIdStr]] = None,
-) -> ray.actor.ActorHandle:
-    """Create a push-based split coordinator for ``base_dataset``.
-
-    The caller hands each of the ``n`` consumers a
-    ``PushBasedDataIterator(coord_actor, i, n)``; iterating it registers the
-    hosting actor with the coordinator.
-
-    The ``StreamingSplit`` wrapping below is NOT push-specific: it is the
-    same split-dataset construction ``Dataset.streaming_split`` performs
-    before creating the pull-model ``SplitCoordinator`` (dataset.py). The
-    logical ``StreamingSplit`` op plans to the physical ``OutputSplitter``
-    operator, which assigns each bundle an ``output_split_idx`` and gives the
-    executor per-split output queues — without it,
-    ``output_iterator.get_next(split_idx)`` has nothing to route on. It is
-    replicated here only so the prototype doesn't touch ``dataset.py``.
-    """
-    from ray.data._internal.logical.interfaces import LogicalPlan
-    from ray.data._internal.logical.operators.streaming_split_operator import (
-        StreamingSplit,
-    )
-    from ray.data.dataset import Dataset
-
-    op = StreamingSplit(
-        num_splits=n,
-        equal=equal,
-        input_dependencies=[base_dataset._logical_plan.dag],
-        locality_hints=locality_hints,
-    )
-    logical_plan = LogicalPlan(op, base_dataset.context)
-    split_dataset = Dataset._from_parent(base_dataset, logical_plan)
-    split_dataset._set_uuid(base_dataset._uuid)
-
-    coord_actor = PushSplitCoordinator.options(
-        # n concurrent start_epoch calls blocked at the barrier + headroom
-        # for register/notify/poll-side calls. Pusher threads are plain
-        # threading.Threads and do not occupy actor concurrency slots.
-        max_concurrency=n + 2,
-        label_selector={
-            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-        },
-    ).remote(split_dataset, n)
-    return coord_actor
 
 
 @ray.remote(num_cpus=0)
@@ -397,7 +347,12 @@ class PushSplitCoordinator:
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )
-                    self._current_executor.set_external_consumer_bytes(0)
+                    # TODO(push-split): external-consumer-bytes reporting is
+                    # disabled for now — see _update_external_consumer_bytes.
+                    # Registering with 0 and never updating would stall
+                    # DownstreamCapacityBackpressurePolicy, so the
+                    # registration is commented out together with the updates.
+                    # self._current_executor.set_external_consumer_bytes(0)
                     self._spawn_pushers()
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} "
@@ -506,7 +461,8 @@ class PushSplitCoordinator:
 
                 self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
                 rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
-                self._update_external_consumer_bytes()
+                # TODO(push-split): disabled; see _update_external_consumer_bytes.
+                # self._update_external_consumer_bytes()
 
                 # 2) Compute credit. Our push counters are exact; the polled
                 # consumed count is stale-low, so credit only under-sends.
@@ -535,7 +491,9 @@ class PushSplitCoordinator:
                         # Single-writer (this thread); see __init__.
                         self._rows_pushed[split_idx] += num_rows
                         self._bytes_pushed[split_idx] += size_bytes
-                    self._update_external_consumer_bytes()
+                    # TODO(push-split): disabled; see
+                    # _update_external_consumer_bytes.
+                    # self._update_external_consumer_bytes()
         except StopIteration:
             if not stop.is_set():
                 logger.debug(
@@ -584,7 +542,8 @@ class PushSplitCoordinator:
                 and self._current_executor is not None
             ):
                 executor_to_shutdown = self._current_executor
-        self._update_external_consumer_bytes()
+        # TODO(push-split): disabled; see _update_external_consumer_bytes.
+        # self._update_external_consumer_bytes()
         # Shut down outside the lock (joins the scheduling thread).
         if executor_to_shutdown is not None:
             logger.debug(
@@ -596,14 +555,16 @@ class PushSplitCoordinator:
         """Report bytes in flight + buffered at consumers to the executor.
 
         Push-model analog of SplitCoordinator._report_prefetched_bytes_to_executor;
-        keeps DownstreamCapacityBackpressurePolicy working.
+        would keep DownstreamCapacityBackpressurePolicy working.
 
-        TODO(push-split): verify set_external_consumer_bytes is still needed
-        under push. The pushers already gate consumption with credit and only
-        block in get_next when a consumer wants data, so the executor's
-        natural output-queue backpressure may suffice; this feed exists to
-        keep DownstreamCapacityBackpressurePolicy pacing the terminal op the
-        same way the pull model does. Benchmark with it removed.
+        TODO(push-split): CURRENTLY DISABLED — every call site (and the
+        set_external_consumer_bytes(0) registration in _try_start_new_epoch)
+        is commented out to check whether this feed is needed at all under
+        push: the pushers already gate consumption with credit and only block
+        in get_next when a consumer wants data, so the executor's natural
+        output-queue backpressure may suffice. Re-enable (registration +
+        call sites together) if slow-consumer runs show unbounded producer
+        run-ahead.
         """
         executor = self._current_executor
         if executor is None:
@@ -745,6 +706,33 @@ class PushBasedDataIterator(DataIterator):
     (prefetch -> resolve -> batch -> collate, including iter_torch_batches)
     is reused unchanged.
     """
+
+    @staticmethod
+    def create(
+        split_dataset: "Dataset",
+        n: int,
+        target_buffer_rows: Optional[int] = None,
+    ) -> List["PushBasedDataIterator"]:
+        """Create the coordinator and one iterator per split.
+
+        ``split_dataset`` must already be wrapped in a ``StreamingSplit``
+        logical op — see ``Dataset.streaming_split_push_based``, which
+        mirrors how ``Dataset.streaming_split`` wraps the dataset before
+        calling ``StreamSplitDataIterator.create``.
+        """
+        coord_actor = PushSplitCoordinator.options(
+            # n concurrent start_epoch calls blocked at the barrier + headroom
+            # for register/notify calls. Pusher threads are plain
+            # threading.Threads and do not occupy actor concurrency slots.
+            max_concurrency=n + 2,
+            label_selector={
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
+        ).remote(split_dataset, n)
+        return [
+            PushBasedDataIterator(coord_actor, i, n, target_buffer_rows)
+            for i in range(n)
+        ]
 
     def __init__(
         self,
