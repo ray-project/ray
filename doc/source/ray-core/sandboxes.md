@@ -40,6 +40,8 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/).
 
+To give sandboxes GPU access (see [GPU access](#gpu-access) below), additionally install `nvidia-container-toolkit-base` (which provides `nvidia-ctk`) on GPU worker nodes; Ray uses it to generate a [CDI](https://github.com/cncf-tags/container-device-interface) spec each time a sandbox actor requests a GPU, no other configuration required.
+
 ## Usage patterns and examples
 
 ### Create a basic sandbox and run a command
@@ -151,6 +153,58 @@ print(result.stdout)
 ray.get(sandbox_actor.delete.remote())
 ```
 
+### GPU access
+
+Since `Sandbox` is a standard Ray actor, request GPUs with `num_gpus` like any other actor; the sandbox automatically exposes exactly those GPUs inside the isolated container, the same way it inherits `num_cpus` and `memory`. This requires `nvidia-container-toolkit-base` on the node (see [Requirements](#requirements)) and a gVisor build with `--nvproxy` support.
+
+```python
+import ray
+from ray.experimental.sandbox import Sandbox
+
+ray.init()
+
+sandbox_actor = Sandbox.options(num_gpus=1).remote(
+    image="nvidia/cuda:12.4.0-base-ubuntu22.04",
+)
+
+result = ray.get(sandbox_actor.exec.remote("nvidia-smi"))
+print(result.stdout)
+
+ray.get(sandbox_actor.delete.remote())
+```
+
+GPU sandbox creation requires `ray.get_gpu_ids()` to return at least one GPU for the calling actor or task — Ray populates it when `num_gpus` is requested, which is how the sandbox knows which GPUs are actually its to use. If it's empty (for example, a custom actor that never requested `num_gpus`, or driver code running outside any Ray task or actor), creating a GPU sandbox fails with a clear error rather than guessing. There's no way to opt in without going through Ray's `num_gpus` scheduling — setting `CUDA_VISIBLE_DEVICES` yourself has no effect here, since this checks Ray's own resource assignment, not that environment variable.
+
+To give several sandboxes managed by one actor each their own GPU, use `SandboxRuntime` directly instead of `Sandbox` — a `Sandbox` actor is always exactly one actor to one sandbox, so it can't do this. Schedule the actor with `num_gpus=N`, then pass an explicit `gpu_ids=[id]` to each `SandboxRuntime.create()` call, one call per GPU the actor was assigned:
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+@ray.remote(num_gpus=2)
+class GpuSandboxPool:
+    def __init__(self, image: str):
+        self.runtime = SandboxRuntime()
+        self.sandboxes = {
+            gpu_id: self.runtime.create(image=image, gpu_ids=[gpu_id])
+            for gpu_id in [str(i) for i in ray.get_gpu_ids()]
+        }
+
+    def exec_on(self, gpu_id: str, command: str):
+        return self.runtime.exec(self.sandboxes[gpu_id], command)
+
+    def close(self):
+        for sandbox_id in self.sandboxes.values():
+            self.runtime.delete(sandbox_id)
+
+pool = GpuSandboxPool.remote(image="nvidia/cuda:12.4.0-base-ubuntu22.04")
+result = ray.get(pool.exec_on.remote("0", "nvidia-smi"))
+print(result.stdout)
+ray.get(pool.close.remote())
+```
+
+`SandboxRuntime.create()`'s `gpu_ids` is validated the same way `Sandbox`'s auto-inherited GPUs are: a sandbox can only access GPUs Ray actually assigned to the calling actor or task, with no fallback if none were.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
@@ -181,6 +235,8 @@ result = ray.get(pool.run_command.remote(0, "python3 -c 'print(\"Hello from pool
 print(result.stdout)
 ray.get(pool.close.remote())
 ```
+
+See [GPU access](#gpu-access) above for giving each sandbox in a pool like this its own GPU.
 
 ### Pass custom OCI configurations to gVisor
 
