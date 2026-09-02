@@ -1709,12 +1709,10 @@ class OperatorStatsSummary:
     block_transform_time: Optional[StatsSummary] = None
     # Time turning input blocks into the batches or rows the transforms consume.
     input_prep_time: Optional[StatsSummary] = None
-    # Time inside the UDF bodies themselves.
-    udf_body_time: Optional[StatsSummary] = None
+    # Time inside the stage bodies themselves, Ray Data's as well as yours.
+    function_body_time: Optional[StatsSummary] = None
     # Time assembling transform output back into blocks.
     output_build_time: Optional[StatsSummary] = None
-    # Time in the bodies of non-UDF stages fused into the same chain.
-    other_stage_time: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1764,9 +1762,8 @@ class OperatorStatsSummary:
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
         block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
         input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
-        udf_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
-        other_stage_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1791,12 +1788,10 @@ class OperatorStatsSummary:
                     block_transform_time_acc.add(es.block_transform_time_s)
                 if es.input_prep_time_s is not None:
                     input_prep_time_acc.add(es.input_prep_time_s)
-                if es.udf_body_time_s is not None:
-                    udf_body_time_acc.add(es.udf_body_time_s)
+                if es.function_body_time_s is not None:
+                    function_body_time_acc.add(es.function_body_time_s)
                 if es.output_build_time_s is not None:
                     output_build_time_acc.add(es.output_build_time_s)
-                if es.other_stage_time_s is not None:
-                    other_stage_time_acc.add(es.other_stage_time_s)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1839,7 +1834,7 @@ class OperatorStatsSummary:
         # Execution stats.
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
-        udf_stats = block_transform_time_acc.get()
+        block_transform_stats = block_transform_time_acc.get()
         # A chain that measured only its total leaves the phase accumulators
         # empty. Report that as None rather than a zero-valued summary, so a
         # consumer can tell "not measured" from "measured as zero" -- the phases
@@ -1847,9 +1842,8 @@ class OperatorStatsSummary:
         # `DataContext.accurate_map_phase_timing` is set.
         phases_measured = input_prep_time_acc.count > 0
         input_prep_stats = input_prep_time_acc.get() if phases_measured else None
-        udf_body_stats = udf_body_time_acc.get() if phases_measured else None
+        function_body_stats = function_body_time_acc.get() if phases_measured else None
         output_build_stats = output_build_time_acc.get() if phases_measured else None
-        other_stage_stats = other_stage_time_acc.get() if phases_measured else None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1875,11 +1869,10 @@ class OperatorStatsSummary:
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
-            block_transform_time=udf_stats,
+            block_transform_time=block_transform_stats,
             input_prep_time=input_prep_stats,
-            udf_body_time=udf_body_stats,
+            function_body_time=function_body_stats,
             output_build_time=output_build_stats,
-            other_stage_time=other_stage_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1926,20 +1919,17 @@ class OperatorStatsSummary:
             )
             # Breakdown of the line above, in execution order; these sum to
             # it. Verbose-only, like `extra_metrics` -- the figures are on the
-            # summary either way. The bool is whether to print at 0.0.
+            # summary either way.
             breakdown = [
-                ("Input prep", self.input_prep_time, True),
-                ("Function body", self.udf_body_time, True),
-                ("Output block build", self.output_build_time, True),
-                # A stage Ray Data supplies rather than one you passed; zero
-                # unless one is fused in, so hidden then.
-                ("Built-in stages", self.other_stage_time, False),
+                ("Input prep", self.input_prep_time),
+                ("Function body", self.function_body_time),
+                ("Output block build", self.output_build_time),
             ]
             if DataContext.get_current().verbose_stats_logs and any(
-                s is not None for _, s, _ in breakdown
+                s is not None for _, s in breakdown
             ):
-                for label, stats, always_show in breakdown:
-                    if stats is None or (not always_show and not stats.sum):
+                for label, stats in breakdown:
+                    if stats is None:
                         continue
                     out += indent
                     out += "\t* {}: {} min, {} max, {} mean, {} total\n".format(

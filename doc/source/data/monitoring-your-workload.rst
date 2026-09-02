@@ -402,13 +402,12 @@ The following are descriptions of the various stats included at the operator lev
 
   * **Input prep**: Time spent turning input blocks into the batches or rows your functions receive, including converting them
     to the ``batch_format`` you asked for. This can dominate when rows hold Python objects or large tensors.
-  * **Function body**: Time spent inside your functions themselves, excluding the prep and build around them. Use this stat to
-    track how much time optimizing those functions could save.
+  * **Function body**: Time spent inside the stage bodies themselves, excluding the prep and build around them. This covers
+    the functions you passed in and the ones Ray Data supplies, such as a read or a write that Ray Data fused into the same
+    operator, because a read or a write is a function like any other.
   * **Output block build**: Time spent assembling what your functions return back into blocks, including materializing Python
     objects into Arrow. Note that this is separate from the object store write, which Ray Data reports as the
     ``data_block_serialization_time_s`` metric.
-  * **Built-in stages**: Time spent in the bodies of stages Ray Data supplies itself, such as a read or a write, as opposed
-    to functions you passed in. This is only non-zero when Ray Data fuses one of them into this operator.
 
   Ray Data fuses adjacent operators where it can, and a fused operator reports one figure per phase covering all of its stages.
   Row-based transforms such as :meth:`~ray.data.Dataset.map` only report the breakdown when you also set
@@ -458,23 +457,24 @@ Ray Data fuses all four stages into one operator, and the breakdown splits that 
 
 .. code-block:: text
 
-    Operator 1 ReadRange->Project->MapBatches(map1)->MapBatches(map2): 2 tasks executed, 2 blocks produced in 0.72s
-    * Remote wall time: 308.96ms min, 391.19ms max, 350.07ms mean, 700.14ms total
-    * Remote cpu time: 3.97ms min, 33.05ms max, 18.51ms mean, 37.03ms total
-    * Block transform time: 307.46ms min, 390.49ms max, 348.98ms mean, 697.95ms total
-        * Input prep: 297.96us min, 2.89ms max, 1.59ms mean, 3.19ms total
-        * Function body: 305.83ms min, 310.34ms max, 308.09ms mean, 616.17ms total
-        * Output block build: 945.29us min, 1.66ms max, 1.3ms mean, 2.61ms total
-        * Built-in stages: 391.92us min, 75.59ms max, 37.99ms mean, 75.99ms total
+    Operator 1 ReadRange->Project->MapBatches(map1)->MapBatches(map2): 2 tasks executed, 2 blocks produced in 0.67s
+    * Remote wall time: 308.95ms min, 341.72ms max, 325.33ms mean, 650.67ms total
+    * Remote cpu time: 3.96ms min, 30.06ms max, 17.01ms mean, 34.02ms total
+    * Block transform time: 307.77ms min, 341.02ms max, 324.4ms mean, 648.79ms total
+        * Input prep: 270.79us min, 1.42ms max, 845.89us mean, 1.69ms total
+        * Function body: 306.8ms min, 338.86ms max, 322.83ms mean, 645.66ms total
+        * Output block build: 700.34us min, 743.38us max, 721.86us mean, 1.44ms total
     ...
 
-Each figure covers every stage that feeds it:
+Every figure covers all four stages:
 
-* **Function body** holds ``map1`` and ``map2`` alone. Each task sleeps 0.1 then 0.2 seconds, and two tasks ran, so the
-  616 ms matches the 0.6 seconds the two functions slept.
-* **Built-in stages** holds ``ReadRange`` and ``Project``, the stages Ray Data adds for ``range`` and ``select_columns``.
-* **Input prep** and **Output block build** cover all four stages, not just the two you wrote. Every stage forms its own
-  batches and builds its own output blocks, and all four stages report into the same two buckets.
+* **Function body** holds all four stage bodies: ``ReadRange``, ``Project``, ``map1`` and ``map2``. Two tasks each slept 0.1
+  then 0.2 seconds, so 0.6 of the 645 ms is ``map1`` and ``map2``, and the remainder is the read and the column projection.
+* **Input prep** and **Output block build** likewise cover every stage, not only the two you wrote. Each stage forms its own
+  batches and builds its own output blocks, and all four report into the same two figures.
+
+So this breakdown tells you which *phase* the time went to, not which stage. Attributing the body time to ``map2`` rather
+than to the operator needs a per-stage breakdown, which Ray Data doesn't report yet.
 
 Iterator stats
 ~~~~~~~~~~~~~~
@@ -512,9 +512,9 @@ By enabling verbosity Ray Data adds a few more outputs:
   operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took
   to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
   they show how long running each of the operators is in the context of the full dataset execution.
-* **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output block, into the input
-  prep, function body, output block build and built-in stage phases, so you can see which part of the transform the time
-  actually went to.
+* **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output
+  block, into the input prep, function body and output block build phases, so you can see which part of the transform the
+  time actually went to.
 
 Example stats
 ~~~~~~~~~~~~~

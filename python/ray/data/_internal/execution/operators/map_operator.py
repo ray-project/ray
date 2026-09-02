@@ -884,9 +884,8 @@ def _map_task(
                         block_ser_time_s=block_ser_time_s,
                         block_transform_time_s=phase_times.total_s,
                         input_prep_time_s=phase_times.input_prep_s,
-                        udf_body_time_s=phase_times.udf_body_s,
+                        function_body_time_s=phase_times.function_body_s,
                         output_build_time_s=phase_times.output_build_s,
-                        other_stage_time_s=phase_times.other_s,
                         task_idx=ctx.task_idx,
                     )
                     # NOTE: This tracks task duration up to this point, though we're

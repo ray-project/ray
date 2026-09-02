@@ -408,8 +408,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     block_transform_time_s: float = metric_field(
         default=0,
         description=(
-            "Time spent in the operator's map transform chain. The input prep, "
-            "UDF body, output build and other-stage metrics decompose this."
+            "Time spent transforming one output block. The input prep, function "
+            "body and output build metrics decompose this."
         ),
         metrics_group=MetricsGroup.TASKS,
         # Only map operators run a UDF transform chain.
@@ -425,11 +425,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Only map operators run a UDF transform chain.
         map_only=True,
     )
-    udf_body_time_s: float = metric_field(
+    function_body_time_s: float = metric_field(
         default=0,
         description=(
-            "Time spent inside the operator's UDF bodies, excluding the batch/row "
-            "formatting and block building around them."
+            "Time spent inside the bodies of the operator's stages, the ones Ray "
+            "Data supplies as well as the ones you passed in, excluding the "
+            "batch/row formatting and block building around them."
         ),
         metrics_group=MetricsGroup.TASKS,
         # Only map operators run a UDF transform chain.
@@ -440,18 +441,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description=(
             "Time spent assembling UDF output back into blocks, including "
             "materializing Python objects into Arrow."
-        ),
-        metrics_group=MetricsGroup.TASKS,
-        # Only map operators run a UDF transform chain.
-        map_only=True,
-    )
-    other_stage_time_s: float = metric_field(
-        default=0,
-        description=(
-            "Time spent in the bodies of stages Ray Data supplies itself, such "
-            "as a read or a write, fused into the same chain. Excludes the input "
-            "prep and output build around every stage, which are reported "
-            "separately."
         ),
         metrics_group=MetricsGroup.TASKS,
         # Only map operators run a UDF transform chain.
@@ -1089,9 +1078,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.block_serialization_time_s += exec_stats.block_ser_time_s
             self.block_transform_time_s += exec_stats.block_transform_time_s or 0
             self.input_prep_time_s += exec_stats.input_prep_time_s or 0
-            self.udf_body_time_s += exec_stats.udf_body_time_s or 0
+            self.function_body_time_s += exec_stats.function_body_time_s or 0
             self.output_build_time_s += exec_stats.output_build_time_s or 0
-            self.other_stage_time_s += exec_stats.other_stage_time_s or 0
 
             task_info.cum_block_gen_time_s += exec_stats.wall_time_s
             task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s

@@ -400,9 +400,8 @@ def gen_expected_metrics(
             # existing task metrics.
             "'block_transform_time_s': A",
             "'input_prep_time_s': A",
-            "'udf_body_time_s': A",
+            "'function_body_time_s': A",
             "'output_build_time_s': A",
-            "'other_stage_time_s': A",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -546,7 +545,6 @@ def gen_block_transform_time_breakdown_str(verbose: bool) -> str:
         "    * Input prep: T min, T max, T mean, T total\n"
         "    * Function body: T min, T max, T mean, T total\n"
         "    * Output block build: T min, T max, T mean, T total\n"
-        "    * Built-in stages: T min, T max, T mean, T total\n"
     )
 
 
@@ -642,8 +640,8 @@ def canonicalize(
     # avoid flakiness; `test_row_transform_phases_are_opt_in` asserts the
     # measured-vs-not distinction directly instead.
     canonicalized_stats = re.sub(
-        r"('?(?:block_transform_time_s|input_prep_time_s|udf_body_time_s|output_build_time_s"
-        r"|other_stage_time_s)'?: )\d+(?:\.\d+)?(?:[eE][-+]?\d+)?",
+        r"('?(?:block_transform_time_s|input_prep_time_s|function_body_time_s"
+        r"|output_build_time_s)'?: )\d+(?:\.\d+)?(?:[eE][-+]?\d+)?",
         r"\g<1>A",
         canonicalized_stats,
     )
@@ -1006,9 +1004,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         # The block transform time breakdown, exported per map operator.
         "      block_transform_time_s: A,\n"
         "      input_prep_time_s: A,\n"
-        "      udf_body_time_s: A,\n"
+        "      function_body_time_s: A,\n"
         "      output_build_time_s: A,\n"
-        "      other_stage_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -1176,9 +1173,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         # The block transform time breakdown, exported per map operator.
         "      block_transform_time_s: A,\n"
         "      input_prep_time_s: A,\n"
-        "      udf_body_time_s: A,\n"
+        "      function_body_time_s: A,\n"
         "      output_build_time_s: A,\n"
-        "      other_stage_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -1299,9 +1295,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         # The block transform time breakdown, exported per map operator.
         "            block_transform_time_s: A,\n"
         "            input_prep_time_s: A,\n"
-        "            udf_body_time_s: A,\n"
+        "            function_body_time_s: A,\n"
         "            output_build_time_s: A,\n"
-        "            other_stage_time_s: A,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_s: N,\n"
@@ -1811,12 +1806,11 @@ def test_block_transform_time_is_not_shared_across_concurrent_actor_tasks(
 
 
 def _phase_components(op):
-    """The four figures that decompose an operator's block transform time."""
+    """The three figures that decompose an operator's block transform time."""
     return {
         "input_prep": op.input_prep_time,
-        "udf_body": op.udf_body_time,
+        "function_body": op.function_body_time,
         "output_build": op.output_build_time,
-        "other": op.other_stage_time,
     }
 
 
@@ -1852,7 +1846,7 @@ def test_block_transform_time_phases_sum_to_the_total(ray_start_regular_shared):
         + ", ".join(f"{k}={v.sum:.6f}s" for k, v in parts.items())
     )
     # The UDF bodies are the sleeps, so they should dominate this pipeline.
-    assert op.udf_body_time.sum >= 2 * num_blocks * sleep_s * 0.9
+    assert op.function_body_time.sum >= 2 * num_blocks * sleep_s * 0.9
 
 
 def test_block_transform_time_phases_separate_object_serde(ray_start_regular_shared):
@@ -1890,9 +1884,9 @@ def test_block_transform_time_phases_separate_object_serde(ray_start_regular_sha
     # the parenthesised operator name.
     op = get_operator(ds.get_stats_summary(), name_pattern="untouched")
 
-    assert op.input_prep_time.sum > op.udf_body_time.sum, (
+    assert op.input_prep_time.sum > op.function_body_time.sum, (
         f"input prep {op.input_prep_time.sum:.4f}s should dominate the body "
-        f"{op.udf_body_time.sum:.4f}s for a UDF that only counts rows"
+        f"{op.function_body_time.sum:.4f}s for a UDF that only counts rows"
     )
     parts = _phase_components(op)
     assert sum(p.sum for p in parts.values()) == pytest.approx(
@@ -1906,8 +1900,8 @@ def test_eagerly_consuming_stage_body_is_timed(ray_start_regular_shared):
     A write does its whole upload inside the call that builds its output
     iterable, before any timing iterator wraps it, so timing only `__next__`
     misses it entirely -- reporting microseconds for an upload that took
-    seconds. It belongs in `Built-in stages`, since a datasink is Ray Data's
-    code rather than the user's.
+    seconds. It belongs in `Function body`, which covers a datasink's body the
+    same way it covers a UDF's.
     """
     write_sleep_s = 0.3
     num_blocks = 2
@@ -1927,15 +1921,15 @@ def test_eagerly_consuming_stage_body_is_timed(ray_start_regular_shared):
 
     op = ds._write_ds.get_stats_summary().operators_stats[-1]
     expected_s = write_sleep_s * num_blocks
-    assert op.other_stage_time is not None, "built-in stage time was not collected"
+    assert op.function_body_time is not None, "stage body time was not collected"
     # Generous lower bound: the point is that seconds of I/O are not reported as
     # microseconds, not that the figure is tight.
-    assert op.other_stage_time.sum > expected_s * 0.5, (
-        f"write of {expected_s}s reported {op.other_stage_time.sum}s of "
-        f"built-in stage time"
+    assert op.function_body_time.sum > expected_s * 0.5, (
+        f"write of {expected_s}s reported {op.function_body_time.sum}s of "
+        f"function body time"
     )
     # And it is inside the headline total, not stranded outside it.
-    assert op.block_transform_time.sum >= op.other_stage_time.sum
+    assert op.block_transform_time.sum >= op.function_body_time.sum
 
 
 def test_operator_without_a_udf_reports_no_block_transform_time(
@@ -1955,9 +1949,8 @@ def test_operator_without_a_udf_reports_no_block_transform_time(
     ), f"read reported {op.block_transform_time.sum}s of block transform time"
     # Nothing was measured, so the phases are absent rather than a row of zeros.
     assert op.input_prep_time is None
-    assert op.udf_body_time is None
+    assert op.function_body_time is None
     assert op.output_build_time is None
-    assert op.other_stage_time is None
 
 
 def test_row_transform_phases_are_opt_in(

@@ -167,7 +167,6 @@ class MapTransformFn(ABC):
         to bind the task context.
         """
         name = repr(self)
-        body = MapTransformPhase.UDF_BODY if self._is_udf else MapTransformPhase.OTHER
         return [
             TimedStep(
                 f"{name} input prep",
@@ -177,7 +176,7 @@ class MapTransformFn(ABC):
             ),
             TimedStep(
                 f"{name} body",
-                body,
+                MapTransformPhase.FUNCTION_BODY,
                 stage_idx,
                 lambda it: self._apply_transform(ctx, it, report_custom_op_stats),
             ),
@@ -247,12 +246,11 @@ class MapTransformPhase(Enum):
 
     # Turning input blocks into the batches or rows the transform consumes.
     INPUT_PREP = 0
-    # A transform body the planner marked as a user-defined function.
-    UDF_BODY = 1
+    # A transform body, whoever wrote it: a read and a write are functions like
+    # any other, so they land here beside the ones the caller passed in.
+    FUNCTION_BODY = 1
     # Assembling the transform's output back into blocks.
     OUTPUT_BUILD = 2
-    # A transform body that isn't a UDF, such as a read or a write.
-    OTHER = 3
 
 
 @dataclass(frozen=True)
@@ -327,11 +325,11 @@ class MapTransformPhaseTimes:
     ``total_s`` is the whole chain: forming batches or rows, the stage bodies,
     and building output blocks, for every stage of a (possibly fused) chain. It
     is deliberately not the time inside the functions the caller passed in --
-    that is the narrower ``udf_body_s``. ``ds.stats()`` printed this figure as
+    that is the narrower ``function_body_s``. ``ds.stats()`` printed this figure as
     "UDF time" before it was renamed, which said the opposite; hence the rename,
     and hence the narrow figure getting its own "Function body" line.
 
-    The four phase figures decompose ``total_s`` and sum back to it, saying
+    The three phase figures decompose ``total_s`` and sum back to it, saying
     where inside the chain the time went; they are all ``None`` when the chain
     measured only its total. Each is summed over every stage, so a fused
     operator reports one figure per phase rather than one per stage.
@@ -341,9 +339,8 @@ class MapTransformPhaseTimes:
     # None, not zero, when the chain measured only its total: a consumer has to
     # be able to tell "not measured" from "measured as zero".
     input_prep_s: Optional[float] = None
-    udf_body_s: Optional[float] = None
+    function_body_s: Optional[float] = None
     output_build_s: Optional[float] = None
-    other_s: Optional[float] = None
 
 
 class TransformClock:
@@ -406,9 +403,8 @@ class TransformClock:
             times = MapTransformPhaseTimes(
                 total_s=sum(own),
                 input_prep_s=by_bucket.get(MapTransformPhase.INPUT_PREP, 0.0),
-                udf_body_s=by_bucket.get(MapTransformPhase.UDF_BODY, 0.0),
+                function_body_s=by_bucket.get(MapTransformPhase.FUNCTION_BODY, 0.0),
                 output_build_s=by_bucket.get(MapTransformPhase.OUTPUT_BUILD, 0.0),
-                other_s=by_bucket.get(MapTransformPhase.OTHER, 0.0),
             )
         else:
             times = MapTransformPhaseTimes(total_s=sum(own))
