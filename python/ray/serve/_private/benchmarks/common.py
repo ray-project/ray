@@ -715,7 +715,7 @@ async def run_controller_benchmark(
                 ray_actor_options={
                     **(ControllerBenchMetricsGenerator.ray_actor_options or {}),
                     "num_cpus": _controller_replica_num_cpus(target_replicas),
-                }
+                },
             ).bind(hello_world)
             handle = serve.run(app, name="default", route_prefix=None)
 
