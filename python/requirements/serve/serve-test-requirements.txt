@@ -1,8 +1,5 @@
 anyio
 gradio
-# grpcio-reflection must match the grpcio pin in test-requirements.txt.
-grpcio-reflection==1.75.0; python_version < '3.14'
-grpcio-reflection==1.76.0; python_version >= '3.14'
 httpx
 pymysql
 pytest
