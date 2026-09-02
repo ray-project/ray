@@ -338,6 +338,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # fall back to html_baseurl for local builds. (DOC-1130)
 llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
 
+# Read the Docs serves a Markdown rendering of any page from that page's own
+# `.html` URL, under an `Accept: text/markdown` request — there is no separate
+# `.md` file to link to (`page.md`, `page.html.md`, and `?format=md` all 404).
+# So the `.html` links in llms.txt are already the Markdown links; nothing in
+# the file tells an agent that, hence this pointer. Content negotiation happens
+# on the rendered HTML, so it works the same whether a page's source is .rst or
+# .md, and it stays correct as pages migrate between the two.
+llms_txt_markdown_hint = True
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
@@ -398,6 +407,8 @@ autogen_files = AUTOGEN_FILES
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
+    # Committed intersphinx inventory snapshots + refresh tooling, not docs.
+    "_intersphinx/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
@@ -476,6 +487,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
@@ -783,7 +806,15 @@ redoc = [
     },
 ]
 
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Pin the ReDoc bundle version rather than tracking the CDN's `latest` tag.
+# sphinxcontrib-redoc injects this script instead of bundling a renderer, so the
+# Jobs API page is rendered client-side at page-view time by whatever this URL
+# serves. On `latest`, a breaking change in the bundle degrades the published page
+# with no build-time signal, because the Sphinx build never executes it.
+# When bumping this, load the api.html page in the Read the Docs PR preview and
+# confirm the three-panel layout and the endpoint list still render. A green
+# Sphinx build proves nothing about this page.
+redoc_uri = "https://cdn.redoc.ly/redoc/v2.5.3/bundles/redoc.standalone.js"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
@@ -818,26 +849,34 @@ for mock_target in autodoc_mock_imports:
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
 #
-# Each value is (base_url, inventory_url). A None inventory falls back to
-# <base_url>objects.inv. A few projects (pandas, scipy, tensorflow) pin an
+# `_intersphinx_targets` is the source of truth: name -> (base_url, inventory).
+# `base_url` is where generated cross-reference links point. `inventory` is the
+# upstream objects.inv used to *resolve* those references at build time; None
+# means the Sphinx default of <base_url>objects.inv. A few projects pin an
 # explicit inventory URL because their hosted objects.inv is unreliable; the
-# ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
+# ray-project/*/releases/.../object-mirror-* URL is a stable mirror we control.
+#
+# To avoid fetching eighteen inventories over the network on every build (slow,
+# and occasionally flaky via the GitHub release-asset redirects), we commit a
+# snapshot of each under doc/source/_intersphinx/ and prefer it. The
+# `intersphinx_mapping` built below lists the local snapshot first and the
+# upstream location second; Sphinx uses the first that loads, so a present
+# snapshot means no network fetch, and a missing one degrades to the old remote
+# behavior (an info message, not a build-breaking warning). Refresh snapshots
+# with `python doc/source/_intersphinx/refresh.py` (see that directory's README).
 #
 # Maintenance note: the build log emits "intersphinx inventory has moved: A -> B"
-# when A returns a redirect. Only chase it when B is another documentation URL
-# (the project relocated). Do NOT copy B when it points at a signed, expiring
+# when A returns a redirect (only when fetching remotely, i.e. on refresh or
+# fallback). Only chase it when B is another documentation URL (the project
+# relocated). Do NOT copy B when it points at a signed, expiring
 # release-assets.githubusercontent.com URL - that's just GitHub's normal redirect
 # for a releases/download/ asset, and the github.com/.../releases/download/ URL
 # is the stable one to keep.
-intersphinx_mapping = {
-    "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
-    "composer": ("https://docs.mosaicml.com/en/latest/", None),
+_intersphinx_targets = {
     "dask": ("https://docs.dask.org/en/stable/", None),
     "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
-    "distributed": ("https://distributed.dask.org/en/stable/", None),
     "grpc": ("https://grpc.github.io/grpc/python/", None),
     "gymnasium": ("https://gymnasium.farama.org/", None),
-    "horovod": ("https://horovod.readthedocs.io/en/stable/", None),
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
@@ -848,15 +887,9 @@ intersphinx_mapping = {
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": (
-        "https://docs.scipy.org/doc/scipy/",
-        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
-    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
@@ -864,10 +897,19 @@ intersphinx_mapping = {
     ),
     "torch": (
         "https://docs.pytorch.org/docs/stable/",
-        "https://docs.pytorch.org/docs/2.7/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
+        # so cross-references only resolve to symbols that version ships. Bump this
+        # with that pin, then re-run _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.9/objects.inv",
     ),
-    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
+}
+
+# Prefer the committed local snapshot, falling back to the upstream inventory
+# (or the <base_url>objects.inv default when None) if a snapshot is missing.
+intersphinx_mapping = {
+    name: (base_url, (f"_intersphinx/{name}.inv", inventory))
+    for name, (base_url, inventory) in _intersphinx_targets.items()
 }
 
 intersphinx_timeout = 15

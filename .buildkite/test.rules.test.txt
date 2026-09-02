@@ -112,8 +112,11 @@ doc/source/ray-core/examples/highly_parallel.ipynb: doc
 doc/external/test_hashes.py: ml_doc
 doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
+# This holds for both the doc subtree and the repo-root .claude/.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
+.claude/skills/backport-docs/SKILL.md:
+.claude/settings.json:
 doc/source/llm/doc_code/example.py: llm
 # Unowned doc dirs and doc-root executables fall to the core docs example step.
 doc/source/cluster/example.py: core_doc
@@ -219,6 +222,13 @@ doc/source/llms_txt_summary.txt: doc
 # The shared notebook runner stays on the catch-all core step by design; see
 # the comment on the catch-all rule in test.rules.txt.
 doc/test_myst_doc.py: core_doc
+# Intersphinx snapshots are build inputs, so they route to the build. refresh.py
+# is the case the dedicated rule exists for: without it the `doc/*.py` catch-all
+# claimed it and started the core docs example step. README.md beside them is
+# prose and stays unrouted, which is what the third case locks in.
+doc/source/_intersphinx/python.inv: doc
+doc/source/_intersphinx/refresh.py: doc
+doc/source/_intersphinx/README.md:
 python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
 # Redirect YAML selects the dedicated lightweight check and nothing else: no

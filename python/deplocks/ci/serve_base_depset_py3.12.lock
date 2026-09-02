@@ -1,4 +1,3 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 absl-py==2.4.0 \
@@ -1305,6 +1304,7 @@ jinja2==3.1.6 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
     #   memray
+    #   ray
     #   torch
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
