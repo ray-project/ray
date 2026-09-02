@@ -35,9 +35,8 @@ _MIN_FAST_SOURCE_BYTES = 1024 * 1024
 _MAX_MASK_GROUP_CHUNKS = 16
 
 
-def is_chunked_tensor_take_enabled() -> bool:
-    """Return whether callers should use the chunked tensor take fast path."""
-    return ENABLE_CHUNKED_TENSOR_TAKE
+class _PreparationRejected(Exception):
+    """Signal that a source cannot safely use the prepared execution path."""
 
 
 def try_prepare_chunked_tensor_take(
@@ -45,13 +44,23 @@ def try_prepare_chunked_tensor_take(
     *,
     max_output_rows: int,
 ) -> Optional["PreparedChunkedTensorTake"]:
-    """Prepare a chunked tensor source whose subsequent takes cannot fall back.
+    """Authoritatively select and prepare the chunked tensor take fast path.
 
-    The fast path applies only to a non-null, fixed-shape numeric Ray tensor
-    column with at least two nonempty chunks. Its row and source sizes must
-    amortize preparation, every chunk must expose a safe zero-copy view with
-    regular logical offsets, and ``max_output_rows`` must fit the tensor type's
-    Arrow offset capacity.
+    This function owns every column-level and operational eligibility rule:
+
+    * The feature flag must be enabled.
+    * The column must be a non-null, fixed-shape numeric Ray tensor with at
+      least two nonempty chunks.
+    * Its row and source payload must be large enough to amortize preparation.
+    * Its declared maximum output must fit the tensor type's Arrow offsets.
+    * Every chunk must have regular logical offsets and expose a safe zero-copy
+      view within the numeric child buffer.
+
+    Callers may identify broad multi-chunk extension candidates as part of
+    table-level routing, but that does not establish fast-path eligibility.
+    Request-level index handling also stays outside this column preparation:
+    ``take_table`` normalizes external indices once after a plan is available,
+    while local shuffle already owns a valid native ``int64`` permutation.
 
     A returned plan may take any valid normalized index array containing at
     most ``max_output_rows`` rows. All eligibility checks happen here: once
@@ -67,20 +76,19 @@ def try_prepare_chunked_tensor_take(
     Returns:
         Validated source metadata when the fast path supports the column.
         Otherwise, ``None`` so the caller can use the standard Arrow fallback.
-
-    Preparation is independent of the operational feature flag. Callers check
-    ``is_chunked_tensor_take_enabled`` before doing fast-path-specific work.
     """
+    if not ENABLE_CHUNKED_TENSOR_TAKE:
+        return _log_preparation_fallback(column, "feature_disabled")
     if column.num_chunks <= 1:
         return _log_preparation_fallback(column, "single_chunk")
     if column.null_count > 0:
         return _log_preparation_fallback(column, "contains_nulls")
 
     tensor_type = column.type
-    layout = _try_get_tensor_layout(tensor_type)
-    if layout is None:
+    try:
+        values_per_row, row_bytes, value_dtype = _get_tensor_layout(tensor_type)
+    except (_PreparationRejected, NotImplementedError, TypeError, ValueError):
         return _log_preparation_fallback(column, "unsupported_tensor_layout")
-    values_per_row, row_bytes, value_dtype = layout
 
     if not _passes_source_size_gates(len(column), row_bytes):
         return _log_preparation_fallback(column, "below_size_threshold")
@@ -99,21 +107,29 @@ def try_prepare_chunked_tensor_take(
         TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
 
-    chunk_views = []
-    chunk_starts = []
-    row_offset = 0
-    for chunk in chunks:
-        view = _try_get_zero_copy_chunk_view(
-            chunk,
-            tensor_type,
-            values_per_row,
-            value_dtype,
-        )
-        if view is None:
-            return _log_preparation_fallback(column, "unsafe_chunk_storage")
-        chunk_views.append(view)
-        chunk_starts.append(row_offset)
-        row_offset += len(chunk)
+    try:
+        chunk_views = []
+        chunk_starts = []
+        row_offset = 0
+        for chunk in chunks:
+            chunk_views.append(
+                _get_zero_copy_chunk_view(
+                    chunk,
+                    tensor_type,
+                    values_per_row,
+                    value_dtype,
+                )
+            )
+            chunk_starts.append(row_offset)
+            row_offset += len(chunk)
+    except (
+        _PreparationRejected,
+        AttributeError,
+        pa.ArrowException,
+        TypeError,
+        ValueError,
+    ):
+        return _log_preparation_fallback(column, "unsafe_chunk_storage")
 
     plan = PreparedChunkedTensorTake(
         tensor_type=tensor_type,
@@ -149,6 +165,97 @@ def _log_preparation_fallback(
         column.type,
     )
     return None
+
+
+def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
+    """Return whether the source can amortize fast-path setup work."""
+    return (
+        row_bytes >= _MIN_FAST_ROW_BYTES
+        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
+    )
+
+
+def _get_tensor_layout(
+    tensor_type: Any,
+) -> Tuple[int, int, np.dtype]:
+    """Validate and return fixed numeric tensor layout metadata.
+
+    The returned tuple is ``(values_per_row, row_bytes, numpy_dtype)``. Rejecting
+    unsupported scalar types or shapes keeps the fast path independent of object
+    conversion and variable-shape tensor semantics. Expected conversion errors
+    are handled by the public preparation boundary.
+    """
+    if not isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
+        raise _PreparationRejected
+
+    scalar_type = tensor_type.storage_type.value_type
+    if not (pa.types.is_integer(scalar_type) or pa.types.is_floating(scalar_type)):
+        raise _PreparationRejected
+    if scalar_type.bit_width % 8 != 0:
+        raise _PreparationRejected
+
+    shape = tensor_type.shape
+    if any(not isinstance(dimension, int) or dimension < 0 for dimension in shape):
+        raise _PreparationRejected
+    values_per_row = math.prod(shape)
+    if values_per_row <= 0:
+        raise _PreparationRejected
+
+    value_dtype = np.dtype(scalar_type.to_pandas_dtype())
+    if value_dtype.hasobject or value_dtype.itemsize * 8 != scalar_type.bit_width:
+        raise _PreparationRejected
+
+    return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
+
+
+def _get_zero_copy_chunk_view(
+    chunk: Any,
+    tensor_type: Any,
+    values_per_row: int,
+    value_dtype: np.dtype,
+) -> np.ndarray:
+    """Validate chunk storage and return its zero-copy tensor view.
+
+    Constructing the view from the numeric child buffer makes its shape, dtype,
+    contiguity, ownership, and buffer bounds explicit. The logical list
+    offsets are authoritative: a legal array may start after child element 0,
+    while malformed or variable-stride offsets cannot represent the declared
+    fixed tensor shape and must be rejected. Expected Arrow and NumPy conversion
+    errors are handled by the public preparation boundary.
+    """
+    values = chunk.storage.values
+    # Preserve the existing fallback for child arrays whose logical data starts
+    # inside a larger values array.
+    if values.offset != 0 or values.null_count > 0:
+        raise _PreparationRejected
+
+    storage = chunk.storage
+    offsets = storage.offsets.to_numpy(zero_copy_only=True)
+    if offsets.ndim != 1 or len(offsets) != len(chunk) + 1:
+        raise _PreparationRejected
+
+    first_value = int(offsets[0])
+    last_value = first_value + len(chunk) * values_per_row
+    if first_value < 0 or int(offsets[-1]) != last_value or last_value > len(values):
+        raise _PreparationRejected
+    if not np.all(np.diff(offsets.astype(np.int64, copy=False)) == values_per_row):
+        raise _PreparationRejected
+
+    buffers = values.buffers()
+    if len(buffers) < 2 or buffers[1] is None:
+        raise _PreparationRejected
+    data_buffer = buffers[1]
+    byte_offset = first_value * value_dtype.itemsize
+    view_nbytes = len(chunk) * values_per_row * value_dtype.itemsize
+    buffer_size = data_buffer.size
+    if byte_offset > buffer_size or view_nbytes > buffer_size - byte_offset:
+        raise _PreparationRejected
+    return np.ndarray(
+        (len(chunk), *tensor_type.shape),
+        dtype=value_dtype,
+        buffer=data_buffer,
+        offset=byte_offset,
+    )
 
 
 class PreparedChunkedTensorTake(NamedTuple):
@@ -273,107 +380,6 @@ class PreparedChunkedTensorTake(NamedTuple):
             children=[data_array],
         )
         return self.tensor_type.wrap_array(storage)
-
-
-def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
-    """Return whether the source can amortize fast-path setup work."""
-    return (
-        row_bytes >= _MIN_FAST_ROW_BYTES
-        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
-    )
-
-
-def _try_get_tensor_layout(
-    tensor_type: Any,
-) -> Optional[Tuple[int, int, np.dtype]]:
-    """Return fixed numeric tensor layout metadata, or ``None`` if unsupported.
-
-    The returned tuple is ``(values_per_row, row_bytes, numpy_dtype)``. Rejecting
-    unsupported scalar types or shapes keeps the fast path independent of object
-    conversion and variable-shape tensor semantics.
-    """
-    if not isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
-        return None
-
-    scalar_type = tensor_type.storage_type.value_type
-    if not (pa.types.is_integer(scalar_type) or pa.types.is_floating(scalar_type)):
-        return None
-    if scalar_type.bit_width % 8 != 0:
-        return None
-
-    shape = tensor_type.shape
-    if any(not isinstance(dimension, int) or dimension < 0 for dimension in shape):
-        return None
-    values_per_row = math.prod(shape)
-    if values_per_row <= 0:
-        return None
-
-    try:
-        value_dtype = np.dtype(scalar_type.to_pandas_dtype())
-    except (NotImplementedError, TypeError, ValueError):
-        return None
-    if value_dtype.hasobject or value_dtype.itemsize * 8 != scalar_type.bit_width:
-        return None
-
-    return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
-
-
-def _try_get_zero_copy_chunk_view(
-    chunk: Any,
-    tensor_type: Any,
-    values_per_row: int,
-    value_dtype: np.dtype,
-) -> Optional[np.ndarray]:
-    """Return a safe zero-copy tensor view, or ``None`` for column fallback.
-
-    Constructing the view from the numeric child buffer makes its shape, dtype,
-    contiguity, ownership, and buffer bounds explicit. The logical list
-    offsets are authoritative: a legal array may start after child element 0,
-    while malformed or variable-stride offsets cannot represent the declared
-    fixed tensor shape and must fall back.
-    """
-    values = chunk.storage.values
-    # Preserve the existing fallback for child arrays whose logical data starts
-    # inside a larger values array.
-    if values.offset != 0 or values.null_count > 0:
-        return None
-
-    storage = chunk.storage
-    try:
-        offsets = storage.offsets.to_numpy(zero_copy_only=True)
-    except (AttributeError, pa.ArrowException, TypeError, ValueError):
-        return None
-    if offsets.ndim != 1 or len(offsets) != len(chunk) + 1:
-        return None
-
-    first_value = int(offsets[0])
-    last_value = first_value + len(chunk) * values_per_row
-    if first_value < 0 or int(offsets[-1]) != last_value or last_value > len(values):
-        return None
-    if not np.all(np.diff(offsets.astype(np.int64, copy=False)) == values_per_row):
-        return None
-
-    buffers = values.buffers()
-    if len(buffers) < 2 or buffers[1] is None:
-        return None
-    data_buffer = buffers[1]
-    byte_offset = first_value * value_dtype.itemsize
-    view_nbytes = len(chunk) * values_per_row * value_dtype.itemsize
-    try:
-        buffer_size = data_buffer.size
-    except (AttributeError, TypeError):
-        return None
-    if byte_offset > buffer_size or view_nbytes > buffer_size - byte_offset:
-        return None
-    try:
-        return np.ndarray(
-            (len(chunk), *tensor_type.shape),
-            dtype=value_dtype,
-            buffer=data_buffer,
-            offset=byte_offset,
-        )
-    except (TypeError, ValueError):
-        return None
 
 
 def _gather_monotonic_chunk_ids(

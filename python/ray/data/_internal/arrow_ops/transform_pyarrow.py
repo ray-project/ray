@@ -17,7 +17,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    is_chunked_tensor_take_enabled,
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -285,30 +284,23 @@ def take_table(
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
         prepared_takes = {}
-        fast_path_enabled = is_chunked_tensor_take_enabled()
-        if fast_path_enabled:
-            try:
-                max_output_rows = len(indices)
-            except TypeError:
-                max_output_rows = None
-            if max_output_rows is not None:
-                for index, column in enumerate(table.columns):
-                    if not _is_multi_chunk_extension_column(column):
-                        continue
-                    prepared = try_prepare_chunked_tensor_take(
-                        column,
-                        max_output_rows=max_output_rows,
-                    )
-                    if prepared is not None:
-                        prepared_takes[index] = prepared
-            else:
-                logger.debug(
-                    "Chunked tensor take fast path not used: "
-                    "reason=unsupported_indices"
+        try:
+            max_output_rows = len(indices)
+        except TypeError:
+            max_output_rows = None
+        if max_output_rows is not None:
+            for index, column in enumerate(table.columns):
+                if not _is_multi_chunk_extension_column(column):
+                    continue
+                prepared = try_prepare_chunked_tensor_take(
+                    column,
+                    max_output_rows=max_output_rows,
                 )
+                if prepared is not None:
+                    prepared_takes[index] = prepared
         else:
             logger.debug(
-                "Chunked tensor take fast path not used: reason=feature_disabled"
+                "Chunked tensor take fast path not used: reason=unsupported_indices"
             )
 
         if prepared_takes:

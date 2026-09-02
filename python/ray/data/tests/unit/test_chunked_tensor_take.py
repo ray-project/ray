@@ -465,25 +465,10 @@ def test_take_table_prepares_each_column_once(monkeypatch):
 def test_chunked_tensor_take_can_be_disabled(monkeypatch):
     column, values = _chunked_tensor(4096, 256, 4)
     indices = np.array([4095, 1, 2048], dtype=np.int64)
-    monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
-
-    # Column preparation is a feature-flag-independent capability check. This
-    # also ensures that the entry-point assertions below are not vacuous.
     _assert_operational_fast_path(column, max_output_rows=len(indices))
 
-    def fail_fast_path(*args, **kwargs):
-        raise AssertionError("Disabled chunked tensor fast path was entered")
-
-    monkeypatch.setattr(
-        transform_pyarrow,
-        "try_prepare_chunked_tensor_take",
-        fail_fast_path,
-    )
-    monkeypatch.setattr(
-        batcher_module,
-        "try_prepare_chunked_tensor_take",
-        fail_fast_path,
-    )
+    monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
+    assert try_prepare_chunked_tensor_take(column, max_output_rows=len(indices)) is None
 
     table = pa.table({"tensor": column})
     output = take_table(table, indices)
@@ -600,7 +585,9 @@ def test_chunked_tensor_take_rejects_invalid_logical_offsets(monkeypatch):
     assert try_prepare_chunked_tensor_take(irregular, max_output_rows=2) is None
 
     column, _ = _chunked_tensor(40, width, 4)
-    chunk = next(chunk for chunk in column.chunks if len(chunk) > 0)
+    chunks = list(column.chunks)
+    chunk_index = next(index for index, chunk in enumerate(chunks) if len(chunk) > 0)
+    chunk = chunks[chunk_index]
     start = len(chunk.storage.values) - width
     offsets = pa.array(
         start + np.arange(len(chunk) + 1) * width,
@@ -608,16 +595,10 @@ def test_chunked_tensor_take_rejects_invalid_logical_offsets(monkeypatch):
     )
     storage = _ArrowProxy(chunk.storage, offsets=offsets)
     past_end_chunk = _ArrowProxy(chunk, storage=storage)
+    chunks[chunk_index] = past_end_chunk
+    past_end_column = _ArrowProxy(column, chunks=tuple(chunks))
 
-    assert (
-        chunked_tensor_take._try_get_zero_copy_chunk_view(
-            past_end_chunk,
-            column.type,
-            width,
-            np.dtype(np.float32),
-        )
-        is None
-    )
+    assert try_prepare_chunked_tensor_take(past_end_column, max_output_rows=2) is None
 
 
 @pytest.mark.parametrize("tensor_cls", [ArrowTensorType, ArrowTensorTypeV2])
@@ -679,7 +660,7 @@ def test_chunked_tensor_take_rejects_output_offset_overflow_before_chunk_views(
 
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_try_get_zero_copy_chunk_view",
+        "_get_zero_copy_chunk_view",
         fail_chunk_view,
     )
 
@@ -896,16 +877,16 @@ def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch):
     def raise_prepare(*args, **kwargs):
         raise RuntimeError("injected prepare failure")
 
-    monkeypatch.setattr(
-        chunked_tensor_take, "_try_get_zero_copy_chunk_view", raise_prepare
-    )
+    monkeypatch.setattr(chunked_tensor_take, "_get_zero_copy_chunk_view", raise_prepare)
     with pytest.raises(RuntimeError, match="injected prepare failure"):
         try_prepare_chunked_tensor_take(column, max_output_rows=1)
 
 
 def test_chunked_tensor_take_falls_back_for_truncated_buffers():
-    column, _ = _chunked_tensor(40, 64, 4)
-    chunk = next(chunk for chunk in column.chunks if len(chunk) > 0)
+    column, _ = _chunked_tensor(1024, 256, 4)
+    chunks = list(column.chunks)
+    chunk_index = next(index for index, chunk in enumerate(chunks) if len(chunk) > 0)
+    chunk = chunks[chunk_index]
     values = chunk.storage.values
     truncated_values = _ArrowProxy(
         values,
@@ -913,21 +894,19 @@ def test_chunked_tensor_take_falls_back_for_truncated_buffers():
     )
     storage = _ArrowProxy(chunk.storage, values=truncated_values)
     truncated_chunk = _ArrowProxy(chunk, storage=storage)
+    chunks[chunk_index] = truncated_chunk
+    truncated_column = _ArrowProxy(column, chunks=tuple(chunks))
 
-    assert (
-        chunked_tensor_take._try_get_zero_copy_chunk_view(
-            truncated_chunk,
-            column.type,
-            64,
-            np.dtype(np.float32),
-        )
-        is None
-    )
+    assert try_prepare_chunked_tensor_take(truncated_column, max_output_rows=1) is None
 
 
 def test_chunked_tensor_take_checks_view_pointer_range():
-    column, _ = _chunked_tensor(40, 64, 4)
-    chunk = next(chunk for chunk in reversed(column.chunks) if len(chunk) > 0)
+    column, _ = _chunked_tensor(1024, 256, 4)
+    chunks = list(column.chunks)
+    chunk_index = next(
+        index for index in reversed(range(len(chunks))) if len(chunks[index]) > 0
+    )
+    chunk = chunks[chunk_index]
     values = chunk.storage.values
     validity, data = values.buffers()
     short_values = _ArrowProxy(
@@ -936,16 +915,10 @@ def test_chunked_tensor_take_checks_view_pointer_range():
     )
     storage = _ArrowProxy(chunk.storage, values=short_values)
     short_chunk = _ArrowProxy(chunk, storage=storage)
+    chunks[chunk_index] = short_chunk
+    short_column = _ArrowProxy(column, chunks=tuple(chunks))
 
-    assert (
-        chunked_tensor_take._try_get_zero_copy_chunk_view(
-            short_chunk,
-            column.type,
-            64,
-            np.dtype(np.float32),
-        )
-        is None
-    )
+    assert try_prepare_chunked_tensor_take(short_column, max_output_rows=1) is None
 
 
 def test_prepare_local_shuffle_arrow_table_leaves_simple_tables_unchanged():
