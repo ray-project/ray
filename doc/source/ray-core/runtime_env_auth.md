@@ -42,7 +42,7 @@ In this example, `personal_access_token` is a secret credential that authenticat
 
 In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead, use a `netrc` file.
 
-## Running on VMs: the netrc File
+## Running on VMs: The netrc file
 
 The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. Set your credentials in this file instead of in the remote URI:
 
