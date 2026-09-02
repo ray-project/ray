@@ -83,6 +83,12 @@ for "bind to any port within this range". So Raylet must manage the range itself
 Raylet maintains a ``free_ports_`` queue. When a worker registers, Raylet assigns
 it an unused port from the queue. The worker binds, then confirms with ``AnnounceWorkerPort``.
 
+At startup, Raylet seeds that queue with a random permutation of the configured ports,
+independently on each Raylet. Without it, every Raylet sharing a network namespace and a
+port range starts from the lower bound of the range and deterministically contends for
+the same ports. Randomizing lowers the odds of a collision; it isn't a reservation
+protocol, so two Raylets can still pick the same port and rely on the retry path below.
+
 If the worker fails to bind the port (e.g., port already in use by external process),
 it crashes. Raylet detects the socket disconnect via
 `NodeManager::HandleClientConnectionError <https://github.com/ray-project/ray/blob/10869d565047ae02b398802e1efaf04109f27249/src/ray/raylet/node_manager.h>`_, which returns the port to the queue and starts a new worker.
