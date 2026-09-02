@@ -8,7 +8,7 @@
 # delete this file and the windows torch2.7 depsets in ci_windows.depsets.yaml.
 --find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 
-torch==2.7.0
+torch==2.12.1+cpu
 torchvision==0.22.0
 
 # PyG binary extensions are ABI-coupled to the torch minor version. Pin the
