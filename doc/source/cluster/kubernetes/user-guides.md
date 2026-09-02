@@ -33,6 +33,7 @@ user-guides/persist-kuberay-custom-resource-logs
 user-guides/persist-kuberay-operator-logs
 user-guides/gpu
 user-guides/tpu
+user-guides/tpu-subslicing
 user-guides/pod-command
 user-guides/helm-chart-rbac
 user-guides/tls
@@ -69,6 +70,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-tpu`
+* {ref}`kuberay-tpu-subslicing`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-gcs-persistent-ft`
 * {ref}`kuberay-gcs-rocksdb-ft`

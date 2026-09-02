@@ -1015,12 +1015,12 @@ def dispatch(
         accelerator_version: The TPU accelerator generation
             (e.g. ``"v4"``, ``"v6e"``). Required when ``tpu_slice`` is ``None``;
             ignored otherwise.
-        tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
-            onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
-            any placement groups. When ``None`` (default), a new slice
-            is reserved internally and its head placement groups are
-            released once the worker placement group becomes ready.
+        tpu_slice: An existing :class:`SlicePlacementGroup` or
+            :class:`SubslicePlacementGroup`  to schedule onto. When provided,
+            the slice is used directly and ``dispatch`` does **not** create,
+            modify, or tear down any placement groups. When ``None`` (default),
+            a new slice is reserved internally and its head placement groups
+            are released once the worker placement group becomes ready.
         slice_index: Optional. If ``tpu_slice`` was created with ``pg_per_slice=True``,
             specify a ``slice_index`` to dispatch tasks only to that specific
             TPU slice. If ``None``, tasks are dispatched to all slices.
@@ -1807,6 +1807,25 @@ class SubslicePlacementGroup:
     def placement_group(self) -> PlacementGroup:
         """The underlying PlacementGroup object."""
         return self._placement_group
+
+    @property
+    def slice_placement_group(self) -> PlacementGroup:
+        """Alias for placement_group for compatibility with dispatch."""
+        return self._placement_group
+
+    @property
+    def _pg_per_slice(self) -> bool:
+        return False
+
+    @property
+    def num_bundles(self) -> int:
+        """Alias for num_hosts for compatibility with dispatch."""
+        return self._num_hosts
+
+    @property
+    def devices_per_host(self) -> int:
+        """Alias for chips_per_host for compatibility with dispatch."""
+        return self._chips_per_host
 
     @property
     def parent_topology(self) -> str:
