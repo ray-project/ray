@@ -115,6 +115,87 @@ export HISTORY_SERVER_IMAGE=quay.io/kuberay/historyserver:nightly
 curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml | envsubst | kubectl apply -f -
 ```
 
+### History Server configuration
+
+Configure the History Server with the following environment variables and command-line flags. Where a setting supports both, a non-empty environment variable takes precedence over the flag. The example manifest sets the storage options through environment variables and tunes the session cache through flags.
+
+:::{list-table} History Server variables
+:header-rows: 1
+
+* - Environment variable
+  - CLI flag
+  - Default
+  - Description
+* - `GCS_BUCKET`
+  - 
+  - `""`
+  - Object storage bucket or container name, the same value the collector uses. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_CONTAINER`.
+* - `STORAGE_BACKEND`
+  - `--storage-backend`
+  - `""`
+  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`, or `localtest`). Required: the History Server exits if you set neither the variable nor the flag.
+* - `STORAGE_ROOT_DIR`
+  - `--storage-root-dir`
+  - `""`
+  - Root path prefix inside the object storage bucket. Must match the collector's `STORAGE_ROOT_DIR`, otherwise the History Server can't find the uploaded sessions.
+* - 
+  - `--storage-backend-config-path`
+  - `""`
+  - Path to a JSON file with additional storage backend configuration, passed to the storage reader for the selected backend.
+* - 
+  - `--dashboard-dir`
+  - `/dashboard`
+  - Directory containing the Ray dashboard static assets inside the image.
+* - 
+  - `--kubeconfigs`
+  - `""`
+  - Path to kubeconfig files for accessing Kubernetes clusters. Empty means use the in-cluster configuration.
+* - 
+  - `--use-kubernetes-proxy`
+  - `false`
+  - Use a local kubeconfig instead of the in-cluster configuration. Intended for running the History Server outside the cluster during development.
+* -
+  - `--enable-live-clusters`
+  - `false`
+  - Serve Ray clusters that are still running by reverse-proxying requests to their head dashboards.
+* - 
+  - `--use-auth-token-mode`
+  - `false`
+  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. This flag only has an effect when `--enable-live-clusters` is enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
+* - 
+  - `--kube-api-qps`
+  - `100`
+  - QPS limit for requests to the Kubernetes API server.
+* - 
+  - `--kube-api-burst`
+  - `200`
+  - Maximum burst for throttling requests to the Kubernetes API server.
+* - 
+  - `--session-process-timeout`
+  - `2m`
+  - Timeout for parsing and loading a single Ray cluster session. Sessions with large log or event volumes may need a higher value.
+* - 
+  - `--session-cache-size`
+  - `100`
+  - Maximum number of terminated session snapshots held in the LRU cache.
+* - 
+  - `--session-cache-max-memory`
+  - `2Gi`
+  - Soft cap on the memory held by cached session snapshots, as a Kubernetes quantity such as `8Gi`. Set to `"0"` to disable the bound. The History Server evicts cached sessions when their memory usage exceeds this cap.
+* - 
+  - `--session-cache-ttl`
+  - `0`
+  - Duration that a terminated session snapshot stays cached after its last access. A value of `0` disables TTL-based eviction, so sessions leave the cache only through LRU or memory-cap eviction.
+:::
+
+:::{warning}
+The History Server does not authenticate its own callers, and a client-supplied cookie determines which RayCluster it proxies to. When `--enable-live-clusters` is enabled, anyone who can reach the History Server can reach the Ray Dashboard API of every RayCluster that the History Server can access. Only enable live cluster access when you restrict access to the History Server by other means.
+:::
+
+:::{note}
+**Sizing the session cache**: the cap that `--session-cache-max-memory` sets is a soft bound on cached snapshots, not on total Pod memory. Set the Pod memory limit above it to leave headroom for decoding sessions the History Server hasn't cached yet. The example manifest pairs `--session-cache-max-memory=8Gi` with a `12Gi` memory limit for this reason.
+:::
+
 ## Deploy an example RayJob with collector sidecar
 
 The collector runs on every RayCluster Pod, where it collects logs and events and exports them to object storage.
@@ -141,7 +222,7 @@ To enable event streaming to the collector sidecar, set these environment variab
 * `RAY_enable_ray_event`: Enables the Ray event export subsystem (`"true"`).
 * `RAY_enable_core_worker_ray_event_to_aggregator`: Enables Core Worker event forwarding to the agent aggregator (`"true"`).
 * `RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR`: Target HTTP endpoint for the collector's event server, for example `"http://localhost:8084/v1/events"`.
-* `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES`: Comma-separated list of event types to collect. The example manifest sets `"ALL"`. To narrow the set, pass a comma-separated list instead, for example `"TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT,DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT"`.
+* `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES`: Comma-separated list of event types to collect. The example manifest sets `"ALL"`, which requires Ray 2.54.0 or later. On earlier versions, pass an explicit comma-separated list instead, for example `"TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT,DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT"`.
 
 #### Collector container variables
 
@@ -169,11 +250,11 @@ Configure the collector sidecar container with the following environment variabl
 * - `GCS_BUCKET`
   - 
   - Yes (all nodes)
-  - Object storage bucket or account name. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_ACCOUNT`.
+  - Object storage bucket or container name. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_CONTAINER`.
 * - `STORAGE_BACKEND`
-  - `--runtime-class-name`
+  - `--storage-backend`
   - Yes (all nodes)
-  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`). The `--runtime-class-name` flag is specific to the collector storage backend.
+  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`).
 * - `RAY_ROLE`
   - `--role`
   - Yes (all nodes)
@@ -213,7 +294,7 @@ Configure the collector sidecar container with the following environment variabl
 * - `EVENTS_PORT`
   - `--events-port`
   - No
-  - Event server listening port matching the Ray container export address (defaults to `8080`). The example manifest sets this to `8084`.
+  - Event server listening port matching the Ray container export address (defaults to `8084`).
 :::
 
 :::{important}
