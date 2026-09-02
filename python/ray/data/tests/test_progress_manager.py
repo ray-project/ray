@@ -4,9 +4,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.progress.base_progress import (
     NoopExecutionProgressManager,
+    ProgressMetrics,
 )
 from ray.data._internal.progress.logging_progress import (
     LoggingExecutionProgressManager,
@@ -229,6 +231,33 @@ class TestLoggingProgressManager:
         pg.refresh()
         mock_logger.info.assert_any_call("======= Running Dataset: dataset_123 =======")
         mock_logger.info.assert_any_call("Total Progress: 1/10")
+
+    @patch("ray.data._internal.progress.logging_progress.logger")
+    def test_sub_progress_uses_operator_total_when_metric_total_is_unset(
+        self, mock_logger
+    ):
+        op = MagicMock(spec=SubProgressMixin)
+        op.name = "Shuffle"
+        op.metrics = MagicMock(row_outputs_taken=0)
+        op.num_output_rows_total = MagicMock(return_value=10)
+        op.get_sub_progress_metrics.return_value = {
+            "Map": ProgressMetrics(name="Map", completed=3, total=None)
+        }
+        op_state = MagicMock()
+        op_state.op = op
+        topology = MagicMock()
+        topology.values.return_value = [op_state]
+        manager = LoggingExecutionProgressManager(
+            "dataset_123",
+            topology,
+            show_op_progress=True,
+            verbose_progress=False,
+            _get_time=lambda: 0,
+        )
+
+        manager.refresh()
+
+        mock_logger.info.assert_any_call("    - Map: 3/10")
 
 
 if __name__ == "__main__":

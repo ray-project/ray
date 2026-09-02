@@ -45,8 +45,6 @@ from ray.data.datatype import DataType
 if typing.TYPE_CHECKING:
     import cudf
 
-    from ray.data._internal.progress.base_progress import BaseProgressBar
-
 
 logger = logging.getLogger(__name__)
 
@@ -1610,6 +1608,8 @@ class GPUHashAggregateActor:
 class GPUHashAggregateOperator(GPUShuffleOperator):
     """GPU-native hash aggregate using RAPIDS MPF for the shuffle stage."""
 
+    GPU_REDUCE_PROGRESS_NAME = "GPU Aggregation"
+
     def __init__(
         self,
         data_context: DataContext,
@@ -1671,15 +1671,6 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
         )
 
         self._aggregation_plan = aggregation_plan
-
-    def get_sub_progress_bar_names(self) -> List[str]:
-        return ["GPU Shuffle", "GPU Aggregation"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "GPU Shuffle":
-            self._shuffle_bar = pg
-        elif name == "GPU Aggregation":
-            self._reduce_bar = pg
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         shuffle_name = f"{self._name}_shuffle"

@@ -52,7 +52,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -61,12 +62,11 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import (
         MapTransformer,
     )
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
 
-class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
+class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressMixin):
     """External-shuffle reduce operator.
 
     Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle in via
@@ -122,8 +122,11 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
 
-        # -- Sub-progress bars -----------------------------------------------
-        self._reduce_bar: Optional["BaseProgressBar"] = None
+        # -- Sub-progress ----------------------------------------------------
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state(["Reduce"])
 
         # =====================================================================
         # External-shuffle-specific state below.
@@ -289,8 +292,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
+        self._sub_progress_updaters["Reduce"].update(total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
@@ -316,11 +318,10 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(
-                increment=bundle.num_rows() or 0,
-                total=self.num_output_rows_total(),
-            )
+        self._sub_progress_updaters["Reduce"].update(
+            increment=bundle.num_rows() or 0,
+            total=self.num_output_rows_total(),
+        )
 
     def _handle_reduce_done(
         self,
@@ -404,9 +405,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         done = submitted - len(self._shuffle_reduce_tasks)
         return f"reduce: {done}/{submitted}"
 
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Reduce"]
+    def get_sub_progress_metrics(self) -> Dict[str, ProgressMetrics]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Reduce":
-            self._reduce_bar = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters

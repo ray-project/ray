@@ -1,7 +1,6 @@
 import dataclasses
 import functools
 import logging
-import typing
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -30,14 +29,12 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     _shuffle_map_task,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +58,7 @@ def extract_partition_id(bundle: RefBundle) -> int:
     raise ValueError("ShuffleMapOp bundle is missing a partition_id sentinel.")
 
 
-class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
+class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressMixin):
     """Map phase of a shuffle: partition inputs and group shards by partition.
 
     Each map task splits its input into num_partitions shards.  Shards land in a
@@ -149,8 +146,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
 
-        # -- Sub-progress bars -----------------------------------------------
-        self._map_bar: Optional["BaseProgressBar"] = None
+        # -- Sub-progress ----------------------------------------------------
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state(["Map"])
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -268,14 +268,13 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             task_id=task.get_task_id(),
         )
 
-        if self._map_bar is not None:
-            _, _, num_rows = estimate_total_num_of_blocks(
-                cur_task_idx + 1,
-                self.upstream_op_num_outputs(),
-                self._metrics,
-                total_num_tasks=None,
-            )
-            self._map_bar.update(total=num_rows)
+        _, _, num_rows = estimate_total_num_of_blocks(
+            cur_task_idx + 1,
+            self.upstream_op_num_outputs(),
+            self._metrics,
+            total_num_tasks=None,
+        )
+        self._sub_progress_updaters["Map"].update(total=num_rows)
 
     def _handle_map_done(
         self,
@@ -322,8 +321,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             task_exec_driver_stats=None,
         )
 
-        if self._map_bar is not None:
-            self._map_bar.update(increment=input_meta.num_rows or 0)
+        self._sub_progress_updaters["Map"].update(increment=input_meta.num_rows or 0)
 
         self._maybe_emit_partition_bundles()
 
@@ -448,9 +446,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             parts.append(f"merge_buf: {total_merge_buf}")
         return ", ".join(parts)
 
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Map"]
+    def get_sub_progress_metrics(self) -> Dict[str, ProgressMetrics]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Map":
-            self._map_bar = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters
