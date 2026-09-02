@@ -20,10 +20,9 @@ worker_nodes:
       # smaller min workers will make the head node cpu usage very high, and crash the head node.
       # issue: https://github.com/ray-project/ray/issues/18908
       min_nodes: 5
-      # Sized for the 8192-replica controller-benchmark checkpoint with the
-      # per-replica memory reservation (see serve/_private/benchmarks/common.py):
-      # ~34 replicas/node -> ~241 nodes, plus slack for uneven packing. This is
-      # a cap, not a target; the autoscaler only launches what placement needs.
+      # Sized for the 8192-replica controller-benchmark checkpoint: the per-node
+      # replica cap (serve/_private/benchmarks/common.py) gives ~241 nodes, plus
+      # slack. A cap, not a target; the autoscaler launches what placement needs.
       max_nodes: 280
       market_type: ON_DEMAND
       # New SDK's `resources` is a full override, so include `CPU: 8`

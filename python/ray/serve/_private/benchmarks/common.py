@@ -387,11 +387,16 @@ _CONTROLLER_AUTOSCALING_CONFIG = {
 }
 
 _CONTROLLER_WAITER_TIMEOUT_S = 2400
-# Halve the reservation as the target doubles past 4096 so peak cluster CPU stays
-# flat (~1638 CPU, ~205 nodes); these replicas are idle waiters, so a lighter
-# reservation changes packing density only, not per-replica work.
+# Halve the CPU reservation as the target doubles past 4096; these replicas are
+# idle waiters, so the lighter reservation only packs them more densely. Node
+# count above the threshold is governed by the per-node replica cap below.
 _CONTROLLER_REPLICA_NUM_CPUS = 0.4
 _CONTROLLER_DENSE_PACK_ABOVE = 4096
+# Dense packing is memory-bound, not CPU-bound: each replica process has ~600MB
+# RSS however small its CPU reservation, and 40/node OOMs a 32GB worker (#65847).
+# 34/node keeps nodes at ~85% of the memory-monitor kill threshold (~241 nodes
+# at 8192). No cap at or below the threshold: packing there is CPU-bound.
+_CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE = 34
 
 
 def _controller_replica_num_cpus(target_replicas: int) -> float:
@@ -400,16 +405,11 @@ def _controller_replica_num_cpus(target_replicas: int) -> float:
     return _CONTROLLER_REPLICA_NUM_CPUS * _CONTROLLER_DENSE_PACK_ABOVE / target_replicas
 
 
-# Fixed per-replica memory reservation so the scheduler packs nodes by memory
-# as well as CPU. Replica processes have roughly constant RSS regardless of
-# their CPU reservation (idle waiters still pay full process memory), so the
-# dense packing above 4096 (num_cpus 0.2 -> ~40 procs/node) can drive m5.2xlarge
-# workers into the 95% memory-monitor kill threshold and lose replicas
-# mid-benchmark (observed 2026-08-31: 28.6GB used / 30.0GB limit on the failing
-# node). 600MiB binds packing at ~34 replicas/node under the default
-# schedulable-memory figure on m5.2xlarge (~20.5GiB) and deliberately does not
-# bind at or below 4096 (20 procs/node), so historical series are unchanged.
-_CONTROLLER_REPLICA_MEMORY_BYTES = 600 * 1024**2
+def _controller_max_replicas_per_node(target_replicas: int) -> Optional[int]:
+    if target_replicas <= _CONTROLLER_DENSE_PACK_ABOVE:
+        return None
+    return _CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE
+
 
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
 # concurrent waiters (up to 8192 in controller benchmark).
@@ -440,10 +440,7 @@ class ControllerBenchHelloWorld:
     autoscaling_config=_CONTROLLER_AUTOSCALING_CONFIG,
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=1,
-    ray_actor_options={
-        "num_cpus": _CONTROLLER_REPLICA_NUM_CPUS,
-        "memory": _CONTROLLER_REPLICA_MEMORY_BYTES,
-    },
+    ray_actor_options={"num_cpus": _CONTROLLER_REPLICA_NUM_CPUS},
 )
 class ControllerBenchMetricsGenerator:
     """Autoscaling deployment that generates handle metrics to stress the controller."""
@@ -712,6 +709,9 @@ async def run_controller_benchmark(
         for checkpoint_idx, target_replicas in enumerate(checkpoints):
             hello_world = ControllerBenchHelloWorld.bind(signal_actor)
             app = ControllerBenchMetricsGenerator.options(
+                max_replicas_per_node=_controller_max_replicas_per_node(
+                    target_replicas
+                ),
                 ray_actor_options={
                     **(ControllerBenchMetricsGenerator.ray_actor_options or {}),
                     "num_cpus": _controller_replica_num_cpus(target_replicas),
