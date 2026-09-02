@@ -47,10 +47,14 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
 
           // Ray tasks are executed in parallel.
           // All computation is performed in the background, driven by Ray's internal event loop.
+          List<ObjectRef<Integer>> taskRefs = new ArrayList<>();
           for(int i = 0; i < 4; i++) {
             // This doesn't block.
-            Ray.task(MyRayApp::slowFunction).remote();
+            taskRefs.add(Ray.task(MyRayApp::slowFunction).remote());
           }
+
+          // Wait for all tasks before the driver exits.
+          Assert.assertEquals(Ray.get(taskRefs), Arrays.asList(1, 1, 1, 1));
 
     .. tab-item:: C++
 
@@ -79,23 +83,18 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
 
           // Ray tasks are executed in parallel.
           // All computation is performed in the background, driven by Ray's internal event loop.
+          std::vector<ray::ObjectRef<int>> task_refs;
           for(int i = 0; i < 4; i++) {
             // This doesn't block.
-            ray::Task(SlowFunction).Remote();
+            task_refs.emplace_back(ray::Task(SlowFunction).Remote());
           }
 
-.. note::
-
-    When a Ray job's driver exits, any unfinished tasks and non-detached actors
-    submitted by that job are automatically terminated, so they do not continue running.
-    If a Python script needs its submitted tasks to finish, retain their
-    ``ObjectRef`` instances and wait for them before the driver exits. Submitting all tasks
-    before calling :func:`ray.get` still lets them run in parallel.
-
-    .. literalinclude:: doc_code/tasks.py
-        :language: python
-        :start-after: __wait_for_tasks_before_driver_exit_start__
-        :end-before: __wait_for_tasks_before_driver_exit_end__
+          // Wait for all tasks before the driver exits.
+          auto results = ray::Get(task_refs);
+          assert(results.size() == 4);
+          for (const auto &result : results) {
+            assert(*result == 1);
+          }
 
 Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 

@@ -34,16 +34,15 @@ def slow_function():
 
 # Ray tasks are executed in parallel.
 # All computation is performed in the background, driven by Ray's internal event loop.
+task_refs = []
 for _ in range(4):
     # This doesn't block.
-    slow_function.remote()
-# __tasks_end__
+    task_refs.append(slow_function.remote())
 
-# __wait_for_tasks_before_driver_exit_start__
-# Submit all tasks before waiting so that they can run in parallel.
-task_refs = [slow_function.remote() for _ in range(4)]
-assert ray.get(task_refs) == [1] * 4
-# __wait_for_tasks_before_driver_exit_end__
+# Ray terminates unfinished tasks when the driver exits, so wait for the results
+# before the script ends.
+assert ray.get(task_refs) == [1, 1, 1, 1]
+# __tasks_end__
 
 # __pass_by_ref_start__
 @ray.remote
