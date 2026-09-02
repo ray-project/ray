@@ -21,7 +21,6 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.data import ActorPoolStrategy
-from ray.data.datasource import Datasink
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -57,6 +56,7 @@ from ray.data._internal.stats import (
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
+from ray.data.datasource import Datasink
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
