@@ -295,6 +295,43 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+@pytest.mark.asyncio
+async def test_object_ref_ready(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    await asyncio.sleep(0)
+    assert not ready_task.done()
+    await signal.send.remote()
+    assert await ready_task is ref
+    assert await ref == "secret"
+
+
+@pytest.mark.asyncio
+async def test_object_ref_ready_cancel(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    await asyncio.sleep(0)
+    ready_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await ready_task
+    await signal.send.remote()
+    assert await ref == "secret"
+
+
 @pytest.mark.parametrize("raise_in_callback", [False, True])
 @pytest.mark.skipif(
     client_mode_should_convert(), reason="Different ref counting in Ray client."

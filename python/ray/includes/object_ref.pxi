@@ -188,6 +188,31 @@ cdef class ObjectRef(BaseID):
 
         return cancel
 
+    async def _ready(self):
+        """Wait until the object exists without fetching or deserializing it.
+
+        Unlike ``await self``, this returns ``self`` rather than the value.
+        Cancelling this coroutine cancels the wait.
+        """
+        py_future = concurrent.futures.Future()
+
+        def _set(exc):
+            if py_future.done():
+                return
+            if exc is not None:
+                py_future.set_exception(exc)
+            else:
+                py_future.set_result(None)
+
+        cancel = self._on_ready(_set)
+        aio_future = asyncio.wrap_future(py_future)
+        try:
+            await aio_future
+        except asyncio.CancelledError:
+            cancel()
+            raise
+        return self
+
     def tensor_transport(self):
         return self._tensor_transport
 

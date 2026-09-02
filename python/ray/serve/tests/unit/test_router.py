@@ -53,7 +53,6 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import (
     Semaphore,
-    _wait_for_object_ref_ready,
     decompress_metric_report,
     get_random_string,
 )
@@ -63,63 +62,6 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
-
-
-class _FakeReadyRef:
-    """Stands in for ObjectRef._on_ready."""
-
-    def __init__(self):
-        self.callbacks = []
-        self.cancel_calls = 0
-
-    def _on_ready(self, callback):
-        self.callbacks.append(callback)
-
-        def cancel():
-            self.cancel_calls += 1
-
-        return cancel
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("exc", [None, RuntimeError("boom")])
-async def test_wait_for_object_ref_ready(exc):
-    obj_ref = _FakeReadyRef()
-    wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
-    await asyncio.sleep(0)
-    assert len(obj_ref.callbacks) == 1
-    assert not wait_task.done(), "must not resolve before the wait completes"
-
-    obj_ref.callbacks[0](exc)
-    if exc is None:
-        assert await wait_task is None
-    else:
-        with pytest.raises(RuntimeError, match="boom"):
-            await wait_task
-    assert obj_ref.cancel_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_wait_for_object_ref_ready_cancels_core_wait():
-    loop = asyncio.get_running_loop()
-    loop_errors = []
-    loop.set_exception_handler(lambda _loop, ctx: loop_errors.append(ctx))
-
-    obj_ref = _FakeReadyRef()
-    wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
-    await asyncio.sleep(0)
-    wait_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await wait_task
-
-    assert obj_ref.cancel_calls == 1
-
-    # CancelWaitAsync still completes the wait, so the callback fires after the
-    # future is already cancelled. That must be a no-op, not an InvalidStateError
-    # surfacing on the event loop.
-    obj_ref.callbacks[0](None)
-    await asyncio.sleep(0)
-    assert loop_errors == []
 
 
 class FakeReplicaResult(ReplicaResult):

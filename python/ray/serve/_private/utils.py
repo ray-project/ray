@@ -790,53 +790,12 @@ async def await_deployment_response(deployment_response):
     return await deployment_response
 
 
-async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
-    """Wait for an ObjectRef without fetching or deserializing its value."""
-    loop = asyncio.get_running_loop()
-    future = loop.create_future()
-
-    def _on_complete(exc):
-        def _set_result():
-            if future.done():
-                return
-            if exc is not None:
-                future.set_exception(exc)
-            else:
-                future.set_result(None)
-
-        loop.call_soon_threadsafe(_set_result)
-
-    cancel = obj_ref._on_ready(_on_complete)
-    try:
-        await future
-    except asyncio.CancelledError:
-        cancel()
-        raise
-
-
-async def deployment_response_to_object_ref(deployment_response: Any) -> ray.ObjectRef:
-    """Convert a DeploymentResponse to an ObjectRef and wait until it is ready.
-
-    ``_to_object_ref`` returns immediately (peeked ref). We still wait for the
-    upstream result before the router enqueues the request so autoscaling
-    metrics do not count unresolved composition args.
-
-    Args:
-        deployment_response: Upstream handle response to convert.
-
-    Returns:
-        The underlying ObjectRef after its value is ready in the cluster.
-    """
-    obj_ref = await deployment_response._to_object_ref()
-    # Do not fetch: forward by reference; downstream pulls the value.
-    await _wait_for_object_ref_ready(obj_ref)
-    return obj_ref
-
-
 async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.
+    For by-reference args, wait until the peeked ref is ready so unresolved
+    composition args are not counted in queued-request autoscaling metrics.
     """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
@@ -844,7 +803,12 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            return asyncio.create_task(deployment_response_to_object_ref(obj))
+
+            # Peek, then wait for presence only. Downstream fetches the value.
+            async def to_ready_ref():
+                return await (await obj._to_object_ref())._ready()
+
+            return asyncio.create_task(to_ready_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))

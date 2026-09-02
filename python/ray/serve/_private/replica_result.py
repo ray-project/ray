@@ -35,8 +35,7 @@ def _consume_generator_ref_when_ready(
     """Advance a peeked generator stream once ``ref`` is ready.
 
     Uses ``ObjectRef._on_ready`` so readiness does not pull or
-    deserialize the payload. The wait keeps the generator alive until
-    consume or cancel.
+    deserialize the payload.
 
     Args:
         obj_ref_gen: Generator whose stream cursor should be advanced.
@@ -46,23 +45,16 @@ def _consume_generator_ref_when_ready(
         Function that cancels the wait.
     """
 
-    def _on_complete(exc):
+    def _on_ready(exc):
         if exc is not None:
-            logger.debug(
-                "_on_ready failed while waiting to consume a generator ref: %s", exc
-            )
+            logger.debug("_on_ready failed while waiting to a generator ref: %s", exc)
             return
         try:
             obj_ref_gen._consume_next_ref_n(1)
-        except ValueError:
-            logger.exception(
-                "refusing to advance generator cursor after _on_ready; "
-                "the ref was not ready or the stream was already advanced"
-            )
         except Exception:
             logger.exception("failed to consume generator ref after _on_ready")
 
-    return ref._on_ready(_on_complete)
+    return ref._on_ready(_on_ready)
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -188,18 +180,16 @@ class ActorReplicaResult(ReplicaResult):
                 response = await (await self._obj_ref_gen.__anext__())
                 self._rejection_response = pickle.loads(response)
 
-            # Rejected unary never writes a user result; do not wait on it.
-            # Own guard so a failed peek/wait retries without re-consuming.
+            # Peek the user ref only after being accepted.
             if (
                 self._rejection_response is not None
                 and not self._is_streaming
                 and self._rejection_response.accepted
                 and self._obj_ref is None
             ):
-                [obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
-                self._obj_ref = obj_ref
+                [self._obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
                 self._cancel_consume_wait = _consume_generator_ref_when_ready(
-                    self._obj_ref_gen, obj_ref
+                    self._obj_ref_gen, self._obj_ref
                 )
 
             return self._rejection_response

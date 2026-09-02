@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
 )
 from ray.serve._private.test_utils import check_num_replicas_eq
-from ray.serve._private.utils import _wait_for_object_ref_ready
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
@@ -775,8 +774,8 @@ def test_composition_arg_waits_for_upstream_result(serve_instance):
     """By-reference composition args must not be enqueued before they're ready.
 
     `_to_object_ref` returns a peeked ref without waiting for the value.
-    `deployment_response_to_object_ref` then waits via `_wait_for_object_ref_ready`
-    so unresolved args stay out of the router's queued-request metrics.
+    By-reference composition then waits via ``ObjectRef._ready()`` so
+    unresolved args stay out of the router's queued-request metrics.
 
     Peek and wait are split so a hang-on-peek and a skip-the-wait fail
     differently.
@@ -798,7 +797,7 @@ def test_composition_arg_waits_for_upstream_result(serve_instance):
             # Peek must return while downstream is still blocked.
             obj_ref = await self._handle.remote()._to_object_ref()
 
-            wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
+            wait_task = asyncio.create_task(obj_ref._ready())
             _, pending = await asyncio.wait({wait_task}, timeout=1)
             still_waiting = wait_task in pending
 
@@ -818,7 +817,6 @@ import asyncio
 
 import ray
 from ray._common.test_utils import SignalActor
-from ray.serve._private.utils import _wait_for_object_ref_ready
 
 
 async def main():
@@ -830,7 +828,7 @@ async def main():
         ray.get(signal.wait.remote())
         return "ok"
 
-    wait_task = asyncio.create_task(_wait_for_object_ref_ready(blocked.remote()))
+    wait_task = asyncio.create_task(blocked.remote()._ready())
     await asyncio.sleep(0.5)
     assert not wait_task.done(), "wait should still be pending"
     ray.shutdown()

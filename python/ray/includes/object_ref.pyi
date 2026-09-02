@@ -85,4 +85,12 @@ class ObjectRef(BaseID, Awaitable[_T]):
         """
         ...
 
+    async def _ready(self) -> ObjectRef[_T]:
+        """Wait until the object exists without fetching or deserializing it.
+
+        Unlike ``await self``, this returns ``self`` rather than the value.
+        Cancelling this coroutine cancels the wait.
+        """
+        ...
+
     def tensor_transport(self) -> int: ...
