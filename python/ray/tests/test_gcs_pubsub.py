@@ -111,6 +111,25 @@ async def test_aio_poll_handles_poll_and_close_completing_together():
     await subscriber._poll()
 
 
+@pytest.mark.asyncio
+async def test_aio_poll_timeout_swallows_pending_poll_errors():
+    """Timed-out cleanup must not re-raise errors from cancelled poll tasks."""
+    subscriber = object.__new__(_AioSubscriber)
+    subscriber._queue = deque()
+    subscriber._close = asyncio.Event()
+    subscriber._poll_request = lambda: None
+
+    async def poll_call(req, timeout=None):
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            # Simulate a late failure that can surface while draining cancellation.
+            raise RuntimeError("late poll failure") from None
+
+    subscriber._poll_call = poll_call
+    await subscriber._poll(timeout=0.01)
+
+
 def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
