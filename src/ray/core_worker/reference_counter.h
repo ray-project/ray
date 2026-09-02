@@ -554,10 +554,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
         ABSL_EXCLUSIVE_LOCK_FUNCTION(rc.mutex_)
         : rc_(rc) {
       rc_.mutex_.Lock();
+      rc_.oos_drain_active_ = true;
     }
 
     ~MutexLockWithOOSDrain() ABSL_UNLOCK_FUNCTION() {
       work_.swap(rc_.deferred_oos_work_);
+      rc_.oos_drain_active_ = false;
       rc_.mutex_.Unlock();
       rc_.ExecuteDeferredOOSWork(work_);
     }
@@ -831,6 +833,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// swap this out before releasing the lock and pass it to
   /// ExecuteDeferredOOSWork().
   std::vector<DeferredOOSWork> deferred_oos_work_ ABSL_GUARDED_BY(mutex_);
+
+  /// Whether mutex_ is held by a MutexLockWithOOSDrain rather than a plain
+  /// absl::MutexLock. A bool suffices because absl mutexes are not reentrant,
+  /// so the guard never nests.
+  bool oos_drain_active_ ABSL_GUARDED_BY(mutex_) = false;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

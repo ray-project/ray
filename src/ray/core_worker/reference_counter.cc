@@ -122,7 +122,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
                                          const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   return AddBorrowedObjectInternal(object_id, outer_id, owner_address);
 }
 
@@ -847,6 +847,11 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   // Collect work that does not need mutex_ (gRPC frees, callbacks) into
   // deferred_oos_work_. MutexLockWithOOSDrain swaps it out and executes
   // it after releasing the lock.
+  RAY_DCHECK(oos_drain_active_)
+      << "OnObjectOutOfScopeOrFreed requires the caller to hold mutex_ via "
+         "MutexLockWithOOSDrain, not absl::MutexLock. Otherwise the callbacks "
+         "and gRPC frees queued here are stranded until some later guarded "
+         "call drains them.";
   DeferredOOSWork work;
   work.object_id = it->first;
   if (it->second.owned_by_us_) {
