@@ -318,19 +318,19 @@ async def test_rejection_does_not_wait_async_until_accepted(
         ),
     )
     replica_result = replica.try_send_request(pr, with_rejection=True)
-    assert replica_result._consume_wait_handle == 0
+    assert replica_result._cancel_consume_wait is None
 
     info = await replica_result.get_rejection_response()
     assert info.accepted == accepted
     if not accepted:
-        assert replica_result._consume_wait_handle == 0
+        assert replica_result._cancel_consume_wait is None
     elif is_streaming:
-        assert replica_result._consume_wait_handle == 0
+        assert replica_result._cancel_consume_wait is None
         assert await replica_result.__anext__() == "Hello-0"
     else:
         assert isinstance(replica_result.to_object_ref(), ObjectRef)
         assert await replica_result.get_async() == "Hello"
-        # wait_async consume is posted to the io thread; wait until it runs.
+        # Consume is posted to the io thread; wait until it runs.
         await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
 
 

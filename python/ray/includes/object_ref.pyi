@@ -71,4 +71,18 @@ class ObjectRef(BaseID, Awaitable[_T]):
         """
         ...
 
+    def _on_ready(
+        self, py_callback: Callable[[Optional[BaseException]], None]
+    ) -> Callable[[], None]:
+        """Register a callback that will be called after the Object exists.
+
+        Unlike ``_on_completed``, this does not fetch or deserialize the value.
+        The callback is ``callback(exc)``: ``exc`` is None when the object is
+        ready.
+
+        Returns a function that cancels the wait. It is a no-op if the
+        callback already ran synchronously.
+        """
+        ...
+
     def tensor_transport(self) -> int: ...

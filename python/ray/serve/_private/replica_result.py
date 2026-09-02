@@ -12,7 +12,6 @@ from typing import Any, AsyncIterator, Callable, Iterator, Optional, Union
 import grpc
 
 import ray
-from ray._private.worker import get_core_worker
 from ray.exceptions import ActorUnavailableError, RayTaskError, TaskCancelledError
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
@@ -32,37 +31,38 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def _consume_generator_ref_when_ready(
     obj_ref_gen: "ray.ObjectRefGenerator",
     ref: ray.ObjectRef,
-) -> int:
+) -> Callable[[], None]:
     """Advance a peeked generator stream once ``ref`` is ready.
 
-    Uses ``wait_async`` so readiness does not pull or deserialize the
-    payload. The wait keeps the generator alive until consume or cancel.
+    Uses ``ObjectRef._on_ready`` so readiness does not pull or
+    deserialize the payload. The wait keeps the generator alive until
+    consume or cancel.
 
     Args:
         obj_ref_gen: Generator whose stream cursor should be advanced.
         ref: Peeked ref that must become ready before consuming.
 
     Returns:
-        Wait handle for ``cancel_wait_async``.
+        Function that cancels the wait.
     """
 
     def _on_complete(exc):
         if exc is not None:
             logger.debug(
-                "wait_async failed while waiting to consume a generator ref: %s", exc
+                "_on_ready failed while waiting to consume a generator ref: %s", exc
             )
             return
         try:
             obj_ref_gen._consume_next_ref_n(1)
         except ValueError:
             logger.exception(
-                "refusing to advance generator cursor after wait_async; "
+                "refusing to advance generator cursor after _on_ready; "
                 "the ref was not ready or the stream was already advanced"
             )
         except Exception:
-            logger.exception("failed to consume generator ref after wait_async")
+            logger.exception("failed to consume generator ref after _on_ready")
 
-    return get_core_worker().wait_async(ref, _on_complete)
+    return ref._on_ready(_on_complete)
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -131,7 +131,7 @@ class ActorReplicaResult(ReplicaResult):
         self._request_id: str = metadata.request_id
         self._with_rejection = with_rejection
         self._rejection_response = None
-        self._consume_wait_handle: int = 0
+        self._cancel_consume_wait: Optional[Callable[[], None]] = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -198,7 +198,7 @@ class ActorReplicaResult(ReplicaResult):
             ):
                 [obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
                 self._obj_ref = obj_ref
-                self._consume_wait_handle = _consume_generator_ref_when_ready(
+                self._cancel_consume_wait = _consume_generator_ref_when_ready(
                     self._obj_ref_gen, obj_ref
                 )
 
@@ -265,9 +265,9 @@ class ActorReplicaResult(ReplicaResult):
             self._obj_ref._on_completed(callback)  # type: ignore[union-attr]
 
     def cancel(self):
-        if self._consume_wait_handle != 0:
-            get_core_worker().cancel_wait_async(self._consume_wait_handle)
-            self._consume_wait_handle = 0
+        if self._cancel_consume_wait is not None:
+            self._cancel_consume_wait()
+            self._cancel_consume_wait = None
         if self._obj_ref_gen is not None:
             ray.cancel(self._obj_ref_gen)
         else:
@@ -280,6 +280,7 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
 
+        assert self._obj_ref is not None
         return self._obj_ref
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
@@ -287,6 +288,7 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "to_object_ref_async can only be called on a unary ReplicaActorResult."
 
+        assert self._obj_ref is not None
         return self._obj_ref
 
     def to_object_ref_gen(self) -> ray.ObjectRefGenerator:

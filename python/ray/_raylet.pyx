@@ -3765,58 +3765,6 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def wait_async(self, object_ref, callback: Callable):
-        """Register an async wait that invokes ``callback`` once.
-
-        An object is ready when it exists anywhere in the cluster (memory
-        store or plasma marker). This does not pull plasma objects locally.
-
-        ``callback`` normally runs on the core worker's io thread, never
-        inline, even when the object is already available. It only runs on the
-        calling thread when the wait is rejected outright (unknown owner, or
-        the worker is shutting down), in which case 0 is returned.
-
-        The caller must keep ``object_ref`` alive until ``callback`` runs.
-        This does not hold a reference to it: if the last one is dropped the
-        object can be deleted from the memory store and the wait will never
-        complete.
-
-        Args:
-            object_ref: ObjectRef to wait on.
-            callback: Called as ``callback(exc)``. ``exc`` is None when the
-                object is ready; otherwise an exception.
-
-        Returns:
-            A non-zero handle for ``cancel_wait_async``, or 0 if ``callback``
-            already ran synchronously.
-        """
-        cdef:
-            CObjectID wait_id
-            uint64_t handle = 0
-
-        if not isinstance(object_ref, ObjectRef):
-            raise TypeError(
-                f"wait_async() expected a ray.ObjectRef, got {type(object_ref)}"
-            )
-        wait_id = (<ObjectRef>object_ref).native()
-
-        # INCREF until the C++ callback's finally DECREFs. Do not DECREF on
-        # this return path — WaitAsync may already have invoked it.
-        cpython.Py_INCREF(callback)
-        with nogil:
-            handle = CCoreWorkerProcess.GetCoreWorker().WaitAsync(
-                wait_id,
-                wait_async_callback_impl,
-                <void*>callback,
-            )
-        # handle == 0 means the callback already ran synchronously.
-        return handle
-
-    def cancel_wait_async(self, uint64_t handle):
-        """Cancel an in-flight ``wait_async`` identified by ``handle``."""
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
-
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
             unordered_map[CLineageReconstructionTask, uint64_t] tasks
@@ -5220,6 +5168,19 @@ cdef class CoreWorker:
             <void*>user_callback
         )
 
+    def set_wait_async_callback(self, ObjectRef object_ref, user_callback: Callable):
+        # Like set_get_async_callback, but does not pull or deserialize. Returns
+        # a handle for cancel_wait_async, or 0 if user_callback already ran.
+        cpython.Py_INCREF(user_callback)
+        return CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+            object_ref.native(),
+            wait_async_callback_impl,
+            <void*>user_callback
+        )
+
+    def cancel_wait_async(self, uint64_t handle):
+        CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
+
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
@@ -5502,7 +5463,7 @@ cdef void wait_async_callback_impl(CRayStatus status,
                 exc = RaySystemError(message)
         user_callback(exc)
     except BaseException:
-        logger.exception("failed to run wait_async callback (user func)")
+        logger.exception("failed to run set_wait_async_callback (user func)")
     finally:
         cpython.Py_DECREF(user_callback)
 

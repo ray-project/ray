@@ -22,7 +22,6 @@ import ray.util.serialization_addons
 from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.worker import get_core_worker
 from ray._raylet import MessagePackSerializer  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
@@ -807,13 +806,11 @@ async def _wait_for_object_ref_ready(obj_ref: ray.ObjectRef) -> None:
 
         loop.call_soon_threadsafe(_set_result)
 
-    core_worker = get_core_worker()
-    handle = core_worker.wait_async(obj_ref, _on_complete)
+    cancel = obj_ref._on_ready(_on_complete)
     try:
         await future
     except asyncio.CancelledError:
-        if handle != 0:
-            core_worker.cancel_wait_async(handle)
+        cancel()
         raise
 
 

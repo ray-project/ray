@@ -65,69 +65,59 @@ from ray.serve.exceptions import (
 )
 
 
-class _FakeWaitAsyncCoreWorker:
-    """Stands in for the core worker's wait_async/cancel_wait_async pair.
-
-    Matches the real contract: the callback is never invoked inline, and the
-    returned handle is always non-zero for an accepted wait.
-    """
+class _FakeReadyRef:
+    """Stands in for ObjectRef._on_ready."""
 
     def __init__(self):
-        self.waits = []
         self.callbacks = []
-        self.cancelled_handles = []
+        self.cancel_calls = 0
 
-    def wait_async(self, ref, callback):
-        self.waits.append(ref)
+    def _on_ready(self, callback):
         self.callbacks.append(callback)
-        return 40 + len(self.callbacks)
 
-    def cancel_wait_async(self, handle):
-        self.cancelled_handles.append(handle)
+        def cancel():
+            self.cancel_calls += 1
+
+        return cancel
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("exc", [None, RuntimeError("boom")])
-async def test_wait_for_object_ref_ready(monkeypatch, exc):
-    core_worker = _FakeWaitAsyncCoreWorker()
-    monkeypatch.setattr("ray.serve._private.utils.get_core_worker", lambda: core_worker)
-
-    obj_ref = object()
+async def test_wait_for_object_ref_ready(exc):
+    obj_ref = _FakeReadyRef()
     wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
     await asyncio.sleep(0)
-    assert core_worker.waits == [obj_ref]
+    assert len(obj_ref.callbacks) == 1
     assert not wait_task.done(), "must not resolve before the wait completes"
 
-    core_worker.callbacks[0](exc)
+    obj_ref.callbacks[0](exc)
     if exc is None:
         assert await wait_task is None
     else:
         with pytest.raises(RuntimeError, match="boom"):
             await wait_task
-    assert core_worker.cancelled_handles == []
+    assert obj_ref.cancel_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_wait_for_object_ref_ready_cancels_core_wait(monkeypatch):
-    core_worker = _FakeWaitAsyncCoreWorker()
-    monkeypatch.setattr("ray.serve._private.utils.get_core_worker", lambda: core_worker)
-
+async def test_wait_for_object_ref_ready_cancels_core_wait():
     loop = asyncio.get_running_loop()
     loop_errors = []
     loop.set_exception_handler(lambda _loop, ctx: loop_errors.append(ctx))
 
-    wait_task = asyncio.create_task(_wait_for_object_ref_ready(object()))
+    obj_ref = _FakeReadyRef()
+    wait_task = asyncio.create_task(_wait_for_object_ref_ready(obj_ref))
     await asyncio.sleep(0)
     wait_task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await wait_task
 
-    assert core_worker.cancelled_handles == [41]
+    assert obj_ref.cancel_calls == 1
 
     # CancelWaitAsync still completes the wait, so the callback fires after the
     # future is already cancelled. That must be a no-op, not an InvalidStateError
     # surfacing on the event loop.
-    core_worker.callbacks[0](None)
+    obj_ref.callbacks[0](None)
     await asyncio.sleep(0)
     assert loop_errors == []
 
