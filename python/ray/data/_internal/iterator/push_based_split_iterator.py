@@ -85,17 +85,20 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
 from ray.data._internal.block_batching.util import blocks_to_batches, format_batches
-from ray.data._internal.execution.interfaces import NodeIdStr
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, DataBatch
+from ray.data.context import DataContext
+from ray.data.iterator import DataIterator
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -441,7 +444,8 @@ class PushSplitCoordinator:
         self._finished_splits: Set[int] = set()
         self._gen_epoch_error: Optional[Exception] = None
 
-        self._consumers: Dict[int, ray.actor.ActorHandle] = {}
+        # split_idx -> (handle, mode, key); see register().
+        self._consumers: Dict[int, Any] = {}
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
@@ -459,10 +463,29 @@ class PushSplitCoordinator:
     # Control plane (actor tasks).
     # ------------------------------------------------------------------
 
-    def register(self, split_idx: int, consumer: ray.actor.ActorHandle) -> None:
+    def register(
+        self,
+        split_idx: int,
+        consumer: ray.actor.ActorHandle,
+        mode: str = "methods",
+        key: Optional[str] = None,
+    ) -> None:
+        """Register the consumer actor for a split.
+
+        mode="methods": the consumer implements receive_block/receive_eof/
+        receive_error/poll (PushSplitConsumer). Blocks are pushed as
+        top-level ref args, so they arrive materialized.
+
+        mode="generic": the consumer is ANY Ray actor (e.g. a Ray Train
+        worker); delivery goes through the actor's built-in ``__ray_call__``
+        into the process-local ``_RECEIVER_REGISTRY`` under ``key``, and
+        bundles are pushed with their refs NESTED (not materialized) so the
+        standard DataIterator prefetch/resolve pipeline handles them.
+        Re-registering the same split is allowed (e.g. once per epoch).
+        """
         with self._lock:
-            self._consumers[split_idx] = consumer
-        logger.debug(f"Registered consumer for split {split_idx}.")
+            self._consumers[split_idx] = (consumer, mode, key)
+        logger.debug(f"Registered consumer for split {split_idx} ({mode=}).")
 
     def start_epoch(self, split_idx: int) -> int:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
@@ -497,6 +520,15 @@ class PushSplitCoordinator:
         if self._current_executor:
             return self._current_executor.get_stats()
         return self._base_dataset._raw_stats()
+
+    def get_dataset_context(self) -> "DataContext":
+        return self._data_context
+
+    def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
+        return {
+            "dataset": self._base_dataset.get_dataset_id(),
+            "split_index": str(output_split_idx),
+        }
 
     def shutdown_executor(self):
         with self._lock:
@@ -638,21 +670,81 @@ class PushSplitCoordinator:
     # Pusher (plain threads, one per split per epoch).
     # ------------------------------------------------------------------
 
+    def _make_consumer_ops(self, epoch_id: int, split_idx: int):
+        """Build (poll, push_block, push_eof, push_error) for a consumer.
+
+        "methods" mode targets a PushSplitConsumer subclass; "generic" mode
+        targets any actor via __ray_call__ + the process-local receiver
+        registry (blocks stay as NESTED refs inside a one-block RefBundle,
+        so the consumer's standard prefetch/resolve pipeline handles them).
+        """
+        consumer, mode, key = self._consumers[split_idx]
+        if mode == "generic":
+
+            def poll():
+                return ray.get(
+                    consumer.__ray_call__.remote(_receiver_poll, key), timeout=30
+                )
+
+            def push_block(seq, entry, schema, num_rows, size_bytes):
+                sub_bundle = RefBundle(
+                    blocks=(entry,), owns_blocks=False, schema=schema
+                )
+                consumer.__ray_call__.remote(
+                    _receiver_deliver,
+                    key,
+                    epoch_id,
+                    seq,
+                    (sub_bundle, num_rows, size_bytes),
+                )
+
+            def push_eof(seq):
+                consumer.__ray_call__.remote(
+                    _receiver_deliver, key, epoch_id, seq, _EndOfEpoch(epoch_id)
+                )
+
+            def push_error(error):
+                consumer.__ray_call__.remote(
+                    _receiver_deliver_error, key, epoch_id, error
+                )
+
+        else:
+
+            def poll():
+                return ray.get(consumer.poll.remote(), timeout=30)
+
+            def push_block(seq, entry, schema, num_rows, size_bytes):
+                # Top-level ref arg: Ray resolves it, so the consumer
+                # receives the materialized Block.
+                consumer.receive_block.remote(
+                    epoch_id, seq, entry.ref, num_rows, size_bytes
+                )
+
+            def push_eof(seq):
+                consumer.receive_eof.remote(epoch_id, seq)
+
+            def push_error(error):
+                consumer.receive_error.remote(epoch_id, error)
+
+        return poll, push_block, push_eof, push_error
+
     def _pusher_loop(
         self, epoch_id: int, split_idx: int, stop: threading.Event
     ) -> None:
-        consumer = self._consumers[split_idx]
+        poll, push_block, push_eof, push_error = self._make_consumer_ops(
+            epoch_id, split_idx
+        )
         output_iterator = self._output_iterator
         consumer_dead = False
-        # Per-split push sequence number. The consumer is a multi-threaded
-        # actor, so Ray may execute receive_* tasks out of order (dispatch
+        # Per-split push sequence number. The consumer may be a multi-threaded
+        # actor, so Ray may execute receive tasks out of order (dispatch
         # follows argument readiness); the consumer re-sequences by ``seq``.
         seq = 0
         try:
             while not stop.is_set():
                 # 1) Poll the consumer.
                 try:
-                    resp: _PollResponse = ray.get(consumer.poll.remote(), timeout=30)
+                    resp: _PollResponse = poll()
                 except Exception as e:
                     logger.warning(
                         f"Split {split_idx} epoch {epoch_id}: consumer poll "
@@ -687,11 +779,7 @@ class PushSplitCoordinator:
                             else 1
                         )
                         size_bytes = entry.metadata.size_bytes or 0
-                        # Top-level ref arg: Ray resolves it, so the consumer
-                        # receives the materialized Block.
-                        consumer.receive_block.remote(
-                            epoch_id, seq, entry.ref, num_rows, size_bytes
-                        )
+                        push_block(seq, entry, bundle.schema, num_rows, size_bytes)
                         seq += 1
                         credit_rows -= num_rows
                         with self._push_lock:
@@ -706,18 +794,16 @@ class PushSplitCoordinator:
                 # EOF takes the next seq so it cannot overtake pending blocks
                 # (it has no object args, so it would otherwise always be
                 # dispatchable first).
-                consumer.receive_eof.remote(epoch_id, seq)
+                push_eof(seq)
             return
         except Exception as e:
             if not stop.is_set():
                 logger.warning(f"Split {split_idx} epoch {epoch_id} pusher failed: {e}")
                 try:
-                    consumer.receive_error.remote(epoch_id, _ExecutorError(e))
+                    push_error(_ExecutorError(e))
                 except Exception:
                     # e.g. unpicklable exception.
-                    consumer.receive_error.remote(
-                        epoch_id, _ExecutorError(RuntimeError(repr(e)))
-                    )
+                    push_error(_ExecutorError(RuntimeError(repr(e))))
             return
         finally:
             if consumer_dead:
@@ -774,3 +860,243 @@ class PushSplitCoordinator:
         except Exception:
             # The executor may be mid-shutdown during an epoch transition.
             pass
+
+
+# ---------------------------------------------------------------------------
+# Generic-consumer support: lets the coordinator push to ANY Ray actor (e.g.
+# a Ray Train worker) without that actor's class defining receive methods.
+# Delivery goes through the actor's built-in ``__ray_call__`` into a
+# process-local receiver registry; the functions below run ON the consumer
+# actor (their first argument is the actor instance, unused).
+# ---------------------------------------------------------------------------
+
+# Default consumer-side buffer target for the generic path. Must cover at
+# least ~2 blocks or the credit protocol degenerates to stop-and-wait; a
+# byte-based credit sized against target_max_block_size would be the real fix.
+DEFAULT_GENERIC_TARGET_BUFFER_ROWS = 25_000
+
+_RECEIVER_REGISTRY_LOCK = threading.Lock()
+_RECEIVER_REGISTRY: Dict[str, "_PushReceiver"] = {}
+
+
+class _PushReceiver:
+    """Process-local receive state for one (coordinator, split_idx) pair.
+
+    Deliveries land on the hosting actor's task thread(s); the iterator
+    drains ``queue`` from its own (fetch) thread — hence the lock.
+    """
+
+    def __init__(self, target_buffer_rows: int):
+        self.queue: "queue.Queue" = queue.Queue()
+        self.lock = threading.Lock()
+        self.target_buffer_rows = target_buffer_rows
+        self.rows_consumed = 0
+        self.bytes_consumed = 0
+        self.iterating = False
+        self.cur_epoch: Optional[int] = None
+        self.reorder_epoch: Optional[int] = None
+        self.reorder_next_seq = 0
+        self.reorder_pending: Dict[int, Any] = {}
+
+    def reset(self, target_buffer_rows: int) -> None:
+        """Reset before re-arriving at the epoch barrier."""
+        with self.lock:
+            self.cur_epoch = None
+            self.iterating = False
+            self.target_buffer_rows = target_buffer_rows
+            self.rows_consumed = 0
+            self.bytes_consumed = 0
+            self.reorder_epoch = None
+            self.reorder_next_seq = 0
+            self.reorder_pending = {}
+            while True:
+                try:
+                    self.queue.get_nowait()
+                except queue.Empty:
+                    break
+
+    def begin_epoch(self, epoch: int) -> None:
+        with self.lock:
+            # cur_epoch is set together with iterating; the pusher only
+            # pushes after observing iterating=True in a poll.
+            self.cur_epoch = epoch
+            self.iterating = True
+
+    def end_epoch(self) -> None:
+        with self.lock:
+            self.iterating = False
+
+    def record_consumed(self, num_rows: int, size_bytes: int) -> None:
+        with self.lock:
+            self.rows_consumed += num_rows
+            self.bytes_consumed += size_bytes
+
+
+def _receiver_deliver(_actor: Any, key: str, epoch_id: int, seq: int, item: Any):
+    """Deliver one sequenced item (bundle tuple or _EndOfEpoch) in order."""
+    receiver = _RECEIVER_REGISTRY.get(key)
+    if receiver is None:
+        return
+    with receiver.lock:
+        if epoch_id != receiver.cur_epoch:
+            return
+        if receiver.reorder_epoch != epoch_id:
+            receiver.reorder_epoch = epoch_id
+            receiver.reorder_next_seq = 0
+            receiver.reorder_pending = {}
+        receiver.reorder_pending[seq] = item
+        while receiver.reorder_next_seq in receiver.reorder_pending:
+            receiver.queue.put(receiver.reorder_pending.pop(receiver.reorder_next_seq))
+            receiver.reorder_next_seq += 1
+
+
+def _receiver_deliver_error(_actor: Any, key: str, epoch_id: int, error: Any):
+    """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
+    receiver = _RECEIVER_REGISTRY.get(key)
+    if receiver is None:
+        return
+    with receiver.lock:
+        if epoch_id == receiver.cur_epoch:
+            receiver.queue.put(error)
+
+
+def _receiver_poll(_actor: Any, key: str) -> _PollResponse:
+    receiver = _RECEIVER_REGISTRY.get(key)
+    if receiver is None:
+        # Not created yet (iterator hasn't started): report not-iterating so
+        # the pusher waits.
+        return _PollResponse(0, 0, 0, False)
+    with receiver.lock:
+        return _PollResponse(
+            rows_consumed=receiver.rows_consumed,
+            bytes_consumed=receiver.bytes_consumed,
+            target_buffer_rows=receiver.target_buffer_rows,
+            iterating=receiver.iterating,
+        )
+
+
+class PushBasedDataIterator(DataIterator):
+    """PROTOTYPE: DataIterator over one split of a push-based streaming split.
+
+    Unlike ``PushSplitConsumer`` (a dedicated actor class), this iterator is
+    picklable and can be shipped into ANY Ray actor — e.g. a Ray Train
+    worker. At iteration time it registers the hosting actor's own handle
+    (``ray.get_runtime_context().current_actor``) with the coordinator, and
+    the coordinator delivers bundles via the actor's built-in
+    ``__ray_call__`` into the process-local receiver registry. Bundles carry
+    NESTED block refs, so the standard DataIterator pipeline
+    (prefetch -> resolve -> batch -> collate, including iter_torch_batches)
+    is reused unchanged.
+    """
+
+    def __init__(
+        self,
+        coord_actor: ray.actor.ActorHandle,
+        output_split_idx: int,
+        world_size: int,
+        target_buffer_rows: Optional[int] = None,
+    ):
+        self._coord_actor = coord_actor
+        self._output_split_idx = output_split_idx
+        self._world_size = world_size
+        self._target_buffer_rows = (
+            target_buffer_rows or DEFAULT_GENERIC_TARGET_BUFFER_ROWS
+        )
+        self._iter_stats = DatasetStats(metadata={}, parent=None)
+        # Epoch this split is currently consuming; set by the fetch thread
+        # once start_epoch returns, cleared by _on_iteration_end on the
+        # consumer thread (same lock-free protocol as
+        # StreamSplitDataIterator._active_epoch).
+        self._active_epoch: Optional[int] = None
+
+    def _receiver_key(self) -> str:
+        return f"{self._coord_actor._actor_id.hex()}:{self._output_split_idx}"
+
+    def _to_ref_bundle_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
+        def gen_bundles() -> Iterator[RefBundle]:
+            try:
+                self_handle = ray.get_runtime_context().current_actor
+                assert self_handle is not None
+            except Exception as e:
+                raise RuntimeError(
+                    "PushBasedDataIterator must be iterated from inside a Ray "
+                    "actor (e.g. a Ray Train worker): the coordinator pushes "
+                    "blocks to the hosting actor via __ray_call__."
+                ) from e
+
+            key = self._receiver_key()
+            with _RECEIVER_REGISTRY_LOCK:
+                receiver = _RECEIVER_REGISTRY.get(key)
+                if receiver is None:
+                    receiver = _PushReceiver(self._target_buffer_rows)
+                    _RECEIVER_REGISTRY[key] = receiver
+            # Reset from any previous epoch BEFORE arriving at the barrier;
+            # stragglers are dropped by the epoch check in _receiver_deliver.
+            receiver.reset(self._target_buffer_rows)
+
+            # Re-registering every epoch is fine (idempotent overwrite).
+            ray.get(
+                self._coord_actor.register.remote(
+                    self._output_split_idx, self_handle, mode="generic", key=key
+                )
+            )
+            epoch = ray.get(
+                self._coord_actor.start_epoch.remote(self._output_split_idx)
+            )
+            self._active_epoch = epoch
+            receiver.begin_epoch(epoch)
+
+            while True:
+                try:
+                    item = receiver.queue.get(timeout=1.0)
+                except queue.Empty:
+                    # Loop so a hung coordinator is debuggable.
+                    continue
+                if isinstance(item, _EndOfEpoch):
+                    logger.debug(
+                        f"Split {self._output_split_idx}: epoch {epoch} exhausted."
+                    )
+                    return
+                if isinstance(item, _ExecutorError):
+                    raise item.error
+                bundle, num_rows, size_bytes = item
+                receiver.record_consumed(num_rows, size_bytes)
+                yield bundle
+
+        return gen_bundles(), self._iter_stats, None
+
+    def _on_iteration_end(self, executor) -> None:
+        """Runs on the consumer thread from _iter_batches' finally.
+
+        Covers normal exhaustion, early ``break``, and exceptions —
+        gen_bundles' own cleanup would be GC-delayed on early break (it runs
+        on the fetch thread; see StreamSplitDataIterator._on_iteration_end).
+        """
+        epoch = self._active_epoch
+        if epoch is None:
+            return
+        self._active_epoch = None
+        receiver = _RECEIVER_REGISTRY.get(self._receiver_key())
+        if receiver is not None:
+            receiver.end_epoch()
+        self._coord_actor.notify_split_finished.remote(epoch, self._output_split_idx)
+
+    def stats(self) -> str:
+        stats = ray.get(self._coord_actor.stats.remote())
+        summary = stats.to_summary()
+        summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        return summary.to_string()
+
+    def schema(self) -> Optional["Schema"]:
+        return ray.get(self._coord_actor.get_dataset_schema.remote())
+
+    def get_context(self) -> DataContext:
+        return ray.get(self._coord_actor.get_dataset_context.remote())
+
+    def world_size(self) -> int:
+        return self._world_size
+
+    def _get_dataset_tag(self) -> Dict[str, str]:
+        return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
