@@ -279,6 +279,43 @@ If your output is hard to test and you don't want to display a sample output, ex
     print("This output is hidden and untested")
 ```
 
+## How to test a Ray Serve deployment
+
+An HTTP check such as `assert response.status_code == 200` proves the endpoint answered, but it doesn't prove the deployment reached a healthy state. A Ray Serve application can fail to reach `RUNNING`, or land in `DEPLOY_FAILED` or `UNHEALTHY`, in ways a single request after `serve.run` doesn't reliably catch. To test the deployment lifecycle itself, poll `serve.status()` until the application is `RUNNING`, and raise if it reaches a failure state or times out.
+
+Run the app without blocking, then poll its status:
+
+```python
+import time
+
+from ray import serve
+from ray.serve.schema import ApplicationStatus
+
+# serve.run blocks by default, so start the app without blocking, then poll.
+serve.run(app, blocking=False)
+
+timeout_seconds = 180
+start_time = time.time()
+status = ApplicationStatus.NOT_STARTED
+
+while status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds:
+    status = next(iter(serve.status().applications.values())).status
+    if status in (ApplicationStatus.DEPLOY_FAILED, ApplicationStatus.UNHEALTHY):
+        raise AssertionError(f"Deployment failed with status: {status}")
+    time.sleep(1)
+
+if status != ApplicationStatus.RUNNING:
+    raise AssertionError(
+        f"Deployment didn't reach RUNNING within {timeout_seconds}s. Last status: {status}"
+    )
+
+serve.shutdown()
+```
+
+This pattern catches a broken deployment that an HTTP check misses, so use it for examples whose point is that an application deploys and serves traffic. It also works for a Ray Serve LLM app, which `build_openai_app` returns as an ordinary Serve application.
+
+To keep the snippet the reader copies readable while still testing the deployment, put only the user-facing example inside the `literalinclude` markers and keep the polling outside them. The `qwen_example.py` module under `doc/source/llm/doc_code/serve/qwen/` does this: it embeds the user-facing block through `literalinclude` and polls `serve.status()` after it.
+
 ## How to test examples with GPUs
 
 To configure Bazel to run an example with GPUs, complete the following steps:
