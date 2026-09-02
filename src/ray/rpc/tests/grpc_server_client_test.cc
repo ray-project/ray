@@ -14,12 +14,14 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/tests/grpc_test_common.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
@@ -27,7 +29,18 @@ namespace rpc {
 
 class TestGrpcServerClientFixture : public ::testing::Test {
  public:
-  void SetUp() {
+  virtual std::string NodeAddress() const { return "127.0.0.1"; }
+
+  virtual std::string ClientAddress() const { return "127.0.0.1"; }
+
+  virtual bool RequiresIpv6() const { return false; }
+
+  void SetUp() override {
+    if (RequiresIpv6() &&
+        !CheckPortFree(boost::asio::ip::tcp::v6().family(), /*port=*/0)) {
+      GTEST_SKIP() << "IPv6 sockets are not available in this test environment.";
+    }
+
     // Prepare and start test server.
     handler_thread_ = std::make_unique<std::thread>([this]() {
       /// The asio work to keep handler_io_service_ alive.
@@ -35,7 +48,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
-    grpc_server_.reset(new GrpcServer("test", 0, true));
+    grpc_server_.reset(new GrpcServer("test", 0, NodeAddress()));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -56,27 +69,29 @@ class TestGrpcServerClientFixture : public ::testing::Test {
     client_call_manager_.reset(
         new ClientCallManager(client_io_service_, false, /*local_address=*/""));
     grpc_client_.reset(new GrpcClient<TestService>(
-        "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
+        ClientAddress(), grpc_server_->GetPort(), *client_call_manager_));
   }
 
   void ShutdownClient() {
     grpc_client_.reset();
     client_call_manager_.reset();
     client_io_service_.stop();
-    if (client_thread_->joinable()) {
+    if (client_thread_ && client_thread_->joinable()) {
       client_thread_->join();
     }
   }
 
   void ShutdownServer() {
-    grpc_server_->Shutdown();
+    if (grpc_server_) {
+      grpc_server_->Shutdown();
+    }
     handler_io_service_.stop();
-    if (handler_thread_->joinable()) {
+    if (handler_thread_ && handler_thread_->joinable()) {
       handler_thread_->join();
     }
   }
 
-  void TearDown() {
+  void TearDown() override {
     // Cleanup stuffs.
     ShutdownClient();
     ShutdownServer();
@@ -102,6 +117,15 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   std::unique_ptr<GrpcClient<TestService>> grpc_client_;
 };
 
+class TestGrpcServerClientIpv6Fixture : public TestGrpcServerClientFixture {
+ public:
+  std::string NodeAddress() const override { return "2001:db8::1"; }
+
+  std::string ClientAddress() const override { return "::1"; }
+
+  bool RequiresIpv6() const override { return true; }
+};
+
 TEST_F(TestGrpcServerClientFixture, TestBasic) {
   // Send request
   PingRequest request;
@@ -114,6 +138,34 @@ TEST_F(TestGrpcServerClientFixture, TestBasic) {
     RAY_LOG(INFO) << "waiting";
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
+}
+
+TEST_F(TestGrpcServerClientIpv6Fixture, TestIpv6WildcardBind) {
+  struct CallState {
+    std::atomic<bool> done{false};
+    std::atomic<bool> success{false};
+  };
+
+  PingRequest request;
+  auto state = std::make_shared<CallState>();
+  Ping(request, [state](const Status &status, const PingReply &reply) {
+    RAY_LOG(INFO) << "replied, status=" << status;
+    state->success = status.ok();
+    state->done = true;
+  });
+  for (int attempt = 0; attempt < 100 && !state->done; attempt++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  ASSERT_TRUE(state->done);
+  EXPECT_TRUE(state->success);
+}
+
+TEST(GrpcServerTest, TestBindAddressMatchesNodeAddressFamily) {
+  EXPECT_EQ(internal::GetGrpcServerBindAddress("localhost"), GetLocalhostIP());
+  EXPECT_EQ(internal::GetGrpcServerBindAddress("127.0.0.1"), "127.0.0.1");
+  EXPECT_EQ(internal::GetGrpcServerBindAddress("::1"), "::1");
+  EXPECT_EQ(internal::GetGrpcServerBindAddress("192.0.2.1"), "0.0.0.0");
+  EXPECT_EQ(internal::GetGrpcServerBindAddress("2001:db8::1"), "::");
 }
 
 TEST_F(TestGrpcServerClientFixture, TestBackpressure) {

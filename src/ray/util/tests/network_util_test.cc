@@ -129,4 +129,9 @@ TEST(NetworkUtilTest, TestIsIPv6) {
   EXPECT_FALSE(IsIPv6("::1::2"));
 }
 
+TEST(NetworkUtilTest, TestGetAllInterfacesIPForHost) {
+  EXPECT_EQ(GetAllInterfacesIP("192.0.2.1"), "0.0.0.0");
+  EXPECT_EQ(GetAllInterfacesIP("2001:db8::1"), "::");
+}
+
 }  // namespace ray

@@ -278,14 +278,12 @@ std::string GetLocalhostIP() {
 }
 
 std::string GetAllInterfacesIP() {
-  static const std::string all_interfaces_ip = []() {
-    std::string localhost = GetLocalhostIP();
-    if (localhost == "::1" || localhost.find(':') != std::string::npos) {
-      return std::string("::");
-    }
-    return std::string("0.0.0.0");
-  }();
+  static const std::string all_interfaces_ip = GetAllInterfacesIP(GetLocalhostIP());
   return all_interfaces_ip;
+}
+
+std::string GetAllInterfacesIP(const std::string &ip_address) {
+  return IsIPv6(ip_address) ? "::" : "0.0.0.0";
 }
 
 std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
