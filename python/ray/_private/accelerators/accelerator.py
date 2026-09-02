@@ -158,3 +158,29 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def get_cdi_kind() -> Optional[str]:
+        """Get the CDI (Container Device Interface) kind for this
+        accelerator family, e.g. "nvidia.com/gpu".
+
+        Returns:
+            The CDI kind, or None if this accelerator family doesn't
+            support CDI-based device injection (e.g. into Ray Sandboxes).
+        """
+        return None
+
+    @staticmethod
+    def generate_cdi_spec() -> Optional[Dict]:
+        """Generate and return a CDI spec describing this accelerator
+        family's devices on the current node. Only meaningful when
+        `get_cdi_kind()` returns non-None. Returns the parsed spec directly
+        rather than writing to disk — implementations should avoid writing
+        a spec file themselves too, so callers never have to reconcile a
+        cached-on-disk spec with one generated in-process.
+
+        Returns:
+            The parsed CDI spec, or None if generation isn't supported or
+            failed.
+        """
+        return None

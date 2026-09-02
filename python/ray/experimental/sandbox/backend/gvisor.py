@@ -5,8 +5,9 @@ import shutil
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from ray._common import cdi
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -20,7 +21,10 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
-from ray.experimental.sandbox.image_manager import BaseImageManager
+from ray.experimental.sandbox.image_manager import (
+    NO_GPU_CDI_SPEC_MESSAGE,
+    BaseImageManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,23 @@ _RUNSC_ROOT = "/tmp/runsc"
 
 # Directory to store sandbox states, container images and overlay filesystem.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
+
+# CDI kinds this backend's device passthrough has actually been validated
+# against, mapped to the runsc flag(s) required to enable each (e.g.
+# --nvproxy for NVIDIA GPUs). Not GPU-specific: cdi.get_spec (see
+# ray._common.cdi) is generic across any accelerator vendor whose
+# AcceleratorManager implements CDI support, and this dict follows suit --
+# it's keyed by CDI kind, not by accelerator type. Only NVIDIA GPU
+# passthrough is populated today because that's the only kind runsc's
+# support has actually been verified against; the flag a kind needs (if
+# any) is vendor-specific by nature, so there's no reason to assume
+# --nvproxy (or nothing at all) works out-of-the-box for another. This is
+# purely gVisor's own capability knowledge (a different SandboxBackend
+# could support a different set of kinds), so it lives here rather than in
+# image_manager.py's backend-agnostic OCI-spec builder.
+_CDI_KIND_RUNSC_FLAGS: Dict[str, Tuple[str, ...]] = {
+    "nvidia.com/gpu": ("--nvproxy",),
+}
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -46,6 +67,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        if config.gpu_ids:
+            self._check_gpu_cdi_kind_supported()
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -98,6 +121,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=config.capabilities,
             network=config.network,
             dns=config.dns,
+            gpu_ids=config.gpu_ids,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)
@@ -354,8 +378,54 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
         ):
             args.append("--ignore-cgroups")
+        if config.gpu_ids:
+            args.extend(self._gpu_cdi_flags())
         args.extend(["--root", _RUNSC_ROOT])
         return args
+
+    def _check_gpu_cdi_kind_supported(self) -> None:
+        """Fail fast if gpu_ids was requested but no CDI spec exists, or
+        this node's GPU CDI kind isn't one runsc's GPU passthrough has
+        been validated against — see _CDI_KIND_RUNSC_FLAGS. Checked before
+        any sandbox state is created (in particular, before create_sandbox
+        pulls/extracts the container image), so a request that's certain
+        to fail doesn't pay for that work first, and there's nothing to
+        clean up on failure either way.
+
+        Raises the same message prepare_oci_bundle's own CDI-spec check
+        (image_manager._apply_gpu_cdi_edits) would eventually raise --
+        shared as NO_GPU_CDI_SPEC_MESSAGE so the two stay in sync. That
+        check still runs too: it's the generic OCI-spec builder's own
+        guarantee, independent of whichever backend calls it.
+        """
+        spec = cdi.get_spec("GPU")
+        if spec is None:
+            raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+        kind = spec.kind
+        if kind not in _CDI_KIND_RUNSC_FLAGS:
+            raise SandboxCreationError(
+                f"gpu_ids was requested, but this node's GPU CDI spec is "
+                f"for kind '{kind}', which gVisor sandbox GPU passthrough "
+                f"doesn't support yet (only {tuple(_CDI_KIND_RUNSC_FLAGS)} "
+                f"has been validated)."
+            )
+
+    def _gpu_cdi_flags(self) -> List[str]:
+        """runsc flag(s) needed for this node's GPU CDI kind (e.g.
+        --nvproxy for NVIDIA). create_sandbox's own
+        _check_gpu_cdi_kind_supported already validated the kind before
+        prepare_oci_bundle was ever called, so the lookup here is expected
+        to always hit.
+
+        Re-fetches the kind via cdi.get_spec("GPU") rather than
+        threading it through from create_sandbox: cheap either way, since
+        this hits cdi_lib.CDISpec.generate's in-memory cache rather than a
+        fresh generation, for any call after the first one create_sandbox
+        already made.
+        """
+        spec = cdi.get_spec("GPU")
+        kind = spec.kind if spec else None
+        return list(_CDI_KIND_RUNSC_FLAGS.get(kind, ()))
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")
@@ -383,6 +453,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
@@ -397,5 +468,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=capabilities,
             network=network,
             dns=dns,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )

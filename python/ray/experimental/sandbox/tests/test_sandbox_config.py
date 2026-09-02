@@ -1,4 +1,5 @@
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -94,6 +95,66 @@ def test_sandbox_network_requires_rootful():
 
     config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
     assert config.network == "sandbox"
+
+
+def test_gpu_ids_config():
+    with patch("ray.get_gpu_ids", return_value=["0", "1"]):
+        config = SandboxConfig(image="python:3.10-slim")
+        assert config.gpu_ids is None
+
+        config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0", "1"])
+    assert config.gpu_ids == ["0", "1"]
+
+
+@pytest.mark.parametrize(
+    "gpu_ids",
+    [
+        [],
+        "0",
+        ["0", ""],
+        ["0", 1],
+        [None],
+    ],
+)
+def test_invalid_gpu_ids_rejected(gpu_ids):
+    with pytest.raises(ValueError, match="gpu_ids"):
+        SandboxConfig(image="python:3.10-slim", gpu_ids=gpu_ids)
+
+
+def test_gpu_ids_accepts_subset_of_ray_assignment():
+    with patch("ray.get_gpu_ids", return_value=["0", "1"]):
+        config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0"])
+    assert config.gpu_ids == ["0"]
+
+
+def test_gpu_ids_rejects_ids_outside_ray_assignment():
+    """A sandbox can only access GPUs Ray actually assigned to the calling
+    actor/task; requesting one outside that assignment must fail
+    construction rather than silently granting CDI access to a GPU Ray
+    scheduled elsewhere."""
+    with patch("ray.get_gpu_ids", return_value=["0"]):
+        with pytest.raises(ValueError, match="gpu_ids"):
+            SandboxConfig(image="python:3.10-slim", gpu_ids=["1"])
+
+
+@pytest.mark.parametrize(
+    "get_gpu_ids_kwargs",
+    [
+        {"return_value": []},
+        {"side_effect": RuntimeError("not in a task")},
+    ],
+    ids=["empty", "no_ray_context"],
+)
+def test_gpu_ids_rejected_when_ray_get_gpu_ids_is_empty(get_gpu_ids_kwargs):
+    """gpu_ids requires ray.get_gpu_ids() to be non-empty for the calling
+    actor/task -- that's the only way to confirm a requested id is
+    actually this actor/task's to use, and there's no fallback if it's
+    empty. Rejected outright whether because num_gpus was never requested
+    (empty list) or there's no Ray task/actor context at all (e.g.
+    SandboxRuntime used standalone from a plain script)."""
+    with patch("ray.get_gpu_ids", **get_gpu_ids_kwargs):
+        with pytest.raises(ValueError, match="ray.get_gpu_ids"):
+            SandboxConfig(image="python:3.10-slim", gpu_ids=["0"])
 
 
 def test_parse_memory_bytes():
