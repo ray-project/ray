@@ -7,6 +7,7 @@ from unittest.mock import Mock, call, patch
 from ray.dashboard.modules.reporter.gpu_providers import (
     MB,
     RAY_SKIP_PROCESS_UTIL_API,
+    RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES,
     AmdGpuProvider,
     GpuMetricProvider,
     GpuProvider,
@@ -280,7 +281,10 @@ class TestNvidiaGpuProvider(unittest.TestCase):
             mock_pynvml, ["MetaX ppu Accelerator", "NVIDIA H100"]
         )
 
-        result = self.provider.get_gpu_utilization()
+        with self.assertLogs(
+            "ray.dashboard.modules.reporter.gpu_providers", level="INFO"
+        ) as logs:
+            result = self.provider.get_gpu_utilization()
 
         self.assertEqual(self.provider._skip_process_util_gpu_indices, {0})
         self.assertEqual(
@@ -289,7 +293,13 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         )
         self.assertEqual(result[0]["processes_pids"][1000]["gpu_memory_usage"], 128)
         self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        self.assertEqual(result[0]["memory_used"], 256)
+        self.assertEqual(result[0]["power_mw"], 100000)
+        self.assertEqual(result[0]["temperature_c"], 50)
         self.assertEqual(result[1]["processes_pids"][1001]["gpu_utilization"], 41)
+        self.assertTrue(
+            any("MetaX ppu Accelerator" in message for message in logs.output)
+        )
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_process_utilization_skipped_for_nonzero_ppu_device(self, mock_pynvml):
@@ -309,19 +319,47 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertIsNone(result[1]["processes_pids"][1001]["gpu_utilization"])
 
     @patch("ray._private.thirdparty.pynvml", create=True)
-    def test_ppu_detection_requires_standalone_name(self, mock_pynvml):
-        """Test that PPU is matched as a standalone token only."""
+    def test_ppu_detection_matches_ppu_device_name_patterns(self, mock_pynvml):
+        """Test PPU model suffixes while preserving standalone-name matching."""
         handles = self._configure_nvidia_collection(
-            mock_pynvml, ["XPPU Accelerator", "PPU2 Accelerator"]
+            mock_pynvml,
+            [
+                "XPPU Accelerator",
+                "PPU2 Accelerator",
+                "PPU-ZW810",
+                "PPU810",
+                "PPUZW910",
+            ],
         )
 
         self.provider.get_gpu_utilization()
 
-        self.assertEqual(self.provider._skip_process_util_gpu_indices, set())
+        self.assertEqual(self.provider._skip_process_util_gpu_indices, {2, 3, 4})
         self.assertEqual(
             mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.call_args_list,
             [call(handles[0], 0), call(handles[1], 0)],
         )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_skipped_for_configured_device_name(self, mock_pynvml):
+        """Test that operators can skip an unsafe device by its exact name."""
+        with patch.dict(
+            os.environ,
+            {RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES: "vendor accelerator,Other"},
+        ):
+            self.provider = NvidiaGpuProvider()
+        handles = self._configure_nvidia_collection(
+            mock_pynvml, ["Vendor Accelerator", "NVIDIA H100"]
+        )
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(self.provider._skip_process_util_gpu_indices, {0})
+        self.assertEqual(
+            mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.call_args_list,
+            [call(handles[1], 0)],
+        )
+        self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_ppu_detection_failure_falls_back_and_retries(self, mock_pynvml):
@@ -365,6 +403,27 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         )
 
     @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_ppu_detection_failure_falls_back_on_every_cycle(self, mock_pynvml):
+        """Test that repeated detection failures never call the unsafe API."""
+        handles = self._configure_nvidia_collection(
+            mock_pynvml, ["NVIDIA H100", "NVIDIA H200"]
+        )
+
+        def get_name(handle):
+            if handle == handles[1]:
+                raise mock_pynvml.NVMLError("persistent name query failure")
+            return b"NVIDIA H100"
+
+        mock_pynvml.nvmlDeviceGetName.side_effect = get_name
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(self.provider._process_util_detection_failure_count, 2)
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.assert_not_called()
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
     def test_ppu_detection_cache_invalidated_by_gpu_count(self, mock_pynvml):
         """Test that a GPU count change triggers full detection again."""
         self._configure_nvidia_collection(
@@ -388,14 +447,47 @@ class TestNvidiaGpuProvider(unittest.TestCase):
             self.provider = NvidiaGpuProvider()
         self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
 
-        result = self.provider.get_gpu_utilization()
+        with self.assertLogs(
+            "ray.dashboard.modules.reporter.gpu_providers", level="INFO"
+        ) as logs:
+            result = self.provider.get_gpu_utilization()
 
         self.assertTrue(self.provider._force_skip_process_util_api)
         self.assertFalse(self.provider._ppu_detection_done)
+        # The only name lookup is the one needed to populate the GPU info.
         self.assertEqual(mock_pynvml.nvmlDeviceGetName.call_count, 1)
         mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.assert_not_called()
         self.assertEqual(result[0]["processes_pids"][1000]["gpu_memory_usage"], 128)
         self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        self.assertTrue(
+            any(RAY_SKIP_PROCESS_UTIL_API in message for message in logs.output)
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_operator_override_values(self, mock_pynvml):
+        """Test accepted and rejected values for the operator override."""
+        for value, expected in (
+            ("true", True),
+            ("1", True),
+            ("false", False),
+            ("0", False),
+        ):
+            with self.subTest(value=value):
+                with patch.dict(os.environ, {RAY_SKIP_PROCESS_UTIL_API: value}):
+                    self.provider = NvidiaGpuProvider()
+                self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+
+                self.provider.get_gpu_utilization()
+
+                self.assertEqual(self.provider._force_skip_process_util_api, expected)
+                process_utilization_api = (
+                    mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo
+                )
+                if expected:
+                    process_utilization_api.assert_not_called()
+                else:
+                    process_utilization_api.assert_called_once()
+                mock_pynvml.reset_mock()
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_success(self, mock_pynvml):

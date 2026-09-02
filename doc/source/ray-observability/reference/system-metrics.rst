@@ -23,9 +23,18 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-  Ray uses an optional NVML API to collect per-process GPU SM utilization. If an
-  NVML-compatible library doesn't safely support this API, set
-  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node. Ray continues to
+  Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray
+  automatically skips this API for devices whose name matches a known PPU
+  device-name pattern (for example, ``PPU-ZW810``). For other NVML-compatible
+  libraries that don't safely support this API, set
+  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node.
+  To skip specific device names, use the comma-separated
+  ``RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES`` environment variable (names are
+  matched case-insensitively and exactly).
+
+  These variables must be set in the Ray node and Dashboard Reporter process
+  environment before ``ray start`` (for example, in the Pod environment when
+  using KubeRay). They are not applied through ``runtime_env``. Ray continues to
   report GPU process IDs, allocated GPU memory, and device-level utilization,
   memory, power, and temperature metrics. Only per-process GPU utilization is
   unavailable.

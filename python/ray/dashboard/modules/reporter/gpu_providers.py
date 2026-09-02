@@ -11,13 +11,14 @@ import os
 import re
 import subprocess
 import time
-from typing import Dict, List, Optional, Set, TypedDict, Union
+from typing import Dict, List, Optional, Set, Tuple, TypedDict, Union
 
 try:
     from typing import NotRequired
 except ImportError:
     from typing_extensions import NotRequired
 
+from ray._common.utils import env_bool
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,15 @@ logger = logging.getLogger(__name__)
 # Constants
 MB = 1024 * 1024
 RAY_SKIP_PROCESS_UTIL_API = "RAY_SKIP_PROCESS_UTIL_API"
-_PPU_NAME_RE = re.compile(r"\bPPU\b", re.IGNORECASE)
+RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES = "RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES"
+# PPU-compatible devices may append a model identifier directly to the prefix
+# (for example, PPU-ZW810, PPU810, or PPUZW910). Keep the leading boundary so
+# unrelated names such as XPPU are not classified as unsafe, and require at
+# least two suffix characters to preserve the standalone-name guard for PPU2.
+_UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (
+    re.compile(r"(?<!\w)PPU(?:\b|[-_]?[A-Za-z0-9][A-Za-z0-9_-]+)", re.IGNORECASE),
+)
+_PROCESS_UTIL_DETECTION_LOG_INTERVAL_S = 60.0
 
 # Types
 Percentage = int
@@ -123,13 +132,22 @@ class NvidiaGpuProvider(GpuProvider):
         self._pynvml = None
         # Maintain per-GPU sampling timestamps when using process utilization API
         self._gpu_process_last_sample_ts: Dict[int, int] = {}
-        self._force_skip_process_util_api = os.environ.get(
-            RAY_SKIP_PROCESS_UTIL_API, ""
-        ).lower() in ("1", "true")
+        self._force_skip_process_util_api = env_bool(RAY_SKIP_PROCESS_UTIL_API, False)
+        self._skip_process_util_device_names = {
+            name.strip().casefold()
+            for name in os.environ.get(
+                RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES, ""
+            ).split(",")
+            if name.strip()
+        }
         self._skip_process_util_gpu_indices: Set[int] = set()
+        self._logged_skip_process_util_devices: Set[Tuple[int, str]] = set()
+        self._process_util_override_logged = False
         self._ppu_detection_done = False
         self._detected_gpu_count: Optional[int] = None
         self._force_fallback_this_cycle = False
+        self._process_util_detection_failure_count = 0
+        self._last_process_util_detection_failure_log_ts = 0.0
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
@@ -179,36 +197,71 @@ class NvidiaGpuProvider(GpuProvider):
 
     def _detect_ppu_devices(self, num_gpus: int) -> None:
         """Detect devices that cannot safely use the process utilization API."""
-        self._force_fallback_this_cycle = False
-
         if self._force_skip_process_util_api:
+            if not self._process_util_override_logged:
+                logger.info(
+                    "Skipping nvmlDeviceGetProcessesUtilizationInfo for all NVIDIA "
+                    "devices because %s=true",
+                    RAY_SKIP_PROCESS_UTIL_API,
+                )
+                self._process_util_override_logged = True
             return
 
         if self._ppu_detection_done and self._detected_gpu_count == num_gpus:
             return
 
         detected_indices: Set[int] = set()
+        detected_names: Dict[int, str] = {}
         try:
             for gpu_index in range(num_gpus):
                 gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
                 gpu_name = self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle))
-                if _PPU_NAME_RE.search(gpu_name):
+                if gpu_name.casefold() in self._skip_process_util_device_names or any(
+                    pattern.search(gpu_name)
+                    for pattern in _UNSAFE_PROCESS_UTIL_NAME_PATTERNS
+                ):
                     detected_indices.add(gpu_index)
+                    detected_names[gpu_index] = gpu_name
         except Exception as e:
+            # Fail closed: a partial classification could leave an unprobed,
+            # unsafe device exposed to the process utilization API.
             self._ppu_detection_done = False
             self._detected_gpu_count = None
+            self._skip_process_util_gpu_indices.clear()
             self._force_fallback_this_cycle = True
-            if log_once("gpu_process_utilization_device_detection"):
-                logger.info(
+            self._process_util_detection_failure_count += 1
+            now = time.monotonic()
+            if (
+                self._process_util_detection_failure_count == 1
+                or now - self._last_process_util_detection_failure_log_ts
+                >= _PROCESS_UTIL_DETECTION_LOG_INTERVAL_S
+            ):
+                logger.warning(
                     "Failed to detect devices that support GPU process SM "
                     "utilization; skipping the process utilization API for this "
-                    f"collection cycle: {e}"
+                    "collection cycle and retrying: %s",
+                    e,
                 )
+                self._last_process_util_detection_failure_log_ts = now
             return
 
         self._skip_process_util_gpu_indices = detected_indices
         self._ppu_detection_done = True
         self._detected_gpu_count = num_gpus
+        self._process_util_detection_failure_count = 0
+        self._last_process_util_detection_failure_log_ts = 0.0
+
+        for gpu_index, gpu_name in detected_names.items():
+            device_key = (gpu_index, gpu_name)
+            if device_key not in self._logged_skip_process_util_devices:
+                logger.info(
+                    "Skipping nvmlDeviceGetProcessesUtilizationInfo for device %r "
+                    "(index %d): per-process utilization API is known to be "
+                    "unsafe on this device",
+                    gpu_name,
+                    gpu_index,
+                )
+                self._logged_skip_process_util_devices.add(device_key)
 
     def _get_pynvml_gpu_usage(self) -> List[GpuUtilizationInfo]:
         if not self._initialized:
@@ -224,7 +277,6 @@ class NvidiaGpuProvider(GpuProvider):
             except Exception:
                 self._ppu_detection_done = False
                 self._detected_gpu_count = None
-                self._force_fallback_this_cycle = True
                 raise
 
             self._detect_ppu_devices(num_gpus)
