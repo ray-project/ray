@@ -1403,17 +1403,6 @@ We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
 
-
-def get_core_worker() -> Any:
-    """Return the connected worker's CoreWorker."""
-    core_worker = getattr(global_worker, "core_worker", None)
-    if core_worker is None:
-        raise RaySystemError(
-            "Ray has not been started yet. You can start Ray with 'ray.init()'."
-        )
-    return core_worker
-
-
 _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
 
