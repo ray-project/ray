@@ -622,6 +622,8 @@ Each Ray release is fully tested with a compatible vLLM version.
    * - Ray release
      - vLLM version
    * - nightly
+     - 0.27.0
+   * - 2.58.0
      - 0.26.0
    * - 2.57.0
      - 0.25.1
@@ -654,12 +656,6 @@ If you encounter CUDA out of memory errors, try these strategies:
     :language: python
     :start-after: __gpu_memory_config_example_start__
     :end-before: __gpu_memory_config_example_end__
-
-.. admonition:: Known issue
-
-    On vLLM 0.25.1 and 0.26.0, VLM inference can OOM because the default Model Runner V2
-    skips multimodal encoder memory profiling and over-allocates KV cache memory.
-    Set ``VLLM_USE_V2_MODEL_RUNNER=0`` to fall back to Model Runner V1.
 
 Model loading at scale
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -303,9 +303,17 @@ class NormalTaskSubmitter {
   absl::flat_hash_map<rpc::Address, LeaseEntry> worker_to_lease_entry_
       ABSL_GUARDED_BY(mu_);
 
+  /// Metadata about a single in-flight worker lease request to a raylet.
+  struct PendingLeaseRequest {
+    /// The address of the raylet that the lease was requested from.
+    rpc::Address raylet_address;
+    /// Whether a CancelWorkerLease has already been sent for this lease.
+    bool cancel_requested = false;
+  };
+
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
+    absl::flat_hash_map<LeaseID, PendingLeaseRequest> pending_lease_requests;
 
     std::optional<LeaseSpecification> lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per

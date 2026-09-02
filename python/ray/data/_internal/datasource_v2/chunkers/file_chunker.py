@@ -85,6 +85,13 @@ class ParquetRowGroupChunkMetadata(ChunkMetadata):
     row_group_ids: Tuple[int, ...]
     num_rows: int
     uncompressed_size: int
+    # Whether every row in these groups survives the pushed predicate. Only
+    # exact-survivor counts may drive limit push-down.
+    fully_matched: bool
+    # Per-physical-row-group breakdown, in ``row_group_ids`` order. Populated
+    # for coalesced runs so a partitioner can split at exact boundaries.
+    rg_sizes: Tuple[int, ...]
+    rg_rows: Tuple[int, ...]
 
 
 @DeveloperAPI

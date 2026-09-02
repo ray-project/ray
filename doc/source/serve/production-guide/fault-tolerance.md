@@ -21,7 +21,7 @@ This section discusses concepts from:
 :::
 
 (serve-e2e-ft-guide)=
-## Guide: end-to-end fault tolerance for your Serve app
+## Guide: End-to-end fault tolerance for your Serve app
 
 Serve provides some [fault tolerance](serve-ft-detail) features out of the box. Two options to get end-to-end fault tolerance are the following:
 * tune these features and run Serve on top of [KubeRay]
@@ -190,7 +190,7 @@ First, you need to update your `RayService` metadata's annotations:
 :::{tab-item} Vanilla Config
 ```yaml
 ...
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-sample
@@ -203,7 +203,7 @@ spec:
 :selected:
 ```yaml
 ...
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-sample
@@ -228,7 +228,7 @@ Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headG
 :::{tab-item} Vanilla Config
 
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
     ...
@@ -251,7 +251,7 @@ spec:
 :selected:
 
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
     ...

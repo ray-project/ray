@@ -61,10 +61,15 @@ kubectl get all -n prometheus-system
 * Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
   ```sh
   # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
-  helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 \
-    --set metrics.serviceMonitor.enabled=true \ 
-    --set metrics.serviceMonitor.selector.release=prometheus 
+  helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
+    --set metrics.serviceMonitor.enabled=true \
+    --set metrics.serviceMonitor.additionalLabels.release=prometheus
   ```
+
+  :::{warning}
+  KubeRay v1.7.0 renames the `metrics.serviceMonitor.selector` value to `metrics.serviceMonitor.additionalLabels`, because the value sets labels on the ServiceMonitor rather than a selector. On KubeRay v1.6.x or earlier, use `--set metrics.serviceMonitor.selector.release=prometheus` instead.
+  :::
+
   You can verify the ServiceMonitor creation with:
   ```sh
   kubectl get servicemonitor
@@ -109,7 +114,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST

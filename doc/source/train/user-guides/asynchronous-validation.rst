@@ -119,7 +119,7 @@ You should use ``map_batches`` if:
   aggregation manually using low-level collective operations or rely on third-party libraries
   such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
 
-Example: validation with Ray Train TorchTrainer
+Example: Validation with Ray Train TorchTrainer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
@@ -137,7 +137,7 @@ loss on a validation set. Note the following about this example:
     :start-after: __validation_fn_torch_trainer_start__
     :end-before: __validation_fn_torch_trainer_end__
 
-Example: validation with Ray Data map_batches
+Example: Validation with Ray Data map_batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validation_fn`` that uses :func:`ray.data.Dataset.map_batches` to

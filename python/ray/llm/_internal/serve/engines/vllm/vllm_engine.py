@@ -22,6 +22,9 @@ from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.entrypoints.serve.utils.server_utils import vllm_error_handler
+from vllm.exceptions import VLLMClientError, VLLMError
+from vllm.v1.engine.exceptions import EngineGenerateError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -93,6 +96,19 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+# TODO(jeffreywang): Remove this in vLLM 0.28.0 (#52394).
+def _unwrap_client_error(exc: BaseException) -> BaseException:
+    if isinstance(exc, EngineGenerateError) and isinstance(
+        exc.__cause__, (ValueError, VLLMClientError)
+    ):
+        return exc.__cause__
+    return exc
+
+
+async def _unwrapping_vllm_error_handler(request: Request, exc: Exception):
+    return await vllm_error_handler(request, _unwrap_client_error(exc))
 
 
 def _canonicalize_request_id_header(
@@ -357,6 +373,10 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
+        app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
+        # Apply Ray's replacement handler when FastAPI builds the ASGI stack.
+        # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
+        app.middleware_stack = None
         # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
         # its own launcher sets -- and flips should_exit on it, which is what makes
         # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
@@ -659,6 +679,11 @@ class VLLMEngine(LLMEngine):
         """Convert an exception to an ErrorResponse and map exception types to
         the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
         """
+        # Genuine engine failures keep propagating so Serve still reports a 500.
+        exc = _unwrap_client_error(exc)
+        if isinstance(exc, EngineGenerateError):
+            raise exc
+
         try:
             vllm_error = serving.create_error_response(exc)
             return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
@@ -683,7 +708,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -718,7 +743,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -755,7 +780,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -785,7 +810,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -823,7 +848,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -848,7 +873,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -877,7 +902,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 

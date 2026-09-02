@@ -437,6 +437,47 @@ class SearchSpaceTest(unittest.TestCase):
         samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testQuantizedQOne(self):
+        # https://github.com/ray-project/ray/issues/45494
+        # Seeded because assertIn below needs both endpoints actually drawn;
+        # RandomState, not default_rng, is the generator with a frozen stream.
+        random_state = np.random.RandomState(1000)
+
+        samples = tune.quniform(-10, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(-10 <= s <= 10 for s in samples))
+        self.assertIn(-10.0, samples)
+        self.assertIn(10.0, samples)
+
+        samples = tune.qrandn(0, 5, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+
+        samples = tune.qloguniform(1, 100, 1).sample(
+            size=1000, random_state=random_state
+        )
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(1 <= s <= 100 for s in samples))
+
+        samples = tune.qrandint(1, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(isinstance(s, int) for s in samples))
+        self.assertTrue(all(1 <= s <= 10 for s in samples))
+
+    def testQuantizedSampleRespectsDomainType(self):
+        for q in (1, 2):
+            scalar = tune.qrandint(1, 10, q).sample()
+            self.assertIsInstance(scalar, int, msg=f"qrandint scalar, q={q}")
+            array = tune.qrandint(1, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, int) for s in array), msg=f"qrandint array, q={q}"
+            )
+
+            scalar = tune.quniform(-10, 10, q).sample()
+            self.assertIsInstance(scalar, float, msg=f"quniform scalar, q={q}")
+            array = tune.quniform(-10, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, float) for s in array), msg=f"quniform array, q={q}"
+            )
+
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
 

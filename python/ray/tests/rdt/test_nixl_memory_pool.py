@@ -1,6 +1,7 @@
-"""Unit tests for MemoryPoolManager.
+"""Unit tests for MemoryPoolManager and packed-layout wire contract.
 """
 
+import random
 import sys
 
 import pytest
@@ -9,6 +10,9 @@ import torch
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
     NixlOutOfMemoryError,
+    TensorLayout,
+    group_tensors_by_desc,
+    packed_offsets,
 )
 
 # ---------------------------------------------------------------------------
@@ -21,126 +25,325 @@ def _make_tensor(values, dtype=torch.float32):
     return torch.tensor(values, dtype=dtype)
 
 
+def _nbytes(t):
+    return t.numel() * t.element_size()
+
+
+def _layout(tensors):
+    """Packed size and element-size alignment of each tensor, in tensor order."""
+    return [TensorLayout(_nbytes(t), t.element_size()) for t in tensors]
+
+
+def _unpack(regions, tensors):
+    """Recover per-tensor views from packed regions, the way a receiver does.
+
+    ``allocate_group`` returns only the regions to transfer, so what the pool
+    packed is checked by decoding them with the same two layout functions the
+    receive path uses.
+    """
+    layouts = _layout(tensors)
+    desc_groups = group_tensors_by_desc(layouts, [r.numel() for r in regions])
+    views = [None] * len(tensors)
+    for region, desc_group in zip(regions, desc_groups):
+        offsets, _ = packed_offsets([layouts[i] for i in desc_group])
+        for offset, i in zip(offsets, desc_group):
+            views[i] = (
+                region[offset : offset + layouts[i].nbytes]
+                .view(tensors[i].dtype)
+                .reshape(tensors[i].shape)
+            )
+    return views
+
+
 # ---------------------------------------------------------------------------
-# allocate_for_tensors — basic allocation and data copy
+# Wire-contract layout helpers
 # ---------------------------------------------------------------------------
 
 
-class TestAllocateForTensors:
+class TestPackedLayout:
+    def test_single_size(self):
+        offsets, packed_nbytes = packed_offsets([TensorLayout(12, 4)])
+        assert offsets == [0]
+        assert packed_nbytes == 12
+
+    def test_uniform_dtype_has_no_padding(self):
+        """A group sharing one dtype packs tightly, matching a contiguous buffer."""
+        offsets, packed_nbytes = packed_offsets(
+            [TensorLayout(12, 4), TensorLayout(8, 4)]
+        )
+        assert offsets == [0, 12]
+        assert packed_nbytes == 20
+
+    def test_alignment_padding_for_wider_dtype(self):
+        # 1-byte tensor, then a float64 that must start on an 8-byte boundary.
+        offsets, packed_nbytes = packed_offsets(
+            [TensorLayout(1, 1), TensorLayout(8, 8)]
+        )
+        assert offsets == [0, 8]
+        assert packed_nbytes == 16
+
+    def test_already_aligned(self):
+        offsets, packed_nbytes = packed_offsets(
+            [TensorLayout(16, 8), TensorLayout(16, 8)]
+        )
+        assert offsets == [0, 16]
+        assert packed_nbytes == 32
+
+    def test_split_single_desc(self):
+        layouts = [TensorLayout(1, 1), TensorLayout(8, 8)]
+        _, packed_nbytes = packed_offsets(layouts)
+        desc_groups = group_tensors_by_desc(layouts, [packed_nbytes])
+        assert desc_groups == [[0, 1]]
+
+    def test_split_multiple_descs(self):
+        layouts = [TensorLayout(12, 4), TensorLayout(8, 4), TensorLayout(4, 4)]
+        _, nbytes0 = packed_offsets(layouts[:2])
+        _, nbytes1 = packed_offsets(layouts[2:])
+        desc_groups = group_tensors_by_desc(layouts, [nbytes0, nbytes1])
+        assert desc_groups == [[0, 1], [2]]
+
+    def test_split_one_per_tensor(self):
+        layouts = [TensorLayout(12, 4), TensorLayout(8, 4), TensorLayout(4, 4)]
+        desc_groups = group_tensors_by_desc(
+            layouts, [layout.nbytes for layout in layouts]
+        )
+        assert desc_groups == [[0], [1], [2]]
+
+    def test_split_mismatch_raises(self):
+        with pytest.raises(ValueError):
+            group_tensors_by_desc([TensorLayout(12, 4), TensorLayout(8, 4)], [12])
+        with pytest.raises(ValueError):
+            group_tensors_by_desc([TensorLayout(12, 4)], [12, 8])
+        with pytest.raises(ValueError):
+            # 1 packs at offset 0; the float64 pads to 8, so the packed byte
+            # count is 16 not 15.
+            group_tensors_by_desc([TensorLayout(1, 1), TensorLayout(8, 8)], [15])
+
+    def test_roundtrip_randomized(self):
+        """group_tensors_by_desc recovers exactly the packer's groups."""
+        rng = random.Random(0)
+        for _ in range(50):
+            n = rng.randint(1, 12)
+            aligns = [rng.choice([1, 2, 4, 8, 16]) for _ in range(n)]
+            layouts = [TensorLayout(a * rng.randint(1, 8), a) for a in aligns]
+            # Simulate packing into random group breaks.
+            cuts = sorted(rng.sample(range(1, n), k=rng.randint(0, min(3, n - 1))))
+            cuts = [0] + cuts + [n]
+            packed_group_nbytes = []
+            expected_desc_groups = []
+            for a, b in zip(cuts, cuts[1:]):
+                desc_group = list(range(a, b))
+                _, packed_nbytes = packed_offsets(layouts[a:b])
+                packed_group_nbytes.append(packed_nbytes)
+                expected_desc_groups.append(desc_group)
+            recovered = group_tensors_by_desc(layouts, packed_group_nbytes)
+            assert recovered == expected_desc_groups
+            for desc_group in recovered:
+                offs, _ = packed_offsets([layouts[i] for i in desc_group])
+                assert offs[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# allocate_group — basic allocation and data copy
+# ---------------------------------------------------------------------------
+
+
+class TestAllocateGroup:
     def test_single_tensor(self):
         t = _make_tensor([1.0, 2.0, 3.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([t])
+        regions = pool.allocate_group("o1", [t])
 
-        assert len(views) == 1
-        assert torch.equal(views[0], t)
-        assert pool.has_block(t)
+        assert len(regions) == 1
+        assert regions[0].numel() == _nbytes(t)
+        assert torch.equal(_unpack(regions, [t])[0], t)
+        assert "o1" in pool._allocated_by_obj
 
-    def test_multiple_independent_tensors(self):
+    def test_multiple_independent_tensors_one_block(self):
         t1 = _make_tensor([1.0, 2.0])
         t2 = _make_tensor([3.0, 4.0, 5.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([t1, t2])
+        regions = pool.allocate_group("o1", [t1, t2])
+        views = _unpack(regions, [t1, t2])
 
-        assert len(views) == 2
+        # Both tensors share a dtype, so they pack into one block with no pad.
+        assert len(regions) == 1
+        assert regions[0].numel() == _nbytes(t1) + _nbytes(t2)
         assert torch.equal(views[0], t1)
         assert torch.equal(views[1], t2)
-        assert pool.has_block(t1)
-        assert pool.has_block(t2)
 
-    def test_pool_views_are_backed_by_pool_tensor(self):
-        """Returned views should be backed by the pool's internal tensor,
-        not the source tensor's storage."""
+    def test_regions_are_backed_by_pool_tensor(self):
         t = _make_tensor([10.0, 20.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([t])
+        regions = pool.allocate_group("o1", [t])
 
-        # The view's storage should be the pool tensor's storage.
         assert (
-            views[0].untyped_storage().data_ptr()
+            regions[0].untyped_storage().data_ptr()
             == pool.get_pool_tensor().untyped_storage().data_ptr()
         )
 
     def test_data_is_copied_not_aliased(self):
-        """Mutating the source tensor after allocation should not affect
-        the pool copy."""
         t = _make_tensor([1.0, 2.0, 3.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([t])
+        regions = pool.allocate_group("o1", [t])
+        view = _unpack(regions, [t])[0]
 
-        original = views[0].clone()
+        original = view.clone()
         t[0] = 999.0
-        assert torch.equal(views[0], original)
+        assert torch.equal(view, original)
 
+    def test_view_of_large_storage_copies_only_view_bytes(self):
+        """A small view of a large storage should only consume the view's bytes."""
+        base = torch.arange(1000, dtype=torch.float32)
+        view = base[100:104]  # 16 bytes
+        # Pool sized just above the view — far smaller than the full storage.
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", [view])
 
-# ---------------------------------------------------------------------------
-# allocate_for_tensors — storage deduplication
-# ---------------------------------------------------------------------------
+        assert regions[0].numel() == 16
+        assert torch.equal(_unpack(regions, [view])[0], view)
+        # Full storage would not fit.
+        assert base.untyped_storage().nbytes() > 64
 
-
-class TestStorageDeduplication:
-    def test_views_of_same_storage_share_one_block(self):
-        """Two views of the same underlying storage should produce only one
-        pool allocation."""
-        base = _make_tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        view_a = base[0:2]
-        view_b = base[1:3]
-
-        storage_size = base.untyped_storage().nbytes()
-        # Pool is exactly one storage — a second allocation would OOM.
-        pool = MemoryPoolManager(pool_size=storage_size, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([view_a, view_b])
-
-        assert len(views) == 2
-        assert torch.equal(views[0], view_a)
-        assert torch.equal(views[1], view_b)
-
-    def test_duplicate_tensor_in_list(self):
-        """The exact same tensor object appearing twice should deduplicate."""
-        t = _make_tensor([1.0, 2.0])
-        storage_size = t.untyped_storage().nbytes()
-        pool = MemoryPoolManager(pool_size=storage_size, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([t, t])
-
-        assert len(views) == 2
-        assert torch.equal(views[0], t)
-        assert torch.equal(views[1], t)
-
-    def test_cross_call_reuse(self):
-        """A second allocate_for_tensors call with the same tensor should
-        reuse the existing pool block (cache hit), not allocate a new one."""
-        t = _make_tensor([1.0, 2.0, 3.0])
-        storage_size = t.untyped_storage().nbytes()
-        # Pool fits exactly one storage.
-        pool = MemoryPoolManager(pool_size=storage_size, device=torch.device("cpu"))
-
-        views1 = pool.allocate_for_tensors([t])
-        # Second call should hit cache, not OOM.
-        views2 = pool.allocate_for_tensors([t])
-
-        assert torch.equal(views1[0], t)
-        assert torch.equal(views2[0], t)
-
-    def test_mixed_cache_hit_and_new_allocation(self):
-        """One call with a mix of already-allocated and new tensors should
-        only allocate for the new ones."""
-        t1 = _make_tensor([1.0, 2.0])
-        t2 = _make_tensor([3.0, 4.0, 5.0])
+    def test_mixed_dtypes_align(self):
+        t_f32 = torch.tensor([1.0], dtype=torch.float32)  # 4 bytes
+        t_f64 = torch.tensor([2.0], dtype=torch.float64)  # 8 bytes
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", [t_f32, t_f64])
+        views = _unpack(regions, [t_f32, t_f64])
 
-        # Pre-allocate t1.
-        pool.allocate_for_tensors([t1])
+        # The float64 starts on an 8-byte boundary, so the region carries 4
+        # bytes of padding past the float32.
+        assert regions[0].numel() == 16
+        assert torch.equal(views[0], t_f32)
+        assert torch.equal(views[1], t_f64)
 
-        # Now allocate both — t1 should cache-hit, t2 should get new block.
-        views = pool.allocate_for_tensors([t1, t2])
-        assert len(views) == 2
-        assert torch.equal(views[0], t1)
-        assert torch.equal(views[1], t2)
-        assert pool.has_block(t2)
+    def test_multidimensional_tensor(self):
+        t = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", [t])
+        assert regions[0].numel() == _nbytes(t)
+        assert torch.equal(_unpack(regions, [t])[0], t)
+
+    def test_view_with_storage_offset(self):
+        base = _make_tensor([1.0, 2.0, 3.0, 4.0, 5.0])
+        view = base[2:4]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", [view])
+        assert regions[0].numel() == _nbytes(view)
+        assert torch.equal(_unpack(regions, [view])[0], view)
+
+    def test_ordered_views_of_one_storage(self):
+        """Ordered views of one weight pack into a single tight block."""
+        base = torch.arange(64, dtype=torch.float32).reshape(8, 8)
+        rows = [base[i] for i in range(8)]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", rows)
+
+        # One consecutive group: a single block, tightly packed in order.
+        assert len(regions) == 1
+        assert regions[0].numel() == 8 * 32
+        for row, view in zip(rows, _unpack(regions, rows)):
+            assert torch.equal(view, row)
+
+    def test_reversed_views_still_byte_exact(self):
+        """Sources supplied out of storage order must still copy correctly."""
+        base = torch.arange(32, dtype=torch.float32).reshape(4, 8)
+        rows = [base[i] for i in reversed(range(4))]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", rows)
+
+        for row, view in zip(rows, _unpack(regions, rows)):
+            assert torch.equal(view, row)
+
+    def test_interleaved_storages_still_byte_exact(self):
+        """Tensors drawn from two separate storages pack correctly."""
+        a = torch.arange(8, dtype=torch.float32)
+        b = torch.arange(100, 108, dtype=torch.float32)
+        tensors = [a[0:2], b[0:2], a[2:4], b[2:4]]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", tensors)
+
+        for tensor, view in zip(tensors, _unpack(regions, tensors)):
+            assert torch.equal(view, tensor)
+
+    def test_mixed_dtypes_copied_correctly(self):
+        """A dtype change mid-group pads the layout but keeps the bytes."""
+        f32 = torch.arange(4, dtype=torch.float32)
+        f64 = torch.arange(2, dtype=torch.float64)
+        i8 = torch.arange(3, dtype=torch.int8)
+        tensors = [f32, f64, i8, f32 + 1]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", tensors)
+
+        for tensor, view in zip(tensors, _unpack(regions, tensors)):
+            assert torch.equal(view, tensor)
+
+    def test_gap_in_source_not_copied(self):
+        """Bytes skipped between two source views must not land in the pool."""
+        base = torch.arange(16, dtype=torch.float32)
+        tensors = [base[0:4], base[8:12]]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        views = _unpack(pool.allocate_group("o1", tensors), tensors)
+
+        assert torch.equal(views[0], base[0:4])
+        assert torch.equal(views[1], base[8:12])
+
+    def test_reallocate_same_obj_id_replaces_prior(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        t1 = _make_tensor([1.0, 2.0])
+        t2 = _make_tensor([3.0, 4.0, 5.0, 6.0])
+        pool.allocate_group("o1", [t1])
+        assert len(pool._allocated_by_obj["o1"]) == 1
+        regions = pool.allocate_group("o1", [t2])
+        assert regions[0].numel() == _nbytes(t2)
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
+        # Only one allocation recorded for o1.
+        assert len(pool._allocated_by_obj) == 1
 
 
 # ---------------------------------------------------------------------------
-# allocate_for_tensors — OOM
+# allocate_group — fragmentation / multi-block packing
+# ---------------------------------------------------------------------------
+
+
+class TestFragmentedPacking:
+    def test_multi_block_on_fragmented_pool(self):
+        """Allocate three blocks, free the outer two, then pack a group that
+        cannot fit in either hole alone — should span both holes."""
+        # Use sizes that are multiples of alignment so byte counts are exact.
+        # Each "filler" is 32 bytes; holes after freeing outer two are 32 each.
+        pool = MemoryPoolManager(pool_size=96, device=torch.device("cpu"))
+        fillers = [
+            torch.zeros(8, dtype=torch.float32),  # 32 bytes
+            torch.zeros(8, dtype=torch.float32),
+            torch.zeros(8, dtype=torch.float32),
+        ]
+        pool.allocate_group("f0", [fillers[0]])
+        pool.allocate_group("f1", [fillers[1]])
+        pool.allocate_group("f2", [fillers[2]])
+        assert pool.free_object("f0")
+        assert pool.free_object("f2")
+        # Middle block still allocated; free list has two 32-byte holes.
+        # Request two 32-byte tensors — neither hole fits both, so 2 blocks.
+        t0 = torch.arange(8, dtype=torch.float32)
+        t1 = torch.arange(8, dtype=torch.float32) + 10
+        regions = pool.allocate_group("g", [t0, t1])
+        views = _unpack(regions, [t0, t1])
+
+        assert len(regions) == 2
+        assert torch.equal(views[0], t0)
+        assert torch.equal(views[1], t1)
+
+        # Wire-contract round-trip: region byte counts recover one group per block.
+        desc_groups = group_tensors_by_desc(
+            _layout([t0, t1]), [r.numel() for r in regions]
+        )
+        assert desc_groups == [[0], [1]]
+
+
+# ---------------------------------------------------------------------------
+# allocate_group — OOM
 # ---------------------------------------------------------------------------
 
 
@@ -150,195 +353,106 @@ class TestOOM:
         pool = MemoryPoolManager(pool_size=4, device=torch.device("cpu"))
 
         with pytest.raises(NixlOutOfMemoryError, match="out of memory"):
-            pool.allocate_for_tensors([t])
+            pool.allocate_group("o1", [t])
 
     def test_oom_does_not_corrupt_pool_state(self):
-        """After an OOM error, the pool state should be unchanged — previously
-        allocated blocks remain valid and no partial allocation leaks."""
         t1 = _make_tensor([1.0, 2.0])  # 8 bytes
         t2 = _make_tensor([3.0, 4.0, 5.0])  # 12 bytes
-        pool = MemoryPoolManager(pool_size=12, device=torch.device("cpu"))
+        pool = MemoryPoolManager(pool_size=16, device=torch.device("cpu"))
 
-        views1 = pool.allocate_for_tensors([t1])
-        assert torch.equal(views1[0], t1)
+        regions = pool.allocate_group("o1", [t1])
+        assert torch.equal(_unpack(regions, [t1])[0], t1)
 
-        # t2 doesn't fit in the remaining 4 bytes.
         with pytest.raises(NixlOutOfMemoryError):
-            pool.allocate_for_tensors([t2])
+            pool.allocate_group("o2", [t2])
 
-        # Pool should still be intact — t1's block is still valid.
-        assert pool.has_block(t1)
+        # Free and reallocate to confirm state is intact.
+        assert pool.free_object("o1")
+        regions = pool.allocate_group("o2", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
+        assert pool.free_object("o2")
 
     def test_atomic_allocation_failure(self):
-        """When allocating multiple tensors atomically, if one doesn't fit,
-        none should be allocated."""
+        """When the group cannot be fully packed, no partial state is committed."""
         t1 = _make_tensor([1.0])  # 4 bytes
-        t2 = _make_tensor([1.0] * 100)  # 400 bytes — won't fit
+        t2 = _make_tensor([1.0] * 100)  # 400 bytes
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        free_before = [(b.offset, b.size) for b in pool._free_blocks]
 
         with pytest.raises(NixlOutOfMemoryError):
-            pool.allocate_for_tensors([t1, t2])
+            pool.allocate_group("o1", [t1, t2])
 
-        # Neither tensor should have been tracked.
-        assert not pool.has_block(t1)
-        assert not pool.has_block(t2)
+        free_after = [(b.offset, b.size) for b in pool._free_blocks]
+        assert free_before == free_after
+        assert "o1" not in pool._allocated_by_obj
+
+    def test_oom_on_replace_keeps_prior_allocation(self):
+        """A failed re-extract for the same obj_id must not free the prior blocks."""
+        pool = MemoryPoolManager(pool_size=32, device=torch.device("cpu"))
+        t_small = _make_tensor([1.0, 2.0])  # 8 bytes
+        # Bigger than the whole pool even after reclaiming the prior block.
+        t_big = _make_tensor([1.0] * 20)  # 80 bytes
+        regions = pool.allocate_group("o1", [t_small])
+        with pytest.raises(NixlOutOfMemoryError):
+            pool.allocate_group("o1", [t_big])
+        assert "o1" in pool._allocated_by_obj
+        assert regions[0].numel() == _nbytes(t_small)
+        assert torch.equal(_unpack(regions, [t_small])[0], t_small)
+
+    def test_replace_can_reuse_own_space(self):
+        """Re-extract for the same obj_id can reuse its previously allocated space."""
+        pool = MemoryPoolManager(pool_size=32, device=torch.device("cpu"))
+        t1 = torch.zeros(8, dtype=torch.float32)  # 32 bytes — fills the pool
+        t2 = torch.arange(8, dtype=torch.float32)
+        pool.allocate_group("o1", [t1])
+        # Without reclaiming o1's own block this would OOM.
+        regions = pool.allocate_group("o1", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
+        assert len(pool._allocated_by_obj) == 1
 
 
 # ---------------------------------------------------------------------------
-# free_tensors
+# free_object
 # ---------------------------------------------------------------------------
 
 
-class TestFreeTensors:
+class TestFreeObject:
     def test_free_and_reallocate(self):
-        """After freeing, the space should be reusable."""
         t1 = _make_tensor([1.0, 2.0])  # 8 bytes
-        pool = MemoryPoolManager(pool_size=8, device=torch.device("cpu"))
+        pool = MemoryPoolManager(pool_size=32, device=torch.device("cpu"))
 
-        pool.allocate_for_tensors([t1])
-        assert pool.has_block(t1)
+        pool.allocate_group("o1", [t1])
+        assert pool.free_object("o1")
+        assert "o1" not in pool._allocated_by_obj
 
-        pool.free_tensors([t1])
-        assert not pool.has_block(t1)
-
-        # Now a new tensor of the same size should fit.
         t2 = _make_tensor([3.0, 4.0])
-        views = pool.allocate_for_tensors([t2])
-        assert torch.equal(views[0], t2)
+        regions = pool.allocate_group("o2", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
 
-    def test_free_unknown_tensor_is_noop(self):
-        """Freeing a tensor that was never allocated should not raise."""
-        t = _make_tensor([1.0])
+    def test_free_unknown_is_noop(self):
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-        # Should not raise.
-        pool.free_tensors([t])
+        assert not pool.free_object("missing")
 
-    def test_free_multiple_tensors(self):
-        t1 = _make_tensor([1.0, 2.0])
-        t2 = _make_tensor([3.0, 4.0])
-        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+    def test_block_merging(self):
+        """After freeing adjacent blocks, merged space is usable for a larger alloc."""
+        t1 = torch.zeros(8, dtype=torch.float32)  # 32 bytes
+        t2 = torch.zeros(8, dtype=torch.float32)
+        t3 = torch.zeros(8, dtype=torch.float32)
+        pool = MemoryPoolManager(pool_size=96, device=torch.device("cpu"))
 
-        pool.allocate_for_tensors([t1])
-        pool.allocate_for_tensors([t2])
-        pool.free_tensors([t1, t2])
+        pool.allocate_group("o1", [t1])
+        pool.allocate_group("o2", [t2])
+        pool.allocate_group("o3", [t3])
 
-        assert not pool.has_block(t1)
-        assert not pool.has_block(t2)
+        t_big = torch.zeros(16, dtype=torch.float32)  # 64 bytes
 
-    def test_free_then_cross_call_reuse_is_broken(self):
-        """After freeing, the same tensor should NOT get a cache hit — it
-        should allocate a fresh block."""
-        t = _make_tensor([1.0, 2.0])
-        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-
-        pool.allocate_for_tensors([t])
-        pool.free_tensors([t])
-        assert not pool.has_block(t)
-
-        # Re-allocate — should work (fresh allocation, not cache hit).
-        views = pool.allocate_for_tensors([t])
-        assert torch.equal(views[0], t)
-        assert pool.has_block(t)
-
-    def test_double_free_is_noop(self):
-        """Freeing an already-freed tensor should not raise or corrupt state."""
-        t = _make_tensor([1.0, 2.0])
-        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-
-        pool.allocate_for_tensors([t])
-        pool.free_tensors([t])
-        # Second free — should be a no-op.
-        pool.free_tensors([t])
-        assert not pool.has_block(t)
-
-
-# ---------------------------------------------------------------------------
-# Block merging — allocation succeeds only after freed blocks are coalesced
-# ---------------------------------------------------------------------------
-
-
-class TestBlockMerging:
-    def test_allocation_requires_merged_free_space(self):
-        """After freeing adjacent blocks, the merged space should be usable
-        for a single large allocation that wouldn't fit in either fragment."""
-        # Pool: 24 bytes, allocate three 8-byte tensors to fill it.
-        t1 = _make_tensor([1.0, 2.0])  # 8 bytes
-        t2 = _make_tensor([3.0, 4.0])  # 8 bytes
-        t3 = _make_tensor([5.0, 6.0])  # 8 bytes
-        pool = MemoryPoolManager(pool_size=24, device=torch.device("cpu"))
-
-        pool.allocate_for_tensors([t1, t2, t3])
-
-        t_big = _make_tensor([7.0, 8.0, 9.0, 10.0])  # 16 bytes
-
-        # Free only t1 — 8 bytes free, not enough for t_big (16 bytes).
-        pool.free_tensors([t1])
+        assert pool.free_object("o1")
         with pytest.raises(NixlOutOfMemoryError):
-            pool.allocate_for_tensors([t_big])
+            pool.allocate_group("big", [t_big])
 
-        # Free t2 — now t1+t2 are adjacent and merged into 16 bytes free.
-        pool.free_tensors([t2])
-        views = pool.allocate_for_tensors([t_big])
-        assert torch.equal(views[0], t_big)
-
-
-# ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestEdgeCases:
-    def test_empty_tensor_list(self):
-        """allocate_for_tensors with an empty list should return an empty list."""
-        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([])
-        assert views == []
-
-    def test_different_dtypes(self):
-        """Tensors of different dtypes should each get their own block."""
-        t_f32 = torch.tensor([1.0], dtype=torch.float32)
-        t_f64 = torch.tensor([1.0], dtype=torch.float64)
-        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-
-        views = pool.allocate_for_tensors([t_f32, t_f64])
-        assert views[0].dtype == torch.float32
-        assert views[1].dtype == torch.float64
-        assert torch.equal(views[0], t_f32)
-        assert torch.equal(views[1], t_f64)
-
-    def test_view_with_storage_offset(self):
-        """A tensor view with non-zero storage offset should be correctly
-        mapped to the pool."""
-        base = _make_tensor([1.0, 2.0, 3.0, 4.0, 5.0])
-        view = base[2:4]  # [3.0, 4.0], storage_offset = 2
-
-        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        views = pool.allocate_for_tensors([view])
-
-        assert torch.equal(views[0], view)
-        assert views[0].shape == (2,)
-
-    def test_multidimensional_tensor_shape_preserved(self):
-        """Multi-dimensional tensor shapes should be preserved in pool views."""
-        t = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-
-        views = pool.allocate_for_tensors([t])
-        assert views[0].shape == (3, 2)
-        assert torch.equal(views[0], t)
-
-    def test_allocate_multiple_preserves_request_order(self):
-        """_allocate_multiple should return blocks in the same order as the
-        input sizes, even though it allocates largest-first internally."""
-        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        # Sizes in non-sorted order.
-        sizes = [10, 50, 20, 40]
-        result = pool._allocate_multiple(sizes)
-
-        assert result is not None
-        # Each result block should match the requested size, in order.
-        for i, size in enumerate(sizes):
-            assert result[i].size == size
+        assert pool.free_object("o2")
+        regions = pool.allocate_group("big", [t_big])
+        assert regions[0].numel() == _nbytes(t_big)
 
 
 if __name__ == "__main__":

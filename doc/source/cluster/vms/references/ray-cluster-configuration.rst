@@ -1481,7 +1481,7 @@ Will take effect only when ``library_item`` is set. If ``resource_pool`` is also
 The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
 The default value is False, which indicates regular PCI Passthrough.
 If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
-The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS.
 
 * **Required:** No
 * **Importance:** Low
