@@ -1,6 +1,7 @@
+import logging
 import math
 from itertools import chain
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -10,6 +11,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
 )
+
+logger = logging.getLogger(__name__)
 
 ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE",
@@ -25,7 +28,7 @@ TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # small source column does not amortize preparation even when its rows are wide.
 # Keep these operational gates independent of the scratch limit: an eligible
 # source row may be larger than the soft scratch cap.
-_MIN_FAST_ROW_BYTES = 256
+_MIN_FAST_ROW_BYTES = 1024
 _MIN_FAST_SOURCE_BYTES = 1024 * 1024
 # Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
 # the number of chunks makes repeated full-subbatch masks expensive.
@@ -40,50 +43,56 @@ def is_chunked_tensor_take_enabled() -> bool:
 def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
     *,
-    expected_output_rows: Optional[int],
+    max_output_rows: int,
 ) -> Optional["PreparedChunkedTensorTake"]:
-    """Prepare an immutable chunked tensor source for repeated row takes.
+    """Prepare a chunked tensor source whose subsequent takes cannot fall back.
+
+    The fast path applies only to a non-null, fixed-shape numeric Ray tensor
+    column with at least two nonempty chunks. Its row and source sizes must
+    amortize preparation, every chunk must expose a safe zero-copy view with
+    regular logical offsets, and ``max_output_rows`` must fit the tensor type's
+    Arrow offset capacity.
+
+    A returned plan may take any valid normalized index array containing at
+    most ``max_output_rows`` rows. All eligibility checks happen here: once
+    preparation succeeds, :meth:`PreparedChunkedTensorTake.take` never falls
+    back to Arrow's standard path.
 
     Args:
         column: Source chunked tensor column.
-        expected_output_rows: Rows expected in each take. When provided,
-            operational source-size gates are applied and Arrow output offset
-            capacity is checked. Pass ``None`` explicitly for a capability-only
-            plan.
+        max_output_rows: Maximum number of rows in any take using the returned
+            plan. This is the request size for ``take_table`` and the complete
+            shuffle-generation size for local shuffle.
 
     Returns:
         Validated source metadata when the fast path supports the column.
         Otherwise, ``None`` so the caller can use the standard Arrow fallback.
 
-    This capability check is independent of the operational feature flag.
-    Callers check ``is_chunked_tensor_take_enabled`` before performing any
-    fast-path-specific index normalization or column preparation.
+    Preparation is independent of the operational feature flag. Callers check
+    ``is_chunked_tensor_take_enabled`` before doing fast-path-specific work.
     """
-    if column.num_chunks <= 1 or column.null_count > 0:
-        return None
+    if column.num_chunks <= 1:
+        return _log_preparation_fallback(column, "single_chunk")
+    if column.null_count > 0:
+        return _log_preparation_fallback(column, "contains_nulls")
 
     tensor_type = column.type
     layout = _try_get_tensor_layout(tensor_type)
     if layout is None:
-        return None
+        return _log_preparation_fallback(column, "unsupported_tensor_layout")
     values_per_row, row_bytes, value_dtype = layout
 
-    if expected_output_rows is not None and not _passes_source_size_gates(
-        len(column), row_bytes
-    ):
-        return None
+    if not _passes_source_size_gates(len(column), row_bytes):
+        return _log_preparation_fallback(column, "below_size_threshold")
 
     offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
-    max_supported_output_rows = np.iinfo(offset_dtype).max // values_per_row
-    if (
-        expected_output_rows is not None
-        and expected_output_rows > max_supported_output_rows
-    ):
-        return None
+    offset_capacity_rows = np.iinfo(offset_dtype).max // values_per_row
+    if max_output_rows > offset_capacity_rows:
+        return _log_preparation_fallback(column, "output_offset_overflow")
 
     chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
     if len(chunks) <= 1:
-        return None
+        return _log_preparation_fallback(column, "fewer_than_two_nonempty_chunks")
 
     subbatch_rows = max(
         1,
@@ -101,45 +110,72 @@ def try_prepare_chunked_tensor_take(
             value_dtype,
         )
         if view is None:
-            return None
+            return _log_preparation_fallback(column, "unsafe_chunk_storage")
         chunk_views.append(view)
         chunk_starts.append(row_offset)
         row_offset += len(chunk)
 
-    return PreparedChunkedTensorTake(
+    plan = PreparedChunkedTensorTake(
         tensor_type=tensor_type,
-        max_supported_output_rows=max_supported_output_rows,
+        max_output_rows=max_output_rows,
         values_per_row=values_per_row,
         value_dtype=value_dtype,
         subbatch_rows=subbatch_rows,
         chunk_views=tuple(chunk_views),
         chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
     )
+    logger.debug(
+        "Chunked tensor take fast path prepared: rows=%s, chunks=%s, "
+        "row_bytes=%s, max_output_rows=%s, subbatch_rows=%s",
+        len(column),
+        len(chunks),
+        row_bytes,
+        max_output_rows,
+        subbatch_rows,
+    )
+    return plan
+
+
+def _log_preparation_fallback(
+    column: pa.ChunkedArray, reason: str
+) -> Optional["PreparedChunkedTensorTake"]:
+    """Debug-log one stable preparation reason and return the fallback value."""
+    logger.debug(
+        "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
+        "chunks=%s, type=%s",
+        reason,
+        len(column),
+        column.num_chunks,
+        column.type,
+    )
+    return None
 
 
 class PreparedChunkedTensorTake(NamedTuple):
     """Executable tensor take prepared from one immutable chunked column."""
 
     tensor_type: Any
-    max_supported_output_rows: int
+    max_output_rows: int
     values_per_row: int
     value_dtype: np.dtype
     subbatch_rows: int
     chunk_views: tuple[np.ndarray, ...]
     chunk_starts: np.ndarray
 
-    def try_take(self, indices: np.ndarray) -> Optional[pa.Array]:
-        """Take normalized rows, or return ``None`` for a column fallback.
+    def take(self, indices: np.ndarray) -> pa.Array:
+        """Take normalized rows under the contract established by preparation.
 
         ``indices`` must be a one-dimensional, native ``np.int64`` array whose
         values are within the source column's bounds. Callers establish this
         invariant once before applying the same indices to multiple columns.
-        This method only checks the output-size limit derived from this tensor
-        column's Arrow offset type; rescanning indices here would duplicate
-        caller work for every prepared column and every take.
+        The caller must also keep the output within ``max_output_rows``. A
+        violation is an internal contract error rather than a reason to switch
+        silently to a different implementation.
         """
-        if len(indices) > self.max_supported_output_rows:
-            return None
+        if len(indices) > self.max_output_rows:
+            raise ValueError(
+                "Prepared chunked tensor take exceeded its max_output_rows contract"
+            )
 
         output = np.empty(
             (len(indices), *self.tensor_type.shape),
@@ -247,7 +283,9 @@ def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
     )
 
 
-def _try_get_tensor_layout(tensor_type):
+def _try_get_tensor_layout(
+    tensor_type: Any,
+) -> Optional[Tuple[int, int, np.dtype]]:
     """Return fixed numeric tensor layout metadata, or ``None`` if unsupported.
 
     The returned tuple is ``(values_per_row, row_bytes, numpy_dtype)``. Rejecting
@@ -281,11 +319,11 @@ def _try_get_tensor_layout(tensor_type):
 
 
 def _try_get_zero_copy_chunk_view(
-    chunk,
-    tensor_type,
-    values_per_row,
-    value_dtype,
-):
+    chunk: Any,
+    tensor_type: Any,
+    values_per_row: int,
+    value_dtype: np.dtype,
+) -> Optional[np.ndarray]:
     """Return a safe zero-copy tensor view, or ``None`` for column fallback.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,

@@ -1,3 +1,4 @@
+import logging
 import warnings
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
@@ -21,6 +22,8 @@ from ray.data._internal.utils.transform_pyarrow import (
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
+logger = logging.getLogger(__name__)
+
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
 # frequent compactions. Setting this to higher values increases memory usage but
@@ -35,17 +38,11 @@ SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 def _prepare_local_shuffle_arrow_table(
     table: pa.Table,
-    *,
-    expected_output_rows: Optional[int],
 ) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTake]]:
     """Prepare an Arrow table for repeated local-shuffle row takes.
 
     Args:
         table: Arrow shuffle buffer to prepare.
-        expected_output_rows: Expected rows per shuffled batch, used to apply
-            operational source-size and Arrow output offset checks. Pass
-            ``None`` explicitly for capability-only preparation.
-
     Returns:
         A table with unsupported multi-chunk columns combined and a mapping of
         column positions to reusable prepared tensor takes.
@@ -54,6 +51,11 @@ def _prepare_local_shuffle_arrow_table(
         return table, {}
 
     fast_path_enabled = is_chunked_tensor_take_enabled()
+    if not fast_path_enabled:
+        logger.debug(
+            "Chunked tensor take fast path not used for local shuffle: "
+            "reason=feature_disabled"
+        )
     prepared_takes = {}
     columns = []
     for index, column in enumerate(table.columns):
@@ -64,7 +66,7 @@ def _prepare_local_shuffle_arrow_table(
         take_plan = (
             try_prepare_chunked_tensor_take(
                 column,
-                expected_output_rows=expected_output_rows,
+                max_output_rows=table.num_rows,
             )
             if fast_path_enabled and _is_multi_chunk_extension_column(column)
             else None
@@ -78,11 +80,11 @@ def _prepare_local_shuffle_arrow_table(
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
 
 
-def _try_take_prepared_arrow_table(
+def _take_prepared_arrow_table(
     table: pa.Table,
     indices: np.ndarray,
     prepared_takes: Dict[int, PreparedChunkedTensorTake],
-) -> Optional[pa.Table]:
+) -> pa.Table:
     """Take one batch while reusing validated tensor source metadata.
 
     Args:
@@ -93,11 +95,11 @@ def _try_take_prepared_arrow_table(
         prepared_takes: Mapping of column positions to prepared tensor takes.
 
     Returns:
-        The selected table, or ``None`` if a prepared tensor take is no longer
-        eligible and the caller must use the standard block take path.
+        A table containing the selected rows in index order.
 
     The indices are intentionally not revalidated for every prepared column.
-    Each prepared take checks only constraints derived from its own column.
+    Preparation used the complete shuffle-generation size, so every normal
+    batch and carry-over take satisfies each plan's output-size contract.
     """
 
     columns = []
@@ -106,10 +108,7 @@ def _try_take_prepared_arrow_table(
         if take_plan is None:
             columns.append(column.take(indices))
             continue
-        taken = take_plan.try_take(indices)
-        if taken is None:
-            return None
-        columns.append(taken)
+        columns.append(take_plan.take(indices))
     return pa.Table.from_arrays(columns, schema=table.schema)
 
 
@@ -119,9 +118,7 @@ class _ShuffleBufferState:
 
     The block, permutation, cursor, and prepared tensor takes must always refer
     to the same generation. Replacing this object atomically starts a new
-    generation and prevents partially reset combinations of those fields. A
-    runtime fallback may replace the block's physical representation, but not
-    its logical rows or their permutation.
+    generation and prevents partially reset combinations of those fields.
     """
 
     block: Block
@@ -150,38 +147,20 @@ class _ShuffleBufferState:
         return self._take(indices)
 
     def _take(self, indices: np.ndarray) -> Block:
-        """Take rows, combining a failed prepared column at most once."""
+        """Take rows through the implementation chosen for this generation."""
         if not self.prepared_tensor_takes:
             return self._take_standard(indices)
 
         assert isinstance(self.block, pa.Table)
-        batch = _try_take_prepared_arrow_table(
+        return _take_prepared_arrow_table(
             self.block,
             indices,
             self.prepared_tensor_takes,
         )
-        if batch is not None:
-            return batch
-
-        self._fall_back_to_standard_arrow_take()
-        return self._take_standard(indices)
 
     def _take_standard(self, indices) -> Block:
         """Take rows through the standard block accessor path."""
         return BlockAccessor.for_block(self.block).take(indices)
-
-    def _fall_back_to_standard_arrow_take(self) -> None:
-        """Materialize prepared columns and disable their plans once."""
-        assert isinstance(self.block, pa.Table)
-        table = self.block
-        columns = [
-            transform_pyarrow.combine_chunked_array(column)
-            if index in self.prepared_tensor_takes
-            else column
-            for index, column in enumerate(table.columns)
-        ]
-        self.block = pa.Table.from_arrays(columns, schema=table.schema)
-        self.prepared_tensor_takes.clear()
 
 
 class BatcherInterface:
@@ -497,10 +476,7 @@ class ShufflingBatcher(BatcherInterface):
         accessor = BlockAccessor.for_block(block)
         prepared_takes = {}
         if isinstance(accessor, ArrowBlockAccessor):
-            block, prepared_takes = _prepare_local_shuffle_arrow_table(
-                block,
-                expected_output_rows=self._batch_size,
-            )
+            block, prepared_takes = _prepare_local_shuffle_arrow_table(block)
             accessor = BlockAccessor.for_block(block)
 
         # Prepared tensor takes consume the same normalized native-int64 index

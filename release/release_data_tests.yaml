@@ -675,8 +675,17 @@
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_1_cpu_compute.yaml
   run:
-    timeout: 600
+    timeout: 1200
     script: python chunked_tensor_take_benchmark.py --fast-path enabled
+
+- name: chunked_tensor_take_disabled
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_1_cpu_compute.yaml
+  run:
+    timeout: 1200
+    script: python chunked_tensor_take_benchmark.py --fast-path disabled
 
 - name: "iter_batches_{{format}}"
   python: "3.10"

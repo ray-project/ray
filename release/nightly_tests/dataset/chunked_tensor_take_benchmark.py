@@ -1,12 +1,16 @@
-"""Benchmark the selected chunked tensor row-take behavior.
+"""Benchmark chunked tensor row takes from narrow through very wide rows.
 
 Each invocation measures one configuration selected by ``--fast-path`` so the
-release system can compare the same metrics across builds. A single-chunk
-control tracks the path used by ineligible columns. A full ShufflingBatcher case
-uses the KPMCross primary-column shape with 320 rows, 32 source chunks, and
-128-row batches to cover one-row scratch subbatching and prepared-plan reuse. A
-smaller streaming case interleaves adds and takes and forces multiple buffer
-compactions, covering prepared-plan reuse while carrying old-buffer rows forward.
+release system can compare the same metrics across builds. The width sweep uses
+the same 128-row take from rows ranging from 32 bytes to 64 KiB, including cases
+on both sides of the operational eligibility gates. Source payload is capped at
+about 128 MiB so wider cases remain comparable without unbounded allocation.
+
+A single-chunk control tracks the path used by ineligible columns. A complete
+ShufflingBatcher lifecycle uses a production-derived ``(2000, 1697)`` tensor
+shape with 320 rows, 32 source chunks, and 128-row batches to cover one-row
+scratch subbatching and prepared-plan reuse. A smaller streaming case interleaves
+adds and takes and forces multiple buffer compactions, including carry-over rows.
 """
 
 import argparse
@@ -14,10 +18,10 @@ import gc
 import json
 import math
 import os
-import resource
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 import numpy as np
@@ -173,8 +177,53 @@ def _check_correctness(table, values, indices):
     np.testing.assert_array_equal(result_values, values[indices])
 
 
-def _peak_rss_kib():
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+def _current_rss_kib():
+    with open("/proc/self/statm") as statm:
+        resident_pages = int(statm.read().split()[1])
+    return resident_pages * os.sysconf("SC_PAGE_SIZE") // 1024
+
+
+def _measure_operation_memory(operation):
+    """Measure current RSS while excluding source-construction peak history.
+
+    The source is built before this function, so sampling current RSS instead of
+    process-lifetime ``ru_maxrss`` prevents construction temporaries from
+    masking the take's incremental memory. The operation runs in this dedicated
+    memory-only subprocess; a sampler thread observes transient Arrow buffers.
+    """
+    gc.collect()
+    try:
+        import ctypes
+
+        ctypes.CDLL(None).malloc_trim(0)
+    except (AttributeError, OSError):
+        pass
+
+    peak = [0]
+    ready = threading.Event()
+    start_sampling = threading.Event()
+    finished = threading.Event()
+
+    def sample_rss():
+        ready.set()
+        start_sampling.wait()
+        while not finished.is_set():
+            peak[0] = max(peak[0], _current_rss_kib())
+
+    sampler = threading.Thread(target=sample_rss, daemon=True)
+    sampler.start()
+    ready.wait()
+    baseline = _current_rss_kib()
+    peak[0] = baseline
+    start_sampling.set()
+    try:
+        result = operation()
+        peak[0] = max(peak[0], _current_rss_kib())
+        _ = result
+    finally:
+        finished.set()
+        sampler.join()
+    return peak[0], baseline
 
 
 def _run_memory_arm(args):
@@ -209,35 +258,35 @@ def _run_memory_arm(args):
         def operation():
             return take_table(table, indices)
 
-    gc.collect()
-    try:
-        import ctypes
-
-        ctypes.CDLL(None).malloc_trim(0)
-    except (AttributeError, OSError):
-        pass
-
-    baseline = _peak_rss_kib()
-    result = operation()
-    peak = _peak_rss_kib()
-    _ = result
+    peak, baseline = _measure_operation_memory(operation)
     print(f"MEMORY {peak} {baseline}")
 
 
-def _measure_memory(args, *, single_chunk=False, memory_case="take"):
+def _measure_memory(
+    args,
+    *,
+    rows=None,
+    width=None,
+    batch_size=None,
+    single_chunk=False,
+    memory_case="take",
+):
+    rows = args.rows if rows is None else rows
+    width = args.width if width is None else width
+    batch_size = args.batch_size if batch_size is None else batch_size
     command = [
         sys.executable,
         os.path.abspath(__file__),
         "--fast-path",
         args.fast_path,
         "--rows",
-        str(args.rows),
+        str(rows),
         "--width",
-        str(args.width),
+        str(width),
         "--chunks",
         str(args.chunks),
         "--batch-size",
-        str(args.batch_size),
+        str(batch_size),
         "--shuffle-rows",
         str(args.shuffle_rows),
         "--shuffle-shape",
@@ -272,17 +321,17 @@ def _measure_memory(args, *, single_chunk=False, memory_case="take"):
     }
 
 
-def _run_case(args, *, single_chunk):
+def _run_case(args, *, rows, width, batch_size, single_chunk):
     table, values = _make_table(
-        args.rows,
-        args.width,
+        rows,
+        width,
         args.chunks,
         single_chunk=single_chunk,
     )
     indices = np.random.default_rng(0).integers(
         0,
-        args.rows,
-        size=args.batch_size,
+        rows,
+        size=batch_size,
         dtype=np.int64,
     )
     _check_correctness(table, values, indices)
@@ -296,14 +345,43 @@ def _run_case(args, *, single_chunk):
     metrics = {
         "time": measurement["median_s"],
         **measurement,
-        "rows": args.rows,
-        "row_width": args.width,
+        "rows": rows,
+        "row_width": width,
+        "row_bytes": width * np.dtype(np.float32).itemsize,
+        "source_payload_bytes": rows * width * np.dtype(np.float32).itemsize,
         "source_chunks": table.column("tensor").num_chunks,
-        "batch_size": args.batch_size,
+        "batch_size": batch_size,
     }
     if not args.no_memory:
-        metrics.update(_measure_memory(args, single_chunk=single_chunk))
+        metrics.update(
+            _measure_memory(
+                args,
+                rows=rows,
+                width=width,
+                batch_size=batch_size,
+                single_chunk=single_chunk,
+            )
+        )
     return metrics
+
+
+def _run_width_sweep(args):
+    results = {}
+    float32_bytes = np.dtype(np.float32).itemsize
+    for width in args.sweep_widths:
+        row_bytes = width * float32_bytes
+        rows = min(args.sweep_max_rows, args.sweep_max_source_bytes // row_bytes)
+        # Keep all configured chunks nonempty. Like the gather implementation,
+        # the benchmark treats one source row as an irreducible allocation.
+        rows = max(args.chunks, rows)
+        results[f"float32_width_{width}"] = _run_case(
+            args,
+            rows=rows,
+            width=width,
+            batch_size=min(args.sweep_batch_size, rows),
+            single_chunk=False,
+        )
+    return results
 
 
 def _run_shuffle_case(
@@ -358,7 +436,8 @@ def _run_shuffle_case(
         "shuffle_buffer_rows": buffer_rows,
     }
     # The memory arms run in fresh child processes. Release the parent's large
-    # KPMCross source first so its resident pages do not overlap the child RSS.
+    # production-derived source first so its resident pages do not overlap the
+    # child RSS.
     blocks = None
     gc.collect()
     if measure_memory and not args.no_memory:
@@ -374,12 +453,26 @@ def _parse_args():
         default="enabled",
         help="Select the implementation measured by this benchmark.",
     )
-    parser.add_argument("--rows", type=int, default=50_000)
+    parser.add_argument("--rows", type=int, default=8192)
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--chunks", type=int, default=32)
-    parser.add_argument("--batch-size", type=int, default=8192)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--iterations", type=int, default=15)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument(
+        "--sweep-widths",
+        type=int,
+        nargs="+",
+        default=(8, 32, 64, 128, 192, 256, 1024, 4096, 16384),
+        help="Float32 values per row in the direct-take width sweep.",
+    )
+    parser.add_argument("--sweep-max-rows", type=int, default=8192)
+    parser.add_argument(
+        "--sweep-max-source-bytes",
+        type=int,
+        default=128 * 1024 * 1024,
+    )
+    parser.add_argument("--sweep-batch-size", type=int, default=128)
     parser.add_argument("--shuffle-rows", type=int, default=320)
     parser.add_argument(
         "--shuffle-shape",
@@ -414,8 +507,14 @@ def main():
         return
 
     results = {
-        "multi_chunk": _run_case(args, single_chunk=False),
-        "single_chunk_control": _run_case(args, single_chunk=True),
+        "width_sweep": _run_width_sweep(args),
+        "single_chunk_control": _run_case(
+            args,
+            rows=args.rows,
+            width=args.width,
+            batch_size=args.batch_size,
+            single_chunk=True,
+        ),
         "shuffle_lifecycle": _run_shuffle_case(
             args,
             rows=args.shuffle_rows,
