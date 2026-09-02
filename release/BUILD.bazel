@@ -1,4 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//bazel:ci_require.bzl", bk_require = "ci_require")
 
 exports_files(
