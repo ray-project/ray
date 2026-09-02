@@ -226,15 +226,6 @@ def test_chunked_tensor_take(tensor_cls, chunks):
     np.testing.assert_array_equal(larger_output.to_numpy(), values[larger_indices])
 
 
-def test_prepared_chunked_tensor_take_rejects_contract_violation():
-    column, _ = _chunked_tensor(4096, 256, 4)
-    plan = try_prepare_chunked_tensor_take(column, max_output_rows=2)
-
-    assert plan is not None
-    with pytest.raises(ValueError, match="max_output_rows contract"):
-        plan.take(np.array([0, 1, 2], dtype=np.int64))
-
-
 @pytest.mark.parametrize("tensor_cls", [ArrowTensorType, ArrowTensorTypeV2])
 @pytest.mark.parametrize(
     "arrow_type,numpy_dtype",
@@ -660,7 +651,7 @@ def test_chunked_tensor_take_rejects_output_offset_overflow_before_chunk_views(
 
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_get_zero_copy_chunk_view",
+        "_prepare_zero_copy_chunk_view",
         fail_chunk_view,
     )
 
@@ -755,6 +746,7 @@ def test_normalize_take_indices_rejects_fallback_inputs(indices):
         np.array([4096], dtype=np.int64),
         np.array([1.0, 2.0]),
         np.array([[0, 1]], dtype=np.int64),
+        np.array(1, dtype=np.int64),
         np.array([4, 0, 4, 2], dtype=">i8"),
     ],
 )
@@ -762,7 +754,7 @@ def test_take_table_preserves_fallback_exceptions(indices):
     table = _tensor_table(4096, 256, 2)
     _assert_operational_fast_path(
         table.column("tensor"),
-        max_output_rows=len(indices),
+        max_output_rows=indices.size,
     )
     reference = pa.table(
         {
@@ -867,8 +859,6 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     )
     assert batcher._buffer_state.prepared_tensor_takes
     assert not hasattr(batcher, "_prefetched_block")
-    for prepared in batcher._buffer_state.prepared_tensor_takes.values():
-        assert prepared.max_output_rows == len(batcher._buffer_state.block)
 
 
 def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch):
@@ -877,7 +867,9 @@ def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch):
     def raise_prepare(*args, **kwargs):
         raise RuntimeError("injected prepare failure")
 
-    monkeypatch.setattr(chunked_tensor_take, "_get_zero_copy_chunk_view", raise_prepare)
+    monkeypatch.setattr(
+        chunked_tensor_take, "_prepare_zero_copy_chunk_view", raise_prepare
+    )
     with pytest.raises(RuntimeError, match="injected prepare failure"):
         try_prepare_chunked_tensor_take(column, max_output_rows=1)
 

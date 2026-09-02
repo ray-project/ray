@@ -17,9 +17,15 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTake,
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.transform_pyarrow import (
+    _concatenate_extension_column,
+    _is_multi_chunk_extension_column,
+    _is_pa_extension_type,
+)
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -258,6 +264,39 @@ def _try_normalize_take_indices(
     return values.astype(np.int64, copy=False)
 
 
+def _prepare_chunked_tensor_takes(
+    table: "pyarrow.Table",
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+) -> Dict[int, PreparedChunkedTensorTake]:
+    """Prepare eligible tensor columns for one table take request.
+
+    The index length is the exact output-size bound required by column
+    preparation. An unsized input produces no plans so the standard Arrow path
+    remains responsible for its existing exception behavior. This helper only
+    coordinates request-level preparation; all column eligibility rules remain
+    in ``try_prepare_chunked_tensor_take``.
+    """
+    try:
+        max_output_rows = len(indices)
+    except TypeError:
+        logger.debug(
+            "Chunked tensor take fast path not used: reason=unsupported_indices"
+        )
+        return {}
+
+    prepared_takes = {}
+    for index, column in enumerate(table.columns):
+        if not _is_multi_chunk_extension_column(column):
+            continue
+        prepared = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=max_output_rows,
+        )
+        if prepared is not None:
+            prepared_takes[index] = prepared
+    return prepared_takes
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
@@ -276,32 +315,8 @@ def take_table(
     is disabled or preparation or normalization fails, the original ``indices``
     object is passed unchanged to the standard Arrow fallback.
     """
-    from ray.data._internal.utils.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_multi_chunk_extension_column,
-        _is_pa_extension_type,
-    )
-
     if any(_is_pa_extension_type(col.type) for col in table.columns):
-        prepared_takes = {}
-        try:
-            max_output_rows = len(indices)
-        except TypeError:
-            max_output_rows = None
-        if max_output_rows is not None:
-            for index, column in enumerate(table.columns):
-                if not _is_multi_chunk_extension_column(column):
-                    continue
-                prepared = try_prepare_chunked_tensor_take(
-                    column,
-                    max_output_rows=max_output_rows,
-                )
-                if prepared is not None:
-                    prepared_takes[index] = prepared
-        else:
-            logger.debug(
-                "Chunked tensor take fast path not used: reason=unsupported_indices"
-            )
+        prepared_takes = _prepare_chunked_tensor_takes(table, indices)
 
         if prepared_takes:
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)

@@ -35,10 +35,6 @@ _MIN_FAST_SOURCE_BYTES = 1024 * 1024
 _MAX_MASK_GROUP_CHUNKS = 16
 
 
-class _PreparationRejected(Exception):
-    """Signal that a source cannot safely use the prepared execution path."""
-
-
 def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
     *,
@@ -86,9 +82,12 @@ def try_prepare_chunked_tensor_take(
 
     tensor_type = column.type
     try:
-        values_per_row, row_bytes, value_dtype = _get_tensor_layout(tensor_type)
-    except (_PreparationRejected, NotImplementedError, TypeError, ValueError):
+        layout = _prepare_tensor_layout(tensor_type)
+    except (NotImplementedError, TypeError, ValueError):
         return _log_preparation_fallback(column, "unsupported_tensor_layout")
+    if layout is None:
+        return _log_preparation_fallback(column, "unsupported_tensor_layout")
+    values_per_row, row_bytes, value_dtype = layout
 
     if not _passes_source_size_gates(len(column), row_bytes):
         return _log_preparation_fallback(column, "below_size_threshold")
@@ -112,18 +111,18 @@ def try_prepare_chunked_tensor_take(
         chunk_starts = []
         row_offset = 0
         for chunk in chunks:
-            chunk_views.append(
-                _get_zero_copy_chunk_view(
-                    chunk,
-                    tensor_type,
-                    values_per_row,
-                    value_dtype,
-                )
+            view = _prepare_zero_copy_chunk_view(
+                chunk,
+                tensor_type,
+                values_per_row,
+                value_dtype,
             )
+            if view is None:
+                return _log_preparation_fallback(column, "unsafe_chunk_storage")
+            chunk_views.append(view)
             chunk_starts.append(row_offset)
             row_offset += len(chunk)
     except (
-        _PreparationRejected,
         AttributeError,
         pa.ArrowException,
         TypeError,
@@ -133,7 +132,6 @@ def try_prepare_chunked_tensor_take(
 
     plan = PreparedChunkedTensorTake(
         tensor_type=tensor_type,
-        max_output_rows=max_output_rows,
         values_per_row=values_per_row,
         value_dtype=value_dtype,
         subbatch_rows=subbatch_rows,
@@ -175,10 +173,10 @@ def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
     )
 
 
-def _get_tensor_layout(
+def _prepare_tensor_layout(
     tensor_type: Any,
-) -> Tuple[int, int, np.dtype]:
-    """Validate and return fixed numeric tensor layout metadata.
+) -> Optional[Tuple[int, int, np.dtype]]:
+    """Return validated fixed numeric layout metadata, or ``None``.
 
     The returned tuple is ``(values_per_row, row_bytes, numpy_dtype)``. Rejecting
     unsupported scalar types or shapes keeps the fast path independent of object
@@ -186,35 +184,35 @@ def _get_tensor_layout(
     are handled by the public preparation boundary.
     """
     if not isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
-        raise _PreparationRejected
+        return None
 
     scalar_type = tensor_type.storage_type.value_type
     if not (pa.types.is_integer(scalar_type) or pa.types.is_floating(scalar_type)):
-        raise _PreparationRejected
+        return None
     if scalar_type.bit_width % 8 != 0:
-        raise _PreparationRejected
+        return None
 
     shape = tensor_type.shape
     if any(not isinstance(dimension, int) or dimension < 0 for dimension in shape):
-        raise _PreparationRejected
+        return None
     values_per_row = math.prod(shape)
     if values_per_row <= 0:
-        raise _PreparationRejected
+        return None
 
     value_dtype = np.dtype(scalar_type.to_pandas_dtype())
     if value_dtype.hasobject or value_dtype.itemsize * 8 != scalar_type.bit_width:
-        raise _PreparationRejected
+        return None
 
     return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
 
 
-def _get_zero_copy_chunk_view(
+def _prepare_zero_copy_chunk_view(
     chunk: Any,
     tensor_type: Any,
     values_per_row: int,
     value_dtype: np.dtype,
-) -> np.ndarray:
-    """Validate chunk storage and return its zero-copy tensor view.
+) -> Optional[np.ndarray]:
+    """Return a validated zero-copy chunk view, or ``None``.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,
     contiguity, ownership, and buffer bounds explicit. The logical list
@@ -227,29 +225,29 @@ def _get_zero_copy_chunk_view(
     # Preserve the existing fallback for child arrays whose logical data starts
     # inside a larger values array.
     if values.offset != 0 or values.null_count > 0:
-        raise _PreparationRejected
+        return None
 
     storage = chunk.storage
     offsets = storage.offsets.to_numpy(zero_copy_only=True)
     if offsets.ndim != 1 or len(offsets) != len(chunk) + 1:
-        raise _PreparationRejected
+        return None
 
     first_value = int(offsets[0])
     last_value = first_value + len(chunk) * values_per_row
     if first_value < 0 or int(offsets[-1]) != last_value or last_value > len(values):
-        raise _PreparationRejected
+        return None
     if not np.all(np.diff(offsets.astype(np.int64, copy=False)) == values_per_row):
-        raise _PreparationRejected
+        return None
 
     buffers = values.buffers()
     if len(buffers) < 2 or buffers[1] is None:
-        raise _PreparationRejected
+        return None
     data_buffer = buffers[1]
     byte_offset = first_value * value_dtype.itemsize
     view_nbytes = len(chunk) * values_per_row * value_dtype.itemsize
     buffer_size = data_buffer.size
     if byte_offset > buffer_size or view_nbytes > buffer_size - byte_offset:
-        raise _PreparationRejected
+        return None
     return np.ndarray(
         (len(chunk), *tensor_type.shape),
         dtype=value_dtype,
@@ -262,7 +260,6 @@ class PreparedChunkedTensorTake(NamedTuple):
     """Executable tensor take prepared from one immutable chunked column."""
 
     tensor_type: Any
-    max_output_rows: int
     values_per_row: int
     value_dtype: np.dtype
     subbatch_rows: int
@@ -275,15 +272,9 @@ class PreparedChunkedTensorTake(NamedTuple):
         ``indices`` must be a one-dimensional, native ``np.int64`` array whose
         values are within the source column's bounds. Callers establish this
         invariant once before applying the same indices to multiple columns.
-        The caller must also keep the output within ``max_output_rows``. A
-        violation is an internal contract error rather than a reason to switch
-        silently to a different implementation.
+        Preparation also establishes that every take stays within the declared
+        output-size bound, so execution performs no eligibility checks.
         """
-        if len(indices) > self.max_output_rows:
-            raise ValueError(
-                "Prepared chunked tensor take exceeded its max_output_rows contract"
-            )
-
         output = np.empty(
             (len(indices), *self.tensor_type.shape),
             dtype=self.value_dtype,
