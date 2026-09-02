@@ -172,3 +172,67 @@ steps:
       - git fetch -q origin "$${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
       - rtd-redirects validate doc/redirects/current.yaml
       - rtd-redirects diff-file --file doc/redirects/current.yaml --base FETCH_HEAD --head HEAD --repo .
+
+  # Merge-time sync: reconcile doc/redirects/current.yaml into the live
+  # anyscale-ray Read the Docs project. This is the only mutating step and the
+  # only one that holds an RtD token. It replaces the manual post-merge
+  # `rtd-redirects apply` a maintainer runs today (see doc/redirects/README.md).
+  #
+  # DISABLED until the credential lands. The `disabled` tag makes rayci skip this
+  # step in both premerge and postmerge, so it's safe to land now and turn on
+  # later, the same way doc: linkcheck landed before its Slack webhook secret.
+  # To enable, do both atomically in one PR: (1) remove the `disabled` tag below,
+  # (2) replace RTD_TOKEN_SECRET_ARN with the real Secrets Manager ARN. The bot
+  # user and token are provisioned by REEF as a dependency of this work; until
+  # that ARN exists the fetch would fail every master build, which is why the
+  # step stays disabled rather than fetch-and-skip.
+  #
+  # Postmerge-only by construction. `skip-on-premerge` removes it from every PR
+  # build (premerge skips that tag), so no PR event, fork or not, ever runs the
+  # token-bearing step. It runs only on push to master.
+  #
+  # Self-gated on the diff. rayci evaluates file-based tag rules on premerge
+  # only; master builds are run-all (see the note in .buildkite/always.rules.txt),
+  # so this step is scheduled on *every* master merge, not just redirect ones.
+  # The first command exits early when the merge didn't touch doc/redirects/, so
+  # the token and the RtD API are used only when a redirect actually changed. The
+  # gate is best-effort: if the parent commit can't be resolved (a shallow
+  # checkout), it falls through to apply rather than risk skipping a real change.
+  #
+  # Drift and deletion. `apply` converges the project to the file: a live
+  # redirect absent from current.yaml is deleted. That's the intended one-write-
+  # path behavior reinforced by the dashboard-edit freeze, but 0.2.0 has no
+  # --no-delete or --accept-drift guard, so a drifted project reconciles hard on
+  # the first automated run. The local-first manual-apply phase exists to shake
+  # that out before this turns on. On failure the step fails but master is not
+  # blocked (the docs already merged); an operator reruns after fixing the cause.
+  - label: ":book: doc: apply redirects"
+    key: doc_redirects_apply
+    depends_on: forge
+    tags:
+      - oss
+      - skip-on-premerge
+      - disabled
+    commands:
+      # Exit early unless this master commit changed doc/redirects/. Ray squash-
+      # merges, so HEAD~1..HEAD is exactly the merged change set. Fall through to
+      # apply if HEAD~1 doesn't resolve, so a shallow checkout never skips a real
+      # redirect change.
+      - >
+        if git rev-parse -q --verify HEAD~1 >/dev/null; then
+          git diff --name-only HEAD~1 HEAD -- doc/redirects/ | grep -q . ||
+          { echo "no doc/redirects/ change in this merge; nothing to apply"; exit 0; }
+        fi
+      # Same fail-closed guard as the validate step: current.yaml is the only file
+      # the compose order below names. To add another, name it here and in the
+      # apply command in compose order, then update this guard.
+      - >
+        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
+        { echo "doc/redirects/ holds a .yaml file this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
+      - uv tool install anyscale-rtd-redirects==0.2.0
+      # Dedicated, least-privilege secret: this ARN holds only the anyscale-ray
+      # RtD bot token, is read by no other step, and grants no access beyond that
+      # one project. Do not fold the token into ci/env/setup_credentials.py's
+      # shared ray-air-test-secrets bucket, which ml/data test steps read.
+      - export RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id RTD_TOKEN_SECRET_ARN --query SecretString --output text)"
+      - rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --yes --strict
