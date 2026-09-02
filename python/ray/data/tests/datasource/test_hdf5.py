@@ -315,6 +315,45 @@ def test_read_hdf5_rejects_external_link(ray_start_regular_shared, tmp_path):
         ray.data.read_hdf5(path, dataset="observations")
 
 
+def test_read_hdf5_rejects_external_link_in_dataset_path(
+    ray_start_regular_shared, tmp_path
+):
+    import h5py
+
+    target_path = tmp_path / "target.h5"
+    with h5py.File(target_path, "w") as file:
+        file["group/observations"] = np.arange(4)
+
+    path = tmp_path / "external-link.h5"
+    with h5py.File(path, "w") as file:
+        file["linked-group"] = h5py.ExternalLink(str(target_path), "/group")
+
+    with pytest.raises(
+        ValueError,
+        match="linked-group/observations.*external-link.h5.*external link.*not supported",
+    ):
+        ray.data.read_hdf5(path, dataset="linked-group/observations")
+
+
+def test_read_hdf5_rejects_soft_link(ray_start_regular_shared, tmp_path):
+    import h5py
+
+    target_path = tmp_path / "target.h5"
+    with h5py.File(target_path, "w") as file:
+        file["group/observations"] = np.arange(4)
+
+    path = tmp_path / "soft-link.h5"
+    with h5py.File(path, "w") as file:
+        file["external-group"] = h5py.ExternalLink(str(target_path), "/group")
+        file["linked-group"] = h5py.SoftLink("/external-group")
+
+    with pytest.raises(
+        ValueError,
+        match="linked-group/observations.*soft-link.h5.*soft link.*not supported",
+    ):
+        ray.data.read_hdf5(path, dataset="linked-group/observations")
+
+
 def test_read_hdf5_rejects_virtual_dataset_with_external_source(
     ray_start_regular_shared, tmp_path
 ):

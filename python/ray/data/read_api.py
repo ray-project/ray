@@ -3087,10 +3087,11 @@ def read_hdf5(
     per-row shape.
 
     Compound dtypes, object and region reference dtypes, external storage,
-    virtual datasets, and null dataspaces aren't supported. String datasets are
-    decoded to Python strings; string arrays with trailing dimensions are
-    represented as nested lists. Variable-length numeric arrays are also represented
-    as nested lists and require a native-order scalar base dtype.
+    external links, soft links, virtual datasets, and null dataspaces aren't
+    supported. String datasets are decoded to Python strings; string arrays with
+    trailing dimensions are represented as nested lists. Variable-length numeric
+    arrays are also represented as nested lists and require a native-order scalar
+    base dtype.
 
     This function requires `h5py <https://www.h5py.org/>`_. Install it with
     ``pip install h5py``.

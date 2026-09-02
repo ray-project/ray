@@ -112,17 +112,28 @@ def _inspect_hdf5_file(filesystem, dataset_path: str, path: str) -> _HDF5FileMet
 
     with filesystem.open_input_file(path) as file_obj:
         with h5py.File(file_obj, "r") as file:
-            link = file.get(dataset_path, getlink=True)
-            if link is None:
-                raise ValueError(
-                    f"Dataset {dataset_path!r} was not found in HDF5 file {path!r}."
+            dataset = file
+            for component in filter(None, dataset_path.split("/")):
+                link = (
+                    dataset.get(component, getlink=True)
+                    if isinstance(dataset, h5py.Group)
+                    else None
                 )
-            if isinstance(link, h5py.ExternalLink):
-                raise ValueError(
-                    f"HDF5 dataset {dataset_path!r} in file {path!r} uses an "
-                    "external link, which is not supported."
-                )
-            dataset = file[dataset_path]
+                if link is None:
+                    raise ValueError(
+                        f"Dataset {dataset_path!r} was not found in HDF5 file {path!r}."
+                    )
+                if isinstance(link, (h5py.ExternalLink, h5py.SoftLink)):
+                    link_type = (
+                        "external link"
+                        if isinstance(link, h5py.ExternalLink)
+                        else "soft link"
+                    )
+                    raise ValueError(
+                        f"HDF5 dataset {dataset_path!r} in file {path!r} uses a "
+                        f"{link_type}, which is not supported."
+                    )
+                dataset = dataset[component]
             if not isinstance(dataset, h5py.Dataset):
                 raise ValueError(
                     f"HDF5 path {dataset_path!r} in file {path!r} is a "
