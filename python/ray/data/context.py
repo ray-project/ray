@@ -178,6 +178,8 @@ DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
 
+DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
+
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
@@ -648,6 +650,15 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        accurate_map_phase_timing: Whether to break "UDF time" down into input prep,
+            function body, and output block build for row-based transforms such as
+            :meth:`~ray.data.Dataset.map` and :meth:`~ray.data.Dataset.filter`. Those
+            run once per row, and measuring each phase separately costs enough per row
+            to slow the transform down, so by default Ray Data reports only their
+            total. Batch-based transforms such as
+            :meth:`~ray.data.Dataset.map_batches` are always broken down, since one
+            measurement there covers a whole batch. Enable this when you need the
+            breakdown for a row-based transform and can afford the overhead.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         execution_options: The
@@ -957,6 +968,7 @@ class DataContext:
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
