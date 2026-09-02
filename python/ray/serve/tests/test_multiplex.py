@@ -313,10 +313,20 @@ class TestMultiplexWrapper:
 
         entered = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
         release = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
+        active_loads = 0
+        peak_active_loads = 0
 
         async def model_load_func(model_id: str):
+            nonlocal active_loads, peak_active_loads
+            active_loads += 1
+            peak_active_loads = max(peak_active_loads, active_loads)
             entered[model_id].set()
-            await release[model_id].wait()
+
+            try:
+                await release[model_id].wait()
+            finally:
+                active_loads -= 1
+
             return model_id
 
         multiplexer = _ModelMultiplexWrapper(
@@ -346,6 +356,7 @@ class TestMultiplexWrapper:
 
             release["1"].set()
             await asyncio.wait_for(entered["3"].wait(), timeout=5)
+            assert peak_active_loads == 2
 
             release["2"].set()
             release["3"].set()
