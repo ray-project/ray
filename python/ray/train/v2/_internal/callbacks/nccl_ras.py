@@ -140,56 +140,6 @@ def run_ncclras(
     return {"ok": True, "stdout": proc.stdout}
 
 
-# ---------------------------------------------------------------------------
-# TEMPORARY DEBUG -- remove before merge.
-# `ncclras` is only the RAS *client*; the RAS *server* lives inside whichever
-# libnccl.so the training process loaded (torch's bundled wheel, not the
-# system/apt one). This probe reports both so a client/server version skew
-# (e.g. a 2.28+ client sending `SET FORMAT json` to a 2.27 server) is visible.
-# ---------------------------------------------------------------------------
-def debug_nccl_provenance() -> str:
-    """Report the `ncclras` client and the in-process NCCL library on a worker."""
-    lines = [f"pid={os.getpid()} host={os.uname().nodename}"]
-
-    for cmd in (
-        ["whereis", "ncclras"],
-        ["which", "-a", "ncclras"],
-        ["ncclras", "--version"],
-    ):
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            lines.append(
-                f"$ {' '.join(cmd)} -> exit={proc.returncode} "
-                f"stdout={proc.stdout.strip()!r} stderr={proc.stderr.strip()!r}"
-            )
-        except Exception as e:  # noqa: BLE001
-            lines.append(f"$ {' '.join(cmd)} -> {type(e).__name__}: {e}")
-
-    # The version that actually answers RAS queries.
-    try:
-        import torch
-
-        lines.append(
-            f"torch={torch.__version__} "
-            f"torch.cuda.nccl.version()={torch.cuda.nccl.version()}"
-        )
-    except Exception as e:  # noqa: BLE001
-        lines.append(f"in-process NCCL version unavailable: {type(e).__name__}: {e}")
-
-    # Which libnccl.so.* the process has actually mapped.
-    try:
-        maps = Path("/proc/self/maps").read_text()
-        mapped = sorted(set(re.findall(r"/\S*libnccl\S*", maps)))
-        lines.append(f"mapped libnccl: {mapped}")
-    except Exception as e:  # noqa: BLE001
-        lines.append(f"/proc/self/maps unavailable: {type(e).__name__}: {e}")
-
-    for var in ("LD_PRELOAD", "LD_LIBRARY_PATH", NCCL_RAS_ADDR_ENV_VAR):
-        lines.append(f"{var}={os.environ.get(var)!r}")
-
-    return "\n".join(lines)
-
-
 def dump_stack_trace(pyspy_timeout_s: float) -> str:
     """Dump native + Python stacks of the current (worker) process.
 
@@ -489,7 +439,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def after_worker_group_start(self, worker_group: WorkerGroup):
         self._worker_group = worker_group
         self.reset_detection_state()
-        self.debug_log_nccl_provenance()  # TEMPORARY DEBUG -- remove before merge.
 
     def before_worker_group_shutdown(self, worker_group):
         self._worker_group = None
@@ -682,32 +631,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 ras_human_output = self.query_ras_on_workers("text")
                 if ras_human_output:
                     logger.info("%s", ras_human_output)
-
-    def debug_log_nccl_provenance(self):
-        """TEMPORARY DEBUG -- remove before merge.
-
-        Log, once per worker-group start, where each worker's `ncclras` client
-        comes from and which NCCL library that worker process actually loaded.
-        """
-        workers = list(self._worker_group.get_workers()) if self._worker_group else []
-        refs = {}
-        for worker in workers:
-            try:
-                refs[worker.execute_async(debug_nccl_provenance)] = worker
-            except Exception as e:  # noqa: BLE001
-                logger.warning("NCCL provenance probe failed to launch: %s", e)
-
-        if not refs:
-            return
-
-        ready, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=20.0)
-        for ref in not_ready:
-            ray.cancel(ref)
-        for ref in ready:
-            try:
-                logger.warning("NCCL provenance probe:\n%s", ray.get(ref))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("NCCL provenance probe failed: %s", e)
 
     def drive_ras_query(self) -> Optional[RASReport]:
         """Drive the throttled JSON RAS poll without blocking the event loop.
