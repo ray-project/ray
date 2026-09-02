@@ -21,7 +21,7 @@ This section discusses concepts from:
 :::
 
 (serve-e2e-ft-guide)=
-## Guide: end-to-end fault tolerance for your Serve app
+## Guide: End-to-end fault tolerance for your Serve app
 
 Serve provides some [fault tolerance](serve-ft-detail) features out of the box. Two options to get end-to-end fault tolerance are the following:
 * tune these features and run Serve on top of [KubeRay]
