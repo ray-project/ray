@@ -1,6 +1,6 @@
 # @OldAPIStack
 humanoid-ppo:
-    env: Humanoid-v1
+    env: Humanoid-v4
     run: PPO
     stop:
         env_runners/episode_return_mean: 6000

@@ -1,4 +1,5 @@
 import logging
+import os
 
 import pytest
 
@@ -20,6 +21,10 @@ from ray.tests.conftest import (  # noqa: F401
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )
+
+# Keep the footer-reader pool tiny for Data-integrated train tests. Mirrored
+# in python/ray/train/v2/BUILD.bazel for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
 
 @pytest.fixture()

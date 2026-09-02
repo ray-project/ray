@@ -178,6 +178,24 @@ Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out 
 ::::
 
 
+(runtime-env-redaction)=
+## Runtime environment redaction
+
+The Ray Dashboard redacts secret values out of the {ref}`runtime environments <runtime-environments>` it serves to browsers. Variable names stay visible and their values appear as `<redacted>`. Passing credentials through `runtime_env={"env_vars": {...}}` is a common Ray pattern, so these values are often cloud keys, database passwords, or API tokens. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to read them from a browser.
+
+Redaction applies only to requests from a browser. `ray list runtime-envs`, `ray job status`, and the Python SDK still return the plaintext values.
+
+To disable redaction, set the following environment variable on the Ray head node before starting Ray:
+
+```bash
+export RAY_DASHBOARD_REDACT_RUNTIME_ENV=0
+```
+
+:::{warning}
+Disabling redaction exposes every secret in an active `runtime_env` to any web page loaded in a browser that can reach the dashboard. Enable {ref}`token authentication <token-auth>` when disabling redaction on an exposed dashboard.
+:::
+
+
 (observability-visualization-setup)=
 ## Embed Grafana visualizations into Ray Dashboard
 
@@ -256,7 +274,7 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Dashboard message: either Prometheus or Grafana server is not detected
+##### Dashboard message: Either Prometheus or Grafana server is not detected
 If you have followed the instructions above to set up everything, run the connection checks below in your browser:
 * check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
 * check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.

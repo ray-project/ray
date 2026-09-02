@@ -142,6 +142,10 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
+    def test_invalid_label_selector(self):
+        with pytest.raises(ValidationError, match="Invalid label key name"):
+            RayActorOptionsSchema.model_validate({"label_selector": {"-bad-key-": "v"}})
+
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
@@ -533,7 +537,7 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
-    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+    def test_gang_scheduling_config_scale_to_zero(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
@@ -541,11 +545,9 @@ class TestDeploymentSchema:
             "min_replicas": 0,
             "max_replicas": 9,
         }
-        with pytest.raises(
-            ValueError,
-            match="Scale to zero isn't supported for gang scheduling",
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.autoscaling_config["min_replicas"] == 0
+        assert schema.gang_scheduling_config.gang_size == 3
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()

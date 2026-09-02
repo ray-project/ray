@@ -676,12 +676,14 @@ The default Docker image to pull in the head and worker nodes. This can be overr
 * **Importance:** High
 * **Type:** String
 
-The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/rayproject>`_. The repository includes following images:
+The Ray project publishes Docker images to the ``rayproject/ray`` `Docker Hub repository <https://hub.docker.com/r/rayproject/ray>`_. Pin an explicit Ray version rather than a floating tag such as ``latest``, so that the image your cluster starts doesn't change underneath you when a new Ray release ships:
 
-* ``rayproject/ray-ml:latest-gpu``: CUDA support, includes ML dependencies.
-* ``rayproject/ray:latest-gpu``: CUDA support, no ML dependencies.
-* ``rayproject/ray-ml:latest``: No CUDA support, includes ML dependencies.
-* ``rayproject/ray:latest``: No CUDA support, no ML dependencies.
+* ``rayproject/ray:2.56.1``: No CUDA support.
+* ``rayproject/ray:2.56.1-gpu``: CUDA support.
+
+These images don't include machine learning libraries such as PyTorch, TensorFlow, or XGBoost. To add them, either build a custom image on top of a ``rayproject/ray`` base image or install them with a :ref:`runtime environment <runtime-environments>`.
+
+See :ref:`docker-images` for the full tag format, including the Python version and platform tags.
 
 .. _cluster-configuration-head-image:
 
@@ -1479,7 +1481,7 @@ Will take effect only when ``library_item`` is set. If ``resource_pool`` is also
 The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
 The default value is False, which indicates regular PCI Passthrough.
 If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
-The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS.
 
 * **Required:** No
 * **Importance:** Low

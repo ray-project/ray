@@ -8,6 +8,22 @@ ARG CUDA_VERSION=12.8.1
 ARG NCCL_VERSION=2.28.9-1+cuda12.9
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+#
+# ENV rather than ARG on purpose: the *.build.Dockerfile images build FROM this
+# image (directly or via another base) and install packages themselves, and the
+# persisted value is what carries the index into those derived builds.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 ENV TZ=America/Los_Angeles
 
 ENV RAY_BUILD_ENV=ubuntu22.04_clang14_cuda${CUDA_VERSION}_py$PYTHON

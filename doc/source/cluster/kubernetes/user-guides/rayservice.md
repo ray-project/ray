@@ -10,7 +10,7 @@ myst:
 
 ## Prerequisites
 
-This guide mainly focuses on the behavior of KubeRay v1.4.0 and Ray 2.46.0.
+This guide mainly focuses on the behavior of KubeRay v1.7.0 and Ray 2.46.0.
 
 ## What's a RayService?
 
@@ -41,7 +41,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
+curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 kubectl apply -f ray-service.sample.yaml
 ```
 
@@ -84,7 +84,7 @@ kubectl get raycluster
 # NAME                                 DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
 # rayservice-sample-raycluster-fj2gp   1                 1                   2500m   4Gi      0      ready    75s
 
-# Step 4.3: List all Ray Pods in the `default` namespace.
+# Step 4.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -202,7 +202,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
+Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.

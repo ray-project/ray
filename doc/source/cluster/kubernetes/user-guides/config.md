@@ -14,7 +14,7 @@ This guide covers the key aspects of Ray cluster configuration on Kubernetes.
 
 Deployments of Ray on Kubernetes follow the [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/). The key players are
 - A [custom resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) called a `RayCluster` describing the desired state of a Ray cluster.
-- A [custom controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers), the KubeRay operator, which manages Ray pods in order to match the `RayCluster`'s spec.
+- A [custom controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers), the KubeRay operator, which manages Pods in order to match the `RayCluster`'s spec.
 
 To deploy a Ray cluster, one creates a `RayCluster` custom resource (CR):
 ```shell
@@ -25,12 +25,12 @@ This guide covers the salient features of `RayCluster` CR configuration.
 
 For reference, here is a condensed example of a `RayCluster` CR in yaml format.
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: raycluster-complete
 spec:
-  rayVersion: "2.3.0"
+  rayVersion: "2.56.1"
   enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
@@ -44,7 +44,7 @@ spec:
         spec: # Pod spec
             containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.3.0
+              image: rayproject/ray:2.56.1
               resources:
                 limits:
                   cpu: 14
@@ -103,7 +103,7 @@ The head pod’s configuration is specified under `headGroupSpec`, while configu
 The bulk of the configuration for a `headGroupSpec` or `workerGroupSpec` goes in the `template` field. The `template` is a Kubernetes Pod template which determines the configuration for the pods in the group. Here are some of the subfields of the pod `template` to pay attention to:
 
 #### containers
-A Ray pod template specifies at minimum one container, namely the container that runs the Ray processes. A Ray pod template may also specify additional sidecar containers, for purposes such as {ref}`log processing <persist-kuberay-custom-resource-logs>`. However, the KubeRay operator assumes that the first container in the containers list is the main Ray container. Therefore, make sure to specify any sidecar containers **after** the main Ray container. In other words, the Ray container should be the **first** in the `containers` list.
+A Pod template specifies at minimum one container, namely the container that runs the Ray processes. A Pod template may also specify additional sidecar containers, for purposes such as {ref}`log processing <persist-kuberay-custom-resource-logs>`. However, the KubeRay operator assumes that the first container in the containers list is the main Ray container. Therefore, make sure to specify any sidecar containers **after** the main Ray container. In other words, the Ray container should be the **first** in the `containers` list.
 
 #### resources
 
@@ -111,16 +111,16 @@ It's important to specify container CPU and memory resources for each group spec
 
 For GPU workloads, you may also wish to specify GPU limits. For example, set `nvidia.com/gpu: 2` if using an NVIDIA GPU device plugin and you wish to specify a pod with access to 2 GPUs. See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
-KubeRay automatically configures Ray to use the CPU, memory, and GPU **limits** in the Ray container config. These values are the logical resource capacities of Ray pods in the head or worker group. As of KubeRay 1.3.0, KubeRay uses the CPU request if the limit is absent. KubeRay rounds up CPU quantities to the nearest integer. You can override these resource capacities with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. So **set memory and GPU resource requests equal to their limits** when possible
+KubeRay automatically configures Ray to use the CPU, memory, and GPU **limits** in the Ray container config. These values are the logical resource capacities of Pods in the head or worker group. As of KubeRay 1.3.0, KubeRay uses the CPU request if the limit is absent. KubeRay rounds up CPU quantities to the nearest integer. You can override these resource capacities with {ref}`rayStartParams`. KubeRay ignores memory and GPU **requests**. So **set memory and GPU resource requests equal to their limits** when possible
 
-It's ideal to size each Ray pod to take up the entire Kubernetes node. In other words, it's best to run one large Ray pod per Kubernetes node. In general, it's more efficient to use a few large Ray pods than many small ones. The pattern of fewer large Ray pods has the following advantages:
+It's ideal to size each Pod to take up the entire Kubernetes node. In other words, it's best to run one large Pod per Kubernetes node. In general, it's more efficient to use a few large Pods than many small ones. The pattern of fewer large Pods has the following advantages:
 
-- more efficient use of each Ray pod's shared memory object store
-- reduced communication overhead between Ray pods
+- more efficient use of each Pod's shared memory object store
+- reduced communication overhead between Pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
 
 #### nodeSelector and tolerations
-You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and `tolerations` fields of the pod spec. Specifically, these fields determine on which Kubernetes nodes the pods may be scheduled. See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more about Pod-to-Node assignment.
+You can control the scheduling of worker groups' Pods by setting the `nodeSelector` and `tolerations` fields of the pod spec. Specifically, these fields determine on which Kubernetes nodes the pods may be scheduled. See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more about Pod-to-Node assignment.
 
 (kuberay-config-safe-to-evict)=
 #### Preventing eviction of the Ray head Pod by the Cluster Autoscaler
@@ -159,7 +159,7 @@ For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod. 
 
 (kuberay-num-cpus)=
 ### num-cpus
-This optional field tells the Ray scheduler and autoscaler how many CPUs are available to the Ray pod. The CPU count can be autodetected from the Kubernetes resource limits specified in the group spec’s pod `template`. However, it is sometimes useful to override this autodetected value. For example, setting `num-cpus:"0"` for the Ray head pod will prevent Ray workloads with non-zero CPU requirements from being scheduled on the head. Note that the values of all Ray start parameters, including `num-cpus`, must be supplied as **strings**.
+This optional field tells the Ray scheduler and autoscaler how many CPUs are available to the Pod. The CPU count can be autodetected from the Kubernetes resource limits specified in the group spec’s pod `template`. However, it is sometimes useful to override this autodetected value. For example, setting `num-cpus:"0"` for the Ray head pod will prevent Ray workloads with non-zero CPU requirements from being scheduled on the head. Note that the values of all Ray start parameters, including `num-cpus`, must be supplied as **strings**.
 
 ### num-gpus
 This field specifies the number of GPUs available to the Ray container. In future KubeRay versions, the number of GPUs will be auto-detected from Ray container resource limits. Note that the values of all Ray start parameters, including `num-gpus`, must be supplied as **strings**.
@@ -168,7 +168,7 @@ This field specifies the number of GPUs available to the Ray container. In futur
 The memory available to the Ray is detected automatically from the Kubernetes resource limits. If you wish, you may override this autodetected value by setting the desired memory value, in bytes, under `rayStartParams.memory`. Note that the values of all Ray start parameters, including `memory`, must be supplied as **strings**.
 
 ### resources
-This field can be used to specify custom resource capacities for the Ray pod. These resource capacities will be advertised to the Ray scheduler and Ray autoscaler. For example, the following annotation will mark a Ray pod as having 1 unit of `Custom1` capacity and 5 units of `Custom2` capacity.
+This field can be used to specify custom resource capacities for the Pod. These resource capacities will be advertised to the Ray scheduler and Ray autoscaler. For example, the following annotation will mark a Pod as having 1 unit of `Custom1` capacity and 5 units of `Custom2` capacity.
 ```yaml
 rayStartParams:
     resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
