@@ -228,6 +228,67 @@ class TestMultiplexWrapper:
         assert not multiplexer._model_load_tasks
         assert not multiplexer._model_load_reservations
 
+    async def test_shutdown_cleans_model_before_cache_publication(
+        self, start_serve_with_context
+    ):
+        """Test that shutdown cleans a loaded model awaiting publication."""
+
+        load_entered = asyncio.Event()
+        release_load = asyncio.Event()
+        model_destroyed = asyncio.Event()
+        load_completed = asyncio.Event()
+
+        class Model:
+            def __init__(self):
+                async def destroy():
+                    model_destroyed.set()
+
+                self.__del__ = destroy
+
+        async def model_load_func(model_id: str):
+            load_entered.set()
+            await release_load.wait()
+            model = Model()
+            load_completed.set()
+            return model
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+
+        request_task = asyncio.create_task(multiplexer.load_model("1"))
+        await asyncio.wait_for(load_entered.wait(), timeout=5)
+
+        async with multiplexer._model_cache_condition:
+            shutdown_task = asyncio.create_task(multiplexer.shutdown())
+            await asyncio.sleep(0)
+            release_load.set()
+            await asyncio.wait_for(load_completed.wait(), timeout=5)
+
+            assert not request_task.done()
+            assert multiplexer._model_load_reservations == {"1"}
+            assert "1" in multiplexer._model_load_tasks
+            assert not multiplexer.models
+
+        try:
+            await asyncio.wait_for(shutdown_task, timeout=5)
+            request_results = await asyncio.gather(request_task, return_exceptions=True)
+        finally:
+            release_load.set()
+            if not shutdown_task.done():
+                shutdown_task.cancel()
+            if not request_task.done():
+                request_task.cancel()
+            await asyncio.gather(shutdown_task, request_task, return_exceptions=True)
+
+        assert isinstance(request_results[0], asyncio.CancelledError)
+        assert model_destroyed.is_set()
+        assert not multiplexer.models
+        assert not multiplexer._model_load_tasks
+        assert not multiplexer._model_load_reservations
+        assert not multiplexer._model_load_waiter_counts
+
     async def test_load_same_model_single_flight(self, start_serve_with_context):
         """Test that same-model callers share one cancellation-safe load task."""
 
@@ -272,6 +333,7 @@ class TestMultiplexWrapper:
         assert multiplexer.models == {"1": "1"}
         assert not multiplexer._model_load_tasks
         assert not multiplexer._model_load_reservations
+        assert not multiplexer._model_load_waiter_counts
 
     async def test_load_models_concurrently(self, start_serve_with_context):
         """
@@ -309,12 +371,22 @@ class TestMultiplexWrapper:
         assert len(multiplexer._model_load_tasks) == 0
 
     async def test_concurrent_loads_respect_capacity(self, start_serve_with_context):
-        """Test that in-flight reservations bound concurrent model loads."""
+        """Test capacity bounds and protect models through result handoff."""
 
         entered = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
         release = {model_id: asyncio.Event() for model_id in ("1", "2", "3")}
         active_loads = 0
         peak_active_loads = 0
+
+        class Model:
+            def __init__(self, model_id: str):
+                self.model_id = model_id
+                self.destroyed = False
+
+                async def destroy():
+                    self.destroyed = True
+
+                self.__del__ = destroy
 
         async def model_load_func(model_id: str):
             nonlocal active_loads, peak_active_loads
@@ -327,7 +399,11 @@ class TestMultiplexWrapper:
             finally:
                 active_loads -= 1
 
-            return model_id
+            return Model(model_id)
+
+        async def request_model(model_id: str):
+            model = await multiplexer.load_model(model_id)
+            return model, model.destroyed
 
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=2
@@ -335,7 +411,7 @@ class TestMultiplexWrapper:
         await multiplexer.metrics_pusher.graceful_shutdown()
 
         tasks = {
-            model_id: asyncio.create_task(multiplexer.load_model(model_id))
+            model_id: asyncio.create_task(request_model(model_id))
             for model_id in ("1", "2")
         }
 
@@ -345,7 +421,7 @@ class TestMultiplexWrapper:
                 timeout=5,
             )
 
-            tasks["3"] = asyncio.create_task(multiplexer.load_model("3"))
+            tasks["3"] = asyncio.create_task(request_model("3"))
             await asyncio.sleep(0)
 
             assert not entered["3"].is_set()
@@ -360,7 +436,10 @@ class TestMultiplexWrapper:
 
             release["2"].set()
             release["3"].set()
-            assert await asyncio.gather(*tasks.values()) == ["1", "2", "3"]
+            results = await asyncio.gather(*tasks.values())
+            assert [model.model_id for model, _ in results] == ["1", "2", "3"]
+            assert results[0][1] is False
+            assert results[0][0].destroyed is True
         finally:
             for event in release.values():
                 event.set()
@@ -369,6 +448,7 @@ class TestMultiplexWrapper:
         assert len(multiplexer.models) == 2
         assert not multiplexer._model_load_tasks
         assert not multiplexer._model_load_reservations
+        assert not multiplexer._model_load_waiter_counts
 
     async def test_load_failure_releases_capacity_and_allows_retry(
         self, start_serve_with_context
@@ -441,6 +521,7 @@ class TestMultiplexWrapper:
         assert multiplexer.models == {"1": "1"}
         assert not multiplexer._model_load_tasks
         assert not multiplexer._model_load_reservations
+        assert not multiplexer._model_load_waiter_counts
 
 
 class TestBasicAPI:

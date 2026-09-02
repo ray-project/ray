@@ -117,6 +117,9 @@ class _ModelMultiplexWrapper:
         self._model_load_tasks: Dict[str, asyncio.Task[Any]] = {}
         self._model_load_reservations: Set[str] = set()
 
+        # Pin loaded models until all callers awaiting the shared load receive them.
+        self._model_load_waiter_counts: Dict[str, int] = {}
+
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_or_update_task(
             self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
@@ -224,8 +227,22 @@ class _ModelMultiplexWrapper:
                 # routed to the replica.
                 self._push_multiplexed_replica_info = True
 
+            self._model_load_waiter_counts[model_id] = (
+                self._model_load_waiter_counts.get(model_id, 0) + 1
+            )
+
         # Keep the shared model load running if an individual request is cancelled.
-        return await asyncio.shield(task)
+        try:
+            return await asyncio.shield(task)
+        finally:
+            async with self._model_cache_condition:
+                waiter_count = self._model_load_waiter_counts[model_id]
+
+                if waiter_count == 1:
+                    del self._model_load_waiter_counts[model_id]
+                    self._model_cache_condition.notify_all()
+                else:
+                    self._model_load_waiter_counts[model_id] = waiter_count - 1
 
     @staticmethod
     def _retrieve_load_task_exception(task: asyncio.Task[Any]) -> None:
@@ -235,7 +252,9 @@ class _ModelMultiplexWrapper:
 
     async def _load_model_and_cache(self, model_id: str) -> Any:
         """Load a model and add it to the cache."""
-        finalized = False
+        model: Any = None
+        load_completed = False
+        model_published = False
 
         try:
             # If the number of models per replica is specified, check if the number
@@ -246,13 +265,23 @@ class _ModelMultiplexWrapper:
                     and len(self.models) + len(self._model_load_reservations)
                     >= self.max_num_models_per_replica
                 ):
-                    if self.models:
-                        # Unload the least recently used model.
-                        await self.unload_model_lru()
-                        self._push_multiplexed_replica_info = True
-                    else:
-                        # Wait for an in-flight load to release capacity.
+                    # Evict the least recently used model that is not being handed off.
+                    model_id_to_unload = next(
+                        (
+                            loaded_model_id
+                            for loaded_model_id in self.models
+                            if self._model_load_waiter_counts.get(loaded_model_id, 0)
+                            == 0
+                        ),
+                        None,
+                    )
+
+                    if model_id_to_unload is None:
                         await self._model_cache_condition.wait()
+                    else:
+                        model_to_unload = self.models.pop(model_id_to_unload)
+                        await self._unload_model(model_id_to_unload, model_to_unload)
+                        self._push_multiplexed_replica_info = True
 
                 self._model_load_reservations.add(model_id)
 
@@ -266,6 +295,7 @@ class _ModelMultiplexWrapper:
             else:
                 model = await self._func(self.self_arg, model_id)
 
+            load_completed = True
             load_latency_ms = (time.time() - load_start_time) * 1000.0
 
             # Add the model to the cache and release its reservation.
@@ -274,7 +304,7 @@ class _ModelMultiplexWrapper:
                 self._model_load_reservations.discard(model_id)
                 self._model_load_tasks.pop(model_id, None)
                 self._model_cache_condition.notify_all()
-                finalized = True
+                model_published = True
 
             self.model_load_latency_ms.observe(load_latency_ms)
             logger.debug(
@@ -286,23 +316,46 @@ class _ModelMultiplexWrapper:
             logger.error(f"Failed to load model '{model_id}'. Error: {e}")
             raise
         finally:
-            if not finalized:
-                async with self._model_cache_condition:
-                    self._model_load_reservations.discard(model_id)
-                    current_task = asyncio.current_task()
+            if not model_published:
+                await self._cleanup_unpublished_model_load(
+                    model_id,
+                    model,
+                    load_completed=load_completed,
+                )
 
-                    if self._model_load_tasks.get(model_id) is current_task:
-                        self._model_load_tasks.pop(model_id)
-                        self._push_multiplexed_replica_info = True
+    async def _cleanup_unpublished_model_load(
+        self, model_id: str, model: Any, *, load_completed: bool
+    ) -> None:
+        """Clean up a model load that was not published to the cache."""
+        try:
+            if load_completed:
+                await self._unload_model(model_id, model)
+        except Exception as e:
+            logger.exception(
+                f"Failed to unload unpublished model '{model_id}'. Error: {e}"
+            )
+        finally:
+            async with self._model_cache_condition:
+                self._model_load_reservations.discard(model_id)
+                current_task = asyncio.current_task()
 
-                    self._model_cache_condition.notify_all()
+                if self._model_load_tasks.get(model_id) is current_task:
+                    self._model_load_tasks.pop(model_id)
+                    self._push_multiplexed_replica_info = True
+
+                self._model_cache_condition.notify_all()
 
     async def unload_model_lru(self) -> None:
         """Unload the least recently used model."""
 
+        model_id, model = self.models.popitem(last=False)
+        await self._unload_model(model_id, model)
+
+    async def _unload_model(self, model_id: str, model: Any) -> None:
+        """Unload a model and eagerly clean up its resources."""
+
         self.models_unload_counter.inc()
         unload_start_time = time.time()
-        model_id, model = self.models.popitem(last=False)
         logger.debug(f"Unloading model '{model_id}'.")
 
         # If the model has __del__ attribute, call it.
@@ -313,6 +366,7 @@ class _ModelMultiplexWrapper:
             else:
                 await model.__del__()
             model.__del__ = lambda _: None
+
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
         self.model_unload_latency_ms.observe(unload_latency_ms)
         logger.debug(
