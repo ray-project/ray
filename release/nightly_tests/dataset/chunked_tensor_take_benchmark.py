@@ -7,6 +7,10 @@ takes of up to 128 rows at 128 B, 1 KiB, 8 KiB, 64 KiB, 512 KiB, 4 MiB, and
 reduce their source rows, output rows, and nonempty chunks while retaining at
 least two chunks so they still exercise the multi-chunk path.
 
+A small-take boundary case uses 1 KiB rows, 8 MiB of source payload, 32 chunks,
+and one output row. It guards a small-output configuration close to the
+per-chunk amortization boundary.
+
 A single-chunk control tracks the path used by ineligible columns. A complete
 ShufflingBatcher lifecycle uses a production-derived ``(2000, 1697)`` tensor
 shape with 320 rows, 32 source chunks, and 128-row batches to cover one-row
@@ -539,6 +543,14 @@ def main():
 
     results = {
         "width_sweep": _run_width_sweep(args),
+        "small_take_eligibility_boundary": _run_case(
+            args,
+            rows=8192,
+            width=256,
+            chunks=32,
+            batch_size=1,
+            single_chunk=False,
+        ),
         "single_chunk_control": _run_case(
             args,
             rows=args.rows,

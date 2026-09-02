@@ -1,4 +1,3 @@
-import logging
 import warnings
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
@@ -15,13 +14,8 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.util import get_total_obj_store_mem_on_node
-from ray.data._internal.utils.transform_pyarrow import (
-    _is_multi_chunk_extension_column,
-)
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
-
-logger = logging.getLogger(__name__)
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -56,13 +50,9 @@ def _prepare_local_shuffle_arrow_table(
             columns.append(column)
             continue
 
-        take_plan = (
-            try_prepare_chunked_tensor_take(
-                column,
-                max_output_rows=table.num_rows,
-            )
-            if _is_multi_chunk_extension_column(column)
-            else None
+        take_plan = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=table.num_rows,
         )
         if take_plan is not None:
             prepared_takes[index] = take_plan

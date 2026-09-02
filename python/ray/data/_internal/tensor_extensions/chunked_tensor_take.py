@@ -29,10 +29,11 @@ TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # Keep these operational gates independent of the scratch limit: an eligible
 # source row may be larger than the soft scratch cap.
 _MIN_FAST_ROW_BYTES = 1024
-_MIN_FAST_SOURCE_BYTES = 1024 * 1024
-# Boolean-mask grouping is cheaper for a few chunks; sorting scales better once
-# the number of chunks makes repeated full-subbatch masks expensive.
-_MAX_MASK_GROUP_CHUNKS = 16
+_MIN_FAST_PAYLOAD_BYTES = 1024 * 1024
+# Preparation also has fixed work per physical source chunk, including the
+# empty chunks it must inspect. Require enough source payload per chunk unless
+# the requested output itself is large enough to amortize that work.
+_MIN_FAST_BYTES_PER_CHUNK = 128 * 1024
 
 
 def try_prepare_chunked_tensor_take(
@@ -47,7 +48,8 @@ def try_prepare_chunked_tensor_take(
     * The feature flag must be enabled.
     * The column must be a non-null, fixed-shape numeric Ray tensor with at
       least two nonempty chunks.
-    * Its row and source payload must be large enough to amortize preparation.
+    * Its row and total source payload must be large enough, and either its
+      per-chunk source payload or requested output must amortize preparation.
     * Its declared maximum output must fit the tensor type's Arrow offsets.
     * Every chunk must have regular logical offsets and expose a safe zero-copy
       view within the numeric child buffer.
@@ -89,7 +91,12 @@ def try_prepare_chunked_tensor_take(
         return _log_preparation_fallback(column, "unsupported_tensor_layout")
     values_per_row, row_bytes, value_dtype = layout
 
-    if not _passes_source_size_gates(len(column), row_bytes):
+    if not _passes_size_gates(
+        source_rows=len(column),
+        row_bytes=row_bytes,
+        source_chunks=column.num_chunks,
+        max_output_rows=max_output_rows,
+    ):
         return _log_preparation_fallback(column, "below_size_threshold")
 
     offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
@@ -123,8 +130,7 @@ def try_prepare_chunked_tensor_take(
             chunk_starts.append(row_offset)
             row_offset += len(chunk)
     except (
-        AttributeError,
-        pa.ArrowException,
+        pa.ArrowNotImplementedError,
         TypeError,
         ValueError,
     ):
@@ -150,9 +156,7 @@ def try_prepare_chunked_tensor_take(
     return plan
 
 
-def _log_preparation_fallback(
-    column: pa.ChunkedArray, reason: str
-) -> Optional["PreparedChunkedTensorTake"]:
+def _log_preparation_fallback(column: pa.ChunkedArray, reason: str) -> None:
     """Debug-log one stable preparation reason and return the fallback value."""
     logger.debug(
         "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
@@ -165,11 +169,22 @@ def _log_preparation_fallback(
     return None
 
 
-def _passes_source_size_gates(source_rows: int, row_bytes: int) -> bool:
-    """Return whether the source can amortize fast-path setup work."""
+def _passes_size_gates(
+    source_rows: int,
+    row_bytes: int,
+    source_chunks: int,
+    max_output_rows: int,
+) -> bool:
+    """Return whether the source or requested output can amortize setup."""
+    source_bytes = source_rows * row_bytes
+    output_bytes = max_output_rows * row_bytes
     return (
         row_bytes >= _MIN_FAST_ROW_BYTES
-        and source_rows * row_bytes >= _MIN_FAST_SOURCE_BYTES
+        and source_bytes >= _MIN_FAST_PAYLOAD_BYTES
+        and (
+            source_bytes >= source_chunks * _MIN_FAST_BYTES_PER_CHUNK
+            or output_bytes >= _MIN_FAST_PAYLOAD_BYTES
+        )
     )
 
 
@@ -297,17 +312,14 @@ class PreparedChunkedTensorTake(NamedTuple):
 
         * Monotonic chunk IDs already form contiguous chunk groups. They can be
           copied in output order and can use source slices for contiguous rows.
-        * Unordered IDs over at most 16 chunks are grouped with masks. Repeated
-          linear scans are cheaper than allocating and sorting an order array
-          when the number of chunks is small.
-        * Unordered IDs over more chunks sort output positions by chunk once,
-          gather each resulting group, and scatter it back to the original
-          positions. The temporary sort changes processing order, never
-          caller-visible row order.
+        * Unordered IDs sort output positions by chunk once, gather each
+          resulting group, and scatter it back to the original positions. The
+          temporary sort changes processing order, never caller-visible row
+          order.
 
-        Subbatching bounds the temporary chunk-ID, local-index, mask, and sort
-        arrays. All three strategies write into the same preallocated output
-        and preserve the order of ``indices``.
+        Subbatching bounds the temporary chunk-ID, local-index, and sort arrays.
+        Both strategies write into the same preallocated output and preserve
+        the order of ``indices``.
 
         Args:
             output: Destination tensor array.
@@ -324,13 +336,6 @@ class PreparedChunkedTensorTake(NamedTuple):
 
             if np.all(chunk_ids[1:] >= chunk_ids[:-1]):
                 _gather_monotonic_chunk_ids(
-                    output_slice,
-                    local_indices,
-                    self.chunk_views,
-                    chunk_ids,
-                )
-            elif len(self.chunk_views) <= _MAX_MASK_GROUP_CHUNKS:
-                _gather_by_chunk_masks(
                     output_slice,
                     local_indices,
                     self.chunk_views,
@@ -408,35 +413,6 @@ def _gather_monotonic_chunk_ids(
         else:
             output[group_start:group_stop] = chunks[chunk_id][group_indices]
         group_start = group_stop
-
-
-def _gather_by_chunk_masks(
-    output: np.ndarray,
-    local_indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_ids: np.ndarray,
-) -> None:
-    """Gather unordered rows by scanning positions for each present chunk.
-
-    ``bincount`` first avoids visiting chunks absent from this subbatch. For
-    every present chunk, an equality mask finds its original output positions;
-    the corresponding local rows are gathered together and written back to
-    those positions. This preserves row order without sorting.
-
-    The work is proportional to the number of present chunks times the
-    subbatch size, so the caller reserves this strategy for at most 16 chunks.
-
-    Args:
-        output: Destination for this subbatch.
-        local_indices: Source-row indices relative to their chunks.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_ids: Potentially unordered source chunk IDs for each output
-            position.
-    """
-    present_chunk_ids = np.flatnonzero(np.bincount(chunk_ids, minlength=len(chunks)))
-    for chunk_id in present_chunk_ids:
-        positions = np.flatnonzero(chunk_ids == chunk_id)
-        output[positions] = chunks[chunk_id][local_indices[positions]]
 
 
 def _gather_by_sorted_chunk_ids(
