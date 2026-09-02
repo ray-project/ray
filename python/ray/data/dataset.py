@@ -2733,7 +2733,7 @@ class Dataset:
         n: int,
         *,
         equal: bool = False,
-        locality_hints: Optional[List[NodeIdStr]] = None,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
         target_buffer_rows: Optional[int] = None,
     ) -> List[DataIterator]:
         """PROTOTYPE: push-based variant of :meth:`streaming_split`.
