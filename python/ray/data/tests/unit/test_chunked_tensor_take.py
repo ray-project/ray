@@ -938,12 +938,22 @@ def test_prepare_local_shuffle_arrow_table_leaves_simple_tables_unchanged():
     assert not single_takes
 
 
-def test_prepare_local_shuffle_arrow_table_combines_fallback_columns():
+def test_prepare_local_shuffle_arrow_table_combines_fallback_columns(caplog):
     plain = pa.chunked_array([pa.array([1, 2]), pa.array([3, 4])])
     narrow, _ = _chunked_tensor(1024, 8, 4)
     nullable = _tensor_with_null(child_null=False)
 
-    for column in (plain, narrow, nullable):
+    plain_table = pa.table({"value": plain})
+    with caplog.at_level("DEBUG", logger=chunked_tensor_take.__name__):
+        prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(plain_table)
+
+    assert not prepared_takes
+    assert prepared_table.schema == plain_table.schema
+    assert prepared_table.num_rows == plain_table.num_rows
+    assert prepared_table.column("value").num_chunks == 1
+    assert "Chunked tensor take fast path" not in caplog.text
+
+    for column in (narrow, nullable):
         table = pa.table({"value": column})
         prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(table)
 

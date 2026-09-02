@@ -14,6 +14,9 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.util import get_total_obj_store_mem_on_node
+from ray.data._internal.utils.transform_pyarrow import (
+    _is_multi_chunk_extension_column,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
@@ -50,14 +53,15 @@ def _prepare_local_shuffle_arrow_table(
             columns.append(column)
             continue
 
-        take_plan = try_prepare_chunked_tensor_take(
-            column,
-            max_output_rows=table.num_rows,
-        )
-        if take_plan is not None:
-            prepared_takes[index] = take_plan
-            columns.append(column)
-            continue
+        if _is_multi_chunk_extension_column(column):
+            take_plan = try_prepare_chunked_tensor_take(
+                column,
+                max_output_rows=table.num_rows,
+            )
+            if take_plan is not None:
+                prepared_takes[index] = take_plan
+                columns.append(column)
+                continue
 
         columns.append(transform_pyarrow.combine_chunked_array(column))
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
