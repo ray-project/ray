@@ -879,7 +879,7 @@ void ReferenceCounter::ExecuteDeferredOOSWork(std::vector<DeferredOOSWork> &work
       callback(item.object_id);
     }
     if (!item.locations.empty()) {
-      free_object_on_nodes_async_(item.object_id, item.locations);
+      free_object_on_nodes_async_(item.object_id, std::move(item.locations));
     }
   }
 }

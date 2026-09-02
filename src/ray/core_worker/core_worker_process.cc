@@ -413,9 +413,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
       /*free_object_on_nodes_async=*/
-      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+      [this](const ObjectID &object_id, absl::flat_hash_set<NodeID> locations) {
         object_free_rpc_service_.post(
-            [this, object_id, locations]() {
+            [this, object_id, locations = std::move(locations)]() {
               auto core_worker = TryGetCoreWorker();
               if (core_worker) {
                 core_worker->FreeObjectOnNodesAsync(object_id, locations);
