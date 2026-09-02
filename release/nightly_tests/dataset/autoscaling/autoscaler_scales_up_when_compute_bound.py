@@ -4,14 +4,14 @@ compute bound on its CPU stage.
 `produce` is a slow CPU stage and `consume` is a fast GPU stage holding one GPU
 each. Saturating the GPU group isn't enough to keep the GPUs busy, so a healthy
 autoscaler also has to add CPU nodes. The test asserts that the peak worker node
-counts are exactly EXPECTED_GPU_NODES GPU nodes and at least MIN_CPU_NODES CPU
-nodes.
+counts are exactly the GPU group's size and at least the derived CPU node count.
 """
 
 import argparse
+import functools
 import math
 import time
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -21,49 +21,21 @@ import ray
 from benchmark import Benchmark
 from cluster_resource_monitor import ClusterResourceMonitor
 
-# With 1000 inputs this takes ~30 minutes, long enough that node provisioning
-# speed doesn't make the test flaky.
-NUM_INPUTS = 1000
-BLOCKS_PER_INPUT = 4
-PRODUCE_SLEEP_S = 5
-CONSUME_SLEEP_S = 1
-BLOCK_SHAPE = (128, 1024, 1024)
-ROWS_PER_BLOCK = BLOCK_SHAPE[0]
-CONSUME_BATCH_SIZE = 2 * ROWS_PER_BLOCK
 
-# From the compute config.
-MAX_GPU_NODES = 10
-CPUS_PER_NODE = 8
-
-EXPECTED_GPU_NODES = MAX_GPU_NODES
-
-# `consume` handles 2 blocks/s and `produce` emits 1 block/5s, so balancing needs
-# 10 produce workers per consume worker: 10 GPU nodes x 10 = 100 producer CPUs.
-# The GPU nodes supply 80, so the remaining 20 need ceil(20 / 8) = 3 CPU nodes.
-_PRODUCE_WORKERS_PER_CONSUME_WORKER = (
-    CONSUME_BATCH_SIZE / ROWS_PER_BLOCK / CONSUME_SLEEP_S
-) * PRODUCE_SLEEP_S
-MIN_CPU_NODES = math.ceil(
-    (
-        EXPECTED_GPU_NODES * _PRODUCE_WORKERS_PER_CONSUME_WORKER
-        - EXPECTED_GPU_NODES * CPUS_PER_NODE
-    )
-    / CPUS_PER_NODE
-)
-assert MIN_CPU_NODES > 0, (
-    "The GPU nodes' own CPUs already satisfy the pipeline, so this test no "
-    "longer exercises CPU scale-up. Adjust the sleeps or the compute config."
-)
+def produce(
+    _: Dict[str, np.ndarray],
+    *,
+    blocks_per_input: int,
+    sleep_s: float,
+    block_shape: Tuple[int, int, int],
+) -> Iterator[Dict[str, np.ndarray]]:
+    for _ in range(blocks_per_input):
+        time.sleep(sleep_s)
+        yield {"data": np.zeros(block_shape, dtype=np.uint8)}
 
 
-def produce(_: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
-    for _ in range(BLOCKS_PER_INPUT):
-        time.sleep(PRODUCE_SLEEP_S)
-        yield {"data": np.zeros(BLOCK_SHAPE, dtype=np.uint8)}
-
-
-def consume(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    time.sleep(CONSUME_SLEEP_S)
+def consume(batch: Dict[str, np.ndarray], *, sleep_s: float) -> Dict[str, np.ndarray]:
+    time.sleep(sleep_s)
     return batch
 
 
@@ -79,15 +51,57 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> Dict[str, Any]:
+    # With 1000 inputs this takes ~30 minutes, long enough that node provisioning
+    # speed doesn't make the test flaky.
+    num_inputs = 1000
+    blocks_per_input = 4
+    produce_sleep_s = 5
+    consume_sleep_s = 1
+    block_shape = (128, 1024, 1024)
+    rows_per_block = block_shape[0]
+    consume_batch_size = 2 * rows_per_block
+
+    # From the compute config.
+    expected_gpu_nodes = 10
+    cpus_per_node = 8
+
+    # Each consumer processes 2 blocks/s. Each producer emits 0.2 blocks/s, so one
+    # consumer needs 10 producers.
+    blocks_per_consumer_batch = consume_batch_size / rows_per_block
+    producers_per_consumer = (
+        blocks_per_consumer_batch * produce_sleep_s / consume_sleep_s
+    )
+
+    # Ten consumers need 100 producer CPUs. The GPU nodes provide 80, leaving a
+    # 20-CPU shortfall, or 3 CPU-only nodes.
+    producer_cpus_needed = expected_gpu_nodes * producers_per_consumer
+    producer_cpus_on_gpu_nodes = expected_gpu_nodes * cpus_per_node
+    cpu_shortfall = producer_cpus_needed - producer_cpus_on_gpu_nodes
+    min_cpu_nodes = math.ceil(cpu_shortfall / cpus_per_node)
+    assert min_cpu_nodes > 0, (
+        "The GPU nodes' own CPUs already satisfy the pipeline, so this test no "
+        "longer exercises CPU scale-up. Adjust the sleeps or the compute config."
+    )
+
+    producer = functools.partial(
+        produce,
+        blocks_per_input=blocks_per_input,
+        sleep_s=produce_sleep_s,
+        block_shape=block_shape,
+    )
+    consumer = functools.partial(consume, sleep_s=consume_sleep_s)
+
     input_blocks = [
-        pa.Table.from_pydict({"input_id": [input_id]}) for input_id in range(NUM_INPUTS)
+        pa.Table.from_pydict({"input_id": [input_id]}) for input_id in range(num_inputs)
     ]
 
     with ClusterResourceMonitor() as monitor:
         ds = (
             ray.data.from_blocks(input_blocks)
-            .map_batches(produce)
-            .map_batches(consume, num_gpus=1, num_cpus=0, batch_size=CONSUME_BATCH_SIZE)
+            .map_batches(producer)
+            .map_batches(
+                consumer, num_gpus=1, num_cpus=0, batch_size=consume_batch_size
+            )
         )
         # Don't materialize, so blocks are freed as they're consumed.
         for _ in ds.iter_internal_ref_bundles():
@@ -97,12 +111,12 @@ def main(args: argparse.Namespace) -> Dict[str, Any]:
     peak_gpu_nodes = monitor.get_peak_gpu_nodes()
     print(f"Peak worker nodes: {peak_cpu_nodes} CPU, {peak_gpu_nodes} GPU")
 
-    assert peak_gpu_nodes == EXPECTED_GPU_NODES, (
-        f"Expected the autoscaler to provision {EXPECTED_GPU_NODES} GPU nodes, "
+    assert peak_gpu_nodes == expected_gpu_nodes, (
+        f"Expected the autoscaler to provision {expected_gpu_nodes} GPU nodes, "
         f"but it provisioned {peak_gpu_nodes}"
     )
-    assert peak_cpu_nodes >= MIN_CPU_NODES, (
-        f"Expected the autoscaler to provision at least {MIN_CPU_NODES} CPU nodes "
+    assert peak_cpu_nodes >= min_cpu_nodes, (
+        f"Expected the autoscaler to provision at least {min_cpu_nodes} CPU nodes "
         f"to balance the pipeline, but it provisioned {peak_cpu_nodes}"
     )
     if args.assert_max_cpu_nodes is not None:

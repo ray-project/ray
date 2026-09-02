@@ -5,6 +5,9 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 head_node:
     instance_type: m5.2xlarge
+    # This lets the test count only worker nodes.
+    resources:
+        CPU: 0
 
 worker_nodes:
     # Runs the produce tasks.
