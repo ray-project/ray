@@ -356,6 +356,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: data-tests-location
+        name: Ray Data tests must live in python/ray/data/tests
+        entry: >-
+          Ray Data test files must live under python/ray/data/tests/. Tests nested
+          elsewhere in the package are outside the subtree that tests/conftest.py
+          applies to, so they cannot use any of Ray Data's shared fixtures.
+        language: fail
+        files: '^python/ray/data/(?!tests/)(.*/)?test_[^/]*\.py$'
+
       - id: docstyle
         name: Check for Ray docstyle violations
         entry: ci/lint/check-docstyle.sh
