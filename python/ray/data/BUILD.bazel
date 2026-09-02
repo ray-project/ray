@@ -42,20 +42,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    files = glob(["_internal/datasource_v2/tests/test_*.py"]),
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "small",
-    files = glob(["_internal/logical/operators/tests/test_*.py"]),
+    files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
         "team:data",
