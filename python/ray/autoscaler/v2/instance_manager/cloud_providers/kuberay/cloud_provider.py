@@ -44,14 +44,9 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
-# Annotation the KubeRay operator acts on to terminate the cluster.
-NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
-
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
 NO_DRIVER_TIMEOUT_POLICY_KEY = "noDriverTimeoutPolicy"
-
-NO_DRIVER_TIMEOUT_POLICY = "Delete"
 NO_DRIVER_TIMEOUT_FINALIZER = "ray.io/no-driver-idle-termination"
 
 
@@ -743,14 +738,23 @@ class KubeRayProvider(ICloudInstanceProvider):
         if self._no_driver_policy == "Delete":
             # Append the ray.io/no-driver-idle-termination finalizer
             # using a read-modify-write to preserve existing finalizers.
-            finalizers = self._ray_cluster.get("metadata").get("finalizers", [])
+            finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
             if NO_DRIVER_TIMEOUT_FINALIZER not in finalizers:
                 finalizers.append(NO_DRIVER_TIMEOUT_FINALIZER)
                 payload = finalizer_patch(finalizers)
                 try:
-                    self._k8s_api_client.patch(
+                    patched_raycluster = self._k8s_api_client.patch(
                         path, payload, content_type="application/merge-patch+json"
                     )
+
+                    if NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
+                        "metadata", {}
+                    ).get("finalizers", []):
+                        logger.error(
+                            f"Unable to persist {NO_DRIVER_TIMEOUT_FINALIZER} to metadata.finalizers for {self._cluster_name}"
+                        )
+                        return None
+
                 except Exception:
                     logger.exception(
                         f"Failed to MERGE-PATCH finalizers to {self._cluster_name}"
@@ -758,21 +762,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                     return None
 
             try:
-                # DELETE the idle RayClusters
-                _ = self._k8s_api_client.delete(path)
+                # DELETE the idle RayClusters. 404 is treated as a successful delete so it will not raise here.
+                self._k8s_api_client.delete(path)
                 logger.info(f"Deleted {self._cluster_name}")
-                return None
-            except requests.HTTPError as e:
-                if e.response.status_code == 404:
-                    logger.info(
-                        f"{self._cluster_name} has been deleted so the api server cannot find it."
-                    )
-                else:
-                    logger.exception(f"Failed to delete {self._cluster_name}")
-                return None
             except Exception:
                 logger.exception(f"Failed to delete {self._cluster_name}")
-                return None
+
+            return None
 
         # Merge-patch spec.idleTerminate=true if noDriverTimeoutPolicy is Suspend
         payload = idle_terminate_patch(True)
@@ -788,13 +784,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 logger.error(
                     f"Unable to persist idleTerminate=true for {self._cluster_name}"
                 )
-                return
+                return None
 
         except Exception:
             logger.exception(
                 f"Failed to MERGE-PATCH suspend=true on RayCluster {self._cluster_name}",
             )
-            return
+            return None
 
         logger.info(f"Set idleTerminate=true on RayCluster {self._cluster_name}")
 
