@@ -71,7 +71,7 @@ The KubeRay operator makes the dashboard available via a Service targeting the R
 
 There are two ways to expose the dashboard outside the Cluster:
 
-**1. Setting up ingress** <br/> Follow the [instructions](kuberay-ingress) to set up ingress to access Ray dashboard. **The Ingress must only allows access from trusted sources.**
+**1. Setting up ingress** <br/> Follow the [instructions](kuberay-ingress) to set up ingress to access Ray dashboard. **The Ingress must only allow access from trusted sources.**
 
 **2. Port forwarding** <br/> You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
