@@ -190,7 +190,7 @@ First, you need to update your `RayService` metadata's annotations:
 :::{tab-item} Vanilla Config
 ```yaml
 ...
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-sample
@@ -203,7 +203,7 @@ spec:
 :selected:
 ```yaml
 ...
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-sample
@@ -228,7 +228,7 @@ Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headG
 :::{tab-item} Vanilla Config
 
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
     ...
@@ -251,7 +251,7 @@ spec:
 :selected:
 
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
     ...

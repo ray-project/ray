@@ -38,7 +38,10 @@ KUBERAY_KIND_HEAD = "head"
 KUBERAY_KIND_WORKER = "worker"
 
 # KubeRay CRD version
-KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
+# KubeRay injects KUBERAY_CRD_VER into the autoscaler sidecar, so this default only
+# applies when an operator predating kuberay#1496 omits the variable. `ray.io/v1` is
+# the storage version; `ray.io/v1alpha1` has been feature-frozen since December 2023.
+KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1")
 
 KUBERAY_REQUEST_TIMEOUT_S = int(os.getenv("KUBERAY_REQUEST_TIMEOUT_S", 60))
 
