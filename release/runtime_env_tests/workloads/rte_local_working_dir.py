@@ -17,6 +17,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 IN_IMAGE_DIR = "/home/ray/in_image_working_dir"
 LOCAL_URI = f"local://{IN_IMAGE_DIR}"
+PY_MODULES_DIR = "/home/ray/in_image_py_modules"
+PY_MODULES_URI = f"local://{PY_MODULES_DIR}"
 EXPECTED_NUM_NODES = 4
 EXPECTED_MARKER = "baked-into-the-image"
 
@@ -44,9 +46,9 @@ def inspect_working_dir():
 
 @ray.remote
 def import_from_py_modules():
-    import in_image_module
+    import in_image_py_module
 
-    return in_image_module.__file__
+    return os.getcwd(), in_image_py_module.get_value(), in_image_py_module.__file__
 
 
 if __name__ == "__main__":
@@ -81,10 +83,14 @@ if __name__ == "__main__":
         }
     )
 
-    module_file = ray.get(
-        import_from_py_modules.options(runtime_env={"py_modules": [LOCAL_URI]}).remote()
+    cwd, value, module_file = ray.get(
+        import_from_py_modules.options(
+            runtime_env={"py_modules": [PY_MODULES_URI]}
+        ).remote()
     )
-    assert module_file.startswith(IN_IMAGE_DIR), module_file
+    assert Path(cwd).resolve() == Path(IN_IMAGE_DIR).resolve(), cwd
+    assert value == 7, value
+    assert module_file.startswith(PY_MODULES_DIR), module_file
 
     update_progress(
         {
