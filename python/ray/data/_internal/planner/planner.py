@@ -281,6 +281,8 @@ class Planner:
 
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
+                data_file_dir,
+                data_file_fs,
             )
 
             callbacks.append(checkpoint_callback)
@@ -378,13 +380,19 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
+        data_file_dir=None,
+        data_file_filesystem=None,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
         Subclasses can override this to use a different callback implementation.
+        The data-file location lets the generated-ID path clean up pending
+        checkpoints before loading.
         """
         return LoadCheckpointCallback(
             checkpoint_config,
+            data_file_dir=data_file_dir,
+            data_file_filesystem=data_file_filesystem,
         )
 
     @staticmethod
