@@ -53,7 +53,7 @@ def _make_shutdown_fake(
     grace_period_s: float = 1.0,
     is_direct_ingress: bool = False,
 ):
-    """Builds a minimal stand-in for `Replica` for `perform_graceful_shutdown`.
+    """Builds a minimal stand-in for `Replica` for `_perform_graceful_shutdown`.
 
     Returns the fake and the ordered list of events it records.
     """
@@ -170,7 +170,7 @@ class TestPerformGracefulShutdown:
             grace_period_s=1.0,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert fake._shutting_down is True
         assert fake._quiescing is True
@@ -205,7 +205,7 @@ class TestPerformGracefulShutdown:
             grace_period_s=0.05,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         # `asyncio.wait_for` cancels the awaited task on timeout.
         assert http_task.cancelled()
@@ -220,7 +220,7 @@ class TestPerformGracefulShutdown:
         http_task = MagicMock()
         fake, events = _make_shutdown_fake(http_task=http_task)
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert http_task.cancel.called
         assert [e[0] for e in events] == [
@@ -238,7 +238,7 @@ class TestPerformGracefulShutdown:
             internal_grpc_port=None,
         )
 
-        await Replica.perform_graceful_shutdown(fake)
+        await Replica._perform_graceful_shutdown(fake)
 
         assert events == [("shutdown",)]
 
@@ -250,7 +250,7 @@ class TestPerformGracefulShutdown:
         with patch(
             "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
         ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", True):
-            await Replica.perform_graceful_shutdown(fake)
+            await Replica._perform_graceful_shutdown(fake)
 
         assert [e[0] for e in events] == [
             "drain_behind_haproxy",
@@ -270,7 +270,7 @@ class TestPerformGracefulShutdown:
         with patch(
             "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
         ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", False):
-            await Replica.perform_graceful_shutdown(fake)
+            await Replica._perform_graceful_shutdown(fake)
 
         assert [e[0] for e in events] == [
             "drain",
@@ -369,6 +369,68 @@ class TestDrainOngoingRequests:
         await Replica._drain_ongoing_requests(fake)
 
         assert time.monotonic() - start >= 0.05
+
+
+class TestGracefulShutdownIsIdempotent:
+    """The controller re-issues the stop when it restarts, so the shutdown
+    must run once and later calls must await that same run."""
+
+    @staticmethod
+    def _make_fake(shutdown_body):
+        fake = MagicMock()
+        fake._graceful_shutdown_task = None
+        fake._event_loop = asyncio.get_event_loop()
+        fake._perform_graceful_shutdown = shutdown_body
+        return fake
+
+    @pytest.mark.asyncio
+    async def test_second_call_does_not_start_a_second_shutdown(self):
+        calls = []
+
+        async def body():
+            calls.append("shutdown")
+            await asyncio.sleep(0.05)
+
+        fake = self._make_fake(body)
+        await asyncio.gather(
+            Replica.perform_graceful_shutdown(fake),
+            Replica.perform_graceful_shutdown(fake),
+        )
+
+        assert calls == ["shutdown"]
+
+    @pytest.mark.asyncio
+    async def test_second_call_waits_for_the_first_to_finish(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        first = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)  # let the first call create the task
+
+        # A caller arriving mid-shutdown must not return before it completes.
+        await Replica.perform_graceful_shutdown(fake)
+        assert finished == [True]
+        await first
+
+    @pytest.mark.asyncio
+    async def test_cancelled_caller_does_not_abort_the_shutdown(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        caller = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)
+        caller.cancel()
+
+        await asyncio.sleep(0.1)
+        assert finished == [True]
 
 
 if __name__ == "__main__":

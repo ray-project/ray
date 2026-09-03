@@ -1237,6 +1237,10 @@ class Replica:
         # requests are then rejected (the router retries them elsewhere).
         self._quiescing = False
 
+        # Tracks the in-progress graceful shutdown so repeated calls await the
+        # same one (see `perform_graceful_shutdown`).
+        self._graceful_shutdown_task: Optional[asyncio.Task] = None
+
         self._num_queued_requests = 0
         self._reserved_slots: Set[str] = set()
 
@@ -2198,6 +2202,23 @@ class Replica:
         await self._metrics_manager.shutdown()
 
     async def perform_graceful_shutdown(self):
+        """Shut down gracefully, at most once.
+
+        The controller re-issues the stop when it restarts, so this can be
+        called more than once for the same replica. Later calls must await the
+        first rather than run a second pass: the user's destructor only runs
+        once, so a second pass would skip it and report a clean shutdown while
+        the first is still inside `__del__`.
+        """
+        if self._graceful_shutdown_task is None:
+            self._graceful_shutdown_task = self._event_loop.create_task(
+                self._perform_graceful_shutdown()
+            )
+
+        # Shielded so a cancelled caller doesn't abort the shutdown itself.
+        await asyncio.shield(self._graceful_shutdown_task)
+
+    async def _perform_graceful_shutdown(self):
         self._shutting_down = True
 
         # Shutdown budget, mirroring the controller's force-kill deadline (see
