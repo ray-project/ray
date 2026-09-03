@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
+--find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \

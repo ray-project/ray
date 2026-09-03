@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
+--find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 about-time==4.2.1
     # via alive-progress
@@ -2136,6 +2137,7 @@ scipy==1.17.1 ; python_version >= "3.11"
     #   statsforecast
     #   statsmodels
     #   torch-geometric
+    #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0
     # via -r python/requirements/test-requirements.txt
@@ -2385,6 +2387,8 @@ torch-geometric==2.5.3
 torch-optimizer==0.1.0
     # via mosaicml
 torch-scatter==2.1.2 ; sys_platform == "linux"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
+torch-sparse==0.6.18 ; sys_platform == "linux"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via

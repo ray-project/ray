@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
+--find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
@@ -5620,6 +5621,7 @@ scipy==1.17.1 \
     #   scikit-learn
     #   skops
     #   torch-geometric
+    #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0 \
     --hash=sha256:b511dce9d22fa31c8a3f1b0e69d15af9705aeeed066fb317bd64bec8b786b0b2 \
@@ -6096,6 +6098,11 @@ torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
     --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
     --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
     --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+torch-sparse==0.6.18+pt29cpu ; sys_platform == 'linux' \
+    --hash=sha256:e1434c9ebe78727576ddbd279b2322a81e97060c31ef97145f47db173d81ef93
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt

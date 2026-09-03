@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 --extra-index-url https://wheels.astral.sh/simple/cu128/
+--find-links https://data.pyg.org/whl/torch-2.9.0+cu128.html
 
 about-time==4.2.1 \
     --hash=sha256:6a538862d33ce67d997429d14998310e1dbfda6cb7d9bbfbf799c4709847fece \
@@ -7419,6 +7420,7 @@ scipy==1.15.3 \
     #   statsforecast
     #   statsmodels
     #   torch-geometric
+    #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0 \
     --hash=sha256:b511dce9d22fa31c8a3f1b0e69d15af9705aeeed066fb317bd64bec8b786b0b2 \
@@ -8151,6 +8153,11 @@ torch-scatter==2.1.2+cu.12.8.torch.2.9 \
     --hash=sha256:c835645d889838a09ca4db931783c9260fb5773c3aa569760aae5b887789ddea \
     --hash=sha256:d60df986a621bd3691e885e814391f38f771de72188a28d930955ff59a78ce83 \
     --hash=sha256:e6388f4e267cea521d04d10040fdb91fc49e47b0e1489f76764e26aecbcf7c48
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-gpu-requirements.txt
+torch-sparse==0.6.18+pt29cu128 \
+    --hash=sha256:af0a0ea9a902f868e0d40165e331291063f1ead5a0e07565b9d8f3ebe19f3f9b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt

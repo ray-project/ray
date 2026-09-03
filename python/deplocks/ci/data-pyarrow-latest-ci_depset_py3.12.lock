@@ -1,5 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
+--find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
@@ -4878,6 +4879,7 @@ scipy==1.17.1 \
     #   jaxlib
     #   scikit-learn
     #   torch-geometric
+    #   torch-sparse
 sentry-sdk==2.58.0 \
     --hash=sha256:688d1c704ddecf382ea3326f21a67453d4caa95592d722b7c780a36a9d23109e \
     --hash=sha256:c1144d947352d54e5b7daa63596d9f848adf684989c06c4f5a659f0c85a18f6f
@@ -5213,6 +5215,9 @@ torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
     --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
     --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
     --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+torch-sparse==0.6.18+pt29cpu ; sys_platform == 'linux' \
+    --hash=sha256:e1434c9ebe78727576ddbd279b2322a81e97060c31ef97145f47db173d81ef93
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 torchcodec==0.9.1 \
     --hash=sha256:0643c5e9c3a51fdafdea87935d5b0a38e99626c664f47a150482d77ab370a877 \
