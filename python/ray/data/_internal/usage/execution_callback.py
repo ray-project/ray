@@ -166,7 +166,7 @@ class UsageCallback(ExecutionCallback):
         from ray.data._internal.logical.operators.write_operator import Write
         root = self._logical_plan.dag
         if isinstance(root, Write):
-            consumption_api = util.anonymize_op_name(root)
+            consumption_api = self.anonymize_op_name(root)
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
