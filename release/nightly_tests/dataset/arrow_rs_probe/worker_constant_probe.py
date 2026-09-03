@@ -11,7 +11,12 @@ measures it directly instead of inferring it from release aggregates:
     actor pool must not starve the read task) reading ONE file at
     concurrency=1, so one worker does the read and pre-existing
     (workspace/platform) ray processes are excluded by a before-init /proc
-    census; the read worker is identified afterwards by USS growth;
+    census; the sampler keeps DISCOVERING new ray:: workers while it runs
+    (Ray may fork a fresh worker for the read instead of reusing a prestarted
+    one — a fixed-pid census would then report an idle worker's numbers as
+    the read worker's); the read worker is identified afterwards by USS
+    growth, with flags for late-spawned workers and read-1/read-2 landing on
+    different pids;
   - USS (Private_Clean + Private_Dirty from /proc/<pid>/smaps_rollup) of that
     worker is recorded idle-after-spawn, at 20 Hz through two consecutive
     reads (peak), and settled after each read — read #2 separates a one-time
@@ -62,23 +67,60 @@ def _uss_kb(pid):
         return None
 
 
-class _PeakSampler(threading.Thread):
-    """20 Hz USS sampler over a fixed pid set; keeps the per-pid peak."""
+# Rescan /proc for newly forked workers every N 50 ms ticks (0.5 s: worker
+# fork-to-first-task is slower than that, and full-scan cmdline reads at 20 Hz
+# would be needless load).
+_DISCOVER_EVERY_TICKS = 10
 
-    def __init__(self, pids):
+
+class _WorkerSampler(threading.Thread):
+    """20 Hz USS sampler over ray:: workers that discovers new ones as they spawn.
+
+    The read task is not guaranteed to land on a prestarted worker: Ray may
+    fork one after any one-shot census, and a fixed-pid sampler would then
+    attribute the read to an idle worker. Each newly seen pid gets its
+    first-seen USS as baseline; pids first seen after sampling started are
+    flagged `late` (their baseline already includes whatever the read did
+    before discovery, ≤0.5 s in).
+    """
+
+    def __init__(self, exclude_pids):
         super().__init__(daemon=True)
-        self.pids = list(pids)
-        self.peak = {p: 0 for p in self.pids}
+        self.exclude = set(exclude_pids)
+        self.baseline = {}  # pid -> first-seen USS KiB
+        self.peak = {}  # pid -> peak USS KiB
+        self.late = set()  # pids first seen after start()
         # NOT named _stop: threading.Thread.join() calls its own internal
         # self._stop() method, which an Event attribute would shadow.
         self._halt = threading.Event()
 
+    def census(self, late):
+        for p in _proc_pids():
+            if p in self.exclude or p in self.baseline:
+                continue
+            if not _cmdline(p).startswith("ray::"):
+                continue
+            v = _uss_kb(p)
+            if v is None:
+                continue
+            self.baseline[p] = v
+            self.peak[p] = v
+            if late:
+                self.late.add(p)
+
+    def snapshot(self):
+        return {p: _uss_kb(p) for p in list(self.baseline)}
+
     def run(self):
+        tick = 0
         while not self._halt.is_set():
-            for p in self.pids:
+            if tick % _DISCOVER_EVERY_TICKS == 0:
+                self.census(late=True)
+            for p in list(self.peak):
                 v = _uss_kb(p)
                 if v is not None and v > self.peak[p]:
                     self.peak[p] = v
+            tick += 1
             time.sleep(0.05)
 
     def stop(self):
@@ -106,19 +148,14 @@ def run_cell_body(arm, path):
     if want_rs:
         import ray_data_arrow_rs  # noqa: F401  fail loudly if crate absent
 
-    # Warm the pool, then census OUR cluster's workers (new ray:: pids only).
+    # Warm the pool, census OUR cluster's workers (new ray:: pids only), then
+    # keep the sampler discovering workers forked later.
     ray.get(ray.remote(lambda: os.getpid()).remote())
     time.sleep(2)
-    workers = [
-        p
-        for p in _proc_pids()
-        if p not in before_init and _cmdline(p).startswith("ray::")
-    ]
-    if not workers:
+    sampler = _WorkerSampler(before_init)
+    sampler.census(late=False)
+    if not sampler.baseline:
         raise RuntimeError("no worker found in the fresh local cluster")
-    idle_uss = {p: _uss_kb(p) for p in workers}
-
-    sampler = _PeakSampler(workers)
     sampler.start()
 
     def one_read():
@@ -130,24 +167,43 @@ def run_cell_body(arm, path):
 
     rows1 = one_read()
     time.sleep(2)  # settle before the after-read floor
-    after1 = {p: _uss_kb(p) for p in workers}
+    after1 = sampler.snapshot()
     rows2 = one_read()
     time.sleep(2)
-    after2 = {p: _uss_kb(p) for p in workers}
+    sampler.census(late=True)  # catch a worker forked at the tail of read 2
+    after2 = sampler.snapshot()
     sampler.stop()
 
-    # The read worker is the one that grew; report it (max after2 delta).
-    rw = max(workers, key=lambda p: (after2[p] or 0) - (idle_uss[p] or 0))
+    idle_uss = sampler.baseline
+
+    def _delta(snap, p):
+        v = snap.get(p)
+        # Not yet discovered at that snapshot (or /proc read failed) = no
+        # observed growth, not negative growth.
+        return 0 if v is None else v - idle_uss[p]
+
+    # The read worker is the one that grew most over the whole cell. Attribute
+    # each read separately too: if read 1 and read 2 landed on different pids,
+    # one pid's after1/after2 deltas would silently mix the two reads.
+    rw = max(idle_uss, key=lambda p: _delta(after2, p))
+    grower1 = max(idle_uss, key=lambda p: _delta(after1, p))
+    grower2 = max(idle_uss, key=lambda p: _delta(after2, p) - _delta(after1, p))
     result = {
         "arm": arm,
         "rows_read": rows1,
         "rows_read_2": rows2,
         "worker_pid": rw,
-        "idle_uss_mb": round((idle_uss[rw] or 0) / 1024, 1),
+        "idle_uss_mb": round(idle_uss[rw] / 1024, 1),
         "peak_uss_mb": round(sampler.peak[rw] / 1024, 1),
-        "after_read1_uss_mb": round((after1[rw] or 0) / 1024, 1),
-        "after_read2_uss_mb": round((after2[rw] or 0) / 1024, 1),
-        "n_workers_seen": len(workers),
+        "after_read1_uss_mb": round((after1.get(rw) or idle_uss[rw]) / 1024, 1),
+        "after_read2_uss_mb": round((after2.get(rw) or idle_uss[rw]) / 1024, 1),
+        "n_workers_seen": len(idle_uss),
+        # True = worker first seen after sampling began; its idle baseline may
+        # already include read work (constant would read low).
+        "read_worker_late_spawn": rw in sampler.late,
+        # False = the two reads grew different pids; after1/after2 deltas on
+        # rw then do NOT mean "read-1 floor / read-2 floor" for one worker.
+        "reads_on_same_worker": grower1 == grower2 == rw,
     }
     print("CELLRESULT " + json.dumps(result), flush=True)
     ray.shutdown()
