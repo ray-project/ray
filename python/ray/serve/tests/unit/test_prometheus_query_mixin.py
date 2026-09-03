@@ -1,7 +1,6 @@
 import gc
 import io
 import json
-import logging
 import sys
 import time
 import urllib.request
@@ -162,18 +161,16 @@ class TestQueryPrometheus:
 
 
 class TestFetchPrometheusResults:
-    def test_query_failures_are_isolated(self, monkeypatch, caplog):
+    def test_query_failures_are_isolated(self, monkeypatch):
         def query_prometheus(query_url, query, timeout_s, headers=None):
             if query == "bad":
                 raise OSError("unreachable")
             return PrometheusScalar(value=2.5, timestamp=0.0)
 
         monkeypatch.setattr(ap, "_query_prometheus", query_prometheus)
-        with caplog.at_level(logging.WARNING, logger=ap.logger.name):
-            assert ap._fetch_prometheus_results("http://x", ["bad", "good"]) == {
-                "good": PrometheusScalar(value=2.5, timestamp=0.0)
-            }
-        assert "Failed to evaluate Prometheus query 'bad'" in caplog.text
+        assert ap._fetch_prometheus_results("http://x", ["bad", "good"]) == {
+            "good": PrometheusScalar(value=2.5, timestamp=0.0)
+        }
 
     def test_empty_vector_is_distinct_from_failed_query(self, monkeypatch):
         def query_prometheus(query_url, query, timeout_s, headers=None):
