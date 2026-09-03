@@ -161,79 +161,6 @@ class PoolTaskError(Exception):
         self.underlying = underlying
 
 
-class _LegacyActorSet:
-    """Compatibility adapter for fixed pools with advanced actor options."""
-
-    def __init__(
-        self,
-        create_actor: Callable[[], Any],
-        size: int,
-        maxtasksperchild: int,
-    ):
-        self._create_actor = create_actor
-        self._maxtasksperchild = maxtasksperchild
-        self._actors = []
-        self._deletion_refs = []
-        self._current_index = 0
-        try:
-            for _ in range(size):
-                self._actors.append((create_actor(), 0))
-            ray.get([actor.ping.remote() for actor, _ in self._actors])
-        except BaseException:
-            for actor, _ in self._actors:
-                try:
-                    ray.kill(actor)
-                except BaseException:
-                    logger.exception(
-                        "Failed to clean up a Pool actor after construction failed"
-                    )
-            raise
-
-    @property
-    def max_size(self) -> int:
-        return len(self._actors)
-
-    def submit(self, func: Callable, batch: Iterable) -> ray.ObjectRef:
-        if self._current_index == self.max_size - 1:
-            self._current_index = 0
-        else:
-            self._current_index += 1
-        actor, count = self._actors[self._current_index]
-        object_ref = actor.run_batch.remote(func, batch)
-        count += 1
-        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
-        if count == self._maxtasksperchild:
-            self._stop_actor(actor)
-            actor, count = self._create_actor(), 0
-        self._actors[self._current_index] = (actor, count)
-        return object_ref
-
-    def close(self) -> None:
-        for actor, _ in self._actors:
-            self._stop_actor(actor)
-
-    def terminate(self) -> None:
-        _kill_all_actors(actor for actor, _ in self._actors)
-
-    def join(self) -> None:
-        self._wait_for_stopping_actors()
-
-    def _wait_for_stopping_actors(self, timeout=None) -> None:
-        if not self._deletion_refs:
-            return
-        if timeout is not None:
-            timeout = float(timeout)
-        _, self._deletion_refs = ray.wait(
-            self._deletion_refs,
-            num_returns=len(self._deletion_refs),
-            timeout=timeout,
-        )
-
-    def _stop_actor(self, actor) -> None:
-        self._wait_for_stopping_actors(timeout=0.0)
-        self._deletion_refs.append(actor.__ray_terminate__.remote())
-
-
 class _ActorSlotState(Enum):
     """Lifecycle of one bounded actor slot.
 
@@ -821,6 +748,79 @@ def _kill_all_actors(actors: Iterable[Any]) -> None:
                 first_error = error
     if first_error is not None:
         raise first_error
+
+
+class _LegacyActorSet:
+    """Compatibility adapter for fixed pools with advanced actor options."""
+
+    def __init__(
+        self,
+        create_actor: Callable[[], Any],
+        size: int,
+        maxtasksperchild: int,
+    ):
+        self._create_actor = create_actor
+        self._maxtasksperchild = maxtasksperchild
+        self._actors = []
+        self._deletion_refs = []
+        self._current_index = 0
+        try:
+            for _ in range(size):
+                self._actors.append((create_actor(), 0))
+            ray.get([actor.ping.remote() for actor, _ in self._actors])
+        except BaseException:
+            for actor, _ in self._actors:
+                try:
+                    ray.kill(actor)
+                except BaseException:
+                    logger.exception(
+                        "Failed to clean up a Pool actor after construction failed"
+                    )
+            raise
+
+    @property
+    def max_size(self) -> int:
+        return len(self._actors)
+
+    def submit(self, func: Callable, batch: Iterable) -> ray.ObjectRef:
+        if self._current_index == self.max_size - 1:
+            self._current_index = 0
+        else:
+            self._current_index += 1
+        actor, count = self._actors[self._current_index]
+        object_ref = actor.run_batch.remote(func, batch)
+        count += 1
+        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
+        if count == self._maxtasksperchild:
+            self._stop_actor(actor)
+            actor, count = self._create_actor(), 0
+        self._actors[self._current_index] = (actor, count)
+        return object_ref
+
+    def close(self) -> None:
+        for actor, _ in self._actors:
+            self._stop_actor(actor)
+
+    def terminate(self) -> None:
+        _kill_all_actors(actor for actor, _ in self._actors)
+
+    def join(self) -> None:
+        self._wait_for_stopping_actors()
+
+    def _wait_for_stopping_actors(self, timeout=None) -> None:
+        if not self._deletion_refs:
+            return
+        if timeout is not None:
+            timeout = float(timeout)
+        _, self._deletion_refs = ray.wait(
+            self._deletion_refs,
+            num_returns=len(self._deletion_refs),
+            timeout=timeout,
+        )
+
+    def _stop_actor(self, actor) -> None:
+        self._wait_for_stopping_actors(timeout=0.0)
+        self._deletion_refs.append(actor.__ray_terminate__.remote())
 
 
 @dataclass(frozen=True)
