@@ -283,9 +283,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             context.command_prefix += ["cd", shlex.quote(str(local_dir)), "&&"]
         else:
             # Include '/d' incase temp folder is on different drive than Ray install.
-            # cmd.exe has no escape character, but a quote is illegal in a Windows
-            # path, so quoting alone hides any space or & from its parser.
-            context.command_prefix += ["cd", "/d", f'"{local_dir}"', "&&"]
+            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)
 
     @contextmanager
