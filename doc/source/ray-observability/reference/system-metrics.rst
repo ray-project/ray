@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference table of the system metrics Ray exports for tasks, actors, resources, and hardware utilization, with semantics and consistency guarantees.
+
 .. _system-metrics:
 
 System Metrics

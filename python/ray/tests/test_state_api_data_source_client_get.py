@@ -70,7 +70,13 @@ def state_source_client(gcs_address):
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)
-    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
+    node = ray._private.worker.global_worker.node
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel,
+        gcs_client=gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
+    )
     return client
 
 
@@ -1140,7 +1146,14 @@ def test_get_id_not_found(shutdown_only):
 @patch.object(
     StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
-async def test_state_data_source_client_get_all_task_info_no_early_return():
+async def test_state_data_source_client_get_all_task_info_no_early_return(monkeypatch):
+    # Force the GCS read path. get_all_task_info routes on the module-level constant
+    # _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD, computed once at import from
+    # ray._config.enable_task_events_to_dashboard_head(), so patch the constant.
+    monkeypatch.setattr(
+        "ray.util.state.state_manager._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
+    )
+
     #  Setup
     mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
 

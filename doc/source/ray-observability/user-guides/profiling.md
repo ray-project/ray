@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray applications for CPU, memory, and GPU bottlenecks using py-spy, cProfile, memray, and the PyTorch profiler from the dashboard."
+---
+
 (profiling)=
 # Profiling
 Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
@@ -17,7 +23,7 @@ If Ray doesn't work with certain profiling tools, try running them without Ray t
 (profiling-enabling)=
 ## Enabling dashboard profiling
 
-The Ray Dashboard's built-in profiling features (CPU flame graphs, stack traces, and memory profiling) are disabled by default for security reasons. These endpoints trigger profiling work on Ray workers on demand and return the results. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to reach these endpoints from a browser.
+The Ray dashboard's built-in profiling features (CPU flame graphs, stack traces, and memory profiling) are disabled by default for security reasons. These endpoints trigger profiling work on Ray workers on demand and return the results. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to reach these endpoints from a browser.
 
 To enable dashboard profiling, set the following environment variable on the Ray head node before starting Ray:
 
@@ -29,13 +35,59 @@ export RAY_DASHBOARD_ENABLE_PROFILING=1
 If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable {ref}`token authentication <token-auth>` when using profiling on an exposed dashboard.
 :::
 
+(profiling-defaults)=
+### Configuring profiling defaults
+
+Stack trace, CPU flame graph, and memory profile requests each accept several parameters. When a request omits a parameter, its value falls back to a cluster-wide default. Set the following environment variables on the Ray head node to change those defaults. An explicit query parameter always takes precedence.
+
+```{list-table}
+:header-rows: 1
+:widths: 45 40 15
+
+* - Environment variable
+  - Meaning
+  - Default
+* - `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT`
+  - Include native (C/C++) stack frames. Adds significant overhead. Only takes effect on Linux for stack traces and CPU profiling. Memory profiling honors it on every platform memray supports.
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT`
+  - Also profile child processes of the target (stack trace and CPU profiling).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_IDLE_DEFAULT`
+  - Include off-CPU or sleeping threads (CPU profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT`
+  - Report memory leaks instead of peak usage (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT`
+  - Record `pymalloc` allocations (memory profiling only).
+  - `0`
+* - `RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT`
+  - Duration in seconds for CPU profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `5`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT`
+  - Duration in seconds for memory profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
+  - `10`
+* - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
+  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so Ray caps it rather than leaving it open-ended. Raise or lower it per cluster. The minimum is always 1 second. An explicit `duration` query value above this maximum returns HTTP 400.
+  - `60`
+* - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
+  - Output format for CPU profiling. One of `flamegraph`, `raw`, or `speedscope`.
+  - `flamegraph`
+* - `RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT`
+  - Output format for memory profiling. One of `flamegraph` or `table`.
+  - `flamegraph`
+```
+
+For example, to make native frames the default for stack traces across the cluster, set `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` on the head node. Enable it only when sampling the Python layer alone isn't enough, because native frames significantly increase profiling overhead.
+
 (profiling-cpu)=
 ## CPU profiling
 Profile the CPU usage for Driver and Worker processes. This helps you understand the CPU usage by different processes and debug unexpectedly high or low usage.
 
 (profiling-pyspy)=
 ### py-spy
-[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. Ray Dashboard has native integration with pyspy:
+[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. Ray dashboard has native integration with pyspy:
 
 - It lets you visualize what your Python program is spending time on without restarting the program or modifying the code in any way.
 - It dumps the stacktrace of the running process so that you can see what the process is doing at a certain time. It is useful when programs hangs.
@@ -47,7 +99,7 @@ You may run into permission errors when using py-spy in the docker containers. T
 - if you are a KubeRay user, follow the {ref}`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
 :::
 
-Here are the {ref}`steps to use py-spy with Ray and Ray Dashboard <observability-debug-hangs>`.
+Here are the {ref}`steps to use py-spy with Ray and Ray dashboard <observability-debug-hangs>`.
 
 (profiling-cprofile)=
 ### cProfile
@@ -65,8 +117,8 @@ memray is a memory profiler for Python. It can track memory allocations in Pytho
 
 Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <memray-profiling>`.
 
-#### Ray Dashboard View
-You can now do memory profiling for Ray Driver or Worker processes in the Ray Dashboard, by clicking on the "Memory profiling” actions for active Worker processes, Tasks, Actors, and a Job’s driver process.
+#### Ray dashboard view
+You can now do memory profiling for Ray Driver or Worker processes in the Ray dashboard, by clicking on the "Memory profiling” actions for active Worker processes, Tasks, Actors, and a Job’s driver process.
 
 ![memory profiling action](../images/memory-profiling-dashboard-view.png)
 
@@ -170,7 +222,7 @@ ray.get(ray_actor.run.remote())
 (profiling-result)=
 #### Profiling result
 
-Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
+Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray dashboard <dash-logs-view>`.
 
 ![Nsight System Profiler folder](../images/nsight-profiler-folder.png)
 
@@ -187,10 +239,10 @@ The best practice is to only specify the filename in output option.
 
 (profiling-tpu)=
 ## TPU profiling
-For TPU workloads, you can use the JAX profiler. Ray provides integration for dynamically triggering JAX profiling and viewing the traces in TensorBoard. For a complete guide on how to profile JAX on TPUs on Kubernetes, see {ref}`jax-tpu-profiling`.
+Profile TPU workloads with the JAX profiler. Trigger a JAX profile dynamically through the Ray dashboard, then view the trace in TensorBoard. For the full walkthrough on Kubernetes, see {ref}`jax-tpu-profiling`.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline
 Ray Timeline profiles the execution time of Ray Tasks and Actors. This helps you analyze performance, identify the stragglers, and understand the distribution of workloads.
 
-Open your Ray Job in Ray Dashboard and follow the {ref}`instructions to download and visualize the trace files <dashboard-timeline>` generated by Ray Timeline.
+Open your Ray Job in Ray dashboard and follow the {ref}`instructions to download and visualize the trace files <dashboard-timeline>` generated by Ray Timeline.

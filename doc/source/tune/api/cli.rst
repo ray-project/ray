@@ -1,3 +1,6 @@
+.. meta::
+   :description: Experimental tune CLI for listing, inspecting, and managing Ray Tune experiments from the command line.
+
 Tune CLI (Experimental)
 =======================
 

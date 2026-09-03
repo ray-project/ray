@@ -1,4 +1,5 @@
 """Unit tests for RDTManager."""
+import logging
 import re
 import sys
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from ray.experimental import (
     TensorTransportMetadata,
     register_tensor_transport,
 )
-from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta
+from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta, RDTSource
 from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 
 _BACKEND_NAME = "TEST_PIPELINE"
@@ -48,6 +49,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
     fail_on_wait: set = set()
     wait_delay: float = 0
     deleted_requests: set = set()
+    cleanup_should_fail = False
 
     def tensor_transport_backend(self) -> str:
         return _BACKEND_NAME
@@ -98,7 +100,8 @@ class _PipelineCheckingTransport(TensorTransportManager):
         pass
 
     def garbage_collect(self, obj_id, meta, tensors):
-        pass
+        if self.__class__.cleanup_should_fail:
+            raise RuntimeError("cleanup failed")
 
     def abort_transport(self, obj_id, comm_meta):
         pass
@@ -172,6 +175,7 @@ def clear_call_log():
     _PipelineCheckingTransport.fail_on_wait.clear()
     _PipelineCheckingTransport.wait_delay = 0
     _PipelineCheckingTransport.deleted_requests.clear()
+    _PipelineCheckingTransport.cleanup_should_fail = False
 
 
 def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTManager:
@@ -187,16 +191,29 @@ def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTMa
         manager.set_rdt_metadata(
             obj_id,
             RDTMeta(
-                src_actor=None,
+                src_actor=RDTSource.DRIVER,
                 tensor_transport_backend=backend,
                 tensor_transport_meta=meta,
                 sent_dest_actors=set(),
                 sent_to_src_actor_and_others_warned=False,
                 target_buffers=None,
+                target_device=None,
             ),
         )
 
     return manager
+
+
+def _add_primary_object(manager: RDTManager, obj_id: str):
+    tensor = object()
+    manager.rdt_store.add_object(obj_id, [tensor], is_primary=True)
+    return tensor
+
+
+def _use_manager_as_global_worker_rdt_manager(monkeypatch, manager: RDTManager):
+    from ray._private.worker import global_worker
+
+    monkeypatch.setattr(global_worker, "_rdt_manager", manager)
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +282,31 @@ def test_empty_object_list_returns_empty_dict():
 
     assert result == {}
     assert _PipelineCheckingTransport.call_log == []
+
+
+def test_free_rdt_object_handles_transport_failure(monkeypatch, caplog):
+    """Transport cleanup failures must not escape the free callback."""
+    from ray.experimental.rdt.rdt_store import __ray_free__
+
+    object_id = "cleanup_failure"
+    manager = _build_manager([object_id])
+    tensor = _add_primary_object(manager, object_id)
+    _use_manager_as_global_worker_rdt_manager(monkeypatch, manager)
+    _PipelineCheckingTransport.cleanup_should_fail = True
+    rdt_meta = manager.get_rdt_metadata(object_id)
+    assert rdt_meta is not None
+    meta = rdt_meta.tensor_transport_meta
+    assert meta is not None
+
+    with caplog.at_level(logging.ERROR, logger="ray.experimental.rdt.rdt_store"):
+        __ray_free__(None, object_id, _BACKEND_NAME, meta)
+
+    # Retrying cleanup after the object has been removed is a no-op.
+    __ray_free__(None, object_id, _BACKEND_NAME, meta)
+
+    assert "Failed to garbage collect RDT object" in caplog.text
+    assert not manager.rdt_store.has_object(object_id)
+    manager.rdt_store.wait_tensor_freed(tensor, timeout=0)
 
 
 def test_two_sided_transport_raises_on_fetch_and_get_rdt_objects():

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Configure persistent storage for Ray Train: cloud object storage, shared filesystems, local storage, fsspec, and S3-compatible backends.
+
 .. _persistent-storage-guide:
 
 .. _train-log-dir:
@@ -161,6 +164,14 @@ Specify the shared storage location as the :class:`RunConfig(storage_path) <ray.
                     name="experiment_name",
                 )
             )
+
+        .. warning::
+
+            PyArrow HDFS embeds a JVM in the Python process. On Linux, its signal
+            handling can conflict with Ray and cause the process to exit with ``SIGSEGV``
+            or ``SIGABRT`` and create an ``hs_err_pid*.log`` file. See
+            :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot
+            signal-chaining configuration and the last-resort fallback.
 
 In the mounted example above, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 

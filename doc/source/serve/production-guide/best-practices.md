@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Production best practices for Ray Serve, covering Serve CLI usage, client-side HTTP request handling, and load shedding."
+---
+
 (serve-best-practices)=
 
 # Best practices in production

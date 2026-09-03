@@ -7,4 +7,5 @@ build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - RAYCI_DISABLE_JAVA
   - HOSTTYPE
+  - RAYCI_IMAGE_PIP_INDEX_URL
 dockerfile: ci/docker/manylinux.Dockerfile
