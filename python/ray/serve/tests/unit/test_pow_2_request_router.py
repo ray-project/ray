@@ -1318,9 +1318,9 @@ class TestModelMultiplexing:
         ]
 
         # Ensure that all tasks are routed to r2 and r3 right away, since r1 is busy.
-        # The deadline is what proves "right away": falling back only after the 1s
-        # matching window expires would take far longer than this.
-        done, _ = await asyncio.wait(tasks, timeout=1)
+        # The deadline is what proves "right away": it sits below the 1s floor of
+        # the matching window, so a request that waited that out cannot make it.
+        done, _ = await asyncio.wait(tasks, timeout=0.5)
         assert len(done) == 100
         for task in done:
             assert task.result() in {r2, r3}
