@@ -391,8 +391,14 @@ class ReadFiles(
         )
 
         if not partition_cols:
-            new_scanner, _residual = self.scanner.push_filters(predicate_expr)
-            return replace(self, scanner=new_scanner)
+            new_scanner, residual = self.scanner.push_filters(predicate_expr)
+            new_op = replace(self, scanner=new_scanner)
+            if residual is None:
+                return new_op
+            # Our caller replaces the whole ``Filter`` -> ``ReadFiles`` subtree
+            # with what we return, so the leftover needs a ``Filter`` of its own
+            # or it never runs.
+            return Filter(predicate_expr=residual, input_dependencies=[new_op])
 
         split = _split_predicate_by_columns(predicate_expr, partition_cols)
 
@@ -403,14 +409,19 @@ class ReadFiles(
             return self
 
         new_scanner = self.scanner
+        residual = split.residual_predicate
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
         if split.data_predicate is not None:
-            new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
+            new_scanner, declined = new_scanner.push_filters(split.data_predicate)
+            # The scanner may take less than it was offered, exactly as in the
+            # no-partition-columns branch above.
+            if declined is not None:
+                residual = declined if residual is None else residual & declined
 
         new_op = replace(self, scanner=new_scanner)
 
-        if split.residual_predicate is None:
+        if residual is None:
             return new_op
 
         # Residual conjuncts can't be pushed through either ``push_filters``
@@ -419,9 +430,7 @@ class ReadFiles(
         # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
         # the splittable parts and silently drop the residual — letting
         # rows through that the original predicate would have rejected.
-        return Filter(
-            predicate_expr=split.residual_predicate, input_dependencies=[new_op]
-        )
+        return Filter(predicate_expr=residual, input_dependencies=[new_op])
 
 
 @dataclass(frozen=True, repr=False, eq=False)

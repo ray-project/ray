@@ -563,14 +563,20 @@ def _read_datasource_v2(
 
     indexer = datasource._get_file_indexer()
 
-    # Sample a few files for schema inference. Listed again (cheaply) during
-    # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
-    if len(sample) == 0:
-        raise ValueError(
-            f"no files found under {datasource.paths!r}. Check the path and any "
-            "configured `partition_filter` or `file_extensions` filters."
-        )
+    # Stays ``None`` when the schema doesn't come from the files: then nothing is
+    # listed or opened here, so an empty table still reads and no partitioning is
+    # derived from paths.
+    sample = None
+    if datasource.schema_needs_file_sample:
+        # Sample a few files for schema inference. Listed again (cheaply) during
+        # execution inside the ListFiles op — no caching layer needed.
+        sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+        if len(sample) == 0:
+            raise ValueError(
+                f"no files found under {datasource.paths!r}. Check the path and any "
+                "configured `partition_filter` or `file_extensions` filters."
+            )
+
     schema = datasource.infer_schema(sample)
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
