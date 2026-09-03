@@ -129,5 +129,39 @@ def test_detect_idmap_missing_range(monkeypatch, tmp_path):
     assert detect_idmap() is None
 
 
+def test_detect_idmap_numeric_keyed_subgid(monkeypatch, tmp_path):
+    """A uid-keyed /etc/subgid resolves even when euid != egid.
+
+    Regression: /etc/subgid's numeric key is the uid, not the gid, so a purely
+    uid-keyed subgid file must be found using euid. _capable_node runs with
+    euid=1000, egid=1001, so a lookup keyed by egid would miss this entry.
+    """
+    monkeypatch.delenv("RAY_SANDBOX_SINGLE_UID", raising=False)
+    _capable_node(monkeypatch, tmp_path)
+    (tmp_path / "subuid").write_text("1000:100000:65536\n")
+    (tmp_path / "subgid").write_text("1000:200000:65536\n")
+    assert detect_idmap() == IdMap(
+        euid=1000,
+        egid=1001,
+        subuid_base=100000,
+        subuid_count=65536,
+        subgid_base=200000,
+        subgid_count=65536,
+    )
+
+
+def test_probe_sudo_mapfile_missing_unshare(monkeypatch):
+    """A missing/unrunnable unshare yields None, not an unhandled OSError."""
+
+    def _no_unshare(*args, **kwargs):
+        raise FileNotFoundError("unshare")
+
+    monkeypatch.setattr(idmap_mod.subprocess, "Popen", _no_unshare)
+    assert (
+        idmap_mod._probe_sudo_mapfile(1000, 1000, (100000, 65536), (200000, 65536))
+        is None
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

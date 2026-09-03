@@ -180,12 +180,18 @@ def _probe_sudo_mapfile(
             subgid_count=gid_range[1],
             sudo_mapfile=sudo_mapfile,
         )
-        holder = subprocess.Popen(
-            ["unshare", "--user", "sleep", "5"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            holder = subprocess.Popen(
+                ["unshare", "--user", "sleep", "5"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            # unshare is missing or unrunnable: there is no throwaway namespace
+            # to probe with, so neither mapping method is usable here. Honor the
+            # Optional[bool] contract (None = neither) instead of propagating.
+            return None
         try:
             wait_for_userns(holder.pid)
             map_ids_into(holder.pid, candidate)
@@ -229,8 +235,11 @@ def detect_idmap() -> Optional[IdMap]:
         return None
     euid, egid = os.geteuid(), os.getegid()
     name = _user_name()
+    # Both /etc/subuid and /etc/subgid are keyed by the login name or the
+    # numeric *uid* (the shadow-utils convention) — subgid is not keyed by gid
+    # — so the numeric lookup key is euid for both files.
     uid_range = parse_subid_file("/etc/subuid", name, euid)
-    gid_range = parse_subid_file("/etc/subgid", name, egid)
+    gid_range = parse_subid_file("/etc/subgid", name, euid)
     if uid_range is None or gid_range is None:
         logger.warning(
             "/etc/subuid or /etc/subgid has no range of at least %d ids for "
