@@ -386,20 +386,22 @@ def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
-    num_blocks = 32
+    num_input_blocks = 32
+    num_output_partitions = 32
     num_rows = 320
+    ctx.default_hash_shuffle_parallelism = num_output_partitions
     # Keep the input in descending order so early blocks cover a different key
     # range from later blocks. Sampling every block should still produce balanced
     # range partitions.
     rows = [{"id": i} for i in reversed(range(num_rows))]
     result = (
-        ray.data.from_items(rows, override_num_blocks=num_blocks)
+        ray.data.from_items(rows, override_num_blocks=num_input_blocks)
         .sort("id")
         .materialize()
     )
 
     assert [row["id"] for row in result.iter_rows()] == list(range(num_rows))
-    assert result.num_blocks() == num_blocks
+    assert result.num_blocks() == num_output_partitions
     block_num_rows = result._block_num_rows()
     assert max(block_num_rows) - min(block_num_rows) <= 1
 
