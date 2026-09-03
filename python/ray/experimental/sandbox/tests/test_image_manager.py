@@ -280,5 +280,431 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+class _StubImageManager(ImageManager):
+    """ImageManager that skips pulling so spec construction is testable offline."""
+
+    def __init__(self, tmp_path):
+        super().__init__(images_dir=str(tmp_path))
+        self._fake_image_dir = str(tmp_path)
+
+    def pull_image(self, image, timeout_seconds=120.0):
+        return self._fake_image_dir
+
+    def get_image_config(self, image):
+        return {}
+
+
+def _sample_base_spec():
+    return {
+        "process": {"capabilities": {"bounding": ["CAP_KILL"]}},
+        "root": {},
+        "mounts": [],
+        "linux": {
+            "namespaces": [
+                {"type": "pid"},
+                {"type": "network"},
+                {"type": "mount"},
+            ]
+        },
+    }
+
+
+def test_create_oci_spec_sets_capabilities_exactly(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        capabilities=["CAP_CHOWN", "CAP_SETUID"],
+    )
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == [
+            "CAP_CHOWN",
+            "CAP_SETUID",
+        ]
+    # Inheritable and ambient are left alone (modern Docker behavior).
+    assert "inheritable" not in spec["process"]["capabilities"]
+    assert "ambient" not in spec["process"]["capabilities"]
+
+
+def test_create_oci_spec_empty_capabilities_remove_all(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), capabilities=[]
+    )
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == []
+
+
+def test_create_oci_spec_default_capabilities_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+    assert spec["process"]["capabilities"] == {"bounding": ["CAP_KILL"]}
+
+
+def test_create_oci_spec_host_side_networking_drops_empty_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    for mode in ("host", "public"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} not in spec["linux"]["namespaces"]
+        assert {"type": "pid"} in spec["linux"]["namespaces"]
+
+
+def test_create_oci_spec_mounts_resolv_conf_source(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    source = tmp_path / "resolv.conf"
+    source.write_text("nameserver 8.8.8.8\n")
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        network="public",
+        resolv_conf_source=str(source),
+    )
+    (mount,) = [m for m in spec["mounts"] if m["destination"] == "/etc/resolv.conf"]
+    assert mount["source"] == str(source)
+    assert "ro" in mount["options"]
+
+    # No source, no mount.
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), network="public"
+    )
+    assert not any(m["destination"] == "/etc/resolv.conf" for m in spec["mounts"])
+
+
+def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network", "path": "/proc/1/ns/net"}]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    # A *pathed* network namespace is somebody's explicit choice; keep it.
+    assert spec["linux"]["namespaces"] == [
+        {"type": "network", "path": "/proc/1/ns/net"}
+    ]
+
+
+def test_create_oci_spec_tolerates_null_capability_set(tmp_path):
+    """A base_spec capability *set* (not just the dict) may be null."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = {"effective": None, "bounding": ["CAP_KILL"]}
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=base, capabilities=["CAP_CHOWN"]
+    )
+    assert spec["process"]["capabilities"]["effective"] == ["CAP_CHOWN"]
+    assert spec["process"]["capabilities"]["bounding"] == ["CAP_CHOWN"]
+
+
+def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):
+    """Malformed namespace entries are kept for runsc to reject, not dropped."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network"}, "pid", None]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    assert spec["linux"]["namespaces"] == ["pid", None]
+
+
+def test_create_oci_spec_workdir_path_drives_the_scratch_mount(tmp_path):
+    """The scratch bind exists iff a workdir_path is given; the process cwd
+    is independent of it."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path, exist_ok=True)
+
+    mounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=workdir_path,
+    )
+    assert any(m["destination"] == "/app" for m in mounted["mounts"])
+
+    unmounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=None,
+    )
+    assert not any(m["destination"] == "/app" for m in unmounted["mounts"])
+    assert unmounted["process"]["cwd"] == "/app"
+
+
+def test_create_oci_spec_tolerates_null_sections_in_base_spec(tmp_path):
+    """A caller-supplied base_spec may carry null capabilities/linux keys."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = None
+    base["linux"] = None
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=base,
+        capabilities=["CAP_CHOWN"],
+        network="host",
+    )
+    assert "CAP_CHOWN" in spec["process"]["capabilities"]["bounding"]
+    assert isinstance(spec["linux"], dict)
+
+
+def test_create_oci_spec_non_host_network_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    for mode in ("none", "sandbox"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} in spec["linux"]["namespaces"]
+        assert all(m["destination"] != "/etc/resolv.conf" for m in spec["mounts"])
+
+
+class _SpecCapturingManager(_StubImageManager):
+    """Captures create_oci_spec kwargs so prepare_oci_bundle's resolv policy
+    is testable without runsc."""
+
+    def __init__(self, tmp_path):
+        super().__init__(tmp_path)
+        self.spec_kwargs = None
+
+    def create_oci_spec(self, image, **kwargs):
+        self.spec_kwargs = kwargs
+        return {}
+
+
+def _prepare(mgr, root_dir, **kwargs):
+    mgr.prepare_oci_bundle(
+        root_dir=str(root_dir),
+        workdir_path=str(root_dir),
+        container_cwd="/",
+        image="fake:latest",
+        **kwargs,
+    )
+    return mgr.spec_kwargs["resolv_conf_source"]
+
+
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    assert source == os.path.join(str(tmp_path), "resolv.conf")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
+    for network in ("public", "host"):
+        mgr = _SpecCapturingManager(tmp_path)
+        source = _prepare(mgr, tmp_path, network=network, dns=["10.0.0.2"])
+        content = open(source, encoding="utf-8").read()
+        assert content == "nameserver 10.0.0.2\n"
+
+
+def test_prepare_oci_bundle_host_uses_host_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="host")
+    if os.path.exists("/etc/resolv.conf"):
+        assert source == "/etc/resolv.conf"
+    else:
+        assert source is None
+
+
+def test_prepare_oci_bundle_no_resolv_without_host_side_networking(tmp_path):
+    for network in ("none", "sandbox"):
+        mgr = _SpecCapturingManager(tmp_path)
+        assert _prepare(mgr, tmp_path, network=network) is None
+
+
+def test_registry_mirror_rewrites_docker_hub_only(monkeypatch):
+    """RAY_SANDBOX_REGISTRY_MIRROR reroutes Docker Hub pulls (with an
+    optional repository prefix, as ECR pull-through caches require) and
+    leaves every other registry untouched."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        apply_registry_mirror,
+    )
+
+    monkeypatch.delenv("RAY_SANDBOX_REGISTRY_MIRROR", raising=False)
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "registry-1.docker.io",
+        "library/python",
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "mirror.local:5000")
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "mirror.local:5000",
+        "library/python",
+    )
+
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR",
+        "123.dkr.ecr.us-east-2.amazonaws.com/dockerhub/",
+    )
+    assert apply_registry_mirror("registry-1.docker.io", "library/python") == (
+        "123.dkr.ecr.us-east-2.amazonaws.com",
+        "dockerhub/library/python",
+    )
+    # Non-Docker-Hub registries are never rewritten.
+    assert apply_registry_mirror("ghcr.io", "org/repo") == ("ghcr.io", "org/repo")
+
+    # An explicit scheme is honored (plain-HTTP in-cluster proxies) and
+    # flows through URL construction; https is stripped to the default.
+    from ray.experimental.sandbox._internal.image_utils import registry_base_url
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "http://mirror.local:5000")
+    registry, _ = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert registry == "http://mirror.local:5000"
+    assert registry_base_url(registry) == "http://mirror.local:5000"
+
+    monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", "https://mirror.local/dockerhub")
+    registry, repo = apply_registry_mirror("registry-1.docker.io", "library/python")
+    assert (registry, repo) == ("https://mirror.local", "dockerhub/library/python")
+    assert registry_base_url("plain.host") == "https://plain.host"
+
+
+def test_extract_tar_layer_preserves_mtimes(tmp_path):
+    """Archived mtimes survive extraction: apt inside the sandbox validates
+    its package lists with If-Modified-Since from the file mtime, so a
+    reset-to-extraction-time mtime makes mirrors answer 304 for stale
+    image-baked lists."""
+    import io
+    import os
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    archived_mtime = 1_600_000_000  # 2020-09-13, clearly not "now"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        dir_info = tarfile.TarInfo("etc")
+        dir_info.type = tarfile.DIRTYPE
+        dir_info.mode = 0o755  # TarInfo defaults to 0644; dir modes are honored now
+        dir_info.mtime = archived_mtime
+        tar.addfile(dir_info)
+        file_info = tarfile.TarInfo("etc/os-release")
+        data = b"ID=debian\n"
+        file_info.size = len(data)
+        file_info.mtime = archived_mtime
+        tar.addfile(file_info, io.BytesIO(data))
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert int(os.path.getmtime(dest / "etc" / "os-release")) == archived_mtime
+    assert int(os.path.getmtime(dest / "etc")) == archived_mtime
+
+
+def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
+    """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
+    and /tmp stays on the rootfs (readonly sandboxes get an explicit tmpfs
+    so it remains writable)."""
+    mgr = _StubImageManager(tmp_path)
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n")
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        hosts_source=str(hosts),
+        readonly=True,
+    )
+    mounts = {m["destination"]: m for m in spec["mounts"]}
+    assert mounts["/etc/hosts"]["source"] == str(hosts)
+    assert "rw" in mounts["/etc/hosts"]["options"]
+    assert mounts["/tmp"]["type"] == "tmpfs"
+    # The rootfs /tmp was seeded so runsc keeps it on the rootfs device —
+    # and is world-writable + sticky regardless of how it was extracted.
+    assert (tmp_path / "rootfs" / "tmp" / ".ray-sandbox-keep").exists()
+    import stat
+
+    mode = stat.S_IMODE((tmp_path / "rootfs" / "tmp").stat().st_mode)
+    assert mode == 0o1777
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=False,
+    )
+    dests = {m["destination"] for m in spec["mounts"]}
+    # Writable rootfs: /tmp is plain rootfs, same device — no tmpfs mount.
+    assert "/tmp" not in dests
+
+
+def test_prepare_oci_bundle_writes_hosts_file(tmp_path, monkeypatch):
+    import ray.experimental.sandbox.image_manager as image_manager_mod
+
+    # The default spec shells out to runsc; substitute a static one so this
+    # runs on hosts without gVisor.
+    monkeypatch.setattr(image_manager_mod, "get_default_oci_spec", _sample_base_spec)
+    mgr = _StubImageManager(tmp_path)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    mgr.prepare_oci_bundle(
+        root_dir=str(bundle),
+        workdir_path=None,
+        container_cwd="/",
+        image="fake:latest",
+    )
+    content = (bundle / "hosts").read_text()
+    assert "127.0.0.1\tlocalhost" in content
+    import json
+
+    spec = json.loads((bundle / "config.json").read_text())
+    dests = {m["destination"] for m in spec["mounts"]}
+    assert "/etc/hosts" in dests
+
+
+def test_extract_tar_layer_applies_directory_modes(tmp_path):
+    """Archived directory modes survive extraction: a 0755 root /tmp breaks
+    every non-root writer (apt-key first among them)."""
+    import io
+    import os
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo("tmp")
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o1777
+        tar.addfile(info)
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert stat.S_IMODE(os.stat(dest / "tmp").st_mode) == 0o1777
+
+
+def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
+    """Directory modes are applied after extraction, children first: tar
+    lists a directory before its contents, so applying a read-only archived
+    mode inline would break extracting the children."""
+    import io
+    import os
+    import stat
+    import tarfile
+
+    from ray.experimental.sandbox._internal.image_utils import extract_tar_layer
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        locked = tarfile.TarInfo("locked")
+        locked.type = tarfile.DIRTYPE
+        locked.mode = 0o500  # no write bit: inline chmod would break children
+        tar.addfile(locked)
+        inner = tarfile.TarInfo("locked/secret.txt")
+        data = b"contents"
+        inner.size = len(data)
+        inner.mode = 0o400
+        tar.addfile(inner, io.BytesIO(data))
+
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    extract_tar_layer(buf.getvalue(), str(dest))
+
+    assert (dest / "locked" / "secret.txt").read_bytes() == b"contents"
+    assert stat.S_IMODE(os.stat(dest / "locked").st_mode) == 0o500
+    # Restore writability so pytest can clean the tmp dir up.
+    os.chmod(dest / "locked", 0o700)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

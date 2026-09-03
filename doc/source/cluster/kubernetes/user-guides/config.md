@@ -25,12 +25,12 @@ This guide covers the salient features of `RayCluster` CR configuration.
 
 For reference, here is a condensed example of a `RayCluster` CR in yaml format.
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: raycluster-complete
 spec:
-  rayVersion: "2.3.0"
+  rayVersion: "2.56.1"
   enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
@@ -44,7 +44,7 @@ spec:
         spec: # Pod spec
             containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.3.0
+              image: rayproject/ray:2.56.1
               resources:
                 limits:
                   cpu: 14
@@ -184,7 +184,7 @@ The field `rayStartParams.resources` should only be used for custom resources. T
 ### The Ray head service.
 The KubeRay operator automatically configures a Kubernetes Service exposing the default ports for several services of the Ray head pod, including
 - Ray Client (default port 10001)
-- Ray Dashboard (default port 8265)
+- Ray dashboard (default port 8265)
 - Ray GCS server (default port 6379)
 - Ray Serve (default port 8000)
 - Ray Prometheus metrics (default port 8080)

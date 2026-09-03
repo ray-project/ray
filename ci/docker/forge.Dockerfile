@@ -5,15 +5,26 @@ FROM ubuntu:22.04
 ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
-  --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
   --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
-  --mount=type=bind,source=ci/install_pypi_proxy.sh,target=install_pypi_proxy.sh \
+  --mount=type=bind,source=ci/bazel_mirror_downloader.sh,target=bazel_mirror_downloader.sh \
 <<EOF
 #!/bin/bash
 
@@ -86,18 +97,15 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 # is to to make sure we can control version upgrades through code changes.
 uv pip install --system pip==25.0 cffi==1.16.0
 
-# The PyPI index proxy (ci/pypi_index_proxy.py), used when the CI package mirror is
-# reachable but only serves the path-prefixed byte cache: PyPI's own index pages name
-# files.pythonhosted.org for the artifacts, so an index URL alone reroutes the
-# metadata request and leaves the download on the origin. The proxy rewrites those
-# URLs. ci/pypi_proxy_profile.sh decides whether it is needed and starts it.
-#
-# It needs Python >=3.11 (asgi-cross-origin-protection) while this image's default
-# interpreter is deliberately 3.10 above and symlinked as python/python3, so install
-# a second interpreter for the proxy alone and keep it in its own venv. Nothing else
-# resolves through /opt/pypiproxy and the default python is left untouched.
-uv python install --install-dir /usr/local/python 3.12
-bash install_pypi_proxy.sh "$(uv python find --no-project 3.12)"
+# Point pip, uv and bazel at the CI package mirror's hosted PyPI index when it is
+# reachable: ci/pypi_proxy_profile.sh probes and decides per step (CI steps run
+# under `bash -elic`, a login shell, so profile.d covers every step). The bazel
+# downloader helper lives beside it in /etc/rayci because the hook runs at shell
+# start, before any checkout exists.
+mkdir -p /etc/rayci
+cp bazel_mirror_downloader.sh /etc/rayci/bazel_mirror_downloader.sh
+cp pypi_proxy_profile.sh /etc/profile.d/zz-rayci-pypi-proxy.sh
+chmod 0644 /etc/profile.d/zz-rayci-pypi-proxy.sh /etc/rayci/bazel_mirror_downloader.sh
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.

@@ -61,5 +61,6 @@ For regression checks, compare a PR preview against `/en/master` — it's the do
 
 - `/lint` — run linters on modified files.
 - `/fetch-buildkite-logs` — pull build logs for CI failures.
+- `/backport-docs` — cherry-pick merged docs onto the release branch so they appear on `docs.ray.io/en/latest`.
 
 See top-level `.claude/CLAUDE.md` for the full skill index.
