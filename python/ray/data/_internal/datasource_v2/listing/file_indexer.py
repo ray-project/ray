@@ -36,6 +36,20 @@ class FileIndexer(ABC):
         """The file chunker that this indexer uses."""
         ...
 
+    def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
+        """An equivalent indexer that emits each file exactly once, or ``None``.
+
+        Metadata-only consumers -- currently the ``PushdownCountFiles`` rule --
+        need a listing where one file means one manifest row and listing itself
+        does no per-file IO. An indexer that chunks files, bin-packs them, or
+        reads metadata while listing cannot provide that, and would over-count.
+
+        Default ``None`` means "cannot provide it", so such consumers decline
+        and fall back to a real read. Fail-closed on purpose: a wrong ``count()``
+        is silent, a declined optimization is merely slower.
+        """
+        return None
+
     @abstractmethod
     def list_files(
         self,

@@ -59,6 +59,21 @@ class ArrowFileScanner(
             return set()
         return set(self.partitioning.field_names or [])
 
+    def metadata_row_count_is_exact(self) -> bool:
+        """``True`` when no row-reducing pushdown is set on this scanner.
+
+        A Parquet footer's ``num_rows`` is the file's total, with nothing in it
+        to say how many rows survive a filter, so for this scanner the question
+        collapses to "is anything reducing rows?". Column projection is
+        deliberately not consulted: it changes the width of the output, never
+        the row count.
+        """
+        return (
+            self.predicate is None
+            and self.partition_predicate is None
+            and self.limit is None
+        )
+
     def read_schema(self) -> pa.Schema:
         """Return the logical schema after column pruning.
 
