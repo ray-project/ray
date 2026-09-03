@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
@@ -39,8 +40,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   /// \param io_context The io context for the callback.
   /// \param remote_node_id The node id connects to.
   /// \param message_processor The callback for the message received.
-  /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
-  ///     the environment.
   /// \param max_batch_size The maximum number of messages in a batch.
   /// \param max_batch_delay_ms The maximum delay time to wait before sending a batch.
   RaySyncerBidiReactorBase(
@@ -134,25 +133,32 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   instrumented_io_context &io_context_;
 
  private:
-  /// Handle the updates sent from the remote node.
+  /// Apply everything read from the remote node since the last drain.
   ///
-  /// \param message_batch The message batch received.
-  void ReceiveUpdate(std::shared_ptr<RaySyncMessageBatch> message_batch) {
-    RAY_CHECK(message_batch->messages_size() > 0);
-
-    RAY_LOG(DEBUG) << "Receive message batch with messages_size="
-                   << message_batch->messages_size();
-
-    for (const auto &message : message_batch->messages()) {
+  /// Reads are re-armed in OnReadDone without waiting for this, so when the io
+  /// context is busy one drain applies every message that arrived in the meantime,
+  /// at most one per (node, message type) since newer versions overwrite older ones
+  /// in received_buffer_.
+  void DrainReceived() {
+    ReceivedBuffer buffer;
+    size_t reads = 0;
+    {
+      absl::MutexLock lock(&received_mutex_);
+      buffer.swap(received_buffer_);
+      reads = received_reads_;
+      received_reads_ = 0;
+      drain_scheduled_ = false;
+    }
+    if (on_rpc_completion_) {
+      for (; reads > 0; --reads) {
+        on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
+      }
+    }
+    for (auto &[key, message] : buffer) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
-      RAY_LOG(DEBUG) << "Receive update: "
-                     << " message_type=" << message.message_type()
-                     << ", message_version=" << message.version()
-                     << ", local_message_version="
-                     << node_versions[message.message_type()];
       if (node_versions[message.message_type()] < message.version()) {
         node_versions[message.message_type()] = message.version();
-        message_processor_(std::make_shared<RaySyncMessage>(message));
+        message_processor_(std::make_shared<RaySyncMessage>(std::move(message)));
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
             << "Drop message received from " << NodeID::FromBinary(message.node_id())
@@ -231,30 +237,54 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   void OnReadDone(bool ok) override {
-    io_context_.dispatch(
-        [this, ok, msg_batch = std::move(receiving_message_batch_)]() mutable {
-          // NOTE: According to the grpc callback streaming api best practices 3.)
-          // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
-          // The client must read all incoming data i.e. until OnReadDone(ok = false)
-          // happens for OnDone to be called. Hence even if disconnected_ is true, we
-          // still need to allow OnReadDone to repeatedly execute until StartReadData has
-          // consumed all the data for OnDone to be called.
-          if (!ok) {
+    // NOTE: According to the grpc callback streaming api best practices 3.)
+    // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
+    // The client must read all incoming data i.e. until OnReadDone(ok = false)
+    // happens for OnDone to be called. Hence even if disconnected_ is true, we
+    // still need to allow OnReadDone to repeatedly execute until StartReadData has
+    // consumed all the data for OnDone to be called.
+    if (!ok) {
+      io_context_.dispatch(
+          [this]() {
             RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
-            return;
-          }
+          },
+          "");
+      return;
+    }
 
-          // Successful rpc completion callback.
-          RAY_CHECK(!msg_batch->messages().empty());
-          if (on_rpc_completion_) {
-            on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
-          }
-          ReceiveUpdate(std::move(msg_batch));
-          StartPull();
-        },
-        "");
+    // Runs on the gRPC thread. The batch is merged into received_buffer_ and the
+    // next read is armed right away, so delivery from the remote never waits on the
+    // io context; applying is deferred to one DrainReceived per busy period.
+    RAY_CHECK(!receiving_message_batch_->messages().empty());
+    bool schedule_drain = false;
+    {
+      absl::MutexLock lock(&received_mutex_);
+      for (auto &message : *receiving_message_batch_->mutable_messages()) {
+        auto key = std::make_pair(message.node_id(), message.message_type());
+        auto it = received_buffer_.find(key);
+        if (it == received_buffer_.end()) {
+          received_buffer_.emplace(std::move(key), std::move(message));
+        } else if (it->second.version() < message.version()) {
+          it->second = std::move(message);
+        }
+      }
+      ++received_reads_;
+      schedule_drain = !drain_scheduled_;
+      drain_scheduled_ = true;
+    }
+    StartPull();
+    if (schedule_drain) {
+      io_context_.dispatch(
+          [this, disconnected = IsDisconnected()]() {
+            if (*disconnected) {
+              return;
+            }
+            DrainReceived();
+          },
+          "RaySyncer.DrainReceived");
+    }
   }
 
   /// grpc requests for sending and receiving
@@ -265,6 +295,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseReadsAreNotGatedByProcessing);
 
   friend struct SyncerServerTest;
 
@@ -295,6 +326,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions_;
 
   bool sending_ = false;
+
+  /// Messages read from the remote but not yet applied. Written by the gRPC thread in
+  /// OnReadDone, taken by DrainReceived on the io context. Keyed like
+  /// sending_buffer_, so it holds at most one message per (node, message type).
+  using ReceivedBuffer =
+      absl::flat_hash_map<std::pair<std::string, MessageType>, RaySyncMessage>;
+  absl::Mutex received_mutex_;
+  ReceivedBuffer received_buffer_ ABSL_GUARDED_BY(received_mutex_);
+  size_t received_reads_ ABSL_GUARDED_BY(received_mutex_) = 0;
+  bool drain_scheduled_ ABSL_GUARDED_BY(received_mutex_) = false;
 
   /// Batch configuration
   const size_t max_batch_size_;
