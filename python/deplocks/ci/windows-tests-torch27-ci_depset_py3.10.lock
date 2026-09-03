@@ -1,6 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
---find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
@@ -4995,9 +4994,7 @@ scipy==1.15.3 \
     #   mlflow
     #   scikit-learn
     #   skops
-    #   torch-cluster
     #   torch-geometric
-    #   torch-sparse
 segment-analytics-python==2.2.0 \
     --hash=sha256:b511dce9d22fa31c8a3f1b0e69d15af9705aeeed066fb317bd64bec8b786b0b2 \
     --hash=sha256:d9bbdd554d57fdfc9d8ebe1e5e0a891154aa9c5f5a79b78925861d5bd4789c41
@@ -5325,22 +5322,10 @@ torch==2.7.0+cpu \
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt27cpu \
-    --hash=sha256:199b35b89f33f700094a9741bc08eaeb480aefea58940b1cba247f281343297e
-    # via -r python/requirements/windows-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-torch-scatter==2.1.2+pt27cpu \
-    --hash=sha256:4c59964adcfc7223fc18aafefdfaef3453c5ec56808c87b51c667622063f1e0a
-    # via -r python/requirements/windows-requirements.txt
-torch-sparse==0.6.18+pt27cpu \
-    --hash=sha256:7734ebd66e97a2af55e8941cb6657772b5691d09332186914a3b9ccc022a2698
-    # via -r python/requirements/windows-requirements.txt
-torch-spline-conv==1.2.2+pt27cpu \
-    --hash=sha256:d0f5638b6bc49bcaaffedf3e277b245b8d65ba22ac9a88230d2144a92c7e52a2
-    # via -r python/requirements/windows-requirements.txt
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
