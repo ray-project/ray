@@ -616,5 +616,69 @@ def test_chunked_file_upload_via_append(fake_resolver: FakeResolver) -> None:
         assert runtime.written_files["/big"] == b"aaabbb"
 
 
+class _UnavailableHandle:
+    """Mimics a handle whose actor Ray reports as *transiently* unavailable (a
+    restart or network blip). ``ActorUnavailableError`` subclasses
+    ``RayActorError``, so the app must map it to 503 rather than the 404 it
+    maps a genuine death to — otherwise a client_token retry during the blip
+    is misread as "gone" and kills a live sandbox."""
+
+    def __getattr__(self, name: str):
+        class _Method:
+            def remote(self, *args, **kwargs):
+                import asyncio
+
+                async def _raise():
+                    ray_actor_error = type("RayActorError", (Exception,), {})
+                    exc_type = type("ActorUnavailableError", (ray_actor_error,), {})
+                    raise exc_type("actor is restarting")
+
+                return asyncio.get_running_loop().create_task(_raise())
+
+        return _Method()
+
+
+def test_transient_actor_unavailable_maps_to_503(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-unavail0001"] = _UnavailableHandle()
+
+    response = client.get(f"{BASE}/sandboxes/sb-unavail0001")
+
+    assert response.status_code == 503, response.text
+    assert response.json()["error"]["code"] == "sandbox_unavailable"
+
+
+class _DeadHandle:
+    """Mimics a handle whose actor has genuinely died (``ActorDiedError``, a
+    ``RayActorError`` subclass): the app maps it to 404 so a client_token
+    retry recreates it."""
+
+    def __getattr__(self, name: str):
+        class _Method:
+            def remote(self, *args, **kwargs):
+                import asyncio
+
+                async def _raise():
+                    ray_actor_error = type("RayActorError", (Exception,), {})
+                    exc_type = type("ActorDiedError", (ray_actor_error,), {})
+                    raise exc_type("actor has died")
+
+                return asyncio.get_running_loop().create_task(_raise())
+
+        return _Method()
+
+
+def test_dead_actor_maps_to_404(fake_resolver: FakeResolver) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-deadone0001"] = _DeadHandle()
+
+    response = client.get(f"{BASE}/sandboxes/sb-deadone0001")
+
+    assert response.status_code == 404, response.text
+    assert response.json()["error"]["code"] == "sandbox_not_found"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

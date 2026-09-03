@@ -88,27 +88,46 @@ def _is_unschedulable(exc: BaseException) -> bool:
     return any("ActorUnschedulableError" in name for name in names)
 
 
+def _is_actor_unavailable(exc: BaseException) -> bool:
+    """True when a remote call failed because the actor is *transiently*
+    unreachable (a restart or network blip), not because it is gone.
+
+    Ray makes ``ActorUnavailableError`` a subclass of ``RayActorError``, so
+    this must be checked before ``_is_actor_gone`` — otherwise a recoverable
+    blip is misread as a permanent death. Matched by class name for the same
+    importability reason as ``_is_actor_gone``.
+    """
+    names = {type(exc).__name__, *(base.__name__ for base in type(exc).__mro__)}
+    return any("ActorUnavailableError" in name for name in names)
+
+
 def _is_actor_gone(exc: BaseException) -> bool:
     """True when a remote call failed because the actor no longer exists.
 
     Matched by class name because Ray re-raises remote failures as
     dynamically-built subclasses, and so this module stays importable (and
-    unit-testable) without a live Ray context.
+    unit-testable) without a live Ray context. Transient unreachability
+    (``ActorUnavailableError``) is handled separately by
+    ``_is_actor_unavailable`` and must be ruled out first.
     """
     names = {type(exc).__name__, *(base.__name__ for base in type(exc).__mro__)}
-    return any(
-        "RayActorError" in name
-        or "ActorDiedError" in name
-        or "ActorUnavailableError" in name
-        for name in names
-    )
+    return any("RayActorError" in name or "ActorDiedError" in name for name in names)
 
 
 async def _actor_call(sandbox_id: str, awaitable: Awaitable[Any]) -> Any:
-    """Await a SandboxHost call, mapping a dead actor to 404."""
+    """Await a SandboxHost call, mapping actor failures to HTTP errors."""
     try:
         return await awaitable
     except Exception as exc:
+        if _is_actor_unavailable(exc):
+            # A transient blip (actor restarting / briefly unreachable), not a
+            # death. 503 so the caller retries the same sandbox instead of a
+            # client_token retry being misread as "gone" and killing it.
+            raise _ApiError(
+                503,
+                "sandbox_unavailable",
+                f"sandbox {sandbox_id} is temporarily unavailable; retry shortly",
+            ) from exc
         if _is_actor_gone(exc):
             raise _sandbox_not_found(sandbox_id) from exc
         if _is_unschedulable(exc):
