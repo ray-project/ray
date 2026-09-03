@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/asio/asio_util.h"
+#include "ray/common/bundle_spec.h"
 
 namespace ray {
 namespace gcs {
@@ -127,9 +128,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
 
-  // Acquire resources from gcs resources manager to reserve bundle resources.
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
-  AcquireBundleResources(bundle_locations);
+  AcquireBundleResources(bundle_locations, lease_status_tracker);
 
   // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -385,9 +385,9 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
 
       if (status.ok()) {
         // Commit the bundle resources on the remote node to the cluster resources.
-        // On Commit failure we leave the optimistic state alone; the next
-        // ray-syncer broadcast from the raylet will reconcile it.
-        CommitBundleResources(commited_bundle_locations);
+        // If status is not OK, no need to call ReturnBundleResources because the
+        // OnAllBundleCommitRequestReturned function calls it.
+        CommitBundleResources(commited_bundle_locations, lease_status_tracker);
       }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
@@ -718,15 +718,29 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
   }
 }
 
+void LeaseStatusTracker::SetBundleAllocation(const BundleID &bundle_id,
+                                             ResourceAllocation allocation) {
+  acquired_resource_allocations_[bundle_id] = std::move(allocation);
+}
+
+const ResourceAllocation *LeaseStatusTracker::GetBundleAllocation(
+    const BundleID &bundle_id) const {
+  auto it = acquired_resource_allocations_.find(bundle_id);
+  return it != acquired_resource_allocations_.end() ? &it->second : nullptr;
+}
+
 void GcsPlacementGroupScheduler::AcquireBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Acquire bundle resources from gcs resources manager.
+    const std::shared_ptr<BundleLocations> &bundle_locations,
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   for (auto &bundle : *bundle_locations) {
-    cluster_resource_manager.SubtractNodeAvailableResources(
+    auto allocation = cluster_resource_manager.SubtractNodeAvailableResources(
         scheduling::NodeID(bundle.second.first.Binary()),
         bundle.second.second->GetRequiredResources());
+    if (allocation.has_value() && lease_status_tracker) {
+      lease_status_tracker->SetBundleAllocation(bundle.first, std::move(*allocation));
+    }
   }
 }
 
@@ -759,29 +773,35 @@ bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
 }
 
 void GcsPlacementGroupScheduler::CommitBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Acquire bundle resources from gcs resources manager.
+    const std::shared_ptr<BundleLocations> &bundle_locations,
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
-  auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
-  for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
-    for (const auto &resource_id : node_bundle_resources.ResourceIds()) {
-      // A placement group's wildcard resource has to be the sum of all related bundles.
-      // Even though `ToNodeBundleResourcesMap` has already considered this,
-      // it misses the scenario in which single (or subset of) bundle is rescheduled.
-      // When commiting this single bundle, its wildcard resource would wrongly overwrite
-      // the existing value, unless using the following additive operation.
-      auto capacity = node_bundle_resources.Get(resource_id);
-      if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
-        auto new_capacity =
-            capacity +
-            cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, new_capacity.Double());
-      } else {
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, capacity.Double());
+
+  for (const auto &[bundle_id, location] : *bundle_locations) {
+    const auto &node_id = scheduling::NodeID(location.first.Binary());
+    const auto &bundle_spec = *location.second;
+
+    const auto *bundle_alloc = lease_status_tracker->GetBundleAllocation(bundle_id);
+
+    const auto &resources = bundle_spec.GetFormattedResources();
+    for (const auto &[resource_name, capacity] : resources) {
+      auto resource_id = scheduling::ResourceID(resource_name);
+      auto original_name = GetOriginalResourceName(resource_name);
+
+      if (bundle_alloc != nullptr) {
+        auto alloc_it = bundle_alloc->find(scheduling::ResourceID(original_name));
+        if (alloc_it != bundle_alloc->end()) {
+          cluster_resource_manager.AddResourceInstances(
+              node_id, resource_id, alloc_it->second);
+          continue;
+        }
       }
+      // Two cases reach here:
+      // 1. Synthetic resources like bundle_group have no physical allocation.
+      // 2. GCS restart loses the in-memory tracker; syncer corrects within ~100ms.
+      cluster_resource_manager.AddResourceInstances(
+          node_id, resource_id, {FixedPoint(capacity)});
     }
   }
 }

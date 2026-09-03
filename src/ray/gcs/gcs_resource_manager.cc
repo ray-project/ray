@@ -223,8 +223,15 @@ void GcsResourceManager::UpdateNodeResourceUsage(
         resource_view_sync_message.resources_total();
   }
 
-  (*iter->second.mutable_resources_available()) =
-      resource_view_sync_message.resources_available();
+  iter->second.mutable_resources_available()->clear();
+  for (const auto &[name, instances] :
+       resource_view_sync_message.resources_available_instances()) {
+    double sum = 0;
+    for (double v : instances.values()) {
+      sum += v;
+    }
+    (*iter->second.mutable_resources_available())[name] = sum;
+  }
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
