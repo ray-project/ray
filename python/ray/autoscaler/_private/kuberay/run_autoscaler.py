@@ -53,6 +53,14 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     )
 
     node_info = next(iter(node_infos))
+    # The head node reports where it actually writes logs, which is not
+    # necessarily under its temp dir when it was started with `--logs-dir`.
+    # It is unset when the head node runs a Ray version that predates the
+    # field, so fall back to the historical location.
+    logs_dir = getattr(node_info, "logs_dir", "")
+    if logs_dir:
+        return logs_dir
+
     temp_dir = getattr(node_info, "temp_dir", None)
     if temp_dir is None:
         raise Exception(

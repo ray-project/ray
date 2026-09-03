@@ -365,6 +365,9 @@ message GcsNodeInfo {
 
   // Session directory of this node.
   string session_dir = 33;
+
+  // Directory containing log files for this node.
+  string logs_dir = 34;
 }
 
 // A lighter version of GcsNodeInfo containing only essential fields.

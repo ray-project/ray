@@ -57,16 +57,22 @@ def test_tempdir_commandline(delete_default_temp_dir):
     temp_dir = os.path.join(
         "/tmp/test", uuid.uuid4().hex[:-10]
     )  # truncate the uuid to avoid the socket path length limit
+    logs_dir = os.path.join("/tmp/test", uuid.uuid4().hex[:-10])
     check_call_ray(
         [
             "start",
             "--head",
             "--temp-dir=" + temp_dir,
+            "--logs-dir=" + logs_dir,
             "--port",
             "0",
         ]
     )
     assert os.path.exists(temp_dir), "Specified temp dir not found."
+    assert os.path.exists(logs_dir), "Specified logs dir not found."
+    if sys.platform != "win32":
+        compatibility_path = os.path.join(temp_dir, "session_latest", "logs")
+        assert os.path.realpath(compatibility_path) == os.path.realpath(logs_dir)
     assert not os.path.exists(
         ray._common.utils.get_default_ray_temp_dir()
     ), "Default temp dir should not exist."
@@ -75,6 +81,7 @@ def test_tempdir_commandline(delete_default_temp_dir):
         temp_dir,
         ignore_errors=True,
     )
+    shutil.rmtree(logs_dir, ignore_errors=True)
 
 
 def test_tempdir_long_path():
@@ -86,6 +93,96 @@ def test_tempdir_long_path():
         )
         with pytest.raises(OSError):
             ray.init(_temp_dir=temp_dir)  # path should be too long
+
+
+def test_custom_logs_dir(ray_start_cluster, request):
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+    head_temp_dir = os.path.join(base_dir, "head-tmp")
+    head_logs_dir = os.path.join(base_dir, "head-logs")
+    worker_temp_dir = os.path.join(base_dir, "worker-tmp")
+    worker_logs_dir = os.path.join(base_dir, "worker-logs")
+
+    cluster = ray_start_cluster
+    head_node = cluster.add_node(
+        num_cpus=1,
+        temp_dir=head_temp_dir,
+        logs_dir=head_logs_dir,
+    )
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        temp_dir=worker_temp_dir,
+        logs_dir=worker_logs_dir,
+    )
+    cluster.wait_for_nodes()
+
+    assert head_node.get_logs_dir_path() == head_logs_dir
+    assert worker_node.get_logs_dir_path() == worker_logs_dir
+    assert head_node.get_runtime_env_dir_path().startswith(head_temp_dir)
+    assert worker_node.get_runtime_env_dir_path().startswith(worker_temp_dir)
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+    node_logs_dirs = {
+        node_info.temp_dir: node_info.logs_dir
+        for node_info in gcs_client.get_all_node_info().values()
+    }
+    assert node_logs_dirs[head_temp_dir] == head_logs_dir
+    assert node_logs_dirs[worker_temp_dir] == worker_logs_dir
+
+    if sys.platform != "win32":
+        for cluster_node, logs_dir in (
+            (head_node, head_logs_dir),
+            (worker_node, worker_logs_dir),
+        ):
+            compatibility_path = os.path.join(
+                cluster_node.get_session_dir_path(), "logs"
+            )
+            assert os.path.islink(compatibility_path)
+            assert os.path.realpath(compatibility_path) == os.path.realpath(logs_dir)
+
+    for logs_dir in (head_logs_dir, worker_logs_dir):
+        wait_for_condition(
+            lambda logs_dir=logs_dir: os.path.exists(
+                os.path.join(logs_dir, "raylet.out")
+            )
+        )
+
+
+def test_logs_dir_containing_session_dir_skips_symlink(ray_start_cluster, request):
+    """A logs dir above the session dir must not get a self-referential symlink."""
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1, temp_dir=base_dir, logs_dir=base_dir)
+    cluster.wait_for_nodes()
+
+    assert node.get_logs_dir_path() == base_dir
+    # session_dir/logs would resolve to an ancestor of itself, so walking the
+    # logs directory recursively would never terminate.
+    assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
+    wait_for_condition(lambda: os.path.exists(os.path.join(base_dir, "raylet.out")))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Requires directory symlinks")
+def test_logs_dir_symlink_alias_containing_session_dir_skips_symlink(
+    ray_start_cluster, request
+):
+    """Physical containment through a symlink must not create a log cycle."""
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+    physical_dir = os.path.join(base_dir, "physical")
+    alias_dir = os.path.join(base_dir, "alias")
+    os.makedirs(physical_dir)
+    os.symlink(physical_dir, alias_dir, target_is_directory=True)
+
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1, temp_dir=alias_dir, logs_dir=physical_dir)
+    cluster.wait_for_nodes()
+
+    assert os.path.samefile(os.path.dirname(node.get_session_dir_path()), physical_dir)
+    assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
+    wait_for_condition(lambda: os.path.exists(os.path.join(physical_dir, "raylet.out")))
 
 
 def test_raylet_tempfiles(shutdown_only):

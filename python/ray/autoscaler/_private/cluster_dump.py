@@ -172,6 +172,16 @@ def get_local_ray_logs(
 
     session_log_dir = os.path.join(os.path.expanduser(session_log_dir), "logs")
 
+    if not os.path.isdir(session_log_dir):
+        # When a node is started with `ray start --logs-dir`, this path is a
+        # symlink to the configured directory. Without it the walk below
+        # silently collects nothing.
+        cli_logger.warning(
+            f"No log directory found at {session_log_dir}; no logs will be "
+            "collected from this node. If it was started with "
+            "`ray start --logs-dir`, the compatibility symlink is missing."
+        )
+
     with archive.subdir("logs", root=session_log_dir) as sd:
         for root, dirs, files in os.walk(session_log_dir):
             for file in files:
