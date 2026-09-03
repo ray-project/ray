@@ -1351,12 +1351,14 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         (caller then falls the whole split back to pyarrow). Does *not* swallow
         a missing extension — :meth:`_import_extension` raises that loudly.
 
-        The handle holds the parsed footer and (for S3) the task's shared
-        client, so the footer is fetched exactly once per file and the decode
-        call never rebuilds an HTTP client — the fix for the per-file S3 setup
-        cost on multi-file bins (findings T10). ``s3_stores`` is the caller's
-        per-bucket client cache, scoped to this one planned read so it can
-        never go stale. For S3 the page index is fetched at open (the decode's
+        The handle holds the parsed footer and (for S3) a shared client, so
+        the footer is fetched exactly once per file and the decode call never
+        rebuilds an HTTP client — the fix for the per-file S3 setup cost on
+        multi-file bins (findings T10). ``s3_stores`` is the caller's
+        per-bucket lookup for this one planned read; behind it,
+        :func:`connect_native_s3` caches clients per process (keyed by bucket
+        + full connection config) so single-file tasks don't pay a cold
+        DNS+TLS client build each (findings M97). For S3 the page index is fetched at open (the decode's
         row windows need it — a file that later falls back to pyarrow wastes
         one range GET, which is cheaper than the footer re-fetch every native
         file used to pay); locally it follows the same rule as the per-call
@@ -1450,9 +1452,10 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         self._verify_footer_limits(unique_paths)
 
         # One footer read per file, through a per-file handle that the decode
-        # step reuses; S3 files additionally share one client per bucket for
-        # the whole planned read (``s3_stores`` lives exactly as long as this
-        # plan's fragments). See :meth:`_open_native_file` / findings T10.
+        # step reuses; S3 files additionally share one client per bucket,
+        # cached per process behind ``connect_native_s3`` (``s3_stores`` is
+        # just this plan's lookup). See :meth:`_open_native_file` /
+        # findings T10+M97.
         s3_stores: Dict[str, Any] = {}
         handle_by_path: Dict[str, Any] = {}
         native_md: Dict[

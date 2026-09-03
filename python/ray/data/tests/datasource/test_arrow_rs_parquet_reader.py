@@ -2003,14 +2003,20 @@ def test_arrow_rs_s3_native_path_runs(s3_fs, s3_path):
 
 
 def test_arrow_rs_s3_planned_read_shares_one_client(s3_fs, s3_path, monkeypatch):
-    """A planned S3 read (TODO 1r) builds ONE ``object_store`` client per
-    (bucket, read task) via ``connect_s3`` and opens one handle per file
-    (one footer + page-index fetch); the per-call entry points — which rebuilt
-    the HTTP client and re-fetched the footer on *every* call (findings T10) —
-    must stay cold. In-process so the spies can observe the calls."""
+    """A planned S3 read (TODO 1r) builds ONE ``object_store`` client for the
+    bucket via ``connect_s3`` and opens one handle per file (one footer +
+    page-index fetch); the per-call entry points — which rebuilt the HTTP
+    client and re-fetched the footer on *every* call (findings T10) — must
+    stay cold. The process-level client cache (findings M97) is cleared first
+    so the single ``connect_s3`` build is observable, and cleared after so no
+    spy-wrapped store leaks to later tests. In-process so the spies can
+    observe the calls."""
+    from ray.data._internal.datasource_v2 import native_metadata
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
         ArrowRsParquetFileReader,
     )
+
+    native_metadata._S3_STORE_CACHE.clear()
 
     table = _flat_table()
     half = table.num_rows // 2
@@ -2068,22 +2074,93 @@ def test_arrow_rs_s3_planned_read_shares_one_client(s3_fs, s3_path, monkeypatch)
     reader = ArrowRsParquetFileReader(
         filesystem=s3_fs, target_block_size=128 * 1024 * 1024
     )
-    got = pa.concat_tables(list(reader.read(manifest)))
+    try:
+        got = pa.concat_tables(list(reader.read(manifest)))
 
-    assert calls["connect"] == 1, (
-        f"expected ONE S3 client for a 2-file same-bucket read, got "
-        f"{calls['connect']}"
-    )
-    assert (
-        calls["open_file"] == 2
-    ), f"expected one handle (footer fetch) per file, got {calls['open_file']}"
-    assert (
-        calls["read_row_groups_s3"] == 0
-    ), "per-call S3 decode entry point ran — client/footer were rebuilt"
-    assert (
-        calls["read_metadata_s3"] == 0
-    ), "per-call S3 footer entry point ran — footer fetched twice"
-    assert got.sort_by("id").equals(table.sort_by("id"))
+        assert calls["connect"] == 1, (
+            f"expected ONE S3 client for a 2-file same-bucket read, got "
+            f"{calls['connect']}"
+        )
+        assert (
+            calls["open_file"] == 2
+        ), f"expected one handle (footer fetch) per file, got {calls['open_file']}"
+        assert (
+            calls["read_row_groups_s3"] == 0
+        ), "per-call S3 decode entry point ran — client/footer were rebuilt"
+        assert (
+            calls["read_metadata_s3"] == 0
+        ), "per-call S3 footer entry point ran — footer fetched twice"
+        assert got.sort_by("id").equals(table.sort_by("id"))
+
+        # M97: a SECOND planned read of the same bucket + config reuses the
+        # process-cached client — connect_s3 must not run again (this is the
+        # single-row-group-task cold-start fix; the footer is still re-fetched
+        # per read, hence open_file grows to 4).
+        got2 = pa.concat_tables(list(reader.read(manifest)))
+        assert calls["connect"] == 1, (
+            f"expected the second read to reuse the cached S3 client, but "
+            f"connect_s3 ran {calls['connect']} times"
+        )
+        assert calls["open_file"] == 4
+        assert got2.sort_by("id").equals(table.sort_by("id"))
+    finally:
+        native_metadata._S3_STORE_CACHE.clear()
+
+
+def test_arrow_rs_s3_client_cache_key_and_kill_switch(monkeypatch):
+    """The process-level client cache (findings M97) is keyed by (bucket, full
+    connection config): same config reuses, changed credentials/region/bucket
+    rebuild (that key-miss is how credential rotation stays safe), and
+    ``RAY_DATA_ARROW_RS_S3_CLIENT_CACHE=0`` bypasses the cache entirely.
+    Pure construction — ``connect_s3`` does no network IO at build time."""
+    from pyarrow.fs import S3FileSystem
+
+    from ray.data._internal.datasource_v2 import native_metadata
+
+    builds = {"n": 0}
+    orig_connect = ray_data_arrow_rs.connect_s3
+
+    def spy_connect(*a, **k):
+        builds["n"] += 1
+        return orig_connect(*a, **k)
+
+    monkeypatch.setattr(ray_data_arrow_rs, "connect_s3", spy_connect)
+
+    def make_fs(**overrides):
+        kwargs = dict(
+            access_key="key-a",
+            secret_key="secret-a",
+            region="us-east-1",
+            endpoint_override="http://127.0.0.1:9",
+        )
+        kwargs.update(overrides)
+        return S3FileSystem(**kwargs)
+
+    native_metadata._S3_STORE_CACHE.clear()
+    try:
+        fs = make_fs()
+        s1 = native_metadata.connect_native_s3("bucket-a", fs)
+        assert builds["n"] == 1
+        # Same bucket + config (even via a distinct but identical fs object):
+        # cache hit, same store instance.
+        s2 = native_metadata.connect_native_s3("bucket-a", make_fs())
+        assert builds["n"] == 1 and s2 is s1
+        # Rotated credentials -> new key -> fresh client.
+        native_metadata.connect_native_s3("bucket-a", make_fs(secret_key="rotated"))
+        assert builds["n"] == 2
+        # Different region / different bucket -> fresh clients too.
+        native_metadata.connect_native_s3("bucket-a", make_fs(region="eu-west-1"))
+        native_metadata.connect_native_s3("bucket-b", fs)
+        assert builds["n"] == 4
+        # Kill switch: every call builds, and the cache is left untouched.
+        monkeypatch.setenv("RAY_DATA_ARROW_RS_S3_CLIENT_CACHE", "0")
+        before = dict(native_metadata._S3_STORE_CACHE)
+        native_metadata.connect_native_s3("bucket-a", fs)
+        native_metadata.connect_native_s3("bucket-a", fs)
+        assert builds["n"] == 6
+        assert native_metadata._S3_STORE_CACHE == before
+    finally:
+        native_metadata._S3_STORE_CACHE.clear()
 
 
 def test_arrow_rs_s3_sum(s3_fs, s3_path, restore_ctx):
