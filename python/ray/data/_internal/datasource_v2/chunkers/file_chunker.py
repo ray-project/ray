@@ -7,10 +7,8 @@ reader carry the per-chunk metadata through to the read task.
 """
 
 import abc
-import logging
 import math
 from typing import (
-    TYPE_CHECKING,
     Iterable,
     Optional,
     Tuple,
@@ -23,11 +21,6 @@ from typing import (
 
 from ray.data._internal.util import MiB, infer_compression
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from pyarrow.fs import FileSystem
-
-logger = logging.getLogger(__name__)
 
 
 class ChunkMetadata(TypedDict):
@@ -61,17 +54,32 @@ class LineDelimitedFileChunkMetadata(ChunkMetadata):
     chunk_byte_end_idx: int
 
 
-class ParquetFileChunkMetadata(ChunkMetadata):
-    """Metadata for Parquet file chunks.
+class ParquetRowGroupChunkMetadata(ChunkMetadata):
+    """Metadata for a Parquet chunk described by explicit row-group indices.
 
-    A chunk is an explicit, half-open range of consecutive row groups
-    ``[row_group_start, row_group_end)`` within a single file, computed at
-    listing time from the file's footer. The reader slices the fragment to
-    exactly this range — no estimation or read-time reconciliation.
+    Produced by the footer-based chunking path (``ListFiles`` reads each file's
+    footer, prunes/bin-packs its row groups, and emits one manifest row per file
+    per bin), so it carries the exact physical row groups the reader should scan
+    for the file in that bin -- no size-based reconciliation needed.
+
+    ``row_group_ids`` are physical row-group indices into the file; any
+    coalescing/splitting the bin packer applied is already expanded away here.
+    ``num_rows`` is the summed footer row count of those groups (for sizing /
+    limit accounting). ``uncompressed_size`` is their summed, projection-scoped
+    uncompressed byte size, carried so the reader can size batches without
+    re-reading the footer ``ListFiles`` already read.
     """
 
-    row_group_start: int  # inclusive
-    row_group_end: int  # exclusive
+    row_group_ids: Tuple[int, ...]
+    num_rows: int
+    uncompressed_size: int
+    # Whether every row in these groups survives the pushed predicate. Only
+    # exact-survivor counts may drive limit push-down.
+    fully_matched: bool
+    # Per-physical-row-group breakdown, in ``row_group_ids`` order. Populated
+    # for coalesced runs so a partitioner can split at exact boundaries.
+    rg_sizes: Tuple[int, ...]
+    rg_rows: Tuple[int, ...]
 
 
 @DeveloperAPI
@@ -86,27 +94,15 @@ class FileChunker(abc.ABC):
     - Parquet files can be chunked by row groups
     """
 
-    # Whether ``generate_chunk_metadatas`` performs file I/O (e.g. reading a
-    # Parquet footer). When True, the indexer fans chunking across its thread
-    # pool so the per-file reads parallelize even for a single input
-    # directory. When False, the indexer chunks inline (no thread hand-off).
-    reads_file_metadata: bool = False
-
     @abc.abstractmethod
     def generate_chunk_metadatas(
-        self,
-        path: str,
-        file_size: int,
-        filesystem: Optional["FileSystem"] = None,
+        self, path: str, file_size: int
     ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
         """Generate metadata for file chunks.
 
         Args:
             path: The file path being chunked.
             file_size: The total size in bytes of the file to be chunked.
-            filesystem: PyArrow filesystem used to read per-file metadata
-                (e.g. the Parquet footer). Ignored by chunkers that do not
-                read file metadata.
 
         Returns:
             An iterable of tuples containing (metadata, chunk_size) where metadata
@@ -130,10 +126,7 @@ class WholeFileChunker(FileChunker):
     """
 
     def generate_chunk_metadatas(
-        self,
-        path: str,
-        file_size: int,
-        filesystem: Optional["FileSystem"] = None,
+        self, path: str, file_size: int
     ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
         yield None, file_size
 
@@ -150,10 +143,7 @@ class LineDelimitedFileChunker(FileChunker):
     _CHUNK_BYTE_SIZE = 256 * MiB  # 256 MiB
 
     def generate_chunk_metadatas(
-        self,
-        path: str,
-        file_size: int,
-        filesystem: Optional["FileSystem"] = None,
+        self, path: str, file_size: int
     ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
         compression = infer_compression(path)
         if compression is not None:
@@ -172,115 +162,3 @@ class LineDelimitedFileChunker(FileChunker):
                     ),
                     chunk_size,
                 )
-
-
-@DeveloperAPI
-class ParquetFileChunker(FileChunker):
-    """File chunker for Parquet files.
-
-    Reads each file's footer at listing time and chunks on **true row-group
-    boundaries**: consecutive row groups are bundled into a chunk until the
-    bundle's on-disk size reaches ``target_chunk_size`` (always at least one
-    row group per chunk). Each chunk carries an explicit half-open row-group
-    range, so the reader slices to exactly those row groups with no
-    estimation or read-time reconciliation, and the listing stage never
-    produces empty read tasks.
-
-    The row group is Parquet's atomic read unit, so a chunk can never be
-    smaller than a single row group. With the default target (which falls
-    back to ``DataContext.target_min_block_size``), a file's row groups map
-    1:1 to chunks unless they are smaller than the target, in which case
-    consecutive small row groups are bundled to avoid an excessive number of
-    tiny chunks.
-    """
-
-    # Hard fallback used only when neither an explicit target nor the
-    # DataContext size knobs are set.
-    _FALLBACK_TARGET_CHUNK_SIZE = 1 * MiB
-
-    # Footer reads are file I/O — let the indexer parallelize them.
-    reads_file_metadata: bool = True
-
-    def __init__(self, target_chunk_size: Optional[int] = None):
-        from ray.data.context import DataContext
-
-        ctx = DataContext.get_current()
-        # Resolve with explicit ``is not None`` checks rather than ``or`` so an
-        # explicit ``0`` (e.g. to force one row group per chunk) isn't treated as
-        # "unset" and silently overridden by a falsy-coalescing fallback.
-        if target_chunk_size is not None:
-            self._target_chunk_size = target_chunk_size
-        elif ctx.parquet_chunker_target_chunk_size is not None:
-            self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
-        elif ctx.target_min_block_size is not None:
-            self._target_chunk_size = ctx.target_min_block_size
-        else:
-            self._target_chunk_size = self._FALLBACK_TARGET_CHUNK_SIZE
-
-    def generate_chunk_metadatas(
-        self,
-        path: str,
-        file_size: int,
-        filesystem: Optional["FileSystem"] = None,
-    ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
-        import pyarrow.parquet as pq
-
-        try:
-            # Reads only the Parquet footer (file metadata), not data.
-            metadata = pq.read_metadata(path, filesystem=filesystem)
-        except Exception as e:
-            # Corrupt / unreadable footer (or a non-Parquet file that slipped
-            # through). Fall back to a single whole-file chunk so the file is
-            # still read rather than dropped.
-            logger.debug(
-                "Could not read Parquet footer for chunking (%s): %s; "
-                "falling back to a whole-file chunk.",
-                path,
-                e,
-            )
-            yield None, file_size
-            return
-
-        num_row_groups = metadata.num_row_groups
-        if num_row_groups == 0:
-            yield None, file_size
-            return
-
-        # Greedily bundle consecutive row groups until the running on-disk
-        # size reaches the target. Always emit at least one row group per
-        # chunk (the atomic read unit).
-        start = 0
-        running_size = 0
-        for rg_idx in range(num_row_groups):
-            rg_meta = metadata.row_group(rg_idx)
-            # On-disk (compressed) row-group size. ``RowGroupMetaData`` exposes
-            # only the *uncompressed* ``total_byte_size``; the on-disk size lives
-            # on each ``ColumnChunkMetaData``, so sum the per-column compressed
-            # sizes. Keeping chunk sizes in on-disk units matches the manifest's
-            # ``file_sizes`` and the ``×encoding_ratio`` in-memory estimator.
-            rg_size = sum(
-                rg_meta.column(c).total_compressed_size
-                for c in range(rg_meta.num_columns)
-            )
-            if running_size > 0 and running_size + rg_size > self._target_chunk_size:
-                yield (
-                    create_chunk_metadata(
-                        ParquetFileChunkMetadata,
-                        row_group_start=start,
-                        row_group_end=rg_idx,
-                    ),
-                    running_size,
-                )
-                start = rg_idx
-                running_size = 0
-            running_size += rg_size
-
-        # Flush the final bundle.
-        yield (
-            create_chunk_metadata(
-                ParquetFileChunkMetadata,
-                row_group_start=start,
-                row_group_end=num_row_groups,
-            ),
-            running_size,
-        )

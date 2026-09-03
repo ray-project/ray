@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Authenticate private remote URIs in runtime_env with a netrc file or HTTPS bearer tokens, on VMs and with KubeRay secrets."
+---
+
 (runtime-env-auth)=
 # Authenticating Remote URIs in runtime_env
 
@@ -36,7 +42,7 @@ In this example, `personal_access_token` is a secret credential that authenticat
 
 In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead, use a `netrc` file.
 
-## Running on VMs: the netrc File
+## Running on VMs: The netrc file
 
 The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. Set your credentials in this file instead of in the remote URI:
 
@@ -51,8 +57,7 @@ password personal_access_token
 In this example, the `machine github.com` line specifies that any access to `github.com` should be authenticated using the provided `login` and `password`.
 
 :::{note}
-On Unix, name the `netrc` file as `.netrc`. On Windows, name the
-file as `_netrc`.
+On Unix, name the `netrc` file as `.netrc`. On Windows, name the file as `_netrc`.
 :::
 
 The `netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
@@ -84,7 +89,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -102,7 +107,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -157,7 +162,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN
@@ -170,7 +175,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN

@@ -23,6 +23,8 @@ from typing_extensions import override
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -172,6 +174,15 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
         )
+        # Pass the actor concurrency setting to Ray Core.
+        max_concurrency = compute_strategy.max_concurrent_calls_per_actor
+        if max_concurrency is not None:
+            if self._ray_remote_args.get("max_concurrency") is not None:
+                warnings.warn(
+                    "Both `max_concurrency` and `max_concurrent_calls_per_actor` are set."
+                    "`max_concurrent_calls_per_actor` takes precedence."
+                )
+            self._ray_remote_args["max_concurrency"] = max_concurrency
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
             ray_actor_task_remote_args, self.data_context
         )
@@ -194,6 +205,11 @@ class ActorPoolMapOperator(MapOperator):
         # Locality metrics
         self._locality_hits = 0
         self._locality_misses = 0
+
+        # Consecutive actor deaths during initialization; resets whenever an actor
+        # of this operator initializes successfully (see
+        # ``DataContext.max_consecutive_actor_init_deaths``).
+        self._consecutive_actor_init_deaths = 0
 
     @property
     @override
@@ -265,9 +281,13 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def start(self, options: ExecutionOptions):
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ):
         self._actor_locality_enabled = options.actor_locality_enabled
-        super().start(options)
+        super().start(options, block_ref_counter)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
@@ -349,16 +369,55 @@ class ActorPoolMapOperator(MapOperator):
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            has_actor = self._actor_pool.pending_to_running(res_ref) is not None
+            try:
+                has_actor = self._actor_pool.pending_to_running(res_ref) is not None
+            except ray.exceptions.RayError as e:
+                # The actor died during initialization (the pool has already
+                # cleaned up its internal state before re-raising). Replace it
+                # if the death budget allows; otherwise re-raise to fail
+                # execution.
+                self._on_actor_init_death(e)
+                return
             if not has_actor:
                 # Actor has already been killed.
                 return
+            self._consecutive_actor_init_deaths = 0
 
         self._submit_metadata_task(
             res_ref,
             lambda: _task_done_callback(res_ref),
         )
         return actor, res_ref, actor_resource_usage
+
+    def _on_actor_init_death(self, error: Exception) -> None:
+        """Handle an actor that died during initialization.
+
+        Ray Core doesn't restart actors whose creation task failed (the death
+        is a ``USER_ERROR``, so ``max_restarts`` doesn't apply). Instead, we
+        charge the death against
+        ``DataContext.max_consecutive_actor_init_deaths`` and rely on the
+        actor autoscaler to start a replacement (the pool is now below its
+        target size). Re-raises ``error`` when the budget is exceeded. The
+        counter resets whenever an actor initializes successfully, so a
+        systemically broken UDF (which never succeeds) exhausts the budget
+        while sporadic deaths in a progressing pipeline don't.
+        """
+        self._consecutive_actor_init_deaths += 1
+        budget = self.data_context.max_consecutive_actor_init_deaths
+        if budget >= 0 and self._consecutive_actor_init_deaths > budget:
+            logger.error(
+                f"{self.name}: actors died during initialization "
+                f"{self._consecutive_actor_init_deaths} consecutive time(s) "
+                f"(max_consecutive_actor_init_deaths={budget}); "
+                "failing execution."
+            )
+            raise error
+        logger.warning(
+            f"{self.name}: an actor died during initialization and will be "
+            f"replaced ({self._consecutive_actor_init_deaths} consecutive "
+            f"death(s) so far; max_consecutive_actor_init_deaths={budget}).",
+            exc_info=error,
+        )
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).

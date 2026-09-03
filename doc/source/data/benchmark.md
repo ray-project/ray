@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray Data performance benchmarks across image, document, audio, and video workloads, with methodology and comparisons to Daft."
+---
+
 # Ray Data Benchmarks
 
 This page documents benchmark results and methodologies for evaluating Ray Data performance across a variety of data modalities and workloads.
@@ -13,6 +19,10 @@ This page documents benchmark results and methodologies for evaluating Ray Data 
 - **Large-scale Image Embedding**: Processing 4TiB of base64-encoded images from a Parquet dataset using ViT for image embedding. The pipeline decodes base64 images, converts to RGB, preprocesses using ViTImageProcessor (resizing, normalization), runs GPU-accelerated batch inference with ViT to generate embeddings, and outputs results to Parquet format.
 
 Ray Data 2.50 is compared with Daft 0.6.2, an open source multimodal data processing library built on Ray.
+
+:::{note}
+These results are a point-in-time snapshot taken on Ray Data 2.50. The benchmark code linked on this page points at the [`ray-2.50.0`](https://github.com/ray-project/ray/tree/ray-2.50.0) tag, which is the version the numbers were collected on.
+:::
 
 ---
 
@@ -62,27 +72,27 @@ All benchmark results are taken from an average/std across 4 runs. A warmup was 
     - 800k images from ImageNet
     - s3://ray-example-data/imagenet/metadata_file.parquet
     - 1 head / 8 workers of varying instance types
-    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/image_classification)
+    - [Link](https://github.com/ray-project/ray/tree/ray-2.50.0/release/nightly_tests/multimodal_inference_benchmarks/image_classification)
 -   - **Document Embedding**
     - 10k PDFs from Digital Corpora
     - s3://ray-example-data/digitalcorpora/metadata
     - g6.xlarge head, 8 g6.xlarge workers
-    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/document_embedding)
+    - [Link](https://github.com/ray-project/ray/tree/ray-2.50.0/release/nightly_tests/multimodal_inference_benchmarks/document_embedding)
 -   - **Audio Transcription**
     - 113,800 audio files from Mozilla Common Voice 17 en dataset
     - s3://air-example-data/common_voice_17/parquet/
     - g6.xlarge head,  8 g6.xlarge workers
-    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/audio_transcription)
+    - [Link](https://github.com/ray-project/ray/tree/ray-2.50.0/release/nightly_tests/multimodal_inference_benchmarks/audio_transcription)
 -   - **Video Object Detection**
     - 1,000 videos from Hollywood-2 Human Actions dataset
     - s3://ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/
     - 1 head, 8 workers of varying instance types
-    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/video_object_detection)
+    - [Link](https://github.com/ray-project/ray/tree/ray-2.50.0/release/nightly_tests/multimodal_inference_benchmarks/video_object_detection)
 -   - **Large-scale Image Embedding**
     - 4 TiB of Parquet files containing base64 encoded images
     - s3://ray-example-data/image-datasets/10TiB-b64encoded-images-in-parquet-v3/
     - m5.24xlarge (head), 40 g6e.xlarge (gpu workers), 64 r6i.8xlarge (cpu workers)
-    - [Link](https://github.com/ray-project/ray/tree/master/release/nightly_tests/multimodal_inference_benchmarks/large_image_embedding)
+    - [Link](https://github.com/ray-project/ray/tree/ray-2.50.0/release/nightly_tests/multimodal_inference_benchmarks/large_image_embedding)
 ```
 
 ## Image Classification across different instance types

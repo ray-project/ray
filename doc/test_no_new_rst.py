@@ -14,7 +14,9 @@ from typing import List
 
 # Paths under doc/source/ that are exempt from the no-new-.rst rule.
 ALLOWLIST = {
-    # "doc/source/example.rst",  # Reason: ...
+    # autosummary Jinja template (renders .rst stubs); autosummary requires
+    # .rst templates, so MyST can't express this one.
+    "doc/source/_templates/autosummary/base.rst",
 }
 
 

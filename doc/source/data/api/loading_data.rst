@@ -197,6 +197,15 @@ Lance
 
    read_lance
 
+LeRobot
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lerobot
+
 MCAP (Message Capture)
 ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -242,6 +251,15 @@ NumPy
 
    from_numpy
    read_numpy
+
+ORC
+^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_orc
 
 Pandas
 ^^^^^^

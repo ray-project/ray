@@ -44,7 +44,7 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-from ray.util.state import list_tasks
+from ray.util.state import get_actor, list_tasks
 
 import psutil
 
@@ -470,6 +470,45 @@ async def test_job_manager_network_fault_tolerance(
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1",
     )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
+class _StaleAddressGcsClient:
+    """Wraps a live GcsClient but reports an address that nothing is listening on.
+
+    Models a head replacement: the JobManager's own client keeps working through
+    the stable service, while the address it recorded at construction is dead.
+    """
+
+    def __init__(self, client, address: str):
+        self._client = client
+        self.address = address
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+@pytest.mark.asyncio
+async def test_job_succeeds_when_manager_gcs_address_is_stale(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """A job must reach SUCCEEDED even if the address the JobManager recorded is
+    no longer reachable.
+
+    The supervisor runs on a worker whose own GCS client reconnects through the
+    stable head service, so it must not depend on the creating head's address.
+    """
+    ray.init(address=call_ray_start)
+    live_client = ray._private.worker.global_worker.gcs_client
+    # Port 1 is reserved and never bound, so any client built from this address
+    # cannot reach GCS.
+    job_manager = JobManager(
+        _StaleAddressGcsClient(live_client, "127.0.0.1:1"), tmp_path
+    )
+
+    job_id = await job_manager.submit_job(entrypoint="echo hello")
     await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
@@ -1057,7 +1096,9 @@ class TestAsyncAPI:
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
             actor = job_manager._get_actor_for_job(job_id)
-            ray.kill(actor, no_restart=True)
+            supervisor_pid = get_actor(actor._actor_id.hex()).pid
+            kill_signal = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+            os.kill(supervisor_pid, kill_signal)
             await async_wait_for_condition(
                 check_job_failed,
                 job_manager=job_manager,

@@ -1,10 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Diagnose RayService problems through operator logs, custom resource status, pod logs, the dashboard, and the Ray State CLI."
+---
+
 (kuberay-raysvc-troubleshoot)=
 
 # RayService troubleshooting
 
-RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then
-create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
-or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. This section provides some tips to help you debug these issues.
+RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. This section provides some tips to help you debug these issues.
 
 ## Observability
 
@@ -24,7 +28,7 @@ kubectl describe rayservice $RAYSERVICE_NAME -n $YOUR_NAMESPACE
 
 You can check the status and events of the RayService CR to see if there are any errors.
 
-### Method 3: Check logs of Ray Pods
+### Method 3: Check logs of the head and worker Pods
 
 You can also check the Ray Serve logs directly by accessing the log files on the pods. These log files contain system level logs from the Serve controller and HTTP proxy as well as access logs and user-level logs. See [Ray Serve Logging](serve-logging) and [Ray Logging](configure-logging) for more details.
 
@@ -33,7 +37,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 # Check the logs under /tmp/ray/session_latest/logs/serve/
 ```
 
-### Method 4: Check Dashboard
+### Method 4: Check the dashboard
 
 ```bash
 kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
@@ -90,18 +94,14 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 (kuberay-raysvc-issue1)=
 ### Issue 1: Ray Serve script is incorrect
 
-It's better to test Ray Serve script locally or in a RayCluster before deploying it to a RayService.
-See [Development Workflow](serve-dev-workflow) for more details.
+It's better to test Ray Serve script locally or in a RayCluster before deploying it to a RayService. See [Development Workflow](serve-dev-workflow) for more details.
 
 (kuberay-raysvc-issue2)=
 ### Issue 2: `serveConfigV2` is incorrect
 
-The RayService CR sets `serveConfigV2` as a YAML multi-line string for flexibility.
-This implies that there is no strict type checking for the Ray Serve configurations in `serveConfigV2` field.
-Some tips to help you debug the `serveConfigV2` field:
+The RayService CR sets `serveConfigV2` as a YAML multi-line string for flexibility. This implies that there is no strict type checking for the Ray Serve configurations in `serveConfigV2` field. Some tips to help you debug the `serveConfigV2` field:
 
-* Check [the documentation](serve-api) for the schema about
-the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
+* Check [the documentation](serve-api) for the schema about the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
 * Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`.
 
 (kuberay-raysvc-issue3)=
@@ -111,17 +111,12 @@ You have two options to resolve this issue:
 
 * Build your own Ray image with the required dependencies.
 * Specify the required dependencies using `runtime_env` in the `serveConfigV2` field.
-  * For example, the MobileNet example requires `python-multipart`, which isn't included in the Ray image `rayproject/ray:x.y.z`.
-Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](kuberay-mobilenet-rayservice-example).
+  * For example, the MobileNet example requires `python-multipart`, which isn't included in the Ray image `rayproject/ray:x.y.z`. Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](kuberay-mobilenet-rayservice-example).
 
 (kuberay-raysvc-issue4)=
 ### Issue 4: Incorrect `import_path`.
 
-You can refer to [the documentation](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeApplicationSchema.html#ray.serve.schema.ServeApplicationSchema.import_path) for more details about the format of `import_path`.
-Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example,
-the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`,
-the second `mobilenet` is the name of the Python file in the directory `mobilenet/`,
-and `app` is the name of the variable representing Ray Serve application within the Python file.
+You can refer to [the documentation](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeApplicationSchema.html#ray.serve.schema.ServeApplicationSchema.import_path) for more details about the format of `import_path`. Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example, the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`, the second `mobilenet` is the name of the Python file in the directory `mobilenet/`, and `app` is the name of the variable representing Ray Serve application within the Python file.
 
 ```yaml
   serveConfigV2: |
@@ -144,12 +139,9 @@ You may encounter the following error messages when KubeRay tries to create / up
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: connect: connection refused
 ```
 
-For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready.
-It's important to note that the Dashboard, Dashboard Agent and GCS may take a few seconds to start up after the head Pod is ready.
-As a result, the request may fail a few times initially before the necessary components are fully operational.
+For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready. It's important to note that the dashboard, dashboard agent and GCS may take a few seconds to start up after the head Pod is ready. As a result, the request may fail a few times initially before the necessary components are fully operational.
 
-If you continue to encounter this issue after waiting for 1 minute, it's possible that the dashboard or dashboard agent may have failed to start.
-For more information, you can check the `dashboard.log` and `dashboard_agent.log` files located at `/tmp/ray/session_latest/logs/` on the head Pod.
+If you continue to encounter this issue after waiting for 1 minute, it's possible that the dashboard or dashboard agent may have failed to start. For more information, you can check the `dashboard.log` and `dashboard_agent.log` files located at `/tmp/ray/session_latest/logs/` on the head Pod.
 
 #### Error message 2: `i/o timeout`
 
@@ -157,17 +149,16 @@ For more information, you can check the `dashboard.log` and `dashboard_agent.log
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: i/o timeout"
 ```
 
-One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Ray Pods and the dashboard agent's port (i.e., 52365).
+One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Pods and the dashboard agent's port (i.e., 52365).
 
 (kuberay-raysvc-issue6)=
 ### Issue 6: `runtime_env`
 
-In `serveConfigV2`, you can specify the runtime environment for the Ray Serve applications using `runtime_env`.
-Some common issues related to `runtime_env`:
+In `serveConfigV2`, you can specify the runtime environment for the Ray Serve applications using `runtime_env`. Some common issues related to `runtime_env`:
 
-* The `working_dir` points to a private AWS S3 bucket, but the Ray Pods do not have the necessary permissions to access the bucket.
+* The `working_dir` points to a private AWS S3 bucket, but the Pods do not have the necessary permissions to access the bucket.
 
-* The NetworkPolicy blocks the traffic between the Ray Pods and the external URLs specified in `runtime_env`.
+* The NetworkPolicy blocks the traffic between the Pods and the external URLs specified in `runtime_env`.
 
 (kuberay-raysvc-issue7)=
 ### Issue 7: Failed to get Serve application statuses.
@@ -178,10 +169,7 @@ You may encounter the following error message when KubeRay tries to get Serve ap
 Get "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: connect: connection refused"
 ```
 
-As mentioned in [Issue 5](#kuberay-raysvc-issue5), the KubeRay operator submits a `Put` request to the RayCluster for creating Serve applications once the head Pod is ready.
-After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (i.e., 52365).
-The successful submission indicates that all the necessary components, including the dashboard agent, are fully operational.
-Therefore, unlike Issue 5, the failure of the `Get` request is not expected.
+As mentioned in [Issue 5](#kuberay-raysvc-issue5), the KubeRay operator submits a `Put` request to the RayCluster for creating Serve applications once the head Pod is ready. After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (i.e., 52365). The successful submission indicates that all the necessary components, including the dashboard agent, are fully operational. Therefore, unlike Issue 5, the failure of the `Get` request is not expected.
 
 If you consistently encounter this issue, there are several possible causes:
 
@@ -221,10 +209,7 @@ If you consistently encounter this issue, there are several possible causes:
 > Note: Currently, the KubeRay operator does not have a clear plan to handle situations where the Kubernetes cluster runs out of resources.
 Therefore, we recommend ensuring that the Kubernetes cluster has sufficient resources to accommodate the serve application.
 
-If the status of a serve application remains non-`RUNNING` for more than `serviceUnhealthySecondThreshold` seconds,
-the KubeRay operator will consider the RayCluster as unhealthy and initiate the preparation of a new RayCluster.
-A common cause of this issue is that the Kubernetes cluster does not have enough resources to accommodate the serve application.
-In such cases, the KubeRay operator may continue to restart the RayCluster, leading to a loop of restarts.
+If the status of a serve application remains non-`RUNNING` for more than `serviceUnhealthySecondThreshold` seconds, the KubeRay operator will consider the RayCluster as unhealthy and initiate the preparation of a new RayCluster. A common cause of this issue is that the Kubernetes cluster does not have enough resources to accommodate the serve application. In such cases, the KubeRay operator may continue to restart the RayCluster, leading to a loop of restarts.
 
 We can also perform an experiment to reproduce this situation:
 
@@ -274,9 +259,7 @@ kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 (kuberay-raysvc-issue9)=
 ### Issue 9: Upgrade from Ray Serve's single-application API to its multi-application API without downtime
 
-KubeRay v0.6.0 has begun supporting Ray Serve API V2 (multi-application) by exposing `serveConfigV2` in the RayService CRD.
-However, Ray Serve does not support deploying both API V1 and API V2 in the cluster simultaneously.
-Hence, if users want to perform in-place upgrades by replacing `serveConfig` with `serveConfigV2`, they may encounter the following error message:
+KubeRay v0.6.0 has begun supporting Ray Serve API V2 (multi-application) by exposing `serveConfigV2` in the RayService CRD. However, Ray Serve does not support deploying both API V1 and API V2 in the cluster simultaneously. Hence, if users want to perform in-place upgrades by replacing `serveConfig` with `serveConfigV2`, they may encounter the following error message:
 
 ```
 ray.serve.exceptions.RayServeException: You are trying to deploy a multi-application config, however a single-application
@@ -286,30 +269,18 @@ multi-app config of format `ServeDeploySchema`. If you are using the REST API, y
 the multi-app API endpoint `/api/serve/applications/`.
 ```
 
-To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0.
-This will trigger a new RayCluster preparation instead of an in-place update.
+To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0. This will trigger a new RayCluster preparation instead of an in-place update.
 
-If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters.
-You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource.
-See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters. You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource. See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
 
 (kuberay-raysvc-issue10)=
 ### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
 
-KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster.
-This value represents the storage namespace in Redis where the Ray cluster metadata resides.
-In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
+KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Pods managed by the RayCluster. This value represents the storage namespace in Redis where the Ray cluster metadata resides. In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
 
-However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades.
-Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata.
-This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis.
-Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
+However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades. Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata. This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis. Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
 
-The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD.
-If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value.
-Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata.
-Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource.
-See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
+The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD. If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value. Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata. Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource. See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
 
 (kuberay-raysvc-issue11)=
 ### Issue 11: RayService stuck in Initializing — use the initializing timeout to fail fast

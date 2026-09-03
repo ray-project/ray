@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Quickstart paths for Ray: scale ML workloads with the AI libraries, parallelize Python with Ray Core, or deploy to the cloud with Ray Clusters."
+---
+
 (gentle-intro)=
 
 # Getting Started
@@ -249,7 +255,7 @@ Learn more about Ray Train
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Ray Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+{doc}`Ray Tune </tune/index>` is a library for hyperparameter tuning at any scale.
 It automatically finds the best hyperparameters for your models with efficient distributed search algorithms.
 With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code, supporting any deep learning framework including PyTorch, TensorFlow, and Keras.
 
@@ -662,7 +668,7 @@ Try Ray on Anyscale
 Use built-in observability tools to monitor and debug Ray applications and clusters. These tools help you understand your application's performance and identify bottlenecks.
 
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray dashboard: Web GUI to monitor and debug Ray
 :animate: fade-in-slide-down
 
 Ray dashboard provides a visual interface that displays real-time system metrics, node-level resource monitoring, job profiling, and task visualizations. The dashboard is designed to help users understand the performance of their Ray applications and identify potential issues.
@@ -685,7 +691,7 @@ The dashboard automatically becomes available when running Ray scripts. Access t
 :outline:
 :expand:
 
-Learn more about Ray Dashboard
+Learn more about Ray dashboard
 ```
 
 `````

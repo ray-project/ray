@@ -29,6 +29,8 @@ from ray.data._internal.util import GiB
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+
 import ray
 from ray import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -70,6 +72,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     CustomOpStatsReporter,
     MapTransformer,
+    UDFTimeScope,
 )
 from ray.data._internal.execution.util import (
     memory_string,
@@ -485,8 +488,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
-    def start(self, options: "ExecutionOptions"):
-        super().start(options)
+    def start(
+        self,
+        options: "ExecutionOptions",
+        block_ref_counter: "BlockRefCounter",
+    ):
+        super().start(options, block_ref_counter)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -659,8 +666,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         data_task = DataOpTask(
             task_index,
             gen,
-            lambda output: _output_ready_callback(task_index, output),
-            functools.partial(_task_done_callback, task_index),
+            self._block_ref_counter,
+            self.id,
+            output_ready_callback=lambda output: _output_ready_callback(
+                task_index, output
+            ),
+            task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
         )
         self._metrics.on_task_submitted(
@@ -826,6 +837,10 @@ def _map_task(
         # This is owned by _map_task so it belongs to actual, possibly-fused, running task
         # rather than a transformer instance reused across tasks.
         op_stats_reporter = CustomOpStatsReporter()
+        # Likewise owned by _map_task: an actor pool shares one transformer
+        # across every task the actor runs, and with
+        # `max_concurrent_calls_per_actor > 1` several run at once.
+        udf_time_scope = UDFTimeScope()
 
         def transform_iter_factory():
             # Clear any per-task custom stats before each attempt (the reporter
@@ -833,11 +848,15 @@ def _map_task(
             # can't leak into this one. A producing transform repopulates it
             # before the first block is yielded.
             op_stats_reporter.clear()
+            udf_time_scope.drain()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
             return map_transformer.apply_transform(
-                blocks_iter, ctx, op_stats_reporter.report
+                blocks_iter,
+                ctx,
+                op_stats_reporter.report,
+                udf_time_scope=udf_time_scope,
             )
 
         if retry_on:
@@ -862,7 +881,7 @@ def _map_task(
                 def build_metadata(block_ser_time_s):
                     exec_stats = blk_exec_stats_builder.build(
                         block_ser_time_s=block_ser_time_s,
-                        udf_time_s=map_transformer.udf_time_s(reset=True),
+                        udf_time_s=udf_time_scope.drain(),
                         task_idx=ctx.task_idx,
                     )
                     # NOTE: This tracks task duration up to this point, though we're

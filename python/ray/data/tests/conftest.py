@@ -13,6 +13,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -29,6 +30,12 @@ from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
+# Keep the footer-reader pool tiny for unit/integration tests. The default
+# 32-actor pool times out under CI parallelism; tests that need a larger pool
+# can override with monkeypatch.setenv. Mirrored in python/ray/data/test.bzl
+# for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+
 
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
@@ -44,8 +51,13 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")
@@ -334,7 +346,11 @@ def configure_shuffle_method(request):
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy in [ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.GPU_SHUFFLE]:
+    if shuffle_strategy in [
+        ShuffleStrategy.HASH_SHUFFLE,
+        ShuffleStrategy.SHUFFLE_V2,
+        ShuffleStrategy.GPU_SHUFFLE,
+    ]:
         ctx.default_hash_shuffle_parallelism = 8
 
     if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
@@ -805,5 +821,5 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True

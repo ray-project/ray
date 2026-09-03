@@ -1,3 +1,6 @@
+.. meta::
+   :description: Export structured Ray events for tasks, actors, jobs, and nodes to an HTTP endpoint, with event format reference and reporting configuration.
+
 .. _ray-event-export:
 
 Ray Event Export
@@ -6,7 +9,7 @@ Ray Event Export
 Starting from 2.49, Ray supports exporting structured events to a configured HTTP 
 endpoint. Each node sends events to the endpoint through an HTTP POST request.
 
-Previously, Ray's :ref:`task events <task-events>` were only used internally by the Ray Dashboard 
+Previously, Ray's :ref:`task events <task-events>` were only used internally by the Ray dashboard 
 and :ref:`State API <state-api-overview-ref>` for monitoring and debugging. With the new event 
 export feature, you can now send these raw events to external systems for custom analytics, 
 monitoring, and integration with third-party tools.

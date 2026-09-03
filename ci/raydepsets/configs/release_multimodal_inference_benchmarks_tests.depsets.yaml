@@ -46,20 +46,6 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
-  - name: large_image_embedding_py${PYTHON_SHORT}
-    operation: expand
-    depsets:
-      - ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
-    requirements:
-      - release/nightly_tests/multimodal_inference_benchmarks/large_image_embedding/requirements.in
-    output: release/ray_release/byod/large_image_embedding_py${PYTHON_VERSION}.lock
-    append_flags:
-      - --index https://download.pytorch.org/whl/cu128
-      - --python-version=${PYTHON_VERSION}
-      - --unsafe-package ray
-      - --python-platform=linux
-    build_arg_sets:
-      - py310
   - name: video_object_detection_py${PYTHON_SHORT}
     operation: expand
     depsets:

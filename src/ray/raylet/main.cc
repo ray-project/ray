@@ -20,6 +20,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -47,6 +48,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -465,6 +467,7 @@ int main(int argc, char *argv[]) {
       [raylet_node_id,
        &shutting_down,
        &node_manager,
+       &object_directory,
        &main_service,
        &raylet_socket_name,
        &gcs_client,
@@ -477,6 +480,17 @@ int main(int argc, char *argv[]) {
         }
         RAY_LOG(INFO) << "Raylet graceful shutdown triggered with death info: "
                       << node_death_info.DebugString();
+
+        // Signal shutdown to the object directory as early as possible, before
+        // UnregisterSelf and any client teardown. Otherwise, object-location
+        // subscription long-polls failed during shutdown (because our own gRPC
+        // client is being torn down) would be misclassified as the remote owner
+        // dying, surfacing as spurious OwnerDiedError on dependent tasks.
+        // object_directory may not be constructed yet if SIGTERM arrives during
+        // early startup (before the AsyncGetInternalConfig callback runs).
+        if (object_directory != nullptr) {
+          object_directory->MarkShuttingDown();
+        }
 
         auto unregister_done_callback = [&main_service,
                                          &raylet_socket_name,
@@ -593,6 +607,12 @@ int main(int argc, char *argv[]) {
     int num_cpus = num_cpus_it != static_resource_conf.end()
                        ? static_cast<int>(num_cpus_it->second)
                        : 0;
+    auto worker_grpc_threads_warning = ray::raylet::GetWorkerGrpcThreadsWarning(
+        std::thread::hardware_concurrency(),
+        RayConfig::instance().worker_num_grpc_internal_threads());
+    if (worker_grpc_threads_warning.has_value()) {
+      RAY_LOG(WARNING) << *worker_grpc_threads_warning;
+    }
 
     node_manager_config.raylet_config = *stored_raylet_config;
     node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
@@ -780,6 +800,14 @@ int main(int argc, char *argv[]) {
         [&](const ray::ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
           object_manager->MarkObjectFailed(obj_id, error_type);
         });
+
+    // Catch up: if SIGTERM arrived before this callback ran,
+    // shutdown_raylet_gracefully skipped MarkShuttingDown() because
+    // object_directory was still null. Set it now so teardown-induced
+    // subscription failures are not misclassified as remote owner deaths.
+    if (shutting_down.load()) {
+      object_directory->MarkShuttingDown();
+    }
 
     auto object_store_runner = std::make_unique<ray::ObjectStoreRunner>(
         object_manager_config,

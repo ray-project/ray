@@ -18,7 +18,11 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.test_utils import check_deployment_status
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    expected_proxy_actors,
+    skip_if_haproxy,
+)
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
@@ -26,8 +30,12 @@ from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 from ray.util.state import list_actors
 
+# Windows CI runs these on a shared, heavily loaded shard where multi-node
+# cluster convergence routinely overruns wait_for_condition's 10s default.
+WAIT_TIMEOUT_S = 60
 
-def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
+
+def get_pids(expected, deployment_name="D", app_name="default", timeout=WAIT_TIMEOUT_S):
     handle = serve.get_deployment_handle(deployment_name, app_name)
     pids = set()
     start = time.time()
@@ -79,7 +87,7 @@ def test_scale_up(ray_cluster):
     client = serve.context._connect()
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    client._wait_for_application_running("default")
+    client._wait_for_application_running("default", timeout_s=WAIT_TIMEOUT_S)
     pids1 = get_pids(1, deployment_name="pid", app_name="default")
 
     app_config["deployments"][0]["num_replicas"] = 3
@@ -102,7 +110,7 @@ def test_scale_up(ray_cluster):
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
-    client._wait_for_application_running("default")
+    client._wait_for_application_running("default", timeout_s=WAIT_TIMEOUT_S)
     pids3 = get_pids(3, deployment_name="pid", app_name="default")
     assert pids2.issubset(pids3)
 
@@ -177,7 +185,9 @@ def test_replica_startup_status_transitions(ray_cluster):
         return replicas.get([replica_state])
 
     # wait for serve to start the replica
-    wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
+    wait_for_condition(
+        lambda: len(get_replicas(ReplicaState.STARTING)) > 0, timeout=WAIT_TIMEOUT_S
+    )
 
     # currently there are no resources to allocate the replica
     def get_starting_replica():
@@ -190,12 +200,16 @@ def test_replica_startup_status_transitions(ray_cluster):
             return False
         return replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
 
-    wait_for_condition(is_pending_allocation)
+    wait_for_condition(is_pending_allocation, timeout=WAIT_TIMEOUT_S)
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
-    wait_for_condition(lambda: (ray.cluster_resources().get("CPU", 0) >= 4))
-    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
+    wait_for_condition(
+        lambda: (ray.cluster_resources().get("CPU", 0) >= 4), timeout=WAIT_TIMEOUT_S
+    )
+    wait_for_condition(
+        lambda: (ray.available_resources().get("CPU", 0) >= 2), timeout=WAIT_TIMEOUT_S
+    )
 
     def is_replica_pending_initialization():
         replica = get_starting_replica()
@@ -204,7 +218,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         status, _ = replica.check_started()
         return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
-    wait_for_condition(is_replica_pending_initialization, timeout=25)
+    wait_for_condition(is_replica_pending_initialization, timeout=WAIT_TIMEOUT_S)
 
     # send signal to complete replica initialization
     ray.get(signal.send.remote())
@@ -225,7 +239,7 @@ def test_replica_startup_status_transitions(ray_cluster):
 
         return False
 
-    wait_for_condition(check_succeeded)
+    wait_for_condition(check_succeeded, timeout=WAIT_TIMEOUT_S)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -260,7 +274,9 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
         return replicas.get([replica_state])
 
     # Wait for replicas to be created in STARTING state.
-    wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
+    wait_for_condition(
+        lambda: len(get_replicas(ReplicaState.STARTING)) > 0, timeout=WAIT_TIMEOUT_S
+    )
 
     # With only 1 CPU available and each replica needing 0.75, replicas should
     # be stuck in PENDING_ALLOCATION.
@@ -273,11 +289,13 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
             for r in replicas
         )
 
-    wait_for_condition(is_pending_allocation)
+    wait_for_condition(is_pending_allocation, timeout=WAIT_TIMEOUT_S)
 
     # Add enough resources for the gang
     cluster.add_node(num_cpus=1)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) == 2)
+    wait_for_condition(
+        lambda: ray.cluster_resources().get("CPU", 0) == 2, timeout=WAIT_TIMEOUT_S
+    )
 
     # Replicas should transition to PENDING_INITIALIZATION
     def is_pending_initialization():
@@ -289,7 +307,7 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
             for r in replicas
         )
 
-    wait_for_condition(is_pending_initialization, timeout=30)
+    wait_for_condition(is_pending_initialization, timeout=WAIT_TIMEOUT_S)
 
     # Complete initialization
     ray.get(signal.send.remote())
@@ -299,7 +317,7 @@ def test_gang_replica_startup_status_transitions(ray_cluster):
         running_replicas = get_replicas(ReplicaState.RUNNING)
         return len(running_replicas) == 2
 
-    wait_for_condition(check_running, timeout=30)
+    wait_for_condition(check_running, timeout=WAIT_TIMEOUT_S)
 
 
 @serve.deployment
@@ -343,12 +361,16 @@ def test_intelligent_scale_down(ray_cluster):
         "deployments": [{"name": "f", "num_replicas": 3}],
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_app_running_with_replicas, num_replicas=3)
+    wait_for_condition(
+        check_app_running_with_replicas, num_replicas=3, timeout=WAIT_TIMEOUT_S
+    )
     assert get_actor_distributions() == {2, 1}
 
     app_config["deployments"][0]["num_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_app_running_with_replicas, num_replicas=2)
+    wait_for_condition(
+        check_app_running_with_replicas, num_replicas=2, timeout=WAIT_TIMEOUT_S
+    )
     assert get_actor_distributions() == {2}
 
 
@@ -388,7 +410,7 @@ def test_replica_spread(ray_cluster):
         return len(nodes)
 
     # Check that the two replicas are spread across the two nodes.
-    wait_for_condition(lambda: get_num_nodes() == 2)
+    wait_for_condition(lambda: get_num_nodes() == 2, timeout=WAIT_TIMEOUT_S)
 
     # Kill the worker node. The second replica should get rescheduled on
     # the head node.
@@ -396,7 +418,7 @@ def test_replica_spread(ray_cluster):
     cluster.remove_node(worker_node)
 
     # Check that the replica on the dead node can be rescheduled.
-    wait_for_condition(lambda: get_num_nodes() == 1)
+    wait_for_condition(lambda: get_num_nodes() == 1, timeout=WAIT_TIMEOUT_S)
 
 
 def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
@@ -441,6 +463,7 @@ def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
         check_deployment_status,
         name="blocking_replica",
         expected_status=DeploymentStatus.HEALTHY,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Send 2 requests - first occupies the replica, second queues. With
@@ -453,7 +476,7 @@ def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
         check_deployment_status,
         name="blocking_replica",
         expected_status=DeploymentStatus.UPSCALING,
-        timeout=15,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Release the signal so running requests complete and go to zero.
@@ -467,7 +490,7 @@ def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
         check_deployment_status,
         name="blocking_replica",
         expected_status=DeploymentStatus.HEALTHY,
-        timeout=30,
+        timeout=WAIT_TIMEOUT_S,
     )
 
 
@@ -526,6 +549,10 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     assert blocked_response.result() == outer_node_id
 
 
+# TODO: HAProxy's default ingress balances across all replicas with no
+# node-local preference. prefer-local routing could be wired under HAProxy via
+# the ingress_request_router use-server delegation, then this skip dropped.
+@skip_if_haproxy("balances across replicas without node-local preference")
 @pytest.mark.parametrize("set_flag", [True, False])
 def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """When the feature flag is turned on via env var, verify that http proxy routes to
@@ -621,18 +648,31 @@ class TestHealthzAndRoutes:
                 len(
                     {
                         a.node_id
-                        for a in list_actors(address=cluster.address)
+                        for a in list_actors(
+                            address=cluster.address,
+                            filters=[("STATE", "=", "ALIVE")],
+                        )
                         if a.class_name.startswith("ServeReplica")
                     }
                 )
                 == 1
             )
 
-        wait_for_condition(check_replicas_on_worker_nodes)
+        wait_for_condition(check_replicas_on_worker_nodes, timeout=WAIT_TIMEOUT_S)
 
-        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
-        # and 2 nodes exist.
-        wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
+        # Total alive actors: EveryNode proxies on both nodes + 1 controller +
+        # 2 replicas. Under HAProxy each proxy node runs an HAProxyManager and
+        # the head node adds a fallback ProxyActor.
+        expected_num_actors = (
+            sum(expected_proxy_actors(num_proxy_nodes=2).values()) + 1 + 2
+        )
+        wait_for_condition(
+            lambda: len(
+                list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
+            )
+            == expected_num_actors,
+            timeout=WAIT_TIMEOUT_S,
+        )
         assert len(ray.nodes()) == 2
 
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
@@ -648,6 +688,7 @@ class TestHealthzAndRoutes:
             url="http://127.0.0.1:8000/-/healthz",
             expected_code=200,
             expected_text="success",
+            timeout=WAIT_TIMEOUT_S,
         )
         assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
         assert httpx.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
@@ -656,19 +697,25 @@ class TestHealthzAndRoutes:
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=200,
             expected_text="success",
+            timeout=WAIT_TIMEOUT_S,
         )
         assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 200
         assert httpx.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
 
-        # Delete the deployment should bring the active actors down to 3 and drop
-        # replicas on all nodes.
+        # Deleting the deployment drops the replicas on all nodes. The proxies and
+        # controller stay alive (the worker proxy drains), so the count is the
+        # pre-delete total minus the 2 replicas.
         serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
+        expected_num_actors_after_delete = (
+            sum(expected_proxy_actors(num_proxy_nodes=2).values()) + 1
+        )
         wait_for_condition(
             lambda: len(
                 list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
             )
-            == 3,
+            == expected_num_actors_after_delete,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         # Ensure head node `/-/healthz` and `/-/routes` continue to
@@ -680,19 +727,28 @@ class TestHealthzAndRoutes:
             url="http://127.0.0.1:8000/-/healthz",
             expected_code=200,
             expected_text="success",
+            timeout=WAIT_TIMEOUT_S,
         )
-        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert httpx.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/routes",
+            expected_code=200,
+            expected_text="{}",
+            timeout=WAIT_TIMEOUT_S,
+        )
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=503,
             expected_text="This node is being drained.",
+            timeout=WAIT_TIMEOUT_S,
         )
-        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 503
-        assert (
-            httpx.get("http://127.0.0.1:8001/-/routes").text
-            == "This node is being drained."
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/routes",
+            expected_code=503,
+            expected_text="This node is being drained.",
+            timeout=WAIT_TIMEOUT_S,
         )
 
 

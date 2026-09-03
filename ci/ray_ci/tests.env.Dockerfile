@@ -19,6 +19,17 @@ ARG RAY_INSTALL_MASK=
 # To use C++ API/worker, set BUILD_TYPE to "multi-lang".
 ENV RAY_DISABLE_EXTRA_CPP=1
 
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 RUN <<EOF
 #!/bin/bash
 
@@ -125,6 +136,8 @@ case "$BUILD_TYPE" in
     # import from ray.tests.conftest. Symlink the source tree's tests dir
     # into site-packages so these imports resolve.
     ln -s /rayci/python/ray/tests "${RAY_SITE_DIR}/tests"
+    ln -s /rayci/python/ray/llm/tests "${RAY_SITE_DIR}/llm/tests"
+    ln -s /rayci/python/ray/serve/tests "${RAY_SITE_DIR}/serve/tests"
 
     apply_install_mask "${RAY_SITE_DIR}"
 

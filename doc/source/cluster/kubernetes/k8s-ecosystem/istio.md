@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable Istio mTLS and L7 traffic observability for a RayCluster, including the headless service Ray requires."
+---
+
 (kuberay-istio)=
 # mTLS and L7 observability with Istio
 
@@ -66,7 +72,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.6.0 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 
@@ -170,8 +176,7 @@ The default Ray worker port range, from 10002 to 19999, is too large to specify 
 
 ## Step 4: Create the RayCluster
 
-The upcoming RayCluster _must_ use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`.
-In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
+The upcoming RayCluster _must_ use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`. In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
 
   ```bash
   kubectl apply -f - <<EOF

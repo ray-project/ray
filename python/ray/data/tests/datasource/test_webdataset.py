@@ -7,6 +7,8 @@ import os
 import pickle
 import tarfile
 
+import numpy as np
+import pandas as pd
 import pytest
 import webdataset as wds
 
@@ -141,6 +143,71 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
             "test.text",
             "test.cls2",
         }
+
+
+def test_webdataset_non_contiguous_keys_raises(tmp_path):
+    """Regression test for GH #44068.
+
+    When a tar archive's entries are not sorted by sample key, `_group_by_keys`
+    used to silently emit fragmented samples (one per contiguous run of a
+    given key). We now detect that and surface a clear error pointing the user
+    at the WebDataset sorted-archive requirement, so they don't silently lose
+    data.
+    """
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    # Construct an iterator of file samples where key "001" appears in two
+    # non-contiguous runs. This mirrors what `_tar_file_iterator` would yield
+    # for a tar that wasn't sorted by name.
+    data = [
+        {"fname": "001.jpg", "data": b"jpg-001"},
+        {"fname": "002.jpg", "data": b"jpg-002"},
+        {"fname": "001.txt", "data": b"txt-001"},  # non-contiguous: bug case
+    ]
+    with pytest.raises(ValueError, match="not contiguous"):
+        list(_group_by_keys(data, meta={"__url__": "test.tar"}))
+
+
+def test_webdataset_contiguous_keys_no_false_positive(tmp_path):
+    """Repeated suffixes within the same prefix run must not trip the
+    non-contiguous detection (they're a separate, already-handled error)."""
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "001.txt", "data": b"b"},
+        {"fname": "002.jpg", "data": b"c"},
+        {"fname": "002.txt", "data": b"d"},
+    ]
+    samples = list(_group_by_keys(data, meta={"__url__": "test.tar"}))
+    keys = sorted(s["__key__"] for s in samples)
+    assert keys == ["001", "002"]
+
+
+def test_webdataset_consumer_mutates_yielded_sample(tmp_path):
+    """`_group_by_keys` must not assume the consumer leaves the yielded dict
+    intact. If a downstream decoder mutates or clears it, the generator must
+    still be able to bookkeep the seen-keys set when it resumes."""
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "002.jpg", "data": b"b"},
+    ]
+    gen = _group_by_keys(data, meta={"__url__": "test.tar"})
+    first = next(gen)
+    # Simulate a decoder that wipes the dict before the generator resumes.
+    first.clear()
+    second = next(gen)
+    assert second["__key__"] == "002"
+    with pytest.raises(StopIteration):
+        next(gen)
 
 
 def test_webdataset_write(ray_start_2_cpus, tmp_path):
@@ -327,6 +394,79 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
 
     assert len(rows) == 1
     assert rows[0]["pkl"] == {"key": "value"}
+
+
+@pytest.mark.parametrize("num_samples", [1, 511, 512, 513, 1000])
+def test_read_webdataset_chunked_samples(ray_start_2_cpus, tmp_path, num_samples):
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with wds.TarWriter(path) as writer:
+        for i in range(num_samples):
+            writer.write({"__key__": f"{i:06d}", "cls": str(i).encode("utf-8")})
+
+    actual = (
+        ray.data.read_webdataset([path], suffixes=["cls"], decoder=None)
+        .to_pandas()
+        .sort_values("__key__")
+        .reset_index(drop=True)
+    )
+    expected = pd.DataFrame(
+        {
+            "__key__": [f"{i:06d}" for i in range(num_samples)],
+            "cls": [str(i).encode("utf-8") for i in range(num_samples)],
+        }
+    )
+    pd.testing.assert_frame_equal(actual[["__key__", "cls"]], expected)
+
+
+def test_read_webdataset_chunked_heterogeneous_keys(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "data-000000.tar")
+    n = 6
+    with wds.TarWriter(path) as writer:
+        for i in range(n):
+            sample = {"__key__": f"{i:06d}", "cls": str(i).encode("utf-8")}
+            if i % 2 == 0:
+                sample["aux"] = str(i * 10).encode("utf-8")
+            writer.write(sample)
+
+    actual = (
+        ray.data.read_webdataset([path], suffixes=["cls", "aux"], decoder=None)
+        .to_pandas()
+        .sort_values("__key__")
+        .reset_index(drop=True)
+    )
+    expected = pd.DataFrame(
+        {
+            "__key__": [f"{i:06d}" for i in range(n)],
+            "cls": [str(i).encode("utf-8") for i in range(n)],
+            "aux": [
+                str(i * 10).encode("utf-8") if i % 2 == 0 else np.nan for i in range(n)
+            ],
+        }
+    )
+    pd.testing.assert_frame_equal(actual[["__key__", "cls", "aux"]], expected)
+
+
+def test_read_webdataset_forwards_ray_remote_args(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with wds.TarWriter(path) as writer:
+        writer.write({"__key__": "000000", "cls": b"0"})
+
+    ds = ray.data.read_webdataset(
+        [path],
+        suffixes=["cls"],
+        decoder=None,
+        num_cpus=1,
+        memory=512,
+        ray_remote_args={"max_retries": 5},
+    )
+
+    read_op = ds._logical_plan.dag
+    assert read_op.ray_remote_args["num_cpus"] == 1
+    assert read_op.ray_remote_args["memory"] == 512
+    assert read_op.ray_remote_args["max_retries"] == 5
+
+    # smoke run
+    assert len(ds.take_all()) == 1
 
 
 if __name__ == "__main__":

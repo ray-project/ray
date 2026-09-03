@@ -11,7 +11,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     _proto_to_dict,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
@@ -26,6 +25,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -190,6 +190,85 @@ class TestDeploymentConfig:
 
         # Test default value
         assert DeploymentConfig().max_constructor_retry_count == 20
+
+    def test_backpressure_config_status_code_validation(self):
+        # Only 503 (the default) and 429 are allowed.
+        assert BackpressureConfig().status_code == 503
+        assert BackpressureConfig(status_code=429).status_code == 429
+        assert BackpressureConfig(status_code=503).status_code == 503
+        # The deployment config accepts a model or a plain dict.
+        assert DeploymentConfig().backpressure_config.status_code == 503
+        assert (
+            DeploymentConfig(
+                backpressure_config=BackpressureConfig(status_code=429)
+            ).backpressure_config.status_code
+            == 429
+        )
+        assert (
+            DeploymentConfig(
+                backpressure_config={"status_code": 429}
+            ).backpressure_config.status_code
+            == 429
+        )
+
+        for invalid_status_code in (404, 200, None):
+            with pytest.raises(ValidationError):
+                BackpressureConfig(status_code=invalid_status_code)
+            with pytest.raises(ValidationError):
+                DeploymentConfig(
+                    backpressure_config={"status_code": invalid_status_code}
+                )
+
+        # Unknown keys (e.g. typos) are rejected rather than silently dropped.
+        with pytest.raises(ValidationError):
+            BackpressureConfig(statuscode=429)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_config={"retry_after": 5})
+
+    def test_backpressure_config_retry_after_s_validation(self):
+        # None (the default) means no `Retry-After` header.
+        assert BackpressureConfig().retry_after_s is None
+        assert BackpressureConfig(retry_after_s=None).retry_after_s is None
+        # 0 is legal: "retry immediately."
+        assert BackpressureConfig(retry_after_s=0).retry_after_s == 0
+        assert BackpressureConfig(retry_after_s=7.5).retry_after_s == 7.5
+        assert DeploymentConfig().backpressure_config.retry_after_s is None
+
+        # inf/nan are rejected (allow_inf_nan=False): an infinite value would
+        # crash `Retry-After` header construction at rejection time.
+        for invalid_retry_after in (-1, "hello", float("inf"), float("nan")):
+            with pytest.raises(ValidationError):
+                BackpressureConfig(retry_after_s=invalid_retry_after)
+            with pytest.raises(ValidationError):
+                DeploymentConfig(
+                    backpressure_config={"retry_after_s": invalid_retry_after}
+                )
+
+    def test_backpressure_config_proto_round_trip(self):
+        # Explicit values survive the proto round trip.
+        config = DeploymentConfig(
+            backpressure_config=BackpressureConfig(status_code=429, retry_after_s=7.5)
+        )
+        round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert round_tripped.backpressure_config.status_code == 429
+        assert round_tripped.backpressure_config.retry_after_s == 7.5
+
+        # Defaults survive the round trip (None must not become 0.0).
+        round_tripped = DeploymentConfig.from_proto_bytes(
+            DeploymentConfig().to_proto_bytes()
+        )
+        assert round_tripped.backpressure_config.status_code == 503
+        assert round_tripped.backpressure_config.retry_after_s is None
+
+        # Protos from older versions don't have the field at all (e.g., sent
+        # by an older controller during a rolling upgrade); simulate by
+        # clearing it so it's absent from the wire format. It must fall back
+        # to the defaults.
+        old_proto = DeploymentConfig().to_proto()
+        old_proto.ClearField("backpressure_config")
+        from_old_proto = DeploymentConfig.from_proto(old_proto)
+        assert from_old_proto.backpressure_config.status_code == 503
+        assert from_old_proto.backpressure_config.retry_after_s is None
 
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
@@ -1012,20 +1091,19 @@ class TestGangSchedulingConfig:
             def f():
                 return "test"
 
-    def test_gang_scheduling_config_scale_to_zero_rejected(self):
-        """Test that min_replicas=0 is rejected with gang_scheduling_config."""
-        with pytest.raises(
-            ValueError,
-            match="Scale to zero isn't supported for gang-scheduled deployments",
-        ):
+    def test_gang_scheduling_config_scale_to_zero(self):
+        """Test that min_replicas=0 works with gang_scheduling_config."""
 
-            @serve.deployment(
-                num_replicas="auto",
-                gang_scheduling_config=GangSchedulingConfig(gang_size=3),
-                autoscaling_config={"min_replicas": 0, "max_replicas": 9},
-            )
-            def f():
-                return "test"
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=3),
+            autoscaling_config={"min_replicas": 0, "max_replicas": 9},
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config.min_replicas == 0
+        assert f._deployment_config.gang_scheduling_config.gang_size == 3
 
     def test_gang_scheduling_config_auto_num_replicas(self):
         """Test that num_replicas='auto' is allowed with gang_scheduling_config."""
@@ -1176,74 +1254,18 @@ def test_http_options():
     # Test configs ignoring unknown keys (required for forward-compatibility)
     HTTPOptions(new_version_config_key="this config is from newer version of Ray")
 
+    # `location` is deprecated; it defaults to None (proxy_location is the
+    # authority). host=None still disables. Setting a non-None location warns;
+    # location=None is a no-op (internal model_dump roundtrips pass it) and must
+    # NOT warn.
+    assert HTTPOptions().location is None
     assert HTTPOptions(host=None).location == ProxyLocation.Disabled
-    assert HTTPOptions(location=None).location == ProxyLocation.Disabled
-    assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
-
-
-def test_prepare_imperative_http_options():
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=None,
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=HTTPOptions(**{}),
-    ) == HTTPOptions(
-        location=ProxyLocation.HeadOnly
-    )  # in this case we can't know whether location was provided or not
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=HTTPOptions(),
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"test": "test"},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode, host="0.0.0.0")
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=ProxyLocation.Disabled)
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.Disabled,
-        http_options=None,
-    ) == HTTPOptions(location=ProxyLocation.Disabled)
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.HeadOnly,
-        http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly, host="0.0.0.0")
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.HeadOnly,
-        http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
-
-    with pytest.raises(ValueError, match="not a valid ProxyLocation"):
-        prepare_imperative_http_options(proxy_location="wrong", http_options=None)
-
-    with pytest.raises(ValidationError, match="not a valid ProxyLocation"):
-        prepare_imperative_http_options(
-            proxy_location=None, http_options={"location": "123"}
-        )
-
-    with pytest.raises(ValueError, match="Unexpected type"):
-        prepare_imperative_http_options(proxy_location=None, http_options="wrong")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert HTTPOptions(location=None).location is None
+    assert not any("`location` in HTTPOptions" in str(w.message) for w in caught)
+    with pytest.warns(DeprecationWarning, match="`location` in HTTPOptions"):
+        assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
 
 
 def test_with_proto():
