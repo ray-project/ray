@@ -186,10 +186,7 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
 def test_job_config_reconstruction(
     config, ray_start_cluster, job_reconstruction_enabled
 ):
-    # The cluster supports lineage reconstruction (the default), but the job
-    # can opt out via its JobConfig.
     cluster = ray_start_cluster
-    # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(
         address=cluster.address,
@@ -209,19 +206,22 @@ def test_job_config_reconstruction(
 
     @ray.remote
     def dependent_task(x):
-        return
+        return x.size
 
     obj = large_object.options(resources={"node1": 1}).remote()
-    ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+    assert (
+        ray.get(dependent_task.options(resources={"node1": 1}).remote(obj)) == 10**7
+    )
 
+    # Explicitly kill the node holding the object to test reconstruction is
+    # enabled/disabled.
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if job_reconstruction_enabled:
-        ray.get(dependent_task.remote(obj))
+        assert ray.get(dependent_task.remote(obj)) == 10**7
+        assert ray.get(obj).size == 10**7
     else:
-        # Even though the task has retries left and the cluster supports
-        # reconstruction, the job disabled it, so the object is lost.
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
         with pytest.raises(ray.exceptions.ObjectLostError):
