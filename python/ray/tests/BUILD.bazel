@@ -1353,6 +1353,25 @@ py_test(
     ],
 )
 
+py_test(
+    name = "kuberay/test_joblib_autoscaling_e2e",
+    size = "large",
+    srcs = ["kuberay/test_joblib_autoscaling_e2e.py"],
+    data = [
+        "kuberay/scripts/joblib_pool_autoscaling.py",
+        "kuberay/test_files/ray-cluster.autoscaler-v2-template.yaml",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:kuberay",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "large",
     env = {
