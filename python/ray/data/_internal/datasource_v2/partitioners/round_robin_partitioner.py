@@ -48,24 +48,35 @@ class RoundRobinPartitioner(FilePartitioner):
             max_bucket_size=max_bucket_size,
             num_buckets=num_buckets,
         )
+        self._has_checkpoint_column = False
 
     def add_input(self, input_manifest: FileManifest):
         in_memory_size_estimates = (
             self._in_memory_size_estimator.estimate_in_memory_sizes(input_manifest)
         )
+        # Carry the per-row checkpoint struct (generated-ID checkpointing)
+        # through bucketing; a rebuilt manifest must not drop the column.
+        checkpoint_column = input_manifest.file_fragments_checkpoint
+        if checkpoint_column is not None:
+            self._has_checkpoint_column = True
+            checkpoint_values = list(checkpoint_column)
+        else:
+            checkpoint_values = [None] * len(input_manifest)
         for (
             file_path,
             file_size,
             file_chunk_metadata,
+            checkpoint_value,
             in_memory_size_estimate,
         ) in zip(
             input_manifest.paths,
             input_manifest.file_sizes,
             input_manifest.file_chunk_metadatas,
+            checkpoint_values,
             in_memory_size_estimates,
         ):
             self._partitioner.add_item(
-                (file_path, file_size, file_chunk_metadata),
+                (file_path, file_size, file_chunk_metadata, checkpoint_value),
                 in_memory_size_estimate,
             )
 
@@ -78,11 +89,14 @@ class RoundRobinPartitioner(FilePartitioner):
 
     def next_partition(self) -> FileManifest:
         partition = self._partitioner.next_partition()
-        paths, file_sizes, file_chunk_metadatas = zip(*partition)
+        paths, file_sizes, file_chunk_metadatas, checkpoint_values = zip(*partition)
         return FileManifest.construct_manifest(
             paths=list(paths),
             sizes=list(file_sizes),
             chunk_metadatas=list(file_chunk_metadatas),
+            checkpoint_file_fragments=(
+                list(checkpoint_values) if self._has_checkpoint_column else None
+            ),
         )
 
     def finalize(self):

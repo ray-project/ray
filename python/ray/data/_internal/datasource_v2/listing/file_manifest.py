@@ -6,11 +6,32 @@ import pyarrow as pa
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import ChunkMetadata
 from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
+from ray.data.checkpoint.generated_id import (
+    CHECKPOINTED_FILE_FRAGMENTS_TYPE,
+    CheckpointFragmentsInfo,
+)
 
 # File manifest column names
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
+# Optional column, present only when generated-ID checkpointing is active:
+# the file's compact checkpoint struct (null = file never checkpointed).
+FILE_FRAGMENTS_CHECKPOINT_COLUMN_NAME = "__file_fragments_checkpoint"
+
+
+def _to_checkpoint_scalar_value(value):
+    """Normalize one checkpoint entry for ``pa.array``.
+
+    Accepts ``None``, a ``CheckpointFragmentsInfo``, or a raw
+    ``pa.StructScalar`` (as carried through partitioners). A null struct
+    scalar normalizes to ``None``.
+    """
+    if isinstance(value, CheckpointFragmentsInfo):
+        value = value.checkpointed_file_fragments
+    if isinstance(value, pa.Scalar) and not value.is_valid:
+        return None
+    return value
 
 
 class FileManifest:
@@ -66,6 +87,15 @@ class FileManifest:
     @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_chunk_metadatas).to_numpy()
+
+    @property
+    def file_fragments_checkpoint(self) -> Optional[pa.ChunkedArray]:
+        """Per-row compact checkpoint structs, or None when checkpointing is
+        off. Kept as an Arrow column (not numpy) so struct scalars survive."""
+        column_names = BlockAccessor.for_block(self._block).column_names()
+        if FILE_FRAGMENTS_CHECKPOINT_COLUMN_NAME not in column_names:
+            return None
+        return self._block[FILE_FRAGMENTS_CHECKPOINT_COLUMN_NAME]
 
     def as_block(self) -> Block:
         """Return the underlying block for the `FileManifest`.
@@ -129,14 +159,35 @@ class FileManifest:
         paths: List[str],
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],
+        checkpoint_file_fragments: Optional[List] = None,
     ) -> "FileManifest":
+        """Build a manifest block from parallel per-row lists.
+
+        Args:
+            paths: One file path per row.
+            sizes: On-disk size (or chunk size) per row.
+            chunk_metadatas: Chunk metadata per row; None for whole-file rows.
+            checkpoint_file_fragments: When generated-ID checkpointing is
+                active, one entry per row: a ``CheckpointFragmentsInfo``, a
+                raw ``CHECKPOINTED_FILE_FRAGMENTS_TYPE`` struct scalar, or
+                None for a file with no checkpoint entry. Omit (None) to
+                leave the column out entirely.
+
+        Returns:
+            The constructed ``FileManifest``.
+        """
         assert len(paths) == len(sizes) == len(chunk_metadatas)
 
-        block = pa.table(
-            {
-                PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
-                FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
-            }
-        )
+        columns = {
+            PATH_COLUMN_NAME: paths,
+            FILE_SIZE_COLUMN_NAME: sizes,
+            FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
+        }
+        if checkpoint_file_fragments is not None:
+            assert len(checkpoint_file_fragments) == len(paths)
+            columns[FILE_FRAGMENTS_CHECKPOINT_COLUMN_NAME] = pa.array(
+                [_to_checkpoint_scalar_value(v) for v in checkpoint_file_fragments],
+                type=CHECKPOINTED_FILE_FRAGMENTS_TYPE,
+            )
+        block = pa.table(columns)
         return cls(block)
