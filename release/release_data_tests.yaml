@@ -32,6 +32,18 @@
 - name: "read_parquet_fixed_size"
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
     byod:
       type: cpu
@@ -47,6 +59,18 @@
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -77,6 +101,18 @@
 - name: read_tfrecords
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
   run:
     timeout: 3600
@@ -102,6 +138,18 @@
 - name: write_parquet
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     anyscale_sdk_2026: true
   run:
     timeout: 3600
@@ -174,11 +222,33 @@
 
   matrix:
     setup:
-      mode: [append, upsert, overwrite]
+      mode: [append, upsert]
 
   run:
     timeout: 4800
     script: python iceberg_benchmark.py --mode {{mode}}
+
+# Split out of the ``mode`` matrix above: only ``overwrite`` needs its own bin
+# budget, and a matrix cannot vary ``byod.runtime_env`` per value. Rendered test
+# names are unchanged.
+- name: "iceberg_benchmark_overwrite"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_pyiceberg.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning: hold the pre-existing 64 MiB behaviour.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+    cluster_compute: iceberg_benchmark_compute.yaml
+
+  run:
+    timeout: 4800
+    script: python iceberg_benchmark.py --mode overwrite
 
 ###################
 # Aggregation tests
@@ -187,6 +257,18 @@
 - name: "count_parquet_fixed_size"
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -224,10 +306,32 @@
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      shuffle_strategy: []
+      columns: []
+      # The 84-group key is read-bound, so it wants large bins: small bins
+      # shatter the read into short tasks the executor cannot dispatch fast
+      # enough, and the cluster idles. The 7M-group key is shuffle-bound and
+      # measured best at 32 MiB. A matrix cannot vary ``byod.runtime_env``
+      # per value, so the budget rides as a matrix dimension. Rendered test
+      # names are unchanged.
+      bin_packing_bytes: []
+    adjustments:
+      - with:
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 268435456
+      - with:
+          shuffle_strategy: sort_shuffle_pull_based
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 33554432
+      - with:
+          shuffle_strategy: hash_shuffle
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 134217728
+      - with:
+          shuffle_strategy: hash_shuffle
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 33554432
 
   cluster:
     anyscale_sdk_2026: true
@@ -236,6 +340,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -248,10 +354,23 @@
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [shuffle_v2]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
+      shuffle_strategy: []
+      columns: []
+      # Same split as the block above: the 84-group key is read-bound and
+      # wants large bins, the 7M-group key is shuffle-bound and measured
+      # best at 64 MiB. A matrix cannot vary ``byod.runtime_env`` per value,
+      # so the budget rides as a matrix dimension. Rendered test names are
+      # unchanged.
+      bin_packing_bytes: []
+    adjustments:
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 536870912
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 67108864
 
   cluster:
     anyscale_sdk_2026: true
@@ -261,6 +380,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -285,6 +406,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -309,6 +432,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -334,6 +459,64 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+# External (on-disk, file-transport) hash shuffle. map_groups is keyed
+# repartition under the hood, which is the one code path that honors
+# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE, so these mirror the shuffle_v2
+# map_groups variants above with the flag on. Separate entries (rather
+# than a matrix axis on the blocks above) keep the existing tests'
+# perf-history names intact.
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: [shuffle_v2]
+      columns:
+        - "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: [shuffle_v2]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -374,6 +557,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   matrix:
@@ -425,7 +610,10 @@
 # Wide Schema tests
 ###############
 
-- name: wide_schema_pipeline_{{data_type}}
+# NOTE: spelled out rather than driven by a ``data_type`` matrix: each variant
+# wants a different bin budget and footer-actor count, and a matrix cannot vary
+# ``byod.runtime_env`` per value. Rendered test names are unchanged.
+- name: wide_schema_pipeline_primitives
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -438,17 +626,104 @@
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # Footer read tuning. Row-group ``total_byte_size`` is misleading for
+        # this schema shape, so the budget is hand-set to land ~one file per
+        # bin; the footer pool and IO threads are sized for the column count.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=262144
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=27
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
     cluster_compute: fixed_size_cpu_compute.yaml
-
-  matrix:
-    setup:
-      data_type: [primitives, tensors, objects, nested_structs]
 
   run:
     timeout: 300
     script: >
       python wide_schema_pipeline_benchmark.py
-      --data-type {{data_type}}
+      --data-type primitives
+
+- name: wide_schema_pipeline_tensors
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # Footer read tuning. Row-group ``total_byte_size`` is misleading for
+        # this schema shape, so the budget is hand-set to land ~one file per
+        # bin; the footer pool and IO threads are sized for the column count.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=40894464
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=22
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type tensors
+
+- name: wide_schema_pipeline_objects
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # Footer read tuning. Row-group ``total_byte_size`` is misleading for
+        # this schema shape, so the budget is hand-set to land ~one file per
+        # bin; the footer pool and IO threads are sized for the column count.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=4404020
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=9
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type objects
+
+- name: wide_schema_pipeline_nested_structs
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+        # Footer read tuning. Row-group ``total_byte_size`` is misleading for
+        # this schema shape, so the budget is hand-set to land ~one file per
+        # bin; the footer pool and IO threads are sized for the column count.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=2097152
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=21
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=1
+        - RAY_DATA_PARQUET_READER_IO_THREAD_COUNT=5000
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type nested_structs
 
 #######################
 # Streaming split tests
@@ -457,6 +732,20 @@
 - name: streaming_split
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50
+        - RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
   run:
     timeout: 300
@@ -488,6 +777,18 @@
 - name: mix
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
     anyscale_sdk_2026: true
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
@@ -533,6 +834,17 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=20
       post_build_script: byod_install_mosaicml.sh
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
@@ -550,6 +862,18 @@
   working_dir: nightly_tests
 
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
 
   variations:
@@ -677,7 +1001,7 @@
     anyscale_sdk_2026: true
   matrix:
     setup:
-      format: [numpy, pandas, pyarrow]
+      format: [numpy, pandas]
 
   run:
     timeout: 2400
@@ -686,9 +1010,43 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches {{format}}
 
+# Split out of the ``format`` matrix above: only ``pyarrow`` needs its own bin
+# budget. Rendered test names are unchanged.
+- name: "iter_batches_pyarrow"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning: hold the pre-existing 64 MiB behaviour.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pyarrow
+
 - name: to_tf
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
   run:
     timeout: 2400
@@ -700,6 +1058,18 @@
 - name: iter_torch_batches
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
@@ -717,6 +1087,18 @@
 - name: map
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
   run:
     timeout: 1800
@@ -725,6 +1107,18 @@
 - name: flat_map
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
   run:
     timeout: 1800
@@ -746,6 +1140,19 @@
           repeat_map_batches: once
 
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+        - RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD=0.6
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -882,6 +1289,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -1129,6 +1538,18 @@
       shuffle_strategy: [hash_shuffle]
 
   cluster:
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
+        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
+        # Dropping them silently stops the test failing on OOM / dead nodes / object
+        # store blowup.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
@@ -1153,6 +1574,8 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         - RAY_max_direct_call_object_size=8192
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -1316,6 +1739,8 @@
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
