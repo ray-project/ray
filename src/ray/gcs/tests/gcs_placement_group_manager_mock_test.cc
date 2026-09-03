@@ -56,6 +56,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
         gcs_table_storage_.get(),
         *resource_manager_,
         [](auto &) { return ""; },
+        [](const PlacementGroupID &) {},
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,

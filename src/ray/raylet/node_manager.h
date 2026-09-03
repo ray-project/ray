@@ -406,20 +406,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param node_id Id of the removed node.
   void NodeRemoved(const NodeID &node_id);
 
-  /// Handler for the addition or updation of a resource in the GCS
-  /// \param node_id ID of the node that created or updated resources.
-  /// \param createUpdatedResources Created or updated resources.
-  /// \return Whether the update is applied.
-  bool ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceRequest &createUpdatedResources);
-
-  /// Handler for the deletion of a resource in the GCS
-  /// \param node_id ID of the node that deleted resources.
-  /// \param resource_names Names of deleted resources.
-  /// \return Whether the deletion is applied.
-  bool ResourceDeleted(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names);
-
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
   void TryLocalInfeasibleTaskScheduling();
@@ -431,14 +417,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
 
-  /// Handler for a resource usage notification from the GCS.
-  ///
-  /// \param id The ID of the node manager that sent the resource usage.
-  /// \param resource_view_sync_message The resource usage data.
-  /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(
-      const NodeID &id,
-      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+  void PostResourceViewRescanIfNeeded();
 
   /// Cleanup any lease resources and state for a worker that was granted a lease.
   ///
@@ -958,6 +937,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// raylet_check_gc_period_milliseconds)
   /// This will trigger gc on all local workers of this raylet.
   bool local_gc_triggered_by_global_gc_ = false;
+
+  bool resource_view_rescan_posted_ = false;
+
+  bool pending_infeasible_rescan_ = false;
 
   /// Interval at which local gc will be triggered regardless of global gc
   const uint64_t local_gc_interval_ns_;

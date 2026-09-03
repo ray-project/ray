@@ -367,6 +367,20 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // should try spilling to another node.
         bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
+          if (work->grant_or_reject_ &&
+              RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0) {
+            // Under restricted resource-view fan-out this raylet has no view of
+            // other nodes to spill to, so the lease would park here forever;
+            // reject it back so the view-holding raylet re-decides.
+            RAY_LOG(DEBUG) << "Rejecting grant-or-reject lease " << spec.LeaseId()
+                           << " instead of queueing it locally";
+            if (!spec.GetDependencies().empty()) {
+              lease_dependency_manager_.RemoveLeaseDependencies(spec.LeaseId());
+            }
+            work->Reject();
+            work_it = leases_to_grant_queue.erase(work_it);
+            continue;
+          }
           // There must not be any other available nodes in the cluster, so the lease
           // should stay on this node. We can skip the rest of the shape because the
           // scheduler will make the same decision.
@@ -416,7 +430,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     if (sched_cls_info.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(scheduling_class);
     }
-    if (is_infeasible) {
+    if (is_infeasible && !leases_to_grant_queue.empty()) {
       const auto &front_lease =
           leases_to_grant_queue.front()->lease_.GetLeaseSpecification();
       RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
@@ -693,10 +707,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
 void LocalLeaseManager::Spillback(const NodeID &spillback_to,
                                   const std::shared_ptr<internal::Work> &work) {
   if (work->grant_or_reject_) {
-    for (const auto &reply_callback : work->reply_callbacks_) {
-      reply_callback.reply_->set_rejected(true);
-      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
-    }
+    work->Reject();
     return;
   }
 

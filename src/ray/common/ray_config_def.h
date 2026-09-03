@@ -572,6 +572,30 @@ RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
 RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
+/// The number of raylets that receive other nodes' resource views through the
+/// syncer. 0 (the default) fans the resource view out to every raylet, which is
+/// the standard behavior. When set to N > 0:
+///  - only N designated raylets (the head node plus the N - 1 alive worker nodes
+///    with the earliest start times, topped up if one of them dies) receive
+///    RESOURCE_VIEW updates; the designation can shift while nodes are still
+///    registering and stabilizes afterwards, and each change remaps the lease
+///    sharding below;
+///  - the GCS forwards actor lease requests to those raylets, sharded by
+///    placement group id (falling back to the actor id), instead of to the actor
+///    owner's raylet;
+///  - a raylet that cannot fit a grant-or-reject lease rejects it immediately
+///    instead of queueing it, since without a view of other nodes it cannot make
+///    a spillback decision;
+///  - a raylet outside the designated set cannot make any spillback decision, so
+///    work submitted directly to it (e.g. plain tasks from a driver on that node)
+///    queues locally instead of spilling. Keep the flag off for workloads that
+///    submit work from many nodes.
+/// Raylets keep reporting their own state to the GCS unchanged, so the designated
+/// raylets' views stay fresh. This bounds the syncer's fan-out work to O(N) per
+/// update, which removes the resource-view delivery bottleneck in large clusters
+/// for actor- and placement-group-heavy workloads submitted from the head node.
+RAY_CONFIG(int64_t, ray_syncer_resource_view_fanout_node_count, 0)
+
 /// The batch size for metrics export.
 /// Normally each time-series << 1Kb. Batch size of 10_000 means expected payload
 /// will be under 10Mb.

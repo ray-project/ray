@@ -390,12 +390,15 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the bundles are being removed from.
   /// \param max_retry The maximum times the remove request can be retried.
   /// \param current_retry_count The number of times the remove request has been retried.
+  /// \param placement_group_removed True when the placement group itself is being
+  /// removed; false when the bundles are returned by a scheduling abort or reschedule.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
-      int current_retry_count);
+      int current_retry_count,
+      bool placement_group_removed);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -428,8 +431,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param placement_group_id The id of a placement group to destroy all prepared
   /// bundles.
+  /// \param placement_group_removed True when called because the placement group
+  /// itself is being removed; false on a scheduling abort (prepare failure).
   void DestroyPlacementGroupPreparedBundleResources(
-      const PlacementGroupID &placement_group_id);
+      const PlacementGroupID &placement_group_id, bool placement_group_removed);
 
   /// Destroy the committed bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,

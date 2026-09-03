@@ -120,6 +120,34 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
     }
   }
 
+  // When the resource view is fanned out only to designated view-holder raylets,
+  // forward leases to them instead of to the owner's raylet: the other raylets have
+  // no view of the cluster to make a scheduling decision with, so a lease queued
+  // there could wait forever. Leases are sharded by placement group id (actor id
+  // for actors outside a placement group), so while the designation is stable one
+  // group is always decided by the same raylet, which keeps the deciders'
+  // optimistic resource accounting disjoint and lets a rejected lease be re-decided
+  // by the raylet whose view already reflects it.
+  if (!view_holder_nodes_.empty()) {
+    const auto &bundle_id = lease_spec.PlacementGroupBundleId();
+    const std::string &shard_key = !bundle_id.first.IsNil()
+                                       ? bundle_id.first.Binary()
+                                       : actor->GetActorID().Binary();
+    const size_t start_index =
+        std::hash<std::string>{}(shard_key) % view_holder_nodes_.size();
+    // Probe successive view holders when the shard target is dead: any raylet
+    // without a resource view could park the lease forever, so the lease has to
+    // stay on a view holder until the designation catches up.
+    for (size_t i = 0; i < view_holder_nodes_.size(); i++) {
+      const auto &target_node_id =
+          view_holder_nodes_[(start_index + i) % view_holder_nodes_.size()];
+      if (gcs_node_manager_.GetAliveNode(target_node_id).has_value()) {
+        return target_node_id;
+      }
+    }
+    // No view holder is alive; fall through to the default logic.
+  }
+
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
   if (!lease_spec.GetRequiredResources().IsEmpty()) {
@@ -131,6 +159,12 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   }
 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+}
+
+void GcsActorScheduler::SetViewHolderNodes(std::vector<NodeID> nodes) {
+  view_holder_nodes_ = std::move(nodes);
+  RAY_LOG(INFO) << "Actor lease forwarding is sharded across "
+                << view_holder_nodes_.size() << " view-holder raylets.";
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {

@@ -24,7 +24,9 @@
 #include <grpcpp/server_builder.h>
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -221,6 +223,60 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseReadsAreNotGatedByProcessing) {
+  std::vector<std::shared_ptr<const RaySyncMessage>> processed;
+  std::atomic<size_t> processed_count{0};
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ NodeID::FromRandom().Binary(),
+      /* message_processor */
+      [&processed, &processed_count](std::shared_ptr<const RaySyncMessage> msg) {
+        processed.push_back(std::move(msg));
+        ++processed_count;
+      },
+      /* max_batch_size */ 1,
+      /* max_batch_delay_ms */ 0);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
+
+  // Keep the io context busy, like a raylet main thread saturated with scheduling.
+  std::promise<void> io_context_blocked;
+  std::promise<void> release_io_context;
+  auto release_future = release_io_context.get_future().share();
+  io_context_.post(
+      [&io_context_blocked, release_future]() {
+        io_context_blocked.set_value();
+        release_future.wait();
+      },
+      "TEST");
+  io_context_blocked.get_future().wait();
+
+  // Simulate gRPC delivering three single-message batches while it is blocked.
+  auto node_a = NodeID::FromRandom();
+  auto node_b = NodeID::FromRandom();
+  sync_reactor.StartPull();
+  auto deliver = [&sync_reactor](const RaySyncMessage &msg) {
+    *sync_reactor.receiving_message_batch_->add_messages() = msg;
+    sync_reactor.OnReadDone(true);
+  };
+  deliver(MakeMessage(MessageType::RESOURCE_VIEW, 1, node_a));
+  deliver(MakeMessage(MessageType::RESOURCE_VIEW, 1, node_b));
+  deliver(MakeMessage(MessageType::RESOURCE_VIEW, 2, node_a));
+
+  // Every read was re-armed without waiting for the io context to apply anything.
+  ASSERT_EQ(4, sync_reactor.read_count);
+  ASSERT_EQ(0, processed_count.load());
+
+  release_io_context.set_value();
+  // One drain applies both nodes, with the newest version winning.
+  ASSERT_TRUE(WaitForCondition(
+      [&processed_count]() { return processed_count.load() == 2; }, 5000));
+  ASSERT_EQ(2, processed.size());
+  for (const auto &msg : processed) {
+    ASSERT_EQ(msg->node_id() == node_a.Binary() ? 2 : 1, msg->version());
+  }
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
@@ -879,6 +935,61 @@ TEST_F(SyncerTest, Test1ToN) {
   };
 
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
+}
+
+TEST_F(SyncerTest, ResourceViewFanoutTargets) {
+  // A hub with restricted RESOURCE_VIEW fan-out only relays other nodes' views to
+  // the designated targets; fan-in to the hub itself is unaffected.
+  size_t base_port = 18990;
+  std::vector<SyncerServerTest *> servers;
+  for (int i = 0; i < 4; ++i) {
+    servers.push_back(&MakeServer(std::to_string(i + base_port)));
+  }
+  // servers[0] is the hub; only servers[1] receives the resource view. Setting the
+  // targets before connecting also covers the initial-snapshot push.
+  servers[0]->syncer->SetResourceViewFanoutTargets(
+      {servers[1]->syncer->GetLocalNodeID()});
+  for (size_t i = 1; i < servers.size(); ++i) {
+    servers[0]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(),
+                                MakeChannel(servers[i]->server_port));
+  }
+
+  auto get_cluster_view = [](RaySyncer &syncer) {
+    std::promise<TClusterView> p;
+    auto f = p.get_future();
+    syncer.GetIOContext().post(
+        [&p, &syncer]() mutable { p.set_value(syncer.node_state_->GetClusterView()); },
+        "TEST");
+    return f.get();
+  };
+
+  // The designated target eventually sees every node through the hub.
+  for (int i = 0; i < 100; ++i) {
+    if (get_cluster_view(*servers[1]->syncer).size() == servers.size()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  ASSERT_EQ(get_cluster_view(*servers[1]->syncer).size(), servers.size());
+  // Fan-in is unaffected: the hub sees every node.
+  ASSERT_EQ(get_cluster_view(*servers[0]->syncer).size(), servers.size());
+  // The non-designated nodes never receive other nodes' resource views.
+  ASSERT_EQ(get_cluster_view(*servers[2]->syncer).size(), 1UL);
+  ASSERT_EQ(get_cluster_view(*servers[3]->syncer).size(), 1UL);
+
+  // A node designated after it connected (e.g. replacing a dead view holder) is
+  // backfilled with the view it missed.
+  servers[0]->syncer->SetResourceViewFanoutTargets(
+      {servers[1]->syncer->GetLocalNodeID(), servers[2]->syncer->GetLocalNodeID()});
+  for (int i = 0; i < 100; ++i) {
+    if (get_cluster_view(*servers[2]->syncer).size() == servers.size()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  ASSERT_EQ(get_cluster_view(*servers[2]->syncer).size(), servers.size());
+  // The still-undesignated node remains untouched.
+  ASSERT_EQ(get_cluster_view(*servers[3]->syncer).size(), 1UL);
 }
 
 TEST_F(SyncerTest, TestMToN) {

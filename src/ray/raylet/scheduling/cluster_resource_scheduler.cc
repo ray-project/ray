@@ -144,7 +144,7 @@ bool IsHardNodeAffinitySchedulingStrategy(
 }
 }  // namespace
 
-bool ClusterResourceScheduler::IsAffinityWithBundleSchedule(
+bool ClusterResourceScheduler::IsPlacementGroupSchedulingStrategy(
     const rpc::SchedulingStrategy &scheduling_strategy) {
   return scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
@@ -161,18 +161,22 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool force_spillback,
     const std::string &preferred_node_id,
     int64_t *total_violations,
-    bool *is_infeasible) {
+    bool *is_infeasible,
+    bool actor_acquires_lifetime_resources) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies, except for HARD node affnity scheduling policy.
   if (actor_creation && resource_request.IsEmpty() &&
       !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy)) {
-    return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
+    auto random_result =
+        scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
+    *is_infeasible = random_result.status.IsInfeasible();
+    return random_result.SelectedNodeOrNil();
   }
 
-  auto best_node_id = scheduling::NodeID::Nil();
+  SchedulingResult result;
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    best_node_id =
+    result =
         scheduling_policy_->Schedule(resource_request,
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
@@ -180,7 +184,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   } else if (scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
                  kNodeAffinitySchedulingStrategy) {
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request,
         SchedulingOptions::NodeAffinity(
             force_spillback,
@@ -191,7 +195,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                 .spill_on_unavailable(),
             scheduling_strategy.node_affinity_scheduling_strategy()
                 .fail_on_unavailable()));
-  } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
+  } else if (IsPlacementGroupSchedulingStrategy(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
     auto placement_group_id = PlacementGroupID::FromBinary(
@@ -200,24 +204,48 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         std::pair(placement_group_id,
                   scheduling_strategy.placement_group_scheduling_strategy()
                       .placement_group_bundle_index());
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
   } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
     // TODO(Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Hybrid(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback,
-                                         preferred_node_id));
+    // An actor-creation lease whose actor acquires resources for its lifetime
+    // is not redirected to a busy node: granting allocates those lifetime
+    // resources, so such a lease cannot start anywhere until resources free
+    // up, and holding it at a busy target buys nothing over waiting in the
+    // schedule queue. For a lease with a placement group requirement the
+    // redirect is actively harmful: the probed bundle node virtually always
+    // sees a free-looking sibling in its own stale view, answers with a
+    // redirect, grant_or_reject turns the redirect into a reject, and the GCS
+    // reschedules with no backoff. Requiring an available node makes the
+    // policy report Failed instead, and the lease waits in the schedule queue
+    // for the next resource-view change.
+    // Everything else keeps the legacy path. A default actor acquires no
+    // lifetime resources: its placement resources only steer node selection
+    // and granting allocates its empty lifetime set, so it must stay
+    // startable on a fully busy node, exactly as before. A task holds at a
+    // busy target to pull its arguments while it waits (see
+    // LocalLeaseManager::WaitForLeaseArgsRequests) and to run with zero
+    // propagation delay once the target frees resources.
+    const bool require_node_available =
+        force_spillback || actor_acquires_lifetime_resources;
+    result = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::Hybrid(
+            /*avoid_local_node*/ force_spillback,
+            /*require_node_available*/ require_node_available,
+            preferred_node_id));
   }
 
-  *is_infeasible = best_node_id.IsNil();
-  if (!*is_infeasible) {
+  auto best_node_id = result.SelectedNodeOrNil();
+  // Failed (feasible nodes exist but none can accept right now) is not
+  // infeasible: the lease stays queued and is retried on the next
+  // resource-view change instead of being moved to the infeasible queue.
+  *is_infeasible = result.status.IsInfeasible();
+  if (!best_node_id.IsNil()) {
     // TODO(Alex): Support soft constraints if needed later.
     *total_violations = 0;
   }
@@ -240,7 +268,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool force_spillback,
     const std::string &preferred_node_id,
     int64_t *total_violations,
-    bool *is_infeasible) {
+    bool *is_infeasible,
+    bool actor_acquires_lifetime_resources) {
   ResourceRequest resource_request =
       ResourceMapToResourceRequest(task_resources, requires_object_store_memory);
   resource_request.SetLabelSelector(label_selector);
@@ -250,7 +279,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                                 force_spillback,
                                 preferred_node_id,
                                 total_violations,
-                                is_infeasible);
+                                is_infeasible,
+                                actor_acquires_lifetime_resources);
 }
 
 bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
@@ -316,6 +346,10 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   scheduling::NodeID highest_priority_unavailable_node = scheduling::NodeID::Nil();
   const LabelSelector *highest_priority_unavailable_label_selector = nullptr;
   bool any_selector_is_feasible = false;
+  // A default actor acquires no resources for its lifetime; only leases that
+  // do are barred from waiting at a busy node (see the dispatch below).
+  const bool actor_acquires_lifetime_resources =
+      lease_spec.IsActorCreationTask() && !lease_spec.GetRequiredResources().IsEmpty();
 
   // Try each label selector in order until a node is found.
   for (const auto &selector_ref : label_selectors) {
@@ -343,7 +377,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         exclude_local_node,
         preferred_node_id,
         &_unused,
-        &current_selector_is_infeasible);
+        &current_selector_is_infeasible,
+        actor_acquires_lifetime_resources);
 
     if (!best_feasible_node.IsNil()) {
       // A feasible node was found.
@@ -363,6 +398,11 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         highest_priority_unavailable_node = best_feasible_node;
         highest_priority_unavailable_label_selector = &label_selector;
       }
+    } else if (!current_selector_is_infeasible) {
+      // The policy reported Failed: feasible nodes exist but none can accept
+      // right now, so the lease is not infeasible and waits in the schedule
+      // queue.
+      any_selector_is_feasible = true;
     }
   }
 
@@ -372,21 +412,18 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     return scheduling::NodeID::Nil();
   }
 
-  // If the all best nodes found are not available but the local node is feasible,
-  // wait on the local node.
+  // Feasible nodes exist but none is available right now.
   *is_infeasible = false;
-  if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
-    auto resource_request = ResourceMapToResourceRequest(
+  if (highest_priority_unavailable_label_selector != nullptr &&
+      preferred_node_id == local_node_id_.Binary() && NodeAvailable(local_node_id_)) {
+    // If the local node is feasible, wait on the local node. Use the label
+    // selector from the highest-priority fallback that was feasible.
+    auto placement_request = ResourceMapToResourceRequest(
         lease_spec.GetRequiredPlacementResources().GetResourceMap(),
         requires_object_store_memory);
-
-    // Use the label selector from the highest-priority fallback that was feasible.
-    // There must be at least one feasible node and selector.
-    RAY_CHECK(highest_priority_unavailable_label_selector != nullptr);
-    resource_request.SetLabelSelector(*highest_priority_unavailable_label_selector);
-
+    placement_request.SetLabelSelector(*highest_priority_unavailable_label_selector);
     if (cluster_resource_manager_->HasFeasibleResources(local_node_id_,
-                                                        resource_request)) {
+                                                        placement_request)) {
       return local_node_id_;
     }
   }
@@ -397,6 +434,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     return scheduling::NodeID::Nil();
   }
 
+  // Nil when the policy reported Failed for every selector: the lease waits in
+  // the schedule queue (is_infeasible stays false) and is rescheduled on the
+  // next resource-view change.
   return highest_priority_unavailable_node;
 }
 

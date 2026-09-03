@@ -303,6 +303,94 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
+TEST_F(GcsActorSchedulerTest, TestLeaseForwardingShardedAcrossViewHolders) {
+  // When view-holder nodes are set (restricted resource-view fan-out), every
+  // lease is forwarded to one of them instead of to the owner's node.
+  auto node1 = AddNewNode({{"CPU", 8}});
+  auto node2 = AddNewNode({{"CPU", 8}});
+  auto node3 = AddNewNode({{"CPU", 8}});
+  const auto view_holder1 = NodeID::FromBinary(node1->node_id());
+  const auto view_holder2 = NodeID::FromBinary(node2->node_id());
+  gcs_actor_scheduler_->SetViewHolderNodes({view_holder1, view_holder2});
+
+  int num_to_view_holder1 = 0;
+  int num_to_view_holder2 = 0;
+  for (int i = 0; i < 20; i++) {
+    auto actor = NewGcsActor({{"CPU", 1}});
+    gcs_actor_scheduler_->Schedule(actor);
+    const auto target = actor->GetNodeID();
+    if (target == view_holder1) {
+      num_to_view_holder1++;
+    } else if (target == view_holder2) {
+      num_to_view_holder2++;
+    } else {
+      FAIL() << "Lease forwarded to a node that is not a view holder: " << target;
+    }
+  }
+  // Actors without a placement group are sharded by actor id, so with 20 actors
+  // both view holders receive leases (the chance of a one-sided split is 2^-19).
+  ASSERT_GT(num_to_view_holder1, 0);
+  ASSERT_GT(num_to_view_holder2, 0);
+
+  // A dead view holder falls through to the default forwarding logic instead of
+  // being selected.
+  gcs_node_manager_->RemoveNode(
+      view_holder1, rpc::NodeDeathInfo(), rpc::GcsNodeInfo::DEAD, /*update_time=*/0);
+  for (int i = 0; i < 10; i++) {
+    auto actor = NewGcsActor({{"CPU", 1}});
+    gcs_actor_scheduler_->Schedule(actor);
+    ASSERT_NE(actor->GetNodeID(), view_holder1);
+  }
+
+  // Clearing the view holders restores the default forwarding behavior: leases
+  // reach non-holder nodes again (the owner node is unregistered, so forwarding
+  // falls back to a random alive node).
+  gcs_actor_scheduler_->SetViewHolderNodes({});
+  const auto non_holder = NodeID::FromBinary(node3->node_id());
+  bool non_holder_seen = false;
+  for (int i = 0; i < 10 && !non_holder_seen; i++) {
+    auto actor = NewGcsActor({{"CPU", 1}});
+    gcs_actor_scheduler_->Schedule(actor);
+    non_holder_seen = actor->GetNodeID() == non_holder;
+  }
+  ASSERT_TRUE(non_holder_seen);
+}
+
+TEST_F(GcsActorSchedulerTest, TestLeaseForwardingSticksToShardKey) {
+  // The reject/re-decide loop depends on one placement group always being decided
+  // by the same view holder: two actors of the same group must land on the same
+  // one, deterministically.
+  auto node1 = AddNewNode({{"CPU", 8}});
+  auto node2 = AddNewNode({{"CPU", 8}});
+  gcs_actor_scheduler_->SetViewHolderNodes(
+      {NodeID::FromBinary(node1->node_id()), NodeID::FromBinary(node2->node_id())});
+
+  const auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto make_pg_actor = [&]() {
+    auto task_spec = MakeActorTaskSpec({{"CPU", 1}});
+    task_spec.mutable_scheduling_strategy()
+        ->mutable_placement_group_scheduling_strategy()
+        ->set_placement_group_id(pg_id.Binary());
+    return std::make_shared<gcs::GcsActor>(task_spec,
+                                           /*ray_namespace=*/"",
+                                           /*counter=*/counter,
+                                           /*recorder=*/fake_ray_event_recorder_,
+                                           /*session_name=*/"");
+  };
+
+  auto first = make_pg_actor();
+  gcs_actor_scheduler_->Schedule(first);
+  const auto target = first->GetNodeID();
+  ASSERT_FALSE(target.IsNil());
+  for (int i = 0; i < 5; i++) {
+    auto actor = make_pg_actor();
+    gcs_actor_scheduler_->Schedule(actor);
+    ASSERT_EQ(actor->GetNodeID(), target);
+  }
+
+  gcs_actor_scheduler_->SetViewHolderNodes({});
+}
+
 TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());

@@ -41,7 +41,7 @@ bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
   return !node_total.Has(scheduling::ResourceID(gpu_wildcard_resource_name));
 }
 
-scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
+SchedulingResult AffinityWithBundleSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::AFFINITY_WITH_BUNDLE);
 
@@ -55,7 +55,7 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
       auto target_node_id = scheduling::NodeID(node_id_opt.value().Binary());
       if (IsNodeFeasibleAndAvailable(
               target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
-        return target_node_id;
+        return SchedulingResult::Success({target_node_id});
       }
     }
   } else {
@@ -68,7 +68,7 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
           auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
           if (IsNodeFeasibleAndAvailable(
                   target_node_id, resource_request, /*avoid_gpu_nodes=*/true)) {
-            return target_node_id;
+            return SchedulingResult::Success({target_node_id});
           }
         }
       }
@@ -77,12 +77,12 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
         auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
         if (IsNodeFeasibleAndAvailable(
                 target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
-          return target_node_id;
+          return SchedulingResult::Success({target_node_id});
         }
       }
     }
   }
-  return scheduling::NodeID::Nil();
+  return SchedulingResult::Infeasible();
 }
 
 }  // namespace raylet_scheduling_policy
