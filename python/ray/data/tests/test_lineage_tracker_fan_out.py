@@ -6,17 +6,22 @@ from typing import Collection, List, Tuple
 import pytest
 
 from ray.data._internal.execution.lineage_tracker import (
+    DataTaskId,
     LineageTracker,
     ObjectReuseStatus,
+    OutputIndex,
     ParentBlockOutput,
+    PlanId,
 )
 
 #: The single seed output block that every child consumes in
 #: :attr:`FanOutMode.SHARED` fan-outs.
-_SHARED_OUTPUT_INDEX = 0
+_SHARED_OUTPUT_INDEX: OutputIndex = 0
 
 
-def _child_output_indices(child_position: int, num_inputs_per_child: int) -> List[int]:
+def _child_output_indices(
+    child_position: int, num_inputs_per_child: int
+) -> List[OutputIndex]:
     """Return the seed output indices consumed by the child at ``child_position``.
 
     Each child gets its own contiguous, non-overlapping slice of the seed's
@@ -29,8 +34,8 @@ def _child_output_indices(child_position: int, num_inputs_per_child: int) -> Lis
 
 def _register_fan_out(
     tracker: LineageTracker,
-    seed_task_id: str,
-    child_task_ids: List[str],
+    seed_task_id: DataTaskId,
+    child_task_ids: List[DataTaskId],
     num_inputs_per_child: int = 1,
 ) -> None:
     """Register and complete a seed task, then fan out children over its outputs.
@@ -58,9 +63,9 @@ def _register_fan_out(
 
 def _register_shared_output_fan_out(
     tracker: LineageTracker,
-    seed_task_id: str,
-    child_task_ids: List[str],
-    shared_output_index: int = _SHARED_OUTPUT_INDEX,
+    seed_task_id: DataTaskId,
+    child_task_ids: List[DataTaskId],
+    shared_output_index: OutputIndex = _SHARED_OUTPUT_INDEX,
 ) -> None:
     """Register and complete a seed task, then fan out children over one output.
 
@@ -84,9 +89,9 @@ def _register_shared_output_fan_out(
 
 def _register_downstream_chain(
     tracker: LineageTracker,
-    parent_task_id: str,
-    parent_output_index: int,
-    chain_task_ids: List[str],
+    parent_task_id: DataTaskId,
+    parent_output_index: OutputIndex,
+    chain_task_ids: List[DataTaskId],
     complete_leaf: bool = True,
 ) -> None:
     """Hang a linear chain off ``parent_task_id``'s output ``parent_output_index``.
@@ -118,10 +123,10 @@ def _register_downstream_chain(
 
 def _assert_reuse_statuses(
     tracker: LineageTracker,
-    data_task_id: str,
-    reused_output_indices: Collection[int],
-    all_output_indices: Collection[int],
-    plan_id: str,
+    data_task_id: DataTaskId,
+    reused_output_indices: Collection[OutputIndex],
+    all_output_indices: Collection[OutputIndex],
+    plan_id: PlanId,
     task_is_unrelated: bool = False,
 ) -> None:
     """Assert which of ``data_task_id``'s outputs ``plan_id`` still needs.
@@ -203,17 +208,17 @@ class FanOutCase:
     num_inputs_per_child: int = 1
 
     @property
-    def child_task_ids(self) -> List[str]:
+    def child_task_ids(self) -> List[DataTaskId]:
         return [f"child_{i}" for i in range(self.num_children)]
 
     @property
-    def seed_output_indices(self) -> List[int]:
+    def seed_output_indices(self) -> List[OutputIndex]:
         """Every output block the seed produces for this fan-out."""
         if self.fan_out_mode is FanOutMode.SHARED:
             return [_SHARED_OUTPUT_INDEX]
         return list(range(self.num_children * self.num_inputs_per_child))
 
-    def output_indices_for(self, child_position: int) -> List[int]:
+    def output_indices_for(self, child_position: int) -> List[OutputIndex]:
         """The seed outputs consumed by the child at ``child_position``."""
         if self.fan_out_mode is FanOutMode.SHARED:
             return [_SHARED_OUTPUT_INDEX]
@@ -222,17 +227,17 @@ class FanOutCase:
 
 def _fail_child_and_open_plan(
     tracker: LineageTracker,
-    seed_task_id: str,
-    child_task_id: str,
-    existing_plan_ids: Collection[str],
-) -> str:
+    seed_task_id: DataTaskId,
+    child_task_id: DataTaskId,
+    existing_plan_ids: Collection[PlanId],
+) -> PlanId:
     """Fail ``child_task_id`` and assert it opens a fresh plan rooted at the seed.
 
     Every failure in a fan-out traces back through its own branch to the seed,
     which is the only retry root no matter how many siblings failed or are still
     running, and a fresh failure always opens a plan id of its own.
     """
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(child_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(child_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
     assert plan_id not in existing_plan_ids
@@ -241,11 +246,11 @@ def _fail_child_and_open_plan(
 
 def _assert_plan_claims_only_child(
     tracker: LineageTracker,
-    seed_task_id: str,
-    child_task_id: str,
-    child_output_indices: Collection[int],
-    seed_output_indices: Collection[int],
-    plan_id: str,
+    seed_task_id: DataTaskId,
+    child_task_id: DataTaskId,
+    child_output_indices: Collection[OutputIndex],
+    seed_output_indices: Collection[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Assert ``plan_id`` claims exactly ``child_task_id`` and the outputs it needs.
 
@@ -269,9 +274,9 @@ def _assert_plan_claims_only_child(
 
 def _assert_seed_discharged(
     tracker: LineageTracker,
-    seed_task_id: str,
-    seed_output_indices: Collection[int],
-    plan_id: str,
+    seed_task_id: DataTaskId,
+    seed_output_indices: Collection[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Assert ``plan_id`` no longer claims the seed at all.
 
@@ -292,7 +297,7 @@ def _assert_seed_discharged(
 
 
 def _assert_child_is_plan_target(
-    tracker: LineageTracker, child_task_id: str, plan_id: str
+    tracker: LineageTracker, child_task_id: DataTaskId, plan_id: PlanId
 ) -> None:
     """Assert ``child_task_id`` is the leaf target of ``plan_id``.
 
@@ -308,9 +313,9 @@ def _assert_child_is_plan_target(
 
 def _resubmit_child_retry(
     tracker: LineageTracker,
-    seed_task_id: str,
-    child_task_id: str,
-    child_output_indices: Collection[int],
+    seed_task_id: DataTaskId,
+    child_task_id: DataTaskId,
+    child_output_indices: Collection[OutputIndex],
 ) -> None:
     """Resubmit ``child_task_id`` against the recovered seed's fresh outputs."""
     tracker.register_task_submission(
@@ -709,7 +714,7 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
 
     # The seed fails before output 1 is ever produced. It has no parents, so it is
     # its own retry root and the target of the reconstruction plan.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(seed_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(seed_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -849,7 +854,7 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
 
     # Fail branch_0's leaf; reconstruction traces up its branch, through the
     # fan-out and the prefix, to the seed as the one retry root.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(failed_leaf_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(failed_leaf_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 

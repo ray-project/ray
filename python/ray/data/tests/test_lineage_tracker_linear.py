@@ -4,19 +4,22 @@ from typing import Dict, List
 import pytest
 
 from ray.data._internal.execution.lineage_tracker import (
+    DataTaskId,
     LineageTracker,
     ObjectReuseStatus,
+    OutputIndex,
     ParentBlockOutput,
+    PlanId,
 )
 
 # These tests only build linear chains -- one parent per task -- so the only axis
 # that varies between otherwise identical scenarios is how many of the parent's
 # output blocks the child consumes.
-OUTPUT_INDICES = [[0], [0, 1]]
+OUTPUT_INDICES: List[List[OutputIndex]] = [[0], [0, 1]]
 
 
 def _dependencies(
-    parent_task_id: str, output_indices: List[int]
+    parent_task_id: DataTaskId, output_indices: List[OutputIndex]
 ) -> List[ParentBlockOutput]:
     """Build the dependency edges from ``parent_task_id``'s output blocks."""
     return [
@@ -26,7 +29,9 @@ def _dependencies(
 
 
 def _register_linear_chain(
-    tracker: LineageTracker, task_ids: List[str], output_indices: List[int]
+    tracker: LineageTracker,
+    task_ids: List[DataTaskId],
+    output_indices: List[OutputIndex],
 ) -> None:
     """Register a linear chain ``task_ids[0] -> ... -> task_ids[-1]``.
 
@@ -44,9 +49,9 @@ def _register_linear_chain(
 
 def _assert_pending_children(
     tracker: LineageTracker,
-    parent_task_id: str,
-    plan_id: str,
-    expected: Dict[str, Dict[str, List[int]]],
+    parent_task_id: DataTaskId,
+    plan_id: PlanId,
+    expected: Dict[DataTaskId, Dict[DataTaskId, List[OutputIndex]]],
 ) -> None:
     """Assert the pending children of ``parent_task_id`` within ``plan_id``.
 
@@ -58,9 +63,9 @@ def _assert_pending_children(
 
 def _assert_reuse_status(
     tracker: LineageTracker,
-    data_task_id: str,
-    output_indices: List[int],
-    plan_id: str,
+    data_task_id: DataTaskId,
+    output_indices: List[OutputIndex],
+    plan_id: PlanId,
     expected_status: ObjectReuseStatus,
 ) -> None:
     """Assert every listed output block of ``data_task_id`` has ``expected_status``.
@@ -79,10 +84,10 @@ def _assert_reuse_status(
 
 def _assert_child_pending_on_parent(
     tracker: LineageTracker,
-    parent_task_id: str,
-    child_task_id: str,
-    output_indices: List[int],
-    plan_id: str,
+    parent_task_id: DataTaskId,
+    child_task_id: DataTaskId,
+    output_indices: List[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Assert the child is the parent's only pending child in ``plan_id``."""
     _assert_pending_children(
@@ -102,9 +107,9 @@ def _assert_child_pending_on_parent(
 
 def _assert_parent_discharged(
     tracker: LineageTracker,
-    parent_task_id: str,
-    output_indices: List[int],
-    plan_id: str,
+    parent_task_id: DataTaskId,
+    output_indices: List[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Assert ``plan_id`` no longer claims ``parent_task_id``.
 
@@ -124,9 +129,9 @@ def _assert_parent_discharged(
 
 def _assert_target_produces_new_objects(
     tracker: LineageTracker,
-    target_task_id: str,
-    output_indices: List[int],
-    plan_id: str,
+    target_task_id: DataTaskId,
+    output_indices: List[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Assert the plan's target owes nothing downstream and its outputs are new."""
     _assert_pending_children(tracker, target_task_id, plan_id, {})
@@ -137,10 +142,10 @@ def _assert_target_produces_new_objects(
 
 def _reconstruct_edge(
     tracker: LineageTracker,
-    parent_task_id: str,
-    child_task_id: str,
-    output_indices: List[int],
-    plan_id: str,
+    parent_task_id: DataTaskId,
+    child_task_id: DataTaskId,
+    output_indices: List[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Re-execute one ``parent -> child`` edge of ``plan_id``.
 
@@ -176,7 +181,7 @@ def test_seed_task_fail_resubmit_and_complete():
     tracker.register_task_submission(seed_task_id, dependencies=[])
 
     # Fail the task; the failed seed task should be returned for retry.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(seed_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(seed_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -202,7 +207,7 @@ def test_unregistered_task_raises():
     with pytest.raises(ValueError):
         tracker.register_task_complete("unknown_task")
     with pytest.raises(ValueError):
-        tracker.register_failed_task("unknown_task")
+        tracker.register_task_failed("unknown_task")
     with pytest.raises(ValueError):
         tracker.get_pending_children("unknown_task", plan_id="unknown_plan")
     with pytest.raises(ValueError):
@@ -228,7 +233,7 @@ def test_complete_with_unregistered_plan_raises():
 
     # Completing for the plan that does claim the task is fine, but only once:
     # the completion discharges the plan's claim on the task.
-    _, plan_id = tracker.register_failed_task(seed_task_id)
+    _, plan_id = tracker.register_task_failed(seed_task_id)
     tracker.register_task_submission(seed_task_id, dependencies=[])
     tracker.register_task_complete(seed_task_id, plan_id=plan_id)
     with pytest.raises(ValueError):
@@ -268,7 +273,7 @@ def test_target_consumed_output_pruned_and_unconsumed_output_new():
     tracker.register_task_complete(seed_task_id)
 
     # Fail the seed itself, so the seed is the target of the resulting plan.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(seed_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(seed_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     tracker.register_task_submission(seed_task_id, dependencies=[])
 
@@ -298,7 +303,7 @@ def test_reuse_status_of_task_outside_the_plan_is_unrelated():
     tracker.register_task_complete(seed_task_id)
 
     # The plan targets the seed, so it never traces down into the child.
-    _, plan_id = tracker.register_failed_task(seed_task_id)
+    _, plan_id = tracker.register_task_failed(seed_task_id)
 
     _assert_reuse_status(
         tracker, child_task_id, [0, 1], plan_id, ObjectReuseStatus.OBJECT_UNRELATED
@@ -306,7 +311,9 @@ def test_reuse_status_of_task_outside_the_plan_is_unrelated():
 
 
 @pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
-def test_child_task_fail_recovers_seed_and_reuse_status(output_indices: List[int]):
+def test_child_task_fail_recovers_seed_and_reuse_status(
+    output_indices: List[OutputIndex],
+):
     """Fail a child that depends on the seed's outputs, then recover.
 
     Verifies that:
@@ -335,7 +342,7 @@ def test_child_task_fail_recovers_seed_and_reuse_status(output_indices: List[int
     tracker.register_task_complete(seed_task_id)
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(child_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(child_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -360,7 +367,7 @@ def test_child_task_fail_recovers_seed_and_reuse_status(output_indices: List[int
 
 @pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
 def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
-    output_indices: List[int],
+    output_indices: List[OutputIndex],
 ):
     """Recover a failed child that was submitted after its parent completed.
 
@@ -389,7 +396,7 @@ def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
     )
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(child_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(child_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -414,7 +421,7 @@ def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
 
 @pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
 def test_child_task_fail_twice_recovers_seed_and_reuse_status(
-    output_indices: List[int],
+    output_indices: List[OutputIndex],
 ):
     """Fail the child, recover the seed, then fail the child's retry as well.
 
@@ -442,7 +449,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
     tracker.register_task_complete(seed_task_id)
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(child_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(child_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -453,7 +460,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
 
     # Fail the child again. The retry belongs to the same plan, so the failure is
     # reported against it and traces back to the same seed task.
-    seed_tasks_to_retry, retry_plan_id = tracker.register_failed_task(
+    seed_tasks_to_retry, retry_plan_id = tracker.register_task_failed(
         child_task_id, plan_id=plan_id
     )
     assert seed_tasks_to_retry == [seed_task_id]
@@ -473,7 +480,9 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
 
 
 @pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
-def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(output_indices: List[int]):
+def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(
+    output_indices: List[OutputIndex],
+):
     """Fail the leaf of a 5-deep linear chain, then recover the whole chain.
 
     Chain: ``task_0 -> task_1 -> task_2 -> task_3 -> task_4``, each task
@@ -493,7 +502,7 @@ def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(output_indices: Lis
     _register_linear_chain(tracker, task_ids, output_indices=output_indices)
 
     # Fail the leaf; reconstruction traces up the whole chain to the seed.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(leaf_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(leaf_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -517,7 +526,7 @@ def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(output_indices: Lis
 @pytest.mark.parametrize("retry_failure_index", [2, 4])
 def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     retry_failure_index: int,
-    output_indices: List[int],
+    output_indices: List[OutputIndex],
 ):
     """Fail leaf task of a 5-deep chain, then fail again at
     retry_failure_index task during reconstruction.
@@ -542,7 +551,7 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     _register_linear_chain(tracker, task_ids, output_indices=output_indices)
 
     # Fail the leaf; reconstruction traces up the whole chain to the seed.
-    seed_tasks_to_retry, plan_id = tracker.register_failed_task(leaf_task_id)
+    seed_tasks_to_retry, plan_id = tracker.register_task_failed(leaf_task_id)
     assert seed_tasks_to_retry == [seed_task_id]
     assert plan_id is not None
 
@@ -561,7 +570,7 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
 
     # The retry fails. It is part of the same plan, so the failure is reported
     # against it and reconstruction traces back to the same seed.
-    seed_tasks_to_retry, retry_plan_id = tracker.register_failed_task(
+    seed_tasks_to_retry, retry_plan_id = tracker.register_task_failed(
         task_ids[retry_failure_index], plan_id=plan_id
     )
     assert seed_tasks_to_retry == [seed_task_id]

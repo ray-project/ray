@@ -5,6 +5,18 @@ from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
+# The ID of a data task. This represents the ID of the initial task execution:
+# all retries of that task share the same data task ID even if the Ray Core task
+# ID differs.
+DataTaskId = str
+
+# The index of one of the output blocks produced by a task.
+OutputIndex = int
+
+# The ID of a reconstruction plan. A plan ID is represented
+# by fresh data task execution it is trying to recover.
+PlanId = DataTaskId
+
 
 class ObjectReuseStatus(Enum):
     """
@@ -31,8 +43,8 @@ class ChildBlockDependency:
     output index of the parent that the child task depends on.
     """
 
-    child_data_task_id: str
-    output_index: int
+    child_data_task_id: DataTaskId
+    output_index: OutputIndex
 
 
 @dataclass
@@ -42,8 +54,8 @@ class ParentBlockOutput:
     one of its outputs indices.
     """
 
-    parent_data_task_id: str
-    output_index: int
+    parent_data_task_id: DataTaskId
+    output_index: OutputIndex
 
 
 @dataclass(eq=False, repr=False)
@@ -57,16 +69,16 @@ class TaskNode:
         ID even if the Ray Core task ID differs.
     """
 
-    data_task_id: str
+    data_task_id: DataTaskId
     parent_tasks: List["TaskNode"]
     child_tasks: List["TaskNode"]
     # Maps a child data task ID to the indices of the outputs produced by this
     # task that the child task depends on.
-    child_task_block_dependencies: Dict[str, List[int]]
+    child_task_block_dependencies: Dict[DataTaskId, List[OutputIndex]]
 
     # Reconstruction plans that are currently in flight on this task.
     # Maps a plan ID to the child block dependencies the plan must re-produce.
-    plan_to_child_block_lineages: Dict[str, List[ChildBlockDependency]]
+    plan_to_child_block_lineages: Dict[PlanId, List[ChildBlockDependency]]
 
     def __repr__(self) -> str:
         parent_ids = [task.data_task_id for task in self.parent_tasks]
@@ -89,10 +101,10 @@ class TaskNode:
 
 class LineageTracker:
     def __init__(self):
-        self._data_task_id_to_task_node: Dict[str, TaskNode] = {}
+        self._data_task_id_to_task_node: Dict[DataTaskId, TaskNode] = {}
 
     def register_task_submission(
-        self, data_task_id: str, dependencies: List[ParentBlockOutput]
+        self, data_task_id: DataTaskId, dependencies: List[ParentBlockOutput]
     ) -> None:
         """
         Register a newly submitted task with the lineage graph.
@@ -124,7 +136,7 @@ class LineageTracker:
         # Construct the child to parent edges. A child may depend on several
         # blocks from the same parent, so dedupe parents while grouping all of
         # that parent's block dependencies together.
-        parent_to_dependencies: Dict[str, List[int]] = {}
+        parent_to_dependencies: Dict[DataTaskId, List[OutputIndex]] = {}
         parent_task_nodes: List[TaskNode] = []
         for dependency in dependencies:
             parent_task_node = self._data_task_id_to_task_node.get(
@@ -159,7 +171,7 @@ class LineageTracker:
             block_dependencies[data_task_id] = output_indices
 
     def register_task_complete(
-        self, data_task_id: str, plan_id: Optional[str] = None
+        self, data_task_id: DataTaskId, plan_id: Optional[PlanId] = None
     ) -> None:
         """
         Update the task state for the given data task to completed.
@@ -198,11 +210,14 @@ class LineageTracker:
                     "in flight at a time. Retries of reconstructions should "
                     "pass the same plan ID to the same task."
                 )
+            # TODO(Kunchd): When we support fan-ins, we need to only delete
+            # the part of the plan that's submitted to downstream tasks.
+            # Deleting at completion granularity can result in duplicate deletion.
             del task_node.plan_to_child_block_lineages[plan_id]
 
-    def register_failed_task(
-        self, data_task_id: str, plan_id: Optional[str] = None
-    ) -> Tuple[List[str], str]:
+    def register_task_failed(
+        self, data_task_id: DataTaskId, plan_id: Optional[PlanId] = None
+    ) -> Tuple[List[DataTaskId], PlanId]:
         """
         Mark a task as failed and begin reconstruction of it and its lineage.
 
@@ -233,12 +248,12 @@ class LineageTracker:
             f"Registering failed task for task {data_task_id} with plan id {plan_id}"
         )
 
-        seed_task_ids: Set[str] = set()
+        seed_task_ids: Set[DataTaskId] = set()
         # Maps a task's data task ID to the IDs of the children it has already
         # been traced from, so that every lineage edge is walked at most once.
-        traced_child_ids: Dict[str, Set[str]] = {}
+        traced_child_ids: Dict[DataTaskId, Set[DataTaskId]] = {}
 
-        plan_id_to_attach: str = data_task_id if plan_id is None else plan_id
+        plan_id_to_attach: PlanId = data_task_id if plan_id is None else plan_id
 
         def _trace_parent_for_reconstruction(
             node: TaskNode, child_node: Optional[TaskNode] = None
@@ -271,6 +286,9 @@ class LineageTracker:
                 for output_index in node.child_task_block_dependencies[
                     child_node.data_task_id
                 ]:
+                    # TODO(Kunchd): As a follow up, we should delete the part of plan
+                    # that's submitted to downstream tasks on register task submission.
+                    # This should prevent duplicate child block lineages from being added.
                     child_block_lineages.append(
                         ChildBlockDependency(
                             child_data_task_id=child_node.data_task_id,
@@ -294,8 +312,8 @@ class LineageTracker:
         return sorted(seed_task_ids), plan_id_to_attach
 
     def get_pending_children(
-        self, data_task_id: str, plan_id: str
-    ) -> Dict[str, Dict[str, List[int]]]:
+        self, data_task_id: DataTaskId, plan_id: PlanId
+    ) -> Dict[DataTaskId, Dict[DataTaskId, List[OutputIndex]]]:
         """
         Get the children that must be reconstructed for the given data task.
 
@@ -329,13 +347,13 @@ class LineageTracker:
             for child_block_lineage in child_block_lineages
         }
 
-        pending_children: Dict[str, Dict[str, List[int]]] = {}
+        pending_children: Dict[DataTaskId, Dict[DataTaskId, List[OutputIndex]]] = {}
         for child_task_node in task_node.child_tasks:
             # Only consider children that take an output produced by the plan.
             if child_task_node.data_task_id not in child_ids_in_plan:
                 continue
 
-            dependencies_by_parent: Dict[str, List[int]] = {}
+            dependencies_by_parent: Dict[DataTaskId, List[OutputIndex]] = {}
             for parent_task_node in child_task_node.parent_tasks:
                 output_indices = parent_task_node.child_task_block_dependencies[
                     child_task_node.data_task_id
@@ -350,7 +368,7 @@ class LineageTracker:
         return pending_children
 
     def get_object_reuse_status(
-        self, data_task_id: str, output_index: int, plan_id: str
+        self, data_task_id: DataTaskId, output_index: OutputIndex, plan_id: PlanId
     ) -> ObjectReuseStatus:
         """
         Get the reuse status of one output block of the given task.
