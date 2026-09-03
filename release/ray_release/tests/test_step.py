@@ -39,10 +39,24 @@ def test_get_step(mock):
         step = get_step(_stub_test({}), run_id=2)
     assert step["label"] == "test with spaces (None) (2)"
     assert step["retry"]["automatic"][0]["limit"] == 3
+    # run_release_test.sh reads this to know whether the current attempt is the
+    # last one, so it has to match the limit Buildkite retries against.
+    assert step["env"]["BUILDKITE_MAX_RETRIES"] == "3"
     assert "commands" in step
     first_command = shlex.split(step["commands"][0])
     assert first_command[0] == "./release/run_release_test.sh"
     assert first_command[1] == "test with spaces"
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_without_num_retries(mock):
+    test = _stub_test({"run": {"script": "python test.py", "timeout": 100}})
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(test, run_id=2)
+    # Buildkite falls back to its own default, and the job to the one in
+    # run_release_test.sh; neither is overridden here.
+    assert step["retry"]["automatic"][0]["limit"] == 1
+    assert "BUILDKITE_MAX_RETRIES" not in step["env"]
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
