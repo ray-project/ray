@@ -1535,26 +1535,15 @@ class Pool:
                 chunksize = 1
 
         iterator = iter(iterable)
-        chunks = []
+        chunk_object_refs = []
         while True:
-            chunk = []
-            while len(chunk) < chunksize:
-                try:
-                    args = next(iterator)
-                except StopIteration:
-                    break
-                if not unpack_args:
-                    args = (args,)
-                chunk.append((args, {}))
-            if not chunk:
+            object_ref = self._submit_chunk(
+                func, iterator, chunksize, unpack_args=unpack_args
+            )
+            if object_ref is None:
                 break
-            chunks.append(chunk)
-
-        # Input iteration is complete before the admission transaction begins.
-        # close() therefore observes either no submissions or the complete map.
-        with self._pool_lock:
-            self._check_running()
-            return [self._run_batch_locked(func, chunk) for chunk in chunks]
+            chunk_object_refs.append(object_ref)
+        return chunk_object_refs
 
     def _map_async(
         self,
