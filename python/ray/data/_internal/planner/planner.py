@@ -24,12 +24,6 @@ from ray.data._internal.execution.operators.join import (
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
-    ShuffleMapOp,
-)
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
-    ShuffleReduceOp,
-)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -64,7 +58,10 @@ from ray.data._internal.planner.checkpoint import (
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,
 )
-from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.planner.plan_all_to_all_op import (
+    _select_shuffle_v2_op_classes,
+    plan_all_to_all_op,
+)
 from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
@@ -152,21 +149,29 @@ def _plan_join_shuffle_v2(
     num_partitions = logical_op.num_partitions
     join_type = JoinType(logical_op.join_type)
 
-    left_map = ShuffleMapOp(
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+
+    left_map = map_cls(
         physical_children[0],
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=f"JoinShuffleMapLeft(keys={tuple(left_keys)}, parts={num_partitions})",
+        name=(
+            f"{prefix}JoinShuffleMapLeft(keys={tuple(left_keys)}, "
+            f"parts={num_partitions})"
+        ),
     )
-    right_map = ShuffleMapOp(
+    right_map = map_cls(
         physical_children[1],
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=f"JoinShuffleMapRight(keys={tuple(right_keys)}, parts={num_partitions})",
+        name=(
+            f"{prefix}JoinShuffleMapRight(keys={tuple(right_keys)}, "
+            f"parts={num_partitions})"
+        ),
     )
 
     reduce_fn = _make_join_reduce_fn(
@@ -178,14 +183,14 @@ def _plan_join_shuffle_v2(
         left_schema=logical_op.input_dependencies[0].infer_schema(),
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
-    return ShuffleReduceOp(
+    return reduce_cls(
         [left_map, right_map],
         data_context,
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
         reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
-        name=f"JoinShuffleReduce(num_partitions={num_partitions})",
+        name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
     )
 
 

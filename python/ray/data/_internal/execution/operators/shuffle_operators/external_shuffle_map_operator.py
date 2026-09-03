@@ -1,12 +1,3 @@
-"""ExternalHashShuffleMapOp — map phase of the external-shuffle variant.
-
-Drives one ``_external_shuffle_map_task`` per input group and, once all mappers finish,
-emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
-each carrying the SAME shared Ray object (the list of handle refs)
-and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
-body live in ``external_shuffle_runtime.py`` / ``external_shuffle_tasks.py``.
-"""
-
 import functools
 import logging
 import os
