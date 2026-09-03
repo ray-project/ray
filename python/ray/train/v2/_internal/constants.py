@@ -115,7 +115,9 @@ DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 # torchft lighthouse address
 TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 
-# NCCL's standard RAS listen address (``host:port``, default localhost:28028).
+# NCCL RAS listen address (``host:port``), owned by NCCL. Ray Train never
+# supplies a default: when unset, `ncclras` uses whatever default the installed
+# NCCL ships with.
 NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 
 # Environment variables to propagate from the driver to the controller,

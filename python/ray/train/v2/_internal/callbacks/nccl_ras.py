@@ -100,20 +100,14 @@ def run_ncclras(
         output. On failure ``reason`` distinguishes a missing binary (so the
         detector can degrade to a no-op) from transient errors.
     """
-    host, port = parse_ras_addr(
-        os.environ.get(NCCL_RAS_ADDR_ENV_VAR, "localhost:28028")
-    )
-    cmd = [
-        binary_path,
-        "-f",
-        fmt,
-        "-h",
-        host,
-        "-p",
-        str(port),
-        "-t",
-        str(int(timeout_s)),
-    ]
+    cmd = [binary_path, "-f", fmt, "-t", str(int(timeout_s))]
+    # Only override the address when the user set NCCL's variable; otherwise
+    # let `ncclras` use its own built-in default.
+    ras_addr = os.environ.get(NCCL_RAS_ADDR_ENV_VAR)
+    if ras_addr:
+        host, port = parse_ras_addr(ras_addr)
+        cmd += ["-h", host, "-p", str(port)]
+
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     except FileNotFoundError:
@@ -235,7 +229,8 @@ class RASReport:
     @staticmethod
     def rank_status(status: Dict[str, Any]) -> str:
         """Convert a rank's status to a human-readable string."""
-        # TODO: `async_error` is ignored currently
+        # TODO: `async_error` is ignored currently in the upstream ras implementation
+        #  https://github.com/NVIDIA/nccl/blob/master/src/ras/client_support.cc
         if status["abort_flag"] is True:
             return "ABORT"
         if status["finalize_called"] is True or status["destroy_flag"] is True:
@@ -409,7 +404,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._worker_group: Optional[WorkerGroup] = None
         # Background executor for the RAS query to not block the controller event loop.
         self._executor: Optional[ThreadPoolExecutor] = None
-        # In-flight background RAS query (see ``poll_ras_on_worker``), if any.
+        # In-flight background RAS query (see ``drive_ras_query``), if any.
         self._ras_query_future: Optional[Future] = None
         # Force a query on the next poll after (re)start.
         self._last_query_time = float("-inf")
@@ -503,6 +498,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         op_diff = compute_report_op_diff(self.prev_report, report)
 
+        # 1. Classify each communicator
         new_comm_deadlock_count: Dict[str, int] = {}
         confirmed_comm_hangs: List[str] = []
         for comm_id in report.mismatched_comms:
@@ -523,7 +519,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             if count == self._confirm_poll_counts:
                 confirmed_comm_hangs.append(comm_id)
 
-        # Handle confirmed comm hangs
+        # 2. Handle confirmed comm hangs
         if confirmed_comm_hangs:
             ras_human_output = self.query_ras_on_workers("text")
             if ras_human_output:
@@ -554,7 +550,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             elif self._action == NCCL_RAS_ACTION_OBSERVE:
                 logger.warning(message)
 
-        # Handle unfrozen comms
+        # 3. Handle unfrozen comms
         for comm_id, count in self.comm_deadlock_count.items():
             if (
                 comm_id not in new_comm_deadlock_count
@@ -568,10 +564,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     count,
                 )
 
-        # Any comm no longer frozen is dropped from the streak counts.
+        # 4. Any comm no longer frozen is dropped from the streak counts.
         self.comm_deadlock_count = new_comm_deadlock_count
 
-        # Handle suspected frozen comms
+        # 5. Handle suspected frozen comms
         if self.comm_deadlock_count:
             total_comms = len(report.comm_op_counts)
             confirm_s = self._confirm_poll_counts * self._poll_interval_s
@@ -787,6 +783,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
 
+        Every rank gets a ``rank_<world_rank>.log`` in the uploaded folder. A rank
+        whose dump could not be launched, timed out, or failed to collect gets a
+        one-line placeholder saying so, so a missing trace is visible rather than
+        silently absent.
+
         Returns:
             The path to the folder with the stack traces.
         """
@@ -794,13 +795,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if not workers:
             return None
 
-        dump_refs = {}
-        for rank, worker in enumerate(workers):
+        dump_refs: Dict[ray.ObjectRef, int] = {}
+        launch_failures: Dict[int, str] = {}
+        for worker in workers:
+            rank = worker.distributed_context.world_rank
             try:
                 ref = worker.execute_async(dump_stack_trace, _STACK_DUMP_TIMEOUT_S - 5)
                 dump_refs[ref] = rank
             except Exception as e:  # noqa: BLE001
-                logger.info("Failed to launch stack dump on worker %s: %s", worker, e)
+                logger.info("Failed to launch stack dump on rank %d: %s", rank, e)
+                launch_failures[rank] = f"failed to launch stack dump: {e}\n"
 
         if not dump_refs:
             logger.info("Could not launch a stack dump on any worker.")
@@ -809,19 +813,30 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ready, not_ready = ray.wait(
             list(dump_refs), num_returns=len(dump_refs), timeout=_STACK_DUMP_TIMEOUT_S
         )
-        for ref in not_ready:
-            ray.cancel(ref)
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            for ref in ready:
-                try:
-                    stack_trace = ray.get(ref)
-                    with open(Path(temp_dir) / f"rank_{dump_refs[ref]}.log", "w") as f:
-                        f.write(stack_trace)
-                except Exception as e:  # noqa: BLE001
-                    logger.info(
-                        f"Failed to collect stack on rank {dump_refs[ref]}: {e}"
+            for ref, rank in dump_refs.items():
+                file = Path(temp_dir) / f"rank_{rank}.log"
+
+                if rank in launch_failures:
+                    file.write_text(launch_failures[rank])
+                elif ref in not_ready:
+                    logger.warning(
+                        "Stack dump on rank %d did not finish within %.0fs. "
+                        "Its trace will be missing from the hang diagnostics.",
+                        rank,
+                        _STACK_DUMP_TIMEOUT_S,
                     )
+                    ray.cancel(ref)
+                    file.write_text(
+                        f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
+                    )
+                elif ref in ready:
+                    try:
+                        file.write_text(ray.get(ref))
+                    except Exception as e:  # noqa: BLE001
+                        logger.info("Failed to collect stack on rank %d: %s", rank, e)
+                        file.write_text(f"failed to collect stack trace: {e}")
 
             stack_trace_folder = os.path.join(
                 self._worker_group._storage_context.experiment_fs_path,
