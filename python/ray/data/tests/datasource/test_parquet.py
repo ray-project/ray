@@ -1483,7 +1483,9 @@ def test_parquet_concurrency(
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
+def test_parquet_read_spread(
+    ray_start_cluster, tmp_path, restore_data_context, monkeypatch
+):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
@@ -1517,8 +1519,11 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     df2.to_parquet(path2)
 
     # Minimize the block size to prevent Ray Data from reading multiple fragments in a
-    # single task.
+    # single task. On the V2 footer path the packer uses
+    # RAY_DATA_PARQUET_BIN_PACKING_BYTES (not target_max_block_size), so pin that
+    # too or both files collapse into one read task on one node.
     ray.data.DataContext.get_current().target_max_block_size = 1
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
