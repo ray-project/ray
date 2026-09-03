@@ -2,11 +2,16 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.mix_operator import MixOperator
+from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators.n_ary_operator import (
     MixStoppingCondition,
     estimate_num_mix_outputs,
 )
+from ray.data.context import DataContext
+from ray.data.tests.conftest import noop_counter
 
 
 def _make_ds(source_id, num_rows, rows_per_block):
@@ -292,3 +297,42 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def _drain(op):
+    """Pull everything Mix is willing to emit right now."""
+    count = 0
+    while op.has_next():
+        op.get_next()
+        count += 1
+    return count
+
+
+def test_mix_stalls_when_the_most_behind_input_is_empty(ray_start_10_cpus_shared):
+    """Mix pulls only from the input furthest behind its target ratio, and
+    waits rather than substituting another (mix_operator.py:217).
+
+    So a single starved input holds every other input's blocks hostage. In
+    production those held blocks are billed to their producers, whose budget
+    is then too small to feed the starved input. This forms a cycle that only the
+    output-backpressure escape hatch breaks.
+    """
+    ctx = DataContext.get_current()
+    fed = InputDataBuffer(ctx, make_ref_bundles([[i] for i in range(10)]))
+    starved = InputDataBuffer(ctx, make_ref_bundles([[99]]))
+
+    op = MixOperator(ctx, fed, starved, weights=[0.5, 0.5])
+    op.start(ExecutionOptions(), noop_counter())
+
+    while fed.has_next():
+        op.add_input(fed.get_next(), 0)
+
+    # Only one block escapes: after it, input 1 is furthest behind and empty.
+    assert _drain(op) == 1
+    # The other nine are held, not dropped.
+    assert op._input_buffers[0].has_next()
+
+    # One block into the starved input releases the logjam: it satisfies
+    # input 1's deficit, which lets input 0 take a turn again.
+    op.add_input(starved.get_next(), 1)
+    assert _drain(op) == 2
