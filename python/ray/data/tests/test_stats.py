@@ -635,13 +635,16 @@ def canonicalize(
     canonicalized_stats = re.sub(
         r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
     )
-    # The block transform time breakdown measures sub-microsecond work for a trivial UDF, so
-    # each figure rounds to zero or not depending on the run. Replace with A to
-    # avoid flakiness; `test_row_transform_phases_are_opt_in` asserts the
-    # measured-vs-not distinction directly instead.
+    # The block transform time breakdown measures sub-microsecond work for a
+    # trivial UDF, so each figure rounds to zero or not depending on the run.
+    # `None` is in the alternation because a row transform reports no phases
+    # unless `accurate_map_phase_timing` is set. Replace both with A to avoid
+    # flakiness; `test_row_transform_phases_are_opt_in` and
+    # `test_op_runtime_metrics.py::test_phase_metrics_stay_none_when_unmeasured`
+    # assert the measured-vs-not distinction directly instead.
     canonicalized_stats = re.sub(
         r"('?(?:block_transform_time_s|input_prep_time_s|function_body_time_s"
-        r"|output_build_time_s)'?: )\d+(?:\.\d+)?(?:[eE][-+]?\d+)?",
+        r"|output_build_time_s)'?: )(?:\d+(?:\.\d+)?(?:[eE][-+]?\d+)?|None)",
         r"\g<1>A",
         canonicalized_stats,
     )

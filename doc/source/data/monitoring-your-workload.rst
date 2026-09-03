@@ -261,6 +261,14 @@ These metrics track task execution and scheduling.
      - Number of failed tasks
    * - `block_generation_time`
      - Time spent generating blocks in tasks
+   * - `block_transform_time_s`
+     - Time spent transforming one output block, summed over the operator's blocks. Map operators only
+   * - `input_prep_time_s`
+     - Part of `block_transform_time_s` spent turning input blocks into batches or rows. Absent when the operator measured only its total, which is what a row transform does by default
+   * - `function_body_time_s`
+     - Part of `block_transform_time_s` spent inside the stage bodies. Absent under the same condition as `input_prep_time_s`
+   * - `output_build_time_s`
+     - Part of `block_transform_time_s` spent assembling stage output back into blocks. Absent under the same condition as `input_prep_time_s`
    * - `task_submission_backpressure_time`
      - Time spent in task submission backpressure
    * - `task_output_backpressure_time`
