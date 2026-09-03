@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <boost/asio.hpp>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -26,6 +27,34 @@
 
 namespace ray {
 namespace rpc {
+namespace {
+
+bool IsIpv6LoopbackAvailable() {
+  boost::asio::io_context io_context;
+  boost::asio::ip::tcp::acceptor acceptor(io_context);
+  boost::system::error_code error;
+  acceptor.open(boost::asio::ip::tcp::v6(), error);
+  if (error) {
+    return false;
+  }
+  acceptor.bind({boost::asio::ip::address_v6::loopback(), /*port=*/0}, error);
+  if (error) {
+    return false;
+  }
+  acceptor.listen(boost::asio::socket_base::max_listen_connections, error);
+  if (error) {
+    return false;
+  }
+  auto endpoint = acceptor.local_endpoint(error);
+  if (error) {
+    return false;
+  }
+  boost::asio::ip::tcp::socket socket(io_context);
+  socket.connect(endpoint, error);
+  return !error;
+}
+
+}  // namespace
 
 class TestGrpcServerClientFixture : public ::testing::Test {
  public:
@@ -36,9 +65,8 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   virtual bool RequiresIpv6() const { return false; }
 
   void SetUp() override {
-    if (RequiresIpv6() &&
-        !CheckPortFree(boost::asio::ip::tcp::v6().family(), /*port=*/0)) {
-      GTEST_SKIP() << "IPv6 sockets are not available in this test environment.";
+    if (RequiresIpv6() && !IsIpv6LoopbackAvailable()) {
+      GTEST_SKIP() << "IPv6 loopback is not available in this test environment.";
     }
 
     // Prepare and start test server.

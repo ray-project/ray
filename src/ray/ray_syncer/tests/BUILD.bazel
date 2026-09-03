@@ -16,6 +16,7 @@ ray_cc_test(
         "//src/ray/ray_syncer",
         "//src/ray/rpc:grpc_server",
         "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:env",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
