@@ -395,7 +395,7 @@ _CONTROLLER_DENSE_PACK_ABOVE = 4096
 # Dense packing is memory-bound, not CPU-bound: each replica process has ~600MB
 # RSS however small its CPU reservation, and 40/node OOMs a 32GB worker (#65847).
 # 34/node keeps nodes at ~85% of the memory-monitor kill threshold (~241 nodes
-# at 8192). No cap at or below the threshold: packing there is CPU-bound.
+# at 8192). At or below the threshold the cap is inert: CPU packs 20/node.
 _CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE = 34
 
 
@@ -403,12 +403,6 @@ def _controller_replica_num_cpus(target_replicas: int) -> float:
     if target_replicas <= _CONTROLLER_DENSE_PACK_ABOVE:
         return _CONTROLLER_REPLICA_NUM_CPUS
     return _CONTROLLER_REPLICA_NUM_CPUS * _CONTROLLER_DENSE_PACK_ABOVE / target_replicas
-
-
-def _controller_max_replicas_per_node(target_replicas: int) -> Optional[int]:
-    if target_replicas <= _CONTROLLER_DENSE_PACK_ABOVE:
-        return None
-    return _CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE
 
 
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
@@ -441,6 +435,7 @@ class ControllerBenchHelloWorld:
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=1,
     ray_actor_options={"num_cpus": _CONTROLLER_REPLICA_NUM_CPUS},
+    max_replicas_per_node=_CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE,
 )
 class ControllerBenchMetricsGenerator:
     """Autoscaling deployment that generates handle metrics to stress the controller."""
@@ -709,9 +704,6 @@ async def run_controller_benchmark(
         for checkpoint_idx, target_replicas in enumerate(checkpoints):
             hello_world = ControllerBenchHelloWorld.bind(signal_actor)
             app = ControllerBenchMetricsGenerator.options(
-                max_replicas_per_node=_controller_max_replicas_per_node(
-                    target_replicas
-                ),
                 ray_actor_options={
                     **(ControllerBenchMetricsGenerator.ray_actor_options or {}),
                     "num_cpus": _controller_replica_num_cpus(target_replicas),
