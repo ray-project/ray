@@ -83,7 +83,7 @@ compile_pip_dependencies() {
     # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
     # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
     # hence letters in the first class.
-    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9.]*cpu[A-Za-z0-9.]*/==\1/g' "python/$TARGET"
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
 
     cat "python/$TARGET"
 
