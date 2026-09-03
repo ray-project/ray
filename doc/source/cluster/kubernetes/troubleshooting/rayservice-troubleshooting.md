@@ -37,7 +37,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 # Check the logs under /tmp/ray/session_latest/logs/serve/
 ```
 
-### Method 4: Check Dashboard
+### Method 4: Check the dashboard
 
 ```bash
 kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
@@ -139,7 +139,7 @@ You may encounter the following error messages when KubeRay tries to create / up
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: connect: connection refused
 ```
 
-For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready. It's important to note that the Dashboard, Dashboard Agent and GCS may take a few seconds to start up after the head Pod is ready. As a result, the request may fail a few times initially before the necessary components are fully operational.
+For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready. It's important to note that the dashboard, dashboard agent and GCS may take a few seconds to start up after the head Pod is ready. As a result, the request may fail a few times initially before the necessary components are fully operational.
 
 If you continue to encounter this issue after waiting for 1 minute, it's possible that the dashboard or dashboard agent may have failed to start. For more information, you can check the `dashboard.log` and `dashboard_agent.log` files located at `/tmp/ray/session_latest/logs/` on the head Pod.
 

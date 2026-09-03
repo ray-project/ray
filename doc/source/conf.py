@@ -487,6 +487,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
@@ -794,7 +806,15 @@ redoc = [
     },
 ]
 
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Pin the ReDoc bundle version rather than tracking the CDN's `latest` tag.
+# sphinxcontrib-redoc injects this script instead of bundling a renderer, so the
+# Jobs API page is rendered client-side at page-view time by whatever this URL
+# serves. On `latest`, a breaking change in the bundle degrades the published page
+# with no build-time signal, because the Sphinx build never executes it.
+# When bumping this, load the api.html page in the Read the Docs PR preview and
+# confirm the three-panel layout and the endpoint list still render. A green
+# Sphinx build proves nothing about this page.
+redoc_uri = "https://cdn.redoc.ly/redoc/v2.5.3/bundles/redoc.standalone.js"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 

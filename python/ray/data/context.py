@@ -111,10 +111,6 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
-# Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
-# uses its built-in default (currently 1 GiB).
-DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
-
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -629,10 +625,6 @@ class DataContext:
             override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
             V2). Parquet is the only reader migrated to V2 so far; the others
             read through V1 for now regardless of this flag.
-        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
-            ``ParquetFileChunker`` when splitting large Parquet files into
-            multiple read tasks. When ``None``, the chunker's built-in default
-            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -944,11 +936,6 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
-    # chunker uses its built-in default (currently 1 GiB).
-    parquet_chunker_target_chunk_size: Optional[
-        int
-    ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
