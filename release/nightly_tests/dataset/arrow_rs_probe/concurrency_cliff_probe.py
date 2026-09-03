@@ -139,7 +139,7 @@ class Sampler(threading.Thread):
 # arms inside one interpreter would therefore run every cell with the first
 # arm's reader. A fresh interpreter per cell (env set before import, plus an
 # explicit DataContext set as belt-and-braces) makes the arm switch real.
-def run_cell_subprocess(arm: str, path: str, n: int) -> dict:
+def run_cell_subprocess(arm: str, path: str, n: int, col: str) -> dict:
     import subprocess
     import sys
 
@@ -158,6 +158,8 @@ def run_cell_subprocess(arm: str, path: str, n: int) -> dict:
             arm,
             "--n",
             str(n),
+            "--sum-col",
+            col,
         ],
         env=env,
         capture_output=True,
@@ -172,7 +174,7 @@ def run_cell_subprocess(arm: str, path: str, n: int) -> dict:
     )
 
 
-def run_cell_body(arm: str, path: str, n: int) -> None:
+def run_cell_body(arm: str, path: str, n: int, col: str) -> None:
     want_rs = arm == "rs"
     os.environ[FLAG] = "1" if want_rs else "0"
     import ray
@@ -197,7 +199,7 @@ def run_cell_body(arm: str, path: str, n: int) -> None:
     ds = ray.data.read_parquet(path, concurrency=n)
     # ds.sum() would discard the executed plan's stats (it builds and consumes
     # an internal dataset); hold the aggregated dataset so .stats() works.
-    agg_ds = ds.groupby(None).aggregate(Sum("a"))
+    agg_ds = ds.groupby(None).aggregate(Sum(col))
     agg_ds.take(1)  # forces full decode of every file; the sum itself is tiny
     wall = time.time() - t0
     sampler.stop_evt.set()
@@ -237,6 +239,12 @@ def main():
         "--concurrencies", default="", help="comma list; default derived from cores"
     )
     ap.add_argument("--out", default="cliff_probe_results.jsonl")
+    ap.add_argument(
+        "--sum-col",
+        default="a",
+        help="numeric column to consume via sum ('a' for --gen fixtures; "
+        "e.g. column05 for the release large-parquet dataset)",
+    )
     ap.add_argument("--cell", default="", help="internal: run one (arm) cell and exit")
     ap.add_argument("--n", type=int, default=0, help="internal: concurrency for --cell")
     args = ap.parse_args()
@@ -246,7 +254,7 @@ def main():
         return
 
     if args.cell:
-        run_cell_body(args.cell, args.path, args.n)
+        run_cell_body(args.cell, args.path, args.n, args.sum_col)
         return
 
     ns = [int(x) for x in args.concurrencies.split(",") if x] or default_concurrencies()
@@ -257,7 +265,7 @@ def main():
     rows = []
     for n in ns:  # interleave arms per N so cluster/S3 weather cancels
         for arm in args.arms.split(","):
-            r = run_cell_subprocess(arm, args.path, n)
+            r = run_cell_subprocess(arm, args.path, n, args.sum_col)
             rows.append(r)
             print(
                 f"{arm:>3} N={n:<3} wall {r['wall_s']:>7.2f}s tasks {r['read_tasks']} "
