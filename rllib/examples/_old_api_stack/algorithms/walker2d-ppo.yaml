@@ -1,6 +1,6 @@
 # @OldAPIStack
-walker2d-v1-ppo:
-    env: Walker2d-v1
+walker2d-v4-ppo:
+    env: Walker2d-v4
     run: PPO
     config:
         # Works for both torch and tf.

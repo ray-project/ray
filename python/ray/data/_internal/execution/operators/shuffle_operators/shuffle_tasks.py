@@ -351,10 +351,16 @@ def _shuffle_reduce_task(
     else:
         assert map_task_context is not None and data_context is not None
         with DataContext.current(data_context), TaskContext.current(map_task_context):
+            from ray.data._internal.execution.operators.map_transformer import (
+                UDFTimeScope,
+            )
+
             map_transformer.override_target_max_block_size(
                 map_task_context.target_max_block_size_override
             )
             for block in map_transformer.apply_transform(
-                _reduce_output_blocks(), map_task_context
+                _reduce_output_blocks(),
+                map_task_context,
+                udf_time_scope=UDFTimeScope(),
             ):
                 yield from _yield_with_stats(block)
