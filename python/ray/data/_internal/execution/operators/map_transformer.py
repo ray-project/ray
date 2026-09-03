@@ -361,7 +361,18 @@ class TransformClock:
         self.inclusive: List[float] = []
 
     def chain(self, steps: List["TimedStep"], blocks: Iterable[Any]) -> Iterable[Any]:
-        """Build the timed pipeline over ``blocks``."""
+        """Build the timed pipeline over ``blocks``.
+
+        Nothing runs until the result is pulled: each step calls its ``apply``
+        on its first ``__next__``, which is what puts an eagerly consuming
+        stage's work inside a timed window. That places one requirement on a
+        stage -- a stage that depends on an upstream stage's side effects has
+        to consume upstream to get them, because until it does, upstream has
+        not run. Reading state an upstream stage leaves on the ``TaskContext``
+        before draining the input is the way to get this wrong;
+        ``_generate_commit_checkpoint_transform`` and
+        ``generate_collect_write_stats_fn`` both drain first for this reason.
+        """
         self._steps = steps
         self.inclusive = [0.0] * len(steps)
         data = blocks
