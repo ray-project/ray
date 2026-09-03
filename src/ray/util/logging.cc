@@ -435,6 +435,7 @@ namespace {
 constexpr std::array<int, 5> kInstalledSignals = {
     SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM};
 #else
+// Ray pins Abseil 20230802.1, whose failure-signal table is defined here:
 // https://github.com/abseil/abseil-cpp/blob/fb3621f4f897824c0dbe0615fa94543df6192f30/absl/debugging/failure_signal_handler.cc#L94-L104
 constexpr std::array<int, 7> kInstalledSignals = {
     SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM, SIGBUS, SIGTRAP};
