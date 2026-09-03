@@ -23,6 +23,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+    ExternalHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
@@ -57,6 +60,7 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
     HashShufflingOperatorBase,
     AllToAllOperator,
     ShuffleMapOp,
+    ExternalHashShuffleMapOp,
     # TODO remove after zip made fully streaming
     ZipOperator,
 )

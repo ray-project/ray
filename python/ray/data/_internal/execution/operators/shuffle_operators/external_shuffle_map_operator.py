@@ -72,7 +72,6 @@ class ExternalHashShuffleMapOp(
     """External-shuffle map operator. See module docstring."""
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -81,7 +80,6 @@ class ExternalHashShuffleMapOp(
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
-        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
@@ -100,7 +98,9 @@ class ExternalHashShuffleMapOp(
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
 
         # -- Pre-map merge ---------------------------------------------------
-        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        # Buffered blocks are coalesced per node into a single map task once
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[str, List[ObjectRef]] = defaultdict(list)
         self._merge_buffer_bytes_by_node: Dict[str, int] = defaultdict(int)
         self._merge_buffer_bundles_by_node: Dict[str, List[RefBundle]] = defaultdict(
@@ -173,7 +173,7 @@ class ExternalHashShuffleMapOp(
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._pre_map_merge_threshold > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -187,10 +187,7 @@ class ExternalHashShuffleMapOp(
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._pre_map_merge_threshold
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
