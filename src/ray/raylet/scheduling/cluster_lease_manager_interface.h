@@ -30,6 +30,8 @@ class ClusterLeaseManagerInterface {
   // Schedule and dispatch leases.
   virtual void ScheduleAndGrantLeases() = 0;
 
+  virtual void ScheduleAndGrantPendingLeases() = 0;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.

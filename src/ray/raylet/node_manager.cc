@@ -1066,60 +1066,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
-bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
-                                        const ResourceRequest &createUpdatedResources) {
-  RAY_LOG(DEBUG).WithField(node_id)
-      << "[ResourceCreateUpdated] received callback from node with created or updated "
-         "resources: "
-      << createUpdatedResources.DebugString()
-      << ". Updating resource map. skip=" << (node_id == self_node_id_);
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
-    cluster_resource_scheduler_.GetClusterResourceManager().UpdateResourceCapacity(
-        scheduling::NodeID(node_id.Binary()),
-        resource_id,
-        createUpdatedResources.Get(resource_id).Double());
-  }
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  return true;
-}
-
-bool NodeManager::ResourceDeleted(const NodeID &node_id,
-                                  const std::vector<std::string> &resource_names) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::ostringstream oss;
-    for (auto &resource_name : resource_names) {
-      oss << resource_name << ", ";
-    }
-    RAY_LOG(DEBUG).WithField(node_id)
-        << "[ResourceDeleted] received callback from node with deleted resources: "
-        << oss.str() << ". Updating resource map. skip=" << (node_id == self_node_id_);
-  }
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  std::vector<scheduling::ResourceID> resource_ids;
-  resource_ids.reserve(resource_names.size());
-  for (const auto &resource_label : resource_names) {
-    resource_ids.emplace_back(resource_label);
-  }
-  cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
-      scheduling::NodeID(node_id.Binary()), resource_ids);
-  return true;
-}
-
 void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -1139,19 +1085,6 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
     driver->AsyncNotifyGCSRestart();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-bool NodeManager::UpdateResourceUsage(
-    const NodeID &node_id,
-    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
-  if (!cluster_resource_scheduler_.GetClusterResourceManager().UpdateNode(
-          scheduling::NodeID(node_id.Binary()), resource_view_sync_message)) {
-    RAY_LOG(INFO).WithField(node_id)
-        << "[UpdateResourceUsage]: received resource usage from unknown node.";
-    return false;
-  }
-
-  return true;
 }
 
 void NodeManager::HandleClientConnectionError(
@@ -3094,19 +3027,12 @@ void NodeManager::ConsumeSyncMessage(
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
-    }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
-      cluster_lease_manager_.ScheduleAndGrantLeases();
+    ClusterResourceManager::NodeViewChanges changes;
+    cluster_resource_scheduler_.GetClusterResourceManager().AddOrUpdateNode(
+        scheduling::NodeID(node_id.Binary()), resource_view_sync_message, &changes);
+    pending_infeasible_rescan_ |= changes.capacity_changed;
+    if (changes.capacity_changed || changes.usage_changed) {
+      PostResourceViewRescanIfNeeded();
     }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     syncer::CommandsSyncMessage commands_sync_message;
@@ -3115,6 +3041,25 @@ void NodeManager::ConsumeSyncMessage(
       local_gc_triggered_by_global_gc_ = true;
     }
   }
+}
+
+void NodeManager::PostResourceViewRescanIfNeeded() {
+  if (resource_view_rescan_posted_) {
+    return;
+  }
+  resource_view_rescan_posted_ = true;
+  io_service_.post(
+      [this]() {
+        resource_view_rescan_posted_ = false;
+        const bool rescan_infeasible = pending_infeasible_rescan_;
+        pending_infeasible_rescan_ = false;
+        if (rescan_infeasible) {
+          cluster_lease_manager_.ScheduleAndGrantLeases();
+        } else {
+          cluster_lease_manager_.ScheduleAndGrantPendingLeases();
+        }
+      },
+      "NodeManager.ResourceViewRescan");
 }
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
