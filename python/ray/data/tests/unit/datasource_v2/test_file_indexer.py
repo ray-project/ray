@@ -6,7 +6,6 @@ from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     LineDelimitedFileChunker,
-    ParquetFileChunker,
     WholeFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
@@ -341,7 +340,7 @@ class TestFileChunkerIntegration:
         assert isinstance(indexer.file_chunker, WholeFileChunker)
 
     def test_explicit_chunker_is_exposed(self):
-        chunker = ParquetFileChunker(target_chunk_size=1024)
+        chunker = LineDelimitedFileChunker()
         indexer = NonSamplingFileIndexer(
             ignore_missing_paths=False, file_chunker=chunker
         )
@@ -358,29 +357,6 @@ class TestFileChunkerIntegration:
         # ``WholeFileChunker`` emits one ``None`` chunk per file.
         assert list(manifest.file_chunk_metadatas) == [None]
         assert list(manifest.file_sizes) == [100]
-
-    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
-        # Write a "Parquet" file by name only — the chunker doesn't open it.
-        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
-        chunker = ParquetFileChunker(target_chunk_size=1024)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=1,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        rows = []
-        for m in manifests:
-            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                rows.append((str(path), int(size), md))
-
-        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
-        assert len(rows) == 10
-        for i, (_, _, md) in enumerate(rows):
-            assert md is not None
-            assert md["chunk_idx"] == i
-            assert md["total_num_chunks"] == 10
 
     def test_line_delimited_chunker_byte_ranges(self, tmp_path):
         (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)

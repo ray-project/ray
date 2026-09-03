@@ -38,9 +38,6 @@
       run:
         script: python image_classification/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python image_classification/daft_main.py
 
 - name: document_embedding
 
@@ -59,10 +56,6 @@
     frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
-
-  - __suffix__: daft
-    run:
-      script: python document_embedding/daft_main.py
 
 
 - name: audio_transcription
@@ -84,10 +77,6 @@
       run:
         script: python audio_transcription/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python audio_transcription/daft_main.py
-
 - name: video_object_detection
 
   cluster:
@@ -104,7 +93,3 @@
       frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
-
-    - __suffix__: daft
-      run:
-        script: python video_object_detection/daft_main.py
