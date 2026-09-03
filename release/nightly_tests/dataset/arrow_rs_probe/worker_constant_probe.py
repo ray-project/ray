@@ -69,10 +69,12 @@ class _PeakSampler(threading.Thread):
         super().__init__(daemon=True)
         self.pids = list(pids)
         self.peak = {p: 0 for p in self.pids}
-        self._stop = threading.Event()
+        # NOT named _stop: threading.Thread.join() calls its own internal
+        # self._stop() method, which an Event attribute would shadow.
+        self._halt = threading.Event()
 
     def run(self):
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             for p in self.pids:
                 v = _uss_kb(p)
                 if v is not None and v > self.peak[p]:
@@ -80,7 +82,7 @@ class _PeakSampler(threading.Thread):
             time.sleep(0.05)
 
     def stop(self):
-        self._stop.set()
+        self._halt.set()
         self.join(timeout=2)
 
 
