@@ -78,45 +78,46 @@ spec:
           configMap:
             name: redis-config-{cluster_id}
 ---
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: service-{cluster_id}
   annotations:
     ray.io/ft-enabled: "true"
 spec:
-  serviceUnhealthySecondThreshold: 300
-  deploymentUnhealthySecondThreshold: 300
-  serveConfig:
-    importPath: solution.serve_entrypoint
-    runtimeEnv: |
-      env_vars:
-        PYTHONPATH: "/tmp/testing/"
-    deployments:
-      - name: a
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
-      - name: b
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
-      - name: c
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
-      - name: d
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
-      - name: e
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
-      - name: DAGDriver
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 1
+  serveConfigV2: |
+    applications:
+      - name: default
+        import_path: solution.serve_entrypoint
+        route_prefix: /
+        runtime_env:
+          env_vars:
+            PYTHONPATH: "/tmp/testing/"
+        deployments:
+          - name: a
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
+          - name: b
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
+          - name: c
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
+          - name: d
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
+          - name: e
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
+          - name: DAGDriver
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 1
   rayClusterConfig:
     rayVersion: '3.0.0.dev0' # should match the Ray version in the image of the containers
     ######################headGroupSpecs#################################
