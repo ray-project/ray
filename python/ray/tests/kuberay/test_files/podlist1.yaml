@@ -20,7 +20,7 @@ items:
     name: raycluster-autoscaler-head-8zsc8
     namespace: default
     ownerReferences:
-    - apiVersion: ray.io/v1alpha1
+    - apiVersion: ray.io/v1
       blockOwnerDeletion: true
       controller: true
       kind: RayCluster
@@ -239,7 +239,7 @@ items:
     name: raycluster-autoscaler-worker-small-group-4wxfm
     namespace: default
     ownerReferences:
-    - apiVersion: ray.io/v1alpha1
+    - apiVersion: ray.io/v1
       blockOwnerDeletion: true
       controller: true
       kind: RayCluster
@@ -431,7 +431,7 @@ items:
     name: raycluster-autoscaler-worker-small-group-dkz2r
     namespace: default
     ownerReferences:
-    - apiVersion: ray.io/v1alpha1
+    - apiVersion: ray.io/v1
       blockOwnerDeletion: true
       controller: true
       kind: RayCluster

@@ -57,7 +57,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayCluster with GCS FT enabled
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
@@ -257,6 +257,22 @@ In KubeRay v1.0.0, the KubeRay operator adds a Kubernetes finalizer to the RayCl
 Starting with KubeRay v1.1.0, KubeRay changes the Redis cleanup behavior from a mandatory to a best-effort basis. KubeRay still removes the Kubernetes finalizer from the RayCluster if the Kubernetes Job fails, thereby unblocking the deletion of the RayCluster.
 
 Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`. Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.
+
+By default, cleanup deletes each namespace key with `DEL`. Redis reclaims memory synchronously when `lazyfree-lazy-user-del` has its default value of `no`. Redis operators can also configure `DEL` to reclaim memory asynchronously.
+
+To use `UNLINK`, set `RAY_redis_namespace_cleanup_use_unlink=1`. This option is useful when the Redis instance is shared with live clusters. `UNLINK` requires Redis 4.0 or later. The Redis user must have permission to run `UNLINK`.
+
+:::{caution}
+Ray doesn't check whether Redis supports `UNLINK`. Ray also doesn't fall back to `DEL`. If Redis rejects `UNLINK`, Ray retries the request. Ray terminates the cleanup process with a fatal error after the retries are exhausted.
+:::
+
+`UNLINK` removes keys from the keyspace immediately. It reclaims their memory on a background thread. This avoids blocking the Redis main thread while it reclaims memory for a large namespace.
+
+The `used_memory` value might not decrease immediately after cleanup returns. Use `INFO memory` to check the backlog in `lazyfree_pending_objects`.
+
+The environment variable must be available to the process that runs cleanup. For KubeRay, set it in the head group's pod template `env`. KubeRay builds the Redis cleanup Job's pod from this template. The Job therefore inherits the variable. The variable has no effect on the running head process.
+
+For manual cleanup, set the variable in the shell that invokes `cleanup_redis_storage`.
 
 ### Step 10: Delete the Kubernetes cluster
 

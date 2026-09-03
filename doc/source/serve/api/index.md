@@ -194,7 +194,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
 
 ## Serve REST API
 
-The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
+The Serve REST API is exposed at the same port as the Ray dashboard. The dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
 
 ### `PUT "/api/serve/applications/"`
 
