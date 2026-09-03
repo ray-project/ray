@@ -11,7 +11,6 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 import copy
 import json
 import logging
-import signal
 import time
 import uuid
 from typing import (
@@ -133,20 +132,6 @@ class SGLangServer:
                     "deployment/replica labels."
                 )
 
-        # TODO(issue-61108): remove this once sglang#18752 is merged and included
-        # in the minimum supported SGLang version for this example.
-        original_signal_func = signal.signal
-
-        def noop_signal_handler(sig, action):
-            # Returns default handler to satisfy signal.signal() return signature
-            return signal.SIG_DFL
-
-        try:
-            # Override signal.signal with our no-op function
-            signal.signal = noop_signal_handler
-            self.engine = Engine(**self.engine_kwargs)
-        finally:
-            signal.signal = original_signal_func
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
