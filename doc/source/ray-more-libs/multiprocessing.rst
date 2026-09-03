@@ -46,7 +46,9 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 Experimental elastic actor capacity
 -----------------------------------
 
-By default, ``Pool`` eagerly creates a fixed number of actors. Supplying
+By default, ``Pool`` eagerly creates a fixed number of actors. Fixed and elastic
+pools share the same bounded actor lifecycle; a fixed pool is the special case
+where minimum and maximum capacity both equal ``processes``. Supplying
 ``min_size``, ``max_size``, or ``idle_timeout_s`` enables elastic capacity:
 
 .. code-block:: python
@@ -71,7 +73,8 @@ or readiness polling. Actor resources do not change implicitly; use
 ``ray_remote_args`` when actors should request CPUs, GPUs, or custom resources.
 Elastic slot ownership relies on a serial, non-restarting actor mailbox, so
 elastic pools reject non-default ``max_concurrency``, ``max_restarts``, and
-``max_task_retries`` actor options.
+``max_task_retries`` actor options. Fixed pools configured with those advanced
+options retain their legacy scheduling path for compatibility.
 
 ``maxtasksperchild`` also applies to elastic pools. An elastic actor retires
 after accepting that many batches. Its slot remains occupied until Ray confirms

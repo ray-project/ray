@@ -20,6 +20,7 @@ from ray.util.multiprocessing.pool import (
     PoolTaskError,
     _ElasticActorSet,
     _ElasticSlotState,
+    _LegacyActorSet,
 )
 
 
@@ -34,8 +35,10 @@ class _FakeObjectRef:
 class _FakeRemoteMethod:
     def __init__(self, function):
         self._function = function
+        self.calls = 0
 
     def remote(self, *args):
+        self.calls += 1
         return self._function(*args)
 
 
@@ -116,7 +119,11 @@ def _assert_actor_set_invariants(actor_set):
                 assert slot.exit_ref is None
                 assert (slot.idle_since is not None) == (slot.outstanding == 0)
             elif slot.state is _ElasticSlotState.DRAINING:
-                assert slot.exit_ref is not None or actor_set._error is not None
+                assert (
+                    slot.outstanding > 0
+                    or slot.exit_ref is not None
+                    or actor_set._error is not None
+                )
 
 
 def test_slot_invariants_hold_across_the_complete_lifecycle():
@@ -193,6 +200,7 @@ def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
     first_refs = [actor_set.submit(None, []) for _ in range(2)]
     assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 2)]
     assert actor_set._slots[0].tasks_submitted == 2
+    assert actors[0].__ray_terminate__.calls == 0
     _assert_actor_set_invariants(actor_set)
 
     submitted = threading.Event()
@@ -206,8 +214,10 @@ def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
     submitter.start()
     assert not submitted.wait(0.05)
 
-    for ref in first_refs:
-        ref.completion.set_result([])
+    first_refs[0].completion.set_result([])
+    assert actors[0].__ray_terminate__.calls == 0
+    first_refs[1].completion.set_result([])
+    assert actors[0].__ray_terminate__.calls == 1
     actors[0].exit_ref.completion.set_result(None)
 
     assert submitted.wait(1)
@@ -1065,7 +1075,7 @@ def test_map_iteration_failure_precedes_all_admission():
     pool._closed = False
     pool._pool_lock = threading.Lock()
     pool._pool_size = 1
-    pool._elastic_actor_set = RecordingActorSet()
+    pool._actor_set = RecordingActorSet()
 
     with pytest.raises(RuntimeError, match="iterator failed after yielding"):
         pool._chunk_and_run(abs, FailingIterator(), chunksize=1)
@@ -1094,7 +1104,7 @@ def test_map_admission_is_atomic_with_close():
     pool._closed = False
     pool._pool_lock = threading.Lock()
     pool._pool_size = 1
-    pool._elastic_actor_set = BlockingActorSet()
+    pool._actor_set = BlockingActorSet()
     pool._registry = []
     pool._registry_hashable = {}
     map_result = []
@@ -1312,12 +1322,18 @@ def test_abandoned_imap_releases_collector_thread(shutdown_only):
     pool.join()
 
 
-def test_fixed_pool_path_is_unchanged(shutdown_only):
+def test_fixed_pool_uses_unified_actor_set(shutdown_only):
     ray.init(num_cpus=2)
     pool = Pool(processes=2)
     callback_values = queue.Queue()
 
-    assert pool._elastic_actor_set is None
+    assert pool._elastic_actor_set is not None
+    assert pool._elastic_actor_set.max_size == 2
+    assert pool._elastic_actor_set._reaper is None
+    assert pool._elastic_actor_set.snapshot() == [
+        (_ElasticSlotState.ACTIVE, 0),
+        (_ElasticSlotState.ACTIVE, 0),
+    ]
     assert pool.map(abs, [-1, -2], chunksize=1) == [1, 2]
 
     successful = pool.apply_async(abs, (-3,), callback=callback_values.put)
@@ -1332,6 +1348,38 @@ def test_fixed_pool_path_is_unchanged(shutdown_only):
         failed.get(timeout=20)
     callback_error = callback_values.get(timeout=20)
     assert isinstance(callback_error, ValueError)
+
+    pool.close()
+    pool.join()
+
+
+def test_fixed_pool_waits_for_and_propagates_initializer_failure(shutdown_only):
+    ray.init(num_cpus=1)
+
+    def fail_initializer():
+        raise RuntimeError("fixed initializer failed")
+
+    with pytest.raises(ray.exceptions.RayActorError, match="fixed initializer failed"):
+        Pool(processes=1, initializer=fail_initializer)
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("max_concurrency", 2),
+        ("max_restarts", 1),
+        ("max_task_retries", 1),
+    ],
+)
+def test_fixed_pool_keeps_advanced_actor_option_compatibility(
+    shutdown_only, option, value
+):
+    ray.init(num_cpus=1)
+    pool = Pool(processes=1, ray_remote_args={option: value})
+
+    assert pool._elastic_actor_set is None
+    assert isinstance(pool._actor_set, _LegacyActorSet)
+    assert pool.apply(abs, (-1,)) == 1
 
     pool.close()
     pool.join()
