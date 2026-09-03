@@ -177,7 +177,11 @@ def run_cell_body(arm: str, path: str, n: int) -> None:
     os.environ[FLAG] = "1" if want_rs else "0"
     import ray
 
-    ray.init(include_dashboard=False, logging_level="ERROR")
+    # address="local" forces a NEW local cluster from THIS venv. Plain init()
+    # auto-discovers a running cluster via /tmp/ray/ray_current_cluster — on an
+    # Anyscale workspace that is the platform's raylet (different Ray + Python),
+    # and joining it fails with a version mismatch (or worse, runs there).
+    ray.init(address="local", include_dashboard=False, logging_level="ERROR")
     import ray.data
 
     ctx = ray.data.DataContext.get_current()
