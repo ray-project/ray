@@ -131,38 +131,86 @@ class Sampler(threading.Thread):
 
 
 # ------------------------------------------------------------------ cells
-def run_cell(arm: str, path: str, n: int) -> dict:
-    os.environ[FLAG] = "1" if arm == "rs" else "0"
+#
+# Each cell runs in a FRESH subprocess. The reader is chosen from the driver's
+# DataContext singleton (parquet_scanner.py:86), which is created at first
+# `ray.data` import from the env var and then serialized to every task — it
+# survives ray.shutdown() and OVERRIDES worker runtime_env env vars. Flipping
+# arms inside one interpreter would therefore run every cell with the first
+# arm's reader. A fresh interpreter per cell (env set before import, plus an
+# explicit DataContext set as belt-and-braces) makes the arm switch real.
+def run_cell_subprocess(arm: str, path: str, n: int) -> dict:
+    import subprocess
+    import sys
+
+    env = dict(os.environ)
+    env[FLAG] = "1" if arm == "rs" else "0"
+    # An Anyscale workspace exports RAY_ADDRESS; connecting to that cluster
+    # would run tasks from the platform's Ray install, not this checkout.
+    env.pop("RAY_ADDRESS", None)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            os.path.abspath(__file__),
+            "--path",
+            path,
+            "--cell",
+            arm,
+            "--n",
+            str(n),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    for line in proc.stdout.splitlines():
+        if line.startswith("CELLRESULT "):
+            return json.loads(line[len("CELLRESULT ") :])
+    raise RuntimeError(
+        f"cell {arm} N={n} produced no result\n--- stdout ---\n{proc.stdout[-2000:]}"
+        f"\n--- stderr ---\n{proc.stderr[-2000:]}"
+    )
+
+
+def run_cell_body(arm: str, path: str, n: int) -> None:
+    want_rs = arm == "rs"
+    os.environ[FLAG] = "1" if want_rs else "0"
     import ray
 
-    ray.init(
-        ignore_reinit_error=True,
-        include_dashboard=False,
-        runtime_env={"env_vars": {FLAG: os.environ[FLAG]}},
-        logging_level="ERROR",
-    )
+    ray.init(include_dashboard=False, logging_level="ERROR")
     import ray.data
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_arrow_rs_parquet_reader = want_rs  # explicit: no reliance on import order
+    if want_rs:
+        import ray_data_arrow_rs  # noqa: F401  fail loudly if the crate is absent
+
+    from ray.data.aggregate import Sum
 
     sampler = Sampler()
     sampler.start()
     t0 = time.time()
     ds = ray.data.read_parquet(path, concurrency=n)
-    ds.sum("a")  # forces full decode of every file; the sum op itself is tiny
+    # ds.sum() would discard the executed plan's stats (it builds and consumes
+    # an internal dataset); hold the aggregated dataset so .stats() works.
+    agg_ds = ds.groupby(None).aggregate(Sum("a"))
+    agg_ds.take(1)  # forces full decode of every file; the sum itself is tiny
     wall = time.time() - t0
     sampler.stop_evt.set()
     sampler.join()
 
-    stats = ds.stats()
-    m = re.search(r"(\d+) tasks executed", stats)
+    stats = agg_ds.stats()
+    m = re.search(r"ReadFilesParquetV2: (\d+) tasks executed", stats)
     tasks = int(m.group(1)) if m else None
     ray.shutdown()
-    return {
+    result = {
         "arm": arm,
         "concurrency": n,
         "wall_s": round(wall, 2),
         "read_tasks": tasks,
         **sampler.summary(),
     }
+    print("CELLRESULT " + json.dumps(result), flush=True)
 
 
 def default_concurrencies() -> list:
@@ -185,10 +233,16 @@ def main():
         "--concurrencies", default="", help="comma list; default derived from cores"
     )
     ap.add_argument("--out", default="cliff_probe_results.jsonl")
+    ap.add_argument("--cell", default="", help="internal: run one (arm) cell and exit")
+    ap.add_argument("--n", type=int, default=0, help="internal: concurrency for --cell")
     args = ap.parse_args()
 
     if args.gen:
         gen_fixtures(args.path, args.gen, args.rows_per_file)
+        return
+
+    if args.cell:
+        run_cell_body(args.cell, args.path, args.n)
         return
 
     ns = [int(x) for x in args.concurrencies.split(",") if x] or default_concurrencies()
@@ -199,7 +253,7 @@ def main():
     rows = []
     for n in ns:  # interleave arms per N so cluster/S3 weather cancels
         for arm in args.arms.split(","):
-            r = run_cell(arm, args.path, n)
+            r = run_cell_subprocess(arm, args.path, n)
             rows.append(r)
             print(
                 f"{arm:>3} N={n:<3} wall {r['wall_s']:>7.2f}s tasks {r['read_tasks']} "
