@@ -64,11 +64,13 @@ to Actors, such as GPUs <actor-resource-guide>`.
   with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
       search.fit(digits.data, digits.target)
 
-Experimental elastic actor capacity
------------------------------------
+Actor capacity
+--------------
 
-The Ray backend normally creates a fixed pool of ``n_jobs`` actors. Elastic
-capacity is opt-in:
+The Ray backend manages the number of actors between ``min_size`` and
+``max_size``. Both bounds default to ``n_jobs``, so existing calls need no
+additional configuration. Set a lower ``min_size`` to let the backend release
+idle actors:
 
 .. code-block:: python
 
@@ -84,23 +86,9 @@ capacity is opt-in:
       search.fit(digits.data, digits.target)
 
 ``n_jobs`` remains Joblib's concurrency ceiling, so ``max_size`` may lower but
-never raise it. Actors are created as batches make existing actors busy and are
-retired after they have no outstanding batches for ``idle_timeout_s``.
-
-Ray actor mailboxes hold submitted batches while actors initialize or wait for
-resources. Requesting resources with ``ray_remote_args`` therefore exposes
-pending demand to the Ray cluster autoscaler, including from a zero-CPU head.
-The default actor resource requirement remains unchanged.
-
-The actor bound, shutdown behavior, and failure boundaries are the same as for
-:ref:`elastic multiprocessing pools <ray-multiprocessing>`. In particular,
-elastic capacity is not a distributed transaction or a transparent recovery
-mechanism for a replaced Ray session.
-
-Joblib's ``maxtasksperchild`` backend argument is forwarded to the elastic
-pool. The limit counts accepted Joblib batches per actor. An actor that reaches
-the limit drains its accepted batches before Ray confirms its exit; replacement
-then follows ``min_size`` and subsequent demand.
+never raise it. The backend creates actors as work arrives and retires actors
+above ``min_size`` after ``idle_timeout_s``. Use ``ray_remote_args`` to specify
+the resources each actor should request from the Ray cluster.
 
 Run on a Cluster
 ----------------

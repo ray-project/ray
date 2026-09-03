@@ -54,7 +54,7 @@ class RayBackend(MultiprocessingBackend):
 
         self.ray_remote_args = ray_remote_args
         self.maxtasksperchild = maxtasksperchild
-        self._elastic_kwargs = {
+        self._capacity_kwargs = {
             "min_size": min_size,
             "max_size": max_size,
             "idle_timeout_s": idle_timeout_s,
@@ -86,7 +86,7 @@ class RayBackend(MultiprocessingBackend):
             memmappingpool_args.setdefault("maxtasksperchild", self.maxtasksperchild)
 
         if n_jobs == -1:
-            configured_max = self._elastic_kwargs["max_size"]
+            configured_max = self._capacity_kwargs["max_size"]
             if configured_max is not None:
                 n_jobs = configured_max
             elif not ray.is_initialized():
@@ -110,22 +110,22 @@ class RayBackend(MultiprocessingBackend):
                 1, parallel, prefer, require, **memmappingpool_args
             )
 
-        elastic_kwargs = dict(self._elastic_kwargs)
-        if any(value is not None for value in elastic_kwargs.values()):
-            configured_max = elastic_kwargs["max_size"]
-            elastic_kwargs["max_size"] = (
+        capacity_kwargs = dict(self._capacity_kwargs)
+        if any(value is not None for value in capacity_kwargs.values()):
+            configured_max = capacity_kwargs["max_size"]
+            capacity_kwargs["max_size"] = (
                 eff_n_jobs
                 if configured_max is None
                 else min(configured_max, eff_n_jobs)
             )
-            if elastic_kwargs["min_size"] is not None:
-                elastic_kwargs["min_size"] = min(
-                    elastic_kwargs["min_size"], elastic_kwargs["max_size"]
+            if capacity_kwargs["min_size"] is not None:
+                capacity_kwargs["min_size"] = min(
+                    capacity_kwargs["min_size"], capacity_kwargs["max_size"]
                 )
             memmappingpool_args.update(
                 {
                     key: value
-                    for key, value in elastic_kwargs.items()
+                    for key, value in capacity_kwargs.items()
                     if value is not None
                 }
             )
@@ -144,8 +144,8 @@ class RayBackend(MultiprocessingBackend):
 
     def effective_n_jobs(self, n_jobs):
         eff_n_jobs = super(RayBackend, self).effective_n_jobs(n_jobs)
-        if n_jobs == -1 and self._elastic_kwargs["max_size"] is not None:
-            eff_n_jobs = self._elastic_kwargs["max_size"]
+        if n_jobs == -1 and self._capacity_kwargs["max_size"] is not None:
+            eff_n_jobs = self._capacity_kwargs["max_size"]
         elif n_jobs == -1 and ray.is_initialized():
             eff_n_jobs = max(int(ray.cluster_resources().get("CPU", 1)), 1)
         return eff_n_jobs

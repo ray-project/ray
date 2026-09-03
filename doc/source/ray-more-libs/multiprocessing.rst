@@ -43,13 +43,12 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 
 .. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
-Experimental elastic actor capacity
------------------------------------
+Actor capacity
+--------------
 
-By default, ``Pool`` eagerly creates a fixed number of actors. Fixed and elastic
-pools share the same bounded actor lifecycle; a fixed pool is the special case
-where minimum and maximum capacity both equal ``processes``. Supplying
-``min_size``, ``max_size``, or ``idle_timeout_s`` enables elastic capacity:
+``Pool`` manages its actor count between ``min_size`` and ``max_size``. Without
+additional configuration, both bounds resolve to ``processes``. Set a lower
+``min_size`` to release idle actors:
 
 .. code-block:: python
 
@@ -60,66 +59,14 @@ where minimum and maximum capacity both equal ``processes``. Supplying
       ray_remote_args={"num_cpus": 1},
   )
 
-The pool creates actors as submitted batches make existing actors busy and
-retires actors that have no outstanding batches after ``idle_timeout_s``.
-``min_size`` is the idle capacity floor and ``max_size`` is the actor-slot
-ceiling. A slot undergoing retirement remains occupied until Ray confirms the
-actor exit.
+The pool creates actors as work arrives and retires actors above ``min_size``
+after ``idle_timeout_s``. Use ``ray_remote_args`` to specify CPUs, GPUs, or
+custom resources for each actor so pending actors can drive cluster autoscaling.
 
-Actor creation is asynchronous. Batches are submitted directly to Ray actor
-mailboxes, including while a new actor is waiting for resources or running its
-initializer. This creates cluster-autoscaler demand without a local dispatcher
-or readiness polling. Actor resources do not change implicitly; use
-``ray_remote_args`` when actors should request CPUs, GPUs, or custom resources.
-Elastic slot ownership relies on a serial, non-restarting actor mailbox, so
-elastic pools reject non-default ``max_concurrency``, ``max_restarts``, and
-``max_task_retries`` actor options as well as ``get_if_exists=True``. Fixed
-pools configured with those advanced options retain their legacy scheduling
-path for compatibility.
-
-``maxtasksperchild`` also applies to elastic pools. An elastic actor retires
-after accepting that many batches. Its slot remains occupied until Ray confirms
-the actor exit, then ``min_size`` or later demand creates a replacement.
-
-Guarantees and failure boundaries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Elastic capacity has the following guarantees:
-
-- The number of actor slots never exceeds ``max_size``. A retiring slot is not
-  reused until Ray reports that its actor has exited.
-- ``close()`` rejects new submissions but preserves calls that Ray has already
-  accepted. ``terminate()`` may abort accepted calls. Call ``join()`` after
-  either method to wait for actor cleanup.
-- A user-function exception fails its result without poisoning a live actor.
-  A confirmed actor death releases its slot so later submissions can replace
-  it. If actor ownership is ambiguous, the pool fails closed instead of
-  risking two actors in one slot. This includes an ambiguous completion of the
-  actor termination call: the slot remains occupied unless Ray confirms that
-  the actor exited.
-- Autoscaling changes actor capacity only. Ray actor mailboxes remain the task
-  queue and Ray object references remain the result protocol.
-
-These guarantees deliberately have the following boundaries:
-
-- A sequence of Ray submissions, such as the chunks of one ``map_async()``
-  call, is not a distributed transaction. If the Ray control plane fails
-  synchronously between submissions, earlier chunks may already be accepted.
-- A pool does not reconnect actor handles after a Ray session is replaced or
-  recover transparently from an unavailable control plane. Management failures
-  are reported to the caller.
-- If an actor needed for ``min_size`` dies during startup, the pool fails closed
-  instead of automatically retrying a permanently failing initializer without
-  a bound. This makes the capacity-floor failure visible and prevents actor
-  creation churn.
-- ``join()`` has no independent deadline. It continues waiting if Ray never
-  settles an actor termination reference, rather than reusing capacity whose
-  physical actor may still exist.
-- Actor capacity is bounded, but queued calls, result objects, and Joblib's
-  input cache remain proportional to accepted work. The pool does not impose
-  backpressure or a fixed memory limit independent of the workload.
-- Applications are responsible for completing the normal pool lifecycle with
-  ``close()`` or ``terminate()`` followed by ``join()``.
+For compatibility, a pool without capacity options continues to use the
+previous fixed-capacity scheduler when ``ray_remote_args`` contains non-default
+``max_concurrency``, ``max_restarts``, ``max_task_retries``, or
+``get_if_exists``. These options cannot be combined with adjustable capacity.
 
 Run on a Cluster
 ----------------

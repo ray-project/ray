@@ -161,36 +161,8 @@ class PoolTaskError(Exception):
         self.underlying = underlying
 
 
-@dataclass(frozen=True)
-class _TaskSuccess:
-    value: Any
-
-
-@dataclass(frozen=True)
-class _TaskFailure:
-    error: BaseException
-
-
-_ACTOR_SLOT_OPTION_DEFAULTS = {
-    "get_if_exists": False,
-    "max_concurrency": 1,
-    "max_restarts": 0,
-    "max_task_retries": 0,
-}
-
-
-def _validate_elastic_actor_options(ray_remote_args: Dict[str, Any]) -> None:
-    """Reject actor lifecycle options that invalidate elastic slot ownership."""
-    for option, required_value in _ACTOR_SLOT_OPTION_DEFAULTS.items():
-        if option in ray_remote_args and ray_remote_args[option] != required_value:
-            raise ValueError(
-                f"Elastic Ray Pools require {option}={required_value}; "
-                f"got {ray_remote_args[option]!r}"
-            )
-
-
 def _kill_all_actors(actors: Iterable[Any]) -> None:
-    """Attempt every kill before propagating the first failure."""
+    """Kill actors from either scheduling path, reporting the first failure."""
     first_error = None
     for actor in actors:
         try:
@@ -286,13 +258,22 @@ class _ActorSlotState(Enum):
 class _ActorSlot:
     """One bounded actor slot owned by ``_ActorSlotSet``.
 
-    All fields are protected by the actor set's condition. ``EMPTY`` owns no
-    actor or refs. Every other state owns an actor. ``STARTING`` may own a
-    readiness ref, ``ACTIVE`` owns neither a readiness nor exit ref, and
-    ``DRAINING`` may first wait for outstanding batches and then owns an exit
-    ref until Ray confirms that the actor has exited. ``STARTING`` without a
-    readiness ref is retained only after observation setup failed and the actor
-    set has failed closed.
+    All fields are protected by the actor set's condition.
+
+    Attributes:
+        generation: Incremented whenever the slot receives a new actor, so a
+            delayed callback cannot update the next actor to occupy the slot.
+        state: Current lifecycle state of the slot.
+        actor: Actor handle owned by the slot, or ``None`` while empty.
+        outstanding: Number of accepted batches that have not completed.
+        tasks_submitted: Number of batches accepted by the current actor.
+        idle_since: Monotonic timestamp from which an active actor is idle.
+        readiness_ref: Reference used to observe actor initialization.
+        exit_ref: Reference used to confirm that a draining actor has exited.
+
+    ``EMPTY`` owns no actor or references. Every other state owns an actor.
+    ``STARTING`` may own a readiness reference, while ``DRAINING`` may first
+    wait for outstanding batches and then owns an exit reference.
     """
 
     generation: int = 0
@@ -817,6 +798,22 @@ class _ActorSlotSet:
                 self._condition.wait(timeout)
 
 
+@dataclass(frozen=True)
+class _TaskResult:
+    """Result envelope that distinguishes returned exceptions from failures."""
+
+    value: Any = None
+    error: Optional[BaseException] = None
+
+    @classmethod
+    def success(cls, value: Any) -> "_TaskResult":
+        return cls(value=value)
+
+    @classmethod
+    def failure(cls, error: BaseException) -> "_TaskResult":
+        return cls(error=error)
+
+
 class ResultThread(threading.Thread):
     """Thread that collects results from distributed actors.
 
@@ -933,18 +930,18 @@ class ResultThread(threading.Thread):
             try:
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:
-                batch = [_TaskFailure(e)]
+                batch = [_TaskResult.failure(e)]
 
             # The exception callback is called only once on the first result
             # that errors. If no result errors, it is never called.
             callback_error = None
             if not self._got_error:
                 for result in batch:
-                    if isinstance(result, _TaskFailure):
-                        self._got_error = True
-                        callback_error = result.error
-                        break
-                    elif isinstance(result, _TaskSuccess):
+                    if isinstance(result, _TaskResult):
+                        if result.error is not None:
+                            self._got_error = True
+                            callback_error = result.error
+                            break
                         aggregated_batch_results.append(result.value)
                     # Accept results from actors created by an older version
                     # of this module while preserving their historical error
@@ -1042,9 +1039,9 @@ class AsyncResult:
         results = []
         for batch in self._result_thread.results():
             for result in batch:
-                if isinstance(result, _TaskFailure):
-                    raise result.error
-                if isinstance(result, _TaskSuccess):
+                if isinstance(result, _TaskResult):
+                    if result.error is not None:
+                        raise result.error
                     results.append(result.value)
                 elif isinstance(result, PoolTaskError):
                     raise result.underlying
@@ -1078,10 +1075,10 @@ class AsyncResult:
 
 
 def _result_for_iterator(result):
-    if isinstance(result, _TaskSuccess):
+    if isinstance(result, _TaskResult):
+        if result.error is not None:
+            return PoolTaskError(result.error)
         return result.value
-    if isinstance(result, _TaskFailure):
-        return PoolTaskError(result.error)
     return result
 
 
@@ -1142,7 +1139,7 @@ class IMapIterator:
             )
         except BaseException as error:
             self._finished_iterating = True
-            new_chunk_id = ray.put([_TaskFailure(error)])
+            new_chunk_id = ray.put([_TaskResult.failure(error)])
         self._submitted_chunks.append(False)
         # Wait for the result
         self._result_thread.add_object_ref(new_chunk_id)
@@ -1254,10 +1251,18 @@ class PoolActor:
             args = args or ()
             kwargs = kwargs or {}
             try:
-                results.append(_TaskSuccess(func(*args, **kwargs)))
+                results.append(_TaskResult.success(func(*args, **kwargs)))
             except Exception as e:
-                results.append(_TaskFailure(e))
+                results.append(_TaskResult.failure(e))
         return results
+
+
+_LEGACY_ACTOR_OPTION_DEFAULTS = {
+    "get_if_exists": False,
+    "max_concurrency": 1,
+    "max_restarts": 0,
+    "max_task_retries": 0,
+}
 
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
@@ -1282,14 +1287,16 @@ class Pool:
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
-            the pool. See :func:`ray.remote` for details. Elastic pools require
-            serial, non-restarting, uniquely created actors and reject
-            non-default lifecycle, task-retry, and get-or-create options.
-        min_size: minimum number of actors retained by an elastic pool.
-            Supplying any elastic option enables elastic capacity management.
-        max_size: maximum number of actor slots in an elastic pool. Defaults
-            to ``processes`` when given, otherwise the current cluster CPUs.
-        idle_timeout_s: seconds an idle actor remains active before retirement.
+            the pool. See :func:`ray.remote` for details. Non-default actor
+            concurrency, restart, retry, and get-or-create options use the
+            previous fixed-capacity scheduler for compatibility and cannot be
+            combined with adjustable capacity.
+        min_size: minimum number of actors retained. Defaults to ``processes``
+            when no capacity options are supplied, otherwise ``0``.
+        max_size: maximum number of actors. Defaults to ``processes`` when
+            given, otherwise the current cluster CPU count.
+        idle_timeout_s: seconds an actor above ``min_size`` may remain idle
+            before it is retired. Defaults to 60 seconds.
     """
 
     def __init__(
@@ -1310,21 +1317,26 @@ class Pool:
         self._closed = False
         self._pool_lock = threading.Lock()
         if maxtasksperchild is not None and (
-            not isinstance(maxtasksperchild, int) or maxtasksperchild <= 0
+            type(maxtasksperchild) is not int or maxtasksperchild <= 0
         ):
             raise ValueError("maxtasksperchild must be a positive integer or None")
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
         ray_remote_args = ray_remote_args or {}
-        autoscale = any(
+        capacity_options_provided = any(
             option is not None for option in (min_size, max_size, idle_timeout_s)
         )
-        use_legacy_actor_set = not autoscale and any(
-            option in ray_remote_args and ray_remote_args[option] != required_value
-            for option, required_value in _ACTOR_SLOT_OPTION_DEFAULTS.items()
-        )
-        if autoscale:
-            _validate_elastic_actor_options(ray_remote_args)
+        legacy_actor_options = {
+            option: ray_remote_args[option]
+            for option, default in _LEGACY_ACTOR_OPTION_DEFAULTS.items()
+            if option in ray_remote_args and ray_remote_args[option] != default
+        }
+        if capacity_options_provided and legacy_actor_options:
+            option, value = next(iter(legacy_actor_options.items()))
+            raise ValueError(
+                f"Ray Pool capacity options require "
+                f"{option}={_LEGACY_ACTOR_OPTION_DEFAULTS[option]}; got {value!r}"
+            )
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -1333,28 +1345,36 @@ class Pool:
                 "to control ray initialization."
             )
 
-        processes, ray_cpus = self._init_ray(processes, ray_address, autoscale)
-        if autoscale:
-            max_size = max_size if max_size is not None else processes
-            max_size = ray_cpus if max_size is None else max_size
-            min_size = 0 if min_size is None else min_size
-            idle_timeout_s = 60.0 if idle_timeout_s is None else idle_timeout_s
-            if max_size <= 0:
-                raise ValueError("max_size must be greater than 0")
-            if not 0 <= min_size <= max_size:
-                raise ValueError("min_size must be between 0 and max_size")
-            if idle_timeout_s < 0:
-                raise ValueError("idle_timeout_s must be non-negative")
-        elif not use_legacy_actor_set:
-            min_size = max_size = processes
-            idle_timeout_s = 60.0
+        ray_cpus = self._init_ray(processes, ray_address)
+        if not capacity_options_provided:
+            processes = ray_cpus if processes is None else processes
+            if processes <= 0:
+                raise ValueError("Processes in the pool must be >0.")
+            if ray_cpus < processes:
+                raise ValueError(
+                    "Tried to start a pool with {} processes on an "
+                    "existing ray cluster, but there are only {} "
+                    "CPUs in the ray cluster.".format(processes, ray_cpus)
+                )
+
+        if max_size is None:
+            max_size = processes if processes is not None else ray_cpus
+        if min_size is None:
+            min_size = 0 if capacity_options_provided else max_size
+        idle_timeout_s = 60.0 if idle_timeout_s is None else idle_timeout_s
+        if max_size <= 0:
+            raise ValueError("max_size must be greater than 0")
+        if not 0 <= min_size <= max_size:
+            raise ValueError("min_size must be between 0 and max_size")
+        if idle_timeout_s < 0:
+            raise ValueError("idle_timeout_s must be non-negative")
 
         pool_actor = PoolActor.options(**ray_remote_args)
 
         def create_actor():
             return pool_actor.remote(initializer, initargs)
 
-        if use_legacy_actor_set:
+        if legacy_actor_options:
             self._pool_size = processes
             self._actor_set = _LegacyActorSet(
                 create_actor,
@@ -1370,7 +1390,7 @@ class Pool:
                 idle_timeout_s,
                 maxtasksperchild,
             )
-            if not autoscale:
+            if not capacity_options_provided:
                 try:
                     actor_set.wait_until_ready()
                 except BaseException:
@@ -1383,7 +1403,7 @@ class Pool:
                     raise
             self._actor_set = actor_set
 
-    def _init_ray(self, processes=None, ray_address=None, autoscale=False):
+    def _init_ray(self, processes=None, ray_address=None):
         # Initialize ray. If ray is already initialized, we do nothing.
         # Else, the priority is:
         # ray_address argument > RAY_ADDRESS > start new local cluster.
@@ -1406,20 +1426,7 @@ class Pool:
             else:
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray._private.state.cluster_resources().get("CPU", 0))
-        if not autoscale:
-            if processes is None:
-                processes = ray_cpus
-            if processes <= 0:
-                raise ValueError("Processes in the pool must be >0.")
-            if ray_cpus < processes:
-                raise ValueError(
-                    "Tried to start a pool with {} processes on an "
-                    "existing ray cluster, but there are only {} "
-                    "CPUs in the ray cluster.".format(processes, ray_cpus)
-                )
-
-        return processes, ray_cpus
+        return int(ray._private.state.cluster_resources().get("CPU", 0))
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch_locked(self, func, batch):
