@@ -9,9 +9,13 @@ import yaml
 
 from ray import job_config
 from ray._private.runtime_env import validation
+from ray._private.runtime_env.constants import (
+    RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR,
+)
 from ray._private.runtime_env.pip import _get_pip_hash
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import (
+    parse_and_validate_archives,
     parse_and_validate_conda,
     parse_and_validate_excludes,
     parse_and_validate_py_modules,
@@ -109,6 +113,53 @@ class TestValidateWorkingDir:
         valid_working_dir_path = str(test_dir)
         working_dir = parse_and_validate_working_dir(str(valid_working_dir_path))
         assert working_dir == valid_working_dir_path
+
+
+class TestValidateArchives:
+    @pytest.mark.parametrize(
+        "archives",
+        [
+            "https://example.com/resources.zip",
+            "s3://bucket/resources.tar.gz",
+            {"config": "https://example.com/config.tgz"},
+        ],
+    )
+    def test_valid(self, archives):
+        assert parse_and_validate_archives(archives) == archives
+        assert RuntimeEnv(archives=archives).archives() == archives
+
+    @pytest.mark.parametrize(
+        "archives",
+        [
+            "",
+            {},
+            {"": "https://example.com/resources.zip"},
+            {"data": ""},
+            {"data": 1},
+            ["https://example.com/resources.zip"],
+            "/tmp/resources.zip",
+            "gcs://resources.zip",
+            "https://example.com/resources.whl",
+        ],
+    )
+    def test_invalid(self, archives):
+        with pytest.raises((TypeError, ValueError, jsonschema.ValidationError)):
+            RuntimeEnv(archives=archives)
+
+    def test_serialize(self):
+        archives = {
+            "model": "s3://bucket/model.tar.gz",
+            "config": "https://example.com/config.zip",
+        }
+        runtime_env = RuntimeEnv(archives=archives)
+        assert RuntimeEnv.deserialize(runtime_env.serialize()).archives() == archives
+
+    def test_reserved_env_var(self):
+        with pytest.raises(ValueError, match="is managed by the archives"):
+            RuntimeEnv(
+                archives="https://example.com/resources.zip",
+                env_vars={RAY_RUNTIME_ENV_ARCHIVES_PATHS_ENV_VAR: "user-value"},
+            )
 
 
 class TestValidatePyModules:
@@ -346,6 +397,15 @@ class TestValidateByJsonSchema:
         runtime_env["working_dir"] = "https://abc/file.zip"
         with pytest.raises(jsonschema.exceptions.ValidationError, match="working_dir"):
             runtime_env["working_dir"] = ["https://abc/file.zip"]
+
+    def test_validate_archives(self, set_runtime_env_plugin_schemas):
+        runtime_env = RuntimeEnv()
+        runtime_env.set("archives", "https://abc/file.zip")
+        runtime_env.set("archives", {"data": "https://abc/file.tar.gz"})
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            runtime_env.set("archives", {})
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            runtime_env["archives"] = {"data": 1}
 
     def test_validate_test_env_1(self, set_runtime_env_plugin_schemas):
         runtime_env = RuntimeEnv()

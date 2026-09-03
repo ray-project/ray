@@ -116,6 +116,63 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     return working_dir
 
 
+def parse_and_validate_archives(
+    archives: Union[str, Dict[str, str]],
+) -> Union[str, Dict[str, str]]:
+    """Validate remote archives made available to Ray workers."""
+    assert archives is not None
+
+    if isinstance(archives, str):
+        archive_uris = [archives]
+    elif isinstance(archives, dict):
+        if not archives:
+            raise ValueError("runtime_env['archives'] must not be empty.")
+        for name, uri in archives.items():
+            if not isinstance(name, str) or not name:
+                raise TypeError(
+                    "runtime_env['archives'] keys must be non-empty strings, "
+                    f"got {name!r} of type {type(name)}."
+                )
+            if not isinstance(uri, str):
+                raise TypeError(
+                    "runtime_env['archives'] values must be strings, "
+                    f"got {uri!r} of type {type(uri)} for key {name!r}."
+                )
+        archive_uris = list(archives.values())
+    else:
+        raise TypeError(
+            "runtime_env['archives'] must be of type str or Dict[str, str], "
+            f"got {type(archives)}."
+        )
+
+    from ray._common.runtime_env_uri import parse_uri
+    from ray._private.runtime_env.protocol import Protocol
+
+    supported_extensions = (".zip", ".tar.gz", ".tgz")
+    for uri in archive_uris:
+        if not uri:
+            raise ValueError("runtime_env['archives'] URIs must not be empty.")
+        try:
+            protocol, path = parse_uri(uri)
+        except ValueError as exc:
+            raise ValueError(
+                f"runtime_env['archives'] entries must be remote URIs, got {uri!r}."
+            ) from exc
+
+        if protocol not in Protocol.remote_protocols():
+            raise ValueError(
+                "runtime_env['archives'] only supports remote URI protocols, "
+                f"got {protocol.value!r} for {uri!r}."
+            )
+        if not any(path.endswith(ext) for ext in supported_extensions):
+            raise ValueError(
+                "runtime_env['archives'] only supports .zip, .tar.gz, and .tgz "
+                f"files, got {uri!r}."
+            )
+
+    return archives
+
+
 def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """Parses and validates a user-provided 'conda' option.
 
@@ -446,6 +503,7 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
+    "archives": parse_and_validate_archives,
     "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,

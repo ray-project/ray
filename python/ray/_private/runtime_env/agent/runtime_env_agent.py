@@ -16,6 +16,7 @@ from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.archives import ArchivesPlugin
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
@@ -228,9 +229,10 @@ class ReferenceTable:
         # Runtime Environment reference table. The key is serialized runtime env and
         # the value is reference count.
         self._runtime_env_reference: Dict[str, int] = defaultdict(int)
-        # URI reference table. The key is URI parsed from runtime env and the value
-        # is reference count.
-        self._uri_reference: Dict[str, int] = defaultdict(int)
+        # URI reference table. A URI may be cached independently by multiple plugins.
+        # The key includes the plugin type so each cache receives its own lifecycle
+        # notifications.
+        self._uri_reference: Dict[Tuple[str, UriType], int] = defaultdict(int)
         self._uris_parser = uris_parser
         self._unused_uris_callback = unused_uris_callback
         self._unused_runtime_env_callback = unused_runtime_env_callback
@@ -243,20 +245,23 @@ class ReferenceTable:
 
     def _increase_reference_for_uris(self, uris):
         default_logger.debug(f"Increase reference for uris {uris}.")
-        for uri, _ in uris:
-            self._uri_reference[uri] += 1
+        for uri, uri_type in uris:
+            self._uri_reference[(uri, uri_type)] += 1
 
     def _decrease_reference_for_uris(self, uris):
         default_logger.debug(f"Decrease reference for uris {uris}.")
         unused_uris = list()
         for uri, uri_type in uris:
-            if self._uri_reference[uri] > 0:
-                self._uri_reference[uri] -= 1
-                if self._uri_reference[uri] == 0:
+            uri_key = (uri, uri_type)
+            if self._uri_reference.get(uri_key, 0) > 0:
+                self._uri_reference[uri_key] -= 1
+                if self._uri_reference[uri_key] == 0:
                     unused_uris.append((uri, uri_type))
-                    del self._uri_reference[uri]
+                    del self._uri_reference[uri_key]
             else:
-                default_logger.warning(f"URI {uri} does not exist.")
+                default_logger.warning(
+                    f"URI {uri} for plugin {uri_type} does not exist."
+                )
         if unused_uris:
             default_logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
@@ -383,6 +388,7 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_client
         )
+        self._archives_plugin = ArchivesPlugin(self._runtime_env_dir)
         self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
@@ -395,6 +401,7 @@ class RuntimeEnvAgent:
         # self._xxx_plugin, we should just iterate through self._plugins.
         self._base_plugins: List[RuntimeEnvPlugin] = [
             self._working_dir_plugin,
+            self._archives_plugin,
             self._uv_plugin,
             self._pip_plugin,
             self._conda_plugin,
@@ -476,7 +483,7 @@ class RuntimeEnvAgent:
             with self._setup_logger_factory.setup_logger(
                 request.job_id.decode(), log_files
             ) as per_job_logger:
-                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+                context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars()))
 
                 # Warn about unrecognized fields in the runtime env.
                 for name, _ in runtime_env.plugins():

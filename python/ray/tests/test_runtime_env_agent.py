@@ -100,6 +100,30 @@ def test_reference_table():
     assert not expected_unused_runtime_env
 
 
+def test_reference_table_distinguishes_uri_types():
+    uri = "s3://shared/archive.zip"
+    unused_uris = []
+
+    def uris_parser(runtime_env):
+        return [
+            (runtime_env.working_dir(), "working_dir"),
+            (runtime_env.archives(), "archives"),
+        ]
+
+    reference_table = ReferenceTable(
+        uris_parser,
+        unused_uris.extend,
+        lambda _: None,
+    )
+    runtime_env = RuntimeEnv(working_dir=uri, archives=uri)
+    serialized_runtime_env = runtime_env.serialize()
+
+    reference_table.increase_reference(runtime_env, serialized_runtime_env, "raylet")
+    reference_table.decrease_reference(runtime_env, serialized_runtime_env, "raylet")
+
+    assert unused_uris == [(uri, "working_dir"), (uri, "archives")]
+
+
 def search_agent(processes):
     for p in processes:
         try:
