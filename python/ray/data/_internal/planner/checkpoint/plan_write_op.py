@@ -283,12 +283,9 @@ def _generate_commit_checkpoint_transform(
     def commit_checkpoints(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
-        # Drain the upstream stages before reading what they left on `ctx`.
-        # The prepare stage puts the pending checkpoints there as it runs, and
-        # in a lazily-built chain it only runs when its output is pulled, so
-        # reading `ctx.kwargs` first would find nothing to commit. Draining
-        # here is also what "AFTER the data write succeeds" means: the write is
-        # upstream, so consuming its output is what waits for it.
+        # Upstream is lazy: nothing runs until its output is pulled. Pulling it
+        # here is what makes the prepare stage run and leave the pending
+        # checkpoints on `ctx` for the loop below to commit.
         blocks = list(blocks)
 
         # Get pending checkpoints written in pre-write phase
