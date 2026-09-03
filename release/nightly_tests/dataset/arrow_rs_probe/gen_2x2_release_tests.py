@@ -32,9 +32,35 @@ the whole run is void. Then: regression present in multi but absent in single,
 with the decoder eliminators (decoded bytes/task, peak batch bytes) at parity
 => release-regime mechanism (retention / pool dynamics), not the decoder.
 
+Two matrices share this machinery (--matrix); the name scheme stays
+<parent>_2x2_<arm>_<topology> for both so one results-DB name history and one
+Buildkite filter (name:.*_2x2_.*) cover them:
+
+  2x2    {rs, pa} x {multi, single} over every target (item 29; build 105711).
+  alloc  DEFAULT. {pa, rs, rstrim, rseos} on the original fleet over the
+         memory, sustained and control targets plus three wall targets kept as
+         the release-scale confirmation of the M97/M98 wall fix; single-node
+         cells only where the single-node reading is itself the question
+         (ALLOC_SINGLE_TOO). The two extra arms are the arrow-rs reader plus
+         one allocator lever each, toggled by env exactly like the reader flag:
+           rstrim  RAY_DATA_ARROW_RS_MALLOC_TRIM=1      mallopt(M_TRIM_THRESHOLD,0)
+                   once per worker: the box-confirmed mechanism probe (M48
+                   idle-floor R 0.08) at its known wall price (M61 +24-36%).
+           rseos   RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1  one malloc_trim(0) at
+                   the end of each read task's stream: the ship candidate.
+         Reading: rstrim closes the sustained-wUSS gap => glibc heap retention
+         is the release-regime mechanism (its wall column is the price);
+         rseos matching rstrim's memory at ~rs wall => ship it; the gap
+         surviving both levers => not the allocator (live-object retention or
+         worker count) => task timeline + heap census next. Sanity gate:
+         decoded-bytes/peak-batch dists identical across the three rs arms
+         (neither lever touches a decode path); pa cells must reproduce the
+         5-run history or the window is contaminated.
+
 Usage (from anywhere; rewrites its marker block in release_data_tests.yaml):
-    python gen_2x2_release_tests.py           # regenerate + validate
-    python gen_2x2_release_tests.py --check   # validate only, no write
+    python gen_2x2_release_tests.py                # regenerate alloc + validate
+    python gen_2x2_release_tests.py --matrix 2x2   # the original 2x2 instead
+    python gen_2x2_release_tests.py --check        # validate the file as it is
 
 The resolver below (deep_update / matrix / variations / {{var}} substitution)
 mirrors release/ray_release/config.py:parse_test_definition, which is not
@@ -111,11 +137,68 @@ SINGLE_COMPUTE = {
     "dataset_mixing/compute_8_cpu.yaml": "single_node_cpu_compute.yaml",
 }
 
+# Arm -> the env prefix prepended to the parent's run script. Reader flag
+# first in every arm; the allocator knobs are read by the arrow-rs reader only
+# (python/ray/data/context.py DEFAULT_ARROW_RS_MALLOC_TRIM[_EOS]), so they are
+# inert on the pa path by construction.
+ARMS = {
+    "pa": f"{READER_ENV}=0",
+    "rs": f"{READER_ENV}=1",
+    "rstrim": f"{READER_ENV}=1 RAY_DATA_ARROW_RS_MALLOC_TRIM=1",
+    "rseos": f"{READER_ENV}=1 RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1",
+}
+
+# alloc matrix: wall targets dropped except these three -- the release-scale
+# confirmation of the M97/M98 per-task-S3-client fix (box: 2.88->0.88,
+# 2.15->0.77, 1.22->0.90) on the three wall shapes with the cleanest history.
+ALLOC_WALL_KEEP = (
+    "read_parquet_autoscaling",
+    "tpch_q18_fixed_size_hash_shuffle_v2",
+    "map_groups_autoscaling_hash_shuffle_column02+column14",
+)
+# alloc matrix: single-node cells only where single-node IS the question --
+# the rlp per-task USS self-regression (M75/M86) and the col02 OOM cliff (M90).
+ALLOC_SINGLE_TOO = (
+    "read_large_parquet_autoscaling",
+    "map_groups_autoscaling_hash_shuffle_column02+column14",
+)
+
+MATRICES = ("2x2", "alloc")
+DEFAULT_MATRIX = "alloc"
+
+
+def matrix_cells(matrix):
+    """(target, arm, topology) triples for one matrix, in emitted order."""
+    if matrix == "2x2":
+        return [
+            (t, a, s)
+            for t in TARGETS
+            for a in ("rs", "pa")
+            for s in ("multi", "single")
+        ]
+    if matrix == "alloc":
+        cells = []
+        for target, category in TARGETS.items():
+            if category == "wall" and target not in ALLOC_WALL_KEEP:
+                continue
+            topologies = (
+                ("multi", "single") if target in ALLOC_SINGLE_TOO else ("multi",)
+            )
+            cells += [(target, a, s) for a in ARMS for s in topologies]
+        return cells
+    raise ValueError(f"unknown matrix {matrix!r}; one of {MATRICES}")
+
 
 def parse_2x2_name(name):
-    """'foo_2x2_rs_single' -> ('foo', 'rs', 'single'); None if not generated."""
-    m = re.fullmatch(r"(.+)_2x2_(rs|pa)_(multi|single)", name)
+    """'foo_2x2_rstrim_single' -> ('foo', 'rstrim', 'single'); None if not ours."""
+    m = re.fullmatch(rf"(.+)_2x2_({'|'.join(ARMS)})_(multi|single)", name)
     return (m.group(1), m.group(2), m.group(3)) if m else None
+
+
+def block_matrix(text):
+    """Which matrix the file's marker block was generated with (None if absent)."""
+    m = re.search(rf"^{re.escape(BEGIN)}\n# matrix: (\w+)$", text, re.M)
+    return m.group(1) if m else None
 
 
 # --------------------------------------------------------------------------
@@ -197,71 +280,84 @@ def _strip_defaults(entry, defaults):
     return entry
 
 
-def make_cells(resolved, defaults):
-    """The four 2x2 entries for one resolved parent test."""
+def make_cell(resolved, defaults, arm, topology):
+    """One generated entry: parent test x arm (env prefix) x topology."""
     base = _strip_defaults(resolved, defaults)
     base_name = base["name"].replace(" ", "+")
     compute = base["cluster"]["cluster_compute"]
     if compute not in SINGLE_COMPUTE:
         raise ValueError(f"{base_name}: no single-node analog for {compute}")
 
-    cells = []
-    for reader in ("rs", "pa"):
-        for topology in ("multi", "single"):
-            cell = copy.deepcopy(base)
-            cell["name"] = f"{base_name}_2x2_{reader}_{topology}"
-            cell["frequency"] = "manual"
-            flag = "1" if reader == "rs" else "0"
-            # Parent scripts come from ">" folded scalars and carry a trailing
-            # newline; strip so the emitted string is single-line.
-            script = cell["run"]["script"].strip()
-            cell["run"]["script"] = f"{READER_ENV}={flag} {script}"
-            if topology == "single":
-                cell["cluster"]["cluster_compute"] = SINGLE_COMPUTE[compute]
-                env = cell["cluster"].get("byod", {}).get("runtime_env")
-                if env is not None:
-                    cell["cluster"]["byod"]["runtime_env"] = [
-                        "RAYTEST_FAIL_ON_SPILLING=0"
-                        if e.startswith("RAYTEST_FAIL_ON_SPILLING=")
-                        else e
-                        for e in env
-                    ]
-                cell["run"].pop("wait_for_nodes", None)
-                cell["run"]["timeout"] = min(cell["run"]["timeout"] * 2, TIMEOUT_CAP_S)
-            # Reorder for readable yaml; dicts keep insertion order.
-            cells.append(
-                {
-                    key: cell[key]
-                    for key in ("name", "frequency", "python", "cluster", "run")
-                    if key in cell
-                }
-            )
-    return cells
+    cell = copy.deepcopy(base)
+    cell["name"] = f"{base_name}_2x2_{arm}_{topology}"
+    cell["frequency"] = "manual"
+    # Parent scripts come from ">" folded scalars and carry a trailing
+    # newline; strip so the emitted string is single-line.
+    script = cell["run"]["script"].strip()
+    cell["run"]["script"] = f"{ARMS[arm]} {script}"
+    if topology == "single":
+        cell["cluster"]["cluster_compute"] = SINGLE_COMPUTE[compute]
+        env = cell["cluster"].get("byod", {}).get("runtime_env")
+        if env is not None:
+            cell["cluster"]["byod"]["runtime_env"] = [
+                "RAYTEST_FAIL_ON_SPILLING=0"
+                if e.startswith("RAYTEST_FAIL_ON_SPILLING=")
+                else e
+                for e in env
+            ]
+        cell["run"].pop("wait_for_nodes", None)
+        cell["run"]["timeout"] = min(cell["run"]["timeout"] * 2, TIMEOUT_CAP_S)
+    # Reorder for readable yaml; dicts keep insertion order.
+    return {
+        key: cell[key]
+        for key in ("name", "frequency", "python", "cluster", "run")
+        if key in cell
+    }
 
 
-def render_block(defaults, resolved_tests):
+_BLOCK_HEADERS = {
+    "2x2": [
+        "# 4 cells per A/B #5 P0 regression: {rs,pa} x {original fleet, one fat",
+        "# node}.",
+    ],
+    "alloc": [
+        "# Allocator arms on the original fleet: {pa, rs, rstrim, rseos} over the",
+        "# memory / sustained / control targets + 3 wall-fix confirmations; single",
+        "# cells only for the two shapes whose single-node reading is the question.",
+        "# rstrim = RAY_DATA_ARROW_RS_MALLOC_TRIM=1 (mechanism probe, known wall",
+        "# price); rseos = RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1 (ship candidate).",
+    ],
+}
+
+
+def render_block(defaults, resolved_tests, matrix):
     by_name = {t["name"].replace(" ", "+"): t for t in resolved_tests}
-    missing = sorted(set(TARGETS) - set(by_name))
+    cells = matrix_cells(matrix)
+    missing = sorted({t for t, _, _ in cells} - set(by_name))
     if missing:
         raise SystemExit(f"targets not found in release_data_tests.yaml: {missing}")
 
-    lines = [
-        BEGIN,
-        "# 4 cells per A/B #5 P0 regression: {rs,pa} x {original fleet, one fat",
-        "# node}. frequency:manual -- trigger explicitly, all arms in one window",
-        "# (M75: readings drift across windows). Regenerate with:",
-        "#     python nightly_tests/dataset/arrow_rs_probe/gen_2x2_release_tests.py",
+    lines = [BEGIN, f"# matrix: {matrix}"]
+    lines += _BLOCK_HEADERS[matrix]
+    lines += [
+        "# frequency:manual -- trigger explicitly, all arms in one window (M75:",
+        "# readings drift across windows). Regenerate with:",
+        "#     python nightly_tests/dataset/arrow_rs_probe/gen_2x2_release_tests.py"
+        + ("" if matrix == DEFAULT_MATRIX else f" --matrix {matrix}"),
         "",
     ]
-    for target in TARGETS:
-        lines.append(f"# --- {target}  [{TARGETS[target]}] ---")
-        for cell in make_cells(by_name[target], defaults):
-            lines.append(
-                yaml.safe_dump(
-                    [cell], sort_keys=False, default_flow_style=False, width=88
-                ).rstrip()
-            )
-            lines.append("")
+    current = None
+    for target, arm, topology in cells:
+        if target != current:
+            current = target
+            lines.append(f"# --- {target}  [{TARGETS[target]}] ---")
+        cell = make_cell(by_name[target], defaults, arm, topology)
+        lines.append(
+            yaml.safe_dump(
+                [cell], sort_keys=False, default_flow_style=False, width=88
+            ).rstrip()
+        )
+        lines.append("")
     lines.append(END)
     return "\n".join(lines) + "\n"
 
@@ -276,18 +372,13 @@ def strip_block(text):
     return head.rstrip("\n") + "\n" + tail.lstrip("\n")
 
 
-def validate(defaults, resolved_tests):
+def validate(defaults, resolved_tests, matrix):
     names = [t["name"] for t in resolved_tests]
     dupes = sorted({n for n in names if names.count(n) > 1})
     assert not dupes, f"duplicate resolved test names: {dupes}"
 
     generated = [t for t in resolved_tests if parse_2x2_name(t["name"])]
-    expected = {
-        f"{t}_2x2_{r}_{s}"
-        for t in TARGETS
-        for r in ("rs", "pa")
-        for s in ("multi", "single")
-    }
+    expected = {f"{t}_2x2_{a}_{s}" for t, a, s in matrix_cells(matrix)}
     got = {t["name"] for t in generated}
     assert got == expected, (
         f"generated set mismatch: missing={sorted(expected - got)} "
@@ -295,11 +386,12 @@ def validate(defaults, resolved_tests):
     )
     for test in generated:
         name = test["name"]
-        _, reader, topology = parse_2x2_name(name)
+        _, arm, topology = parse_2x2_name(name)
         assert test["frequency"] == "manual", name
-        assert test["run"]["script"].startswith(
-            f"{READER_ENV}={'1' if reader == 'rs' else '0'} "
-        ), name
+        assert test["run"]["script"].startswith(f"{ARMS[arm]} "), name
+        # The allocator knobs ride on the rs reader; never emit them alone.
+        if "MALLOC_TRIM" in ARMS[arm]:
+            assert test["run"]["script"].startswith(f"{READER_ENV}=1 "), name
         compute = test["cluster"]["cluster_compute"]
         assert os.path.exists(
             os.path.join(DATASET_DIR, compute)
@@ -323,22 +415,35 @@ def main():
     parser.add_argument(
         "--check", action="store_true", help="validate the current file, do not rewrite"
     )
+    parser.add_argument(
+        "--matrix",
+        choices=MATRICES,
+        help=f"which matrix to emit (default {DEFAULT_MATRIX}); with --check, "
+        "defaults to the one recorded in the file's block header",
+    )
     args = parser.parse_args()
 
     text = open(TESTS_YAML).read()
+    matrix = (
+        args.matrix or (block_matrix(text) if args.check else None) or DEFAULT_MATRIX
+    )
     if not args.check:
         stripped = strip_block(text)
         defaults, resolved = resolve_tests(yaml.safe_load(stripped))
-        block = render_block(defaults, resolved)
+        block = render_block(defaults, resolved, matrix)
         text = stripped.rstrip("\n") + "\n\n" + block
         with open(TESTS_YAML, "w") as fh:
             fh.write(text)
 
     defaults, resolved = resolve_tests(yaml.safe_load(open(TESTS_YAML)))
-    count = validate(defaults, resolved)
+    count = validate(defaults, resolved, matrix)
+    cells = matrix_cells(matrix)
+    n_targets = len({t for t, _, _ in cells})
+    n_single = sum(1 for _, _, s in cells if s == "single")
     print(
-        f"OK: {count} generated entries ({len(TARGETS)} targets x 4 cells), "
-        f"{len(resolved)} resolved tests total, all names unique"
+        f"OK [{matrix}]: {count} generated entries ({n_targets} targets, "
+        f"{len(ARMS) if matrix == 'alloc' else 2} arms, {count - n_single} multi + "
+        f"{n_single} single), {len(resolved)} resolved tests total, all names unique"
     )
 
 
