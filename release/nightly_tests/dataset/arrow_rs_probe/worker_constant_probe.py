@@ -14,9 +14,12 @@ measures it directly instead of inferring it from release aggregates:
     census; the sampler keeps DISCOVERING new ray:: workers while it runs
     (Ray may fork a fresh worker for the read instead of reusing a prestarted
     one — a fixed-pid census would then report an idle worker's numbers as
-    the read worker's); the read worker is identified afterwards by USS
-    growth, with flags for late-spawned workers and read-1/read-2 landing on
-    different pids;
+    the read worker's); the read worker is identified POSITIVELY by
+    proctitle — Ray retitles an executing worker `ray::<TaskName>`, and the
+    sampler records every title a pid ever shows — because USS growth cannot
+    identify a worker first seen mid-read (its first-seen baseline already
+    holds decode buffers, so its settled delta reads ~0 and loses to an idle
+    pid's noise); growth-based selection remains only as a flagged fallback;
   - USS (Private_Clean + Private_Dirty from /proc/<pid>/smaps_rollup) of that
     worker is recorded idle-after-spawn, at 20 Hz through two consecutive
     reads (peak), and settled after each read — read #2 separates a one-time
@@ -72,6 +75,11 @@ def _uss_kb(pid):
 # would be needless load).
 _DISCOVER_EVERY_TICKS = 10
 
+# V2 read tasks execute under this proctitle (ray::ReadFilesParquetV2, both
+# arms — the reader flag branches inside the task). A pid that ever bore it is
+# the read worker, positively; no match falls back to growth selection.
+_READ_TASK_TITLE_SUBSTR = "ReadFiles"
+
 
 class _WorkerSampler(threading.Thread):
     """20 Hz USS sampler over ray:: workers that discovers new ones as they spawn.
@@ -89,6 +97,7 @@ class _WorkerSampler(threading.Thread):
         self.exclude = set(exclude_pids)
         self.baseline = {}  # pid -> first-seen USS KiB
         self.peak = {}  # pid -> peak USS KiB
+        self.titles = {}  # pid -> set of ray:: cmdlines ever observed
         self.late = set()  # pids first seen after start()
         # NOT named _stop: threading.Thread.join() calls its own internal
         # self._stop() method, which an Event attribute would shadow.
@@ -96,17 +105,22 @@ class _WorkerSampler(threading.Thread):
 
     def census(self, late):
         for p in _proc_pids():
-            if p in self.exclude or p in self.baseline:
+            if p in self.exclude:
                 continue
-            if not _cmdline(p).startswith("ray::"):
+            cmd = _cmdline(p).strip()
+            if not cmd.startswith("ray::"):
                 continue
-            v = _uss_kb(p)
-            if v is None:
-                continue
-            self.baseline[p] = v
-            self.peak[p] = v
-            if late:
-                self.late.add(p)
+            if p not in self.baseline:
+                v = _uss_kb(p)
+                if v is None:
+                    continue
+                self.baseline[p] = v
+                self.peak[p] = v
+                if late:
+                    self.late.add(p)
+            # A worker is retitled ray::<TaskName> while executing, so the
+            # accumulated title set positively identifies the read worker.
+            self.titles.setdefault(p, set()).add(cmd)
 
     def snapshot(self):
         return {p: _uss_kb(p) for p in list(self.baseline)}
@@ -176,18 +190,35 @@ def run_cell_body(arm, path):
 
     idle_uss = sampler.baseline
 
+    # Positive ID first: any pid that ever bore the read-op proctitle. Growth
+    # selection is only the fallback (a sub-0.5 s read the title poll missed):
+    # a worker first seen mid-read has an inflated baseline, so its settled
+    # delta reads ~0 and an idle pid's noise can win the argmax.
+    matched = [
+        p
+        for p in idle_uss
+        if any(_READ_TASK_TITLE_SUBSTR in t for t in sampler.titles.get(p, ()))
+    ]
+
     def _delta(snap, p):
         v = snap.get(p)
         # Not yet discovered at that snapshot (or /proc read failed) = no
         # observed growth, not negative growth.
         return 0 if v is None else v - idle_uss[p]
 
-    # The read worker is the one that grew most over the whole cell. Attribute
-    # each read separately too: if read 1 and read 2 landed on different pids,
-    # one pid's after1/after2 deltas would silently mix the two reads.
-    rw = max(idle_uss, key=lambda p: _delta(after2, p))
-    grower1 = max(idle_uss, key=lambda p: _delta(after1, p))
-    grower2 = max(idle_uss, key=lambda p: _delta(after2, p) - _delta(after1, p))
+    if matched:
+        rw = max(matched, key=lambda p: after2.get(p) or 0)
+        id_method = "title"
+        same_worker = len(matched) == 1
+    else:
+        # Attribute each read separately: if read 1 and read 2 landed on
+        # different pids, one pid's after1/after2 deltas would mix the reads.
+        rw = max(idle_uss, key=lambda p: _delta(after2, p))
+        grower1 = max(idle_uss, key=lambda p: _delta(after1, p))
+        grower2 = max(idle_uss, key=lambda p: _delta(after2, p) - _delta(after1, p))
+        id_method = "growth"
+        same_worker = grower1 == grower2 == rw
+
     result = {
         "arm": arm,
         "rows_read": rows1,
@@ -198,12 +229,17 @@ def run_cell_body(arm, path):
         "after_read1_uss_mb": round((after1.get(rw) or idle_uss[rw]) / 1024, 1),
         "after_read2_uss_mb": round((after2.get(rw) or idle_uss[rw]) / 1024, 1),
         "n_workers_seen": len(idle_uss),
+        # "title" = pid positively bore ray::ReadFiles* while executing;
+        # "growth" = fallback max-delta pick (weaker — see comment above).
+        "read_worker_id_method": id_method,
+        "n_read_task_workers": len(matched),
         # True = worker first seen after sampling began; its idle baseline may
         # already include read work (constant would read low).
         "read_worker_late_spawn": rw in sampler.late,
-        # False = the two reads grew different pids; after1/after2 deltas on
-        # rw then do NOT mean "read-1 floor / read-2 floor" for one worker.
-        "reads_on_same_worker": grower1 == grower2 == rw,
+        # False = read tasks ran on more than one pid (title path) or the two
+        # reads grew different pids (growth path); after1/after2 deltas on rw
+        # then do NOT mean "read-1 floor / read-2 floor" for one worker.
+        "reads_on_same_worker": same_worker,
     }
     print("CELLRESULT " + json.dumps(result), flush=True)
     ray.shutdown()
