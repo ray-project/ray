@@ -105,6 +105,15 @@ DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
 # a no-op elsewhere. Default False until the lever's wall cost is certified.
 DEFAULT_ARROW_RS_MALLOC_TRIM = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM", False)
 
+# With the arrow-rs reader: call glibc ``malloc_trim(0)`` ONCE at the end of
+# each read task's stream, handing that task's freed decode heap back to the OS
+# without touching the allocator's thresholds while it decodes. The mallopt
+# variant above collapses the same idle-worker floor but costs 24-36% wall,
+# because any explicit M_TRIM_THRESHOLD also disables glibc's dynamic mmap
+# threshold so every large decode buffer goes mmap/munmap (arrow_rs_docs
+# findings M61/M64). Linux/glibc only; a no-op elsewhere. Default False.
+DEFAULT_ARROW_RS_MALLOC_TRIM_EOS = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", False)
+
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
@@ -928,6 +937,7 @@ class DataContext:
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     use_arrow_rs_parquet_reader: bool = DEFAULT_USE_ARROW_RS_PARQUET_READER
     arrow_rs_malloc_trim: bool = DEFAULT_ARROW_RS_MALLOC_TRIM
+    arrow_rs_malloc_trim_eos: bool = DEFAULT_ARROW_RS_MALLOC_TRIM_EOS
     # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
     # chunker uses its built-in default (currently 1 GiB).
     parquet_chunker_target_chunk_size: Optional[

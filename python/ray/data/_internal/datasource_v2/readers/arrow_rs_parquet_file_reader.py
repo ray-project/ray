@@ -203,6 +203,49 @@ def _maybe_enable_malloc_trim() -> None:
         )
 
 
+# glibc ``malloc_trim`` resolved once per worker process: None = not yet
+# looked up, False = unavailable (non-Linux / non-glibc), else the callable.
+_LIBC_MALLOC_TRIM = None
+
+
+def _malloc_trim_now() -> None:
+    """glibc ``malloc_trim(0)``: return freed heap to the OS, once, right now."""
+    global _LIBC_MALLOC_TRIM
+    if _LIBC_MALLOC_TRIM is None:
+        import sys
+
+        _LIBC_MALLOC_TRIM = False
+        if sys.platform == "linux":
+            try:
+                import ctypes
+
+                _LIBC_MALLOC_TRIM = ctypes.CDLL("libc.so.6", use_errno=True).malloc_trim
+            except Exception:
+                logger.warning(
+                    "arrow_rs_malloc_trim_eos requested but malloc_trim unavailable "
+                    "(non-glibc libc?); continuing without it",
+                    exc_info=True,
+                )
+    if _LIBC_MALLOC_TRIM:
+        _LIBC_MALLOC_TRIM(0)
+
+
+def _maybe_trim_at_stream_end() -> None:
+    """End-of-stream allocator lever (``DataContext.arrow_rs_malloc_trim_eos``).
+
+    Why: under task churn glibc keeps the reader's freed decode heap resident
+    (findings M48: idle-worker USS +492 MiB over ~100 tasks). The mallopt lever
+    (:func:`_maybe_enable_malloc_trim`) removes that floor but trims on every
+    free AND disables the dynamic mmap threshold, costing 24-36% wall (M61/M64).
+    Trimming ONCE per task stream releases the same retained pages while the
+    allocator behaves normally during decode. No-op unless the knob is on.
+    """
+    from ray.data.context import DataContext
+
+    if DataContext.get_current().arrow_rs_malloc_trim_eos:
+        _malloc_trim_now()
+
+
 # Set the first time this worker actually decodes a fragment natively, so the
 # "native decode ACTIVE" confirmation is emitted once per worker process rather
 # than once per fragment (which would flood the logs).
@@ -1255,7 +1298,13 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         # Worker-process allocator lever (no-op unless the knob is on).
         _maybe_enable_malloc_trim()
+        try:
+            yield from self._read_split(input_split)
+        finally:
+            # Once per task stream, whichever path served it (no-op unless on).
+            _maybe_trim_at_stream_end()
 
+    def _read_split(self, input_split: "FileManifest") -> "Iterator[pa.Table]":
         # Reader-wide ineligibility: unsupported filesystem, or a Parquet-format
         # kwarg outside the native allowlist (anything not perf-only, not
         # reproduced by the per-file :class:`_ColumnAlignment`, and not

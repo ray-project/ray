@@ -3219,3 +3219,52 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
+    """``DataContext.arrow_rs_malloc_trim_eos`` (env
+    ``RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS``) calls glibc ``malloc_trim(0)`` exactly
+    once per ``read()`` stream — not per file, not per batch — and never when
+    the knob is off. The libc call itself is Linux-only, so the test counts the
+    module-level trampoline the ``finally`` invokes."""
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.readers import (
+        arrow_rs_parquet_file_reader as mod,
+    )
+    from ray.data.context import DataContext
+
+    paths = []
+    for i in range(2):
+        path = tmp_path / f"eos{i}.parquet"
+        pq.write_table(
+            pa.table({"id": pa.array([i, i + 10], pa.int64())}),
+            str(path),
+            write_page_index=True,
+        )
+        paths.append(str(path))
+    manifest = _make_manifest(paths, [os.path.getsize(p) for p in paths], [None, None])
+
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        mod, "_malloc_trim_now", lambda: calls.__setitem__("n", calls["n"] + 1)
+    )
+    ctx = DataContext.get_current()
+    old = ctx.arrow_rs_malloc_trim_eos
+    try:
+        ctx.arrow_rs_malloc_trim_eos = False
+        reader = mod.ArrowRsParquetFileReader(filesystem=LocalFileSystem())
+        assert pa.concat_tables(list(reader.read(manifest))).num_rows == 4
+        assert calls["n"] == 0, "knob off must never trim"
+
+        ctx.arrow_rs_malloc_trim_eos = True
+        assert pa.concat_tables(list(reader.read(manifest))).num_rows == 4
+        assert calls["n"] == 1, "one trim per read() stream (2 files, many batches)"
+
+        # A consumer that stops early still ends the stream exactly once.
+        gen = reader.read(manifest)
+        next(gen)
+        gen.close()
+        assert calls["n"] == 2
+    finally:
+        ctx.arrow_rs_malloc_trim_eos = old
