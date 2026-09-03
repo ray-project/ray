@@ -18,8 +18,8 @@ from ray.util.joblib.ray_backend import RayBackend, _configure_pool_args
 from ray.util.multiprocessing import Pool
 from ray.util.multiprocessing.pool import (
     PoolTaskError,
-    _ElasticActorSet,
-    _ElasticSlotState,
+    _ActorSlotSet,
+    _ActorSlotState,
     _LegacyActorSet,
 )
 
@@ -87,8 +87,7 @@ def _wait_for(predicate, timeout=10):
 
 def _state_count(pool, state):
     return sum(
-        slot_state is state
-        for slot_state, _outstanding in pool._elastic_actor_set.snapshot()
+        slot_state is state for slot_state, _outstanding in pool._actor_set.snapshot()
     )
 
 
@@ -100,7 +99,7 @@ def _assert_actor_set_invariants(actor_set):
             assert slot.tasks_submitted >= 0
             if actor_set._maxtasksperchild is not None:
                 assert slot.tasks_submitted <= actor_set._maxtasksperchild
-            if slot.state is _ElasticSlotState.EMPTY:
+            if slot.state is _ActorSlotState.EMPTY:
                 assert slot.actor is None
                 assert slot.outstanding == 0
                 assert slot.tasks_submitted == 0
@@ -110,15 +109,15 @@ def _assert_actor_set_invariants(actor_set):
             else:
                 assert slot.actor is not None
 
-            if slot.state is _ElasticSlotState.STARTING:
+            if slot.state is _ActorSlotState.STARTING:
                 assert slot.idle_since is None
                 assert slot.exit_ref is None
                 assert slot.readiness_ref is not None or actor_set._error is not None
-            elif slot.state is _ElasticSlotState.ACTIVE:
+            elif slot.state is _ActorSlotState.ACTIVE:
                 assert slot.readiness_ref is None
                 assert slot.exit_ref is None
                 assert (slot.idle_since is not None) == (slot.outstanding == 0)
-            elif slot.state is _ElasticSlotState.DRAINING:
+            elif slot.state is _ActorSlotState.DRAINING:
                 assert (
                     slot.outstanding > 0
                     or slot.exit_ref is not None
@@ -128,9 +127,7 @@ def _assert_actor_set_invariants(actor_set):
 
 def test_slot_invariants_hold_across_the_complete_lifecycle():
     actor = _FakeActor(ready=False)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
     _assert_actor_set_invariants(actor_set)
 
     batch_ref = actor_set.submit(None, [])
@@ -155,10 +152,10 @@ def test_draining_slot_is_not_reused_before_exit_confirmation():
         actors.append(actor)
         return actor
 
-    actor_set = _ElasticActorSet(create_actor, min_size=0, max_size=1, idle_timeout_s=0)
+    actor_set = _ActorSlotSet(create_actor, min_size=0, max_size=1, idle_timeout_s=0)
     first_ref = actor_set.submit(None, [])
     first_ref.completion.set_result([])
-    _wait_for(lambda: actor_set.snapshot()[0][0] is _ElasticSlotState.DRAINING)
+    _wait_for(lambda: actor_set.snapshot()[0][0] is _ActorSlotState.DRAINING)
 
     submitted = threading.Event()
 
@@ -189,7 +186,7 @@ def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
         actors.append(actor)
         return actor
 
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         create_actor,
         min_size=0,
         max_size=1,
@@ -198,7 +195,7 @@ def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
     )
 
     first_refs = [actor_set.submit(None, []) for _ in range(2)]
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 2)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 2)]
     assert actor_set._slots[0].tasks_submitted == 2
     assert actors[0].__ray_terminate__.calls == 0
     _assert_actor_set_invariants(actor_set)
@@ -222,7 +219,7 @@ def test_maxtasksperchild_retires_actor_and_reuses_slot_after_exit():
 
     assert submitted.wait(1)
     assert len(actors) == 2
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 1)]
     assert actor_set._slots[0].tasks_submitted == 1
     _assert_actor_set_invariants(actor_set)
 
@@ -241,7 +238,7 @@ def test_maxtasksperchild_restores_min_size_after_actor_exit():
         actors.append(actor)
         return actor
 
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         create_actor,
         min_size=1,
         max_size=1,
@@ -250,12 +247,12 @@ def test_maxtasksperchild_restores_min_size_after_actor_exit():
     )
 
     batch_ref = actor_set.submit(None, [])
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 1)]
     batch_ref.completion.set_result([])
     actors[0].exit_ref.completion.set_result(None)
 
     assert len(actors) == 2
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 0)]
     assert actor_set._slots[0].tasks_submitted == 0
     _assert_actor_set_invariants(actor_set)
 
@@ -275,13 +272,11 @@ def test_actor_creation_failure_leaves_slot_reusable():
             raise RuntimeError("actor creation failed")
         return actor
 
-    actor_set = _ElasticActorSet(
-        create_actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(create_actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     with pytest.raises(RuntimeError, match="actor creation failed"):
         actor_set.submit(None, [])
-    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
 
     batch_ref = actor_set.submit(None, [])
     batch_ref.completion.set_result([])
@@ -295,19 +290,17 @@ def test_readiness_submission_failure_retains_actor_and_fails_closed(monkeypatch
     actor.ping = _RaisingRemoteMethod(RuntimeError("readiness submission failed"))
     killed = []
     monkeypatch.setattr(ray, "kill", killed.append)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     with pytest.raises(RuntimeError, match="readiness submission failed"):
         actor_set.submit(None, [])
-    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.STARTING, 0)]
     assert actor_set._slots[0].actor is actor
     with pytest.raises(RuntimeError, match="actor management failed"):
         actor_set.submit(None, [])
 
     actor_set.close()
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
     assert killed == [actor]
     actor.exit_ref.completion.set_result(None)
     actor_set.join()
@@ -328,24 +321,44 @@ def test_constructor_callback_failure_kills_owned_actor(monkeypatch):
     monkeypatch.setattr(ray, "kill", assert_kill_outside_condition)
 
     with pytest.raises(RuntimeError, match="callback registration failed"):
-        _ElasticActorSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
+        _ActorSlotSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
 
     assert killed == [actor]
 
 
+def test_legacy_actor_set_cleans_up_after_readiness_failure(monkeypatch):
+    actors = [_FakeActor(), _FakeActor()]
+    created = []
+    killed = []
+
+    def create_actor():
+        actor = actors[len(created)]
+        created.append(actor)
+        return actor
+
+    def fail_readiness(_refs):
+        raise RuntimeError("readiness failed")
+
+    monkeypatch.setattr(ray, "get", fail_readiness)
+    monkeypatch.setattr(ray, "kill", killed.append)
+
+    with pytest.raises(RuntimeError, match="readiness failed"):
+        _LegacyActorSet(create_actor, size=2, maxtasksperchild=-1)
+
+    assert killed == created
+
+
 def test_starting_slot_becomes_active_only_after_readiness():
     actor = _FakeActor(ready=False)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     batch_ref = actor_set.submit(None, [])
-    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.STARTING, 1)]
 
     actor.readiness_ref.completion.set_result(None)
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 1)]
     batch_ref.completion.set_result([])
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 0)]
 
     actor_set.close()
     actor.exit_ref.completion.set_result(None)
@@ -355,9 +368,7 @@ def test_starting_slot_becomes_active_only_after_readiness():
 def test_cancelled_starting_slot_waits_for_dedicated_exit_ref(monkeypatch):
     actor = _FakeActor(ready=False)
     killed = []
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=1, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
 
     def assert_kill_outside_condition(target):
         assert not actor_set._condition._is_owned()
@@ -366,36 +377,36 @@ def test_cancelled_starting_slot_waits_for_dedicated_exit_ref(monkeypatch):
     monkeypatch.setattr(ray, "kill", assert_kill_outside_condition)
 
     actor_set.close()
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
     assert killed == [actor]
 
     actor.readiness_ref.completion.set_result(None)
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
 
     actor.exit_ref.completion.set_result(None)
     actor_set.join()
-    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
 
 
 def test_ready_actor_yields_capacity_to_pending_work():
     actors = [_FakeActor(ready=False), _FakeActor(ready=False)]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=0, max_size=2, idle_timeout_s=60
     )
 
     first_ref = actor_set.submit(None, [])
     second_ref = actor_set.submit(None, [])
     assert actor_set.snapshot() == [
-        (_ElasticSlotState.STARTING, 1),
-        (_ElasticSlotState.STARTING, 1),
+        (_ActorSlotState.STARTING, 1),
+        (_ActorSlotState.STARTING, 1),
     ]
 
     first_actor, second_actor = actor_set._slots[0].actor, actor_set._slots[1].actor
     first_actor.readiness_ref.completion.set_result(None)
     first_ref.completion.set_result([])
     assert actor_set.snapshot() == [
-        (_ElasticSlotState.DRAINING, 0),
-        (_ElasticSlotState.STARTING, 1),
+        (_ActorSlotState.DRAINING, 0),
+        (_ActorSlotState.STARTING, 1),
     ]
 
     first_actor.exit_ref.completion.set_result(None)
@@ -410,7 +421,7 @@ def test_hot_actor_hedges_short_burst_then_scales_deeper_backlog():
     hot_actor = _FakeActor()
     cold_actor = _FakeActor(ready=False)
     actors = [hot_actor, cold_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=1, max_size=2, idle_timeout_s=60
     )
 
@@ -419,14 +430,14 @@ def test_hot_actor_hedges_short_burst_then_scales_deeper_backlog():
     assert len(hot_actor.batch_refs) == 2
     assert len(cold_actor.batch_refs) == 1
     assert actor_set.snapshot() == [
-        (_ElasticSlotState.ACTIVE, 2),
-        (_ElasticSlotState.STARTING, 1),
+        (_ActorSlotState.ACTIVE, 2),
+        (_ActorSlotState.STARTING, 1),
     ]
     _assert_actor_set_invariants(actor_set)
 
     refs[0].completion.set_result([])
     refs[1].completion.set_result([])
-    assert actor_set.snapshot()[0] == (_ElasticSlotState.DRAINING, 0)
+    assert actor_set.snapshot()[0] == (_ActorSlotState.DRAINING, 0)
     hot_actor.exit_ref.completion.set_result(None)
 
     cold_actor.readiness_ref.completion.set_result(None)
@@ -440,12 +451,10 @@ def test_hot_actor_hedges_short_burst_then_scales_deeper_backlog():
 def test_batch_callback_registration_failure_fails_closed():
     actor = _FakeActor()
     actor.run_batch = _FakeRemoteMethod(lambda *_: _BrokenCallbackObjectRef())
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     actor_set.submit(None, [])
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 1)]
     with pytest.raises(RuntimeError, match="actor management failed"):
         actor_set.submit(None, [])
 
@@ -458,12 +467,10 @@ def test_termination_callback_failure_retains_slot_and_fails_closed():
     actor = _FakeActor()
     actor.exit_ref = _BrokenCallbackObjectRef()
     actor.__ray_terminate__ = _FakeRemoteMethod(lambda: actor.exit_ref)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=1, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
 
     actor_set.close()
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
     assert actor_set._slots[0].actor is actor
     with pytest.raises(RuntimeError, match="cleanup failed"):
         actor_set.join()
@@ -480,7 +487,7 @@ def test_ambiguous_termination_completion_does_not_release_slot():
     first_actor = _FakeActor()
     replacement_actor = _FakeActor()
     actors = [first_actor, replacement_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=0, max_size=1, idle_timeout_s=60
     )
 
@@ -493,7 +500,7 @@ def test_ambiguous_termination_completion_does_not_release_slot():
     unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
     first_actor.exit_ref.completion.set_exception(unavailable)
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
     assert slot.actor is first_actor
     assert actor_set._error is unavailable
     with pytest.raises(RuntimeError, match="actor management failed"):
@@ -513,9 +520,7 @@ def test_idle_termination_submission_failure_has_no_retry_loop(monkeypatch):
         RuntimeError("termination submission failed")
     )
     monkeypatch.setattr(ray, "kill", lambda _actor: None)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=0
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=0)
 
     batch_ref = actor_set.submit(None, [])
     batch_ref.completion.set_result([])
@@ -523,7 +528,7 @@ def test_idle_termination_submission_failure_has_no_retry_loop(monkeypatch):
     time.sleep(0.05)
 
     assert actor.__ray_terminate__.calls == 1
-    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
     actor_set.terminate()
     with pytest.raises(RuntimeError, match="cleanup failed"):
         actor_set.join()
@@ -533,17 +538,17 @@ def test_actor_init_failure_releases_slot_for_retry():
     failed_actor = _FakeActor(ready=False)
     replacement_actor = _FakeActor()
     actors = [failed_actor, replacement_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=0, max_size=1, idle_timeout_s=60
     )
 
     actor_set.submit(None, [])
     failed_actor.readiness_ref.completion.set_exception(ray.exceptions.ActorDiedError())
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
     replacement_ref = actor_set.submit(None, [])
     replacement_ref.completion.set_result([])
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 0)]
 
     actor_set.close()
     replacement_actor.exit_ref.completion.set_result(None)
@@ -554,14 +559,14 @@ def test_min_size_startup_death_fails_closed_without_retry_churn():
     failed_actor = _FakeActor(ready=False)
     replacement_actor = _FakeActor()
     actors = [failed_actor, replacement_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=1, max_size=1, idle_timeout_s=60
     )
 
     startup_error = ray.exceptions.ActorDiedError()
     failed_actor.readiness_ref.completion.set_exception(startup_error)
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
     assert actor_set._error is startup_error
     with pytest.raises(RuntimeError, match="actor management failed"):
         actor_set.submit(None, [])
@@ -576,7 +581,7 @@ def test_min_size_startup_death_is_callback_order_independent(first_callback):
     failed_actor = _FakeActor(ready=False)
     replacement_actor = _FakeActor()
     actors = [failed_actor, replacement_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=1, max_size=1, idle_timeout_s=60
     )
 
@@ -592,7 +597,7 @@ def test_min_size_startup_death_is_callback_order_independent(first_callback):
     callbacks[first_callback]()
     callbacks["readiness" if first_callback == "batch" else "batch"]()
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
     expected_error = startup_error if first_callback == "batch" else readiness_error
     assert actor_set._error is expected_error
     with pytest.raises(RuntimeError, match="actor management failed"):
@@ -607,7 +612,7 @@ def test_startup_death_above_min_size_keeps_pool_available():
     active_actor = _FakeActor()
     failed_actor = _FakeActor(ready=False)
     actors = [active_actor, failed_actor]
-    actor_set = _ElasticActorSet(
+    actor_set = _ActorSlotSet(
         lambda: actors.pop(0), min_size=1, max_size=2, idle_timeout_s=60
     )
 
@@ -616,8 +621,8 @@ def test_startup_death_above_min_size_keeps_pool_available():
     failed_actor.readiness_ref.completion.set_exception(ray.exceptions.ActorDiedError())
 
     assert actor_set.snapshot() == [
-        (_ElasticSlotState.ACTIVE, 2),
-        (_ElasticSlotState.EMPTY, 0),
+        (_ActorSlotState.ACTIVE, 2),
+        (_ActorSlotState.EMPTY, 0),
     ]
     assert actor_set._error is None
 
@@ -639,16 +644,14 @@ def test_ambiguous_readiness_failure_retains_actor_and_fails_closed():
         created.append(actor)
         return actor
 
-    actor_set = _ElasticActorSet(
-        create_actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(create_actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     batch_ref = actor_set.submit(None, [])
     actor.readiness_ref.completion.set_exception(
         RuntimeError("readiness result became unavailable")
     )
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.STARTING, 1)]
     assert actor_set._slots[0].actor is actor
     assert created == [actor]
     with pytest.raises(RuntimeError, match="actor management failed"):
@@ -663,15 +666,13 @@ def test_ambiguous_readiness_failure_retains_actor_and_fails_closed():
 
 def test_actor_unavailable_readiness_retains_actor_and_fails_closed():
     actor = _FakeActor(ready=False)
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     batch_ref = actor_set.submit(None, [])
     unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
     actor.readiness_ref.completion.set_exception(unavailable)
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.STARTING, 1)]
     assert actor_set._slots[0].actor is actor
     assert actor_set._error is unavailable
     with pytest.raises(RuntimeError, match="actor management failed"):
@@ -685,15 +686,13 @@ def test_actor_unavailable_readiness_retains_actor_and_fails_closed():
 
 def test_actor_unavailable_batch_retains_actor_and_fails_closed():
     actor = _FakeActor()
-    actor_set = _ElasticActorSet(
-        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
 
     batch_ref = actor_set.submit(None, [])
     unavailable = ray.exceptions.ActorUnavailableError("actor is restarting", None)
     batch_ref.completion.set_exception(unavailable)
 
-    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 0)]
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 0)]
     assert actor_set._slots[0].actor is actor
     assert actor_set._error is unavailable
     with pytest.raises(RuntimeError, match="actor management failed"):
@@ -725,9 +724,7 @@ def test_cancelled_readiness_does_not_reuse_live_actor(shutdown_only):
         actors.append(actor)
         return actor
 
-    actor_set = _ElasticActorSet(
-        create_actor, min_size=0, max_size=1, idle_timeout_s=60
-    )
+    actor_set = _ActorSlotSet(create_actor, min_size=0, max_size=1, idle_timeout_s=60)
     batch_ref = actor_set.submit(None, [])
     with actor_set._condition:
         readiness_ref = actor_set._slots[0].readiness_ref
@@ -736,16 +733,14 @@ def test_cancelled_readiness_does_not_reuse_live_actor(shutdown_only):
     _wait_for(lambda: actor_set._error is not None)
 
     assert isinstance(actor_set._error, ray.exceptions.TaskCancelledError)
-    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 1)]
+    assert actor_set.snapshot() == [(_ActorSlotState.STARTING, 1)]
     assert ray.get(actors[0].alive.remote())
     with pytest.raises(RuntimeError, match="actor management failed"):
         actor_set.submit(None, [])
     assert len(actors) == 1
 
     actor_set.terminate()
-    _wait_for(
-        lambda: actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)], timeout=20
-    )
+    _wait_for(lambda: actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)], timeout=20)
     actor_set.join()
     with pytest.raises(ray.exceptions.RayError):
         ray.get(batch_ref)
@@ -851,9 +846,9 @@ def test_elastic_pool_scales_on_submission_and_reaps_on_idle(shutdown_only):
     )
 
     results = [pool.apply_async(time.sleep, (0.1,)) for _ in range(6)]
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 2)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 2)
     assert [result.get() for result in results] == [None] * 6
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.EMPTY) == 2)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.EMPTY) == 2)
 
     pool.close()
     pool.join()
@@ -898,7 +893,7 @@ def test_elastic_pool_close_preserves_accepted_results(shutdown_only):
     with pytest.raises(ValueError, match="Pool not running"):
         pool.apply_async(abs, (-1,))
     pool.join()
-    assert _state_count(pool, _ElasticSlotState.EMPTY) == 2
+    assert _state_count(pool, _ActorSlotState.EMPTY) == 2
 
 
 def test_elastic_pool_terminate_kills_outstanding_work(shutdown_only):
@@ -910,14 +905,14 @@ def test_elastic_pool_terminate_kills_outstanding_work(shutdown_only):
         ray_remote_args={"num_cpus": 1},
     )
     result = pool.apply_async(time.sleep, (30,))
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 1)
 
     pool.terminate()
     pool.join()
 
     with pytest.raises(ray.exceptions.RayError):
         result.get()
-    assert _state_count(pool, _ElasticSlotState.EMPTY) == 1
+    assert _state_count(pool, _ActorSlotState.EMPTY) == 1
 
 
 def test_concurrent_close_and_terminate_converge(shutdown_only):
@@ -929,7 +924,7 @@ def test_concurrent_close_and_terminate_converge(shutdown_only):
         ray_remote_args={"num_cpus": 1},
     )
     result = pool.apply_async(time.sleep, (30,))
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 1)
     barrier = threading.Barrier(3)
     errors = []
 
@@ -955,7 +950,7 @@ def test_concurrent_close_and_terminate_converge(shutdown_only):
     pool.join()
     result.wait(timeout=20)
     assert result.ready()
-    assert _state_count(pool, _ElasticSlotState.EMPTY) == 1
+    assert _state_count(pool, _ActorSlotState.EMPTY) == 1
 
 
 def test_elastic_pool_recovers_after_actor_death(shutdown_only):
@@ -969,7 +964,7 @@ def test_elastic_pool_recovers_after_actor_death(shutdown_only):
 
     with pytest.raises(ray.exceptions.RayError):
         pool.apply(os._exit, (1,))
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.EMPTY) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.EMPTY) == 1)
     assert pool.apply(abs, (-1,)) == 1
 
     pool.close()
@@ -995,7 +990,7 @@ def test_elastic_pool_retries_after_initializer_failure(shutdown_only, tmp_path)
 
     with pytest.raises(ray.exceptions.RayActorError):
         pool.apply_async(abs, (-1,)).get(timeout=20)
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.EMPTY) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.EMPTY) == 1)
     assert pool.apply(abs, (-2,)) == 2
 
     pool.close()
@@ -1180,7 +1175,7 @@ def test_close_with_backlog_preserves_order(shutdown_only):
     pool.join()
 
     assert result.get(timeout=30) == list(range(24, 0, -1))
-    assert _state_count(pool, _ElasticSlotState.EMPTY) == 2
+    assert _state_count(pool, _ActorSlotState.EMPTY) == 2
 
 
 def test_busy_actor_is_not_reaped_and_idle_capacity_regrows(shutdown_only):
@@ -1188,15 +1183,15 @@ def test_busy_actor_is_not_reaped_and_idle_capacity_regrows(shutdown_only):
     pool = Pool(min_size=0, max_size=1, idle_timeout_s=0.05)
 
     result = pool.apply_async(time.sleep, (0.2,))
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 1)
     time.sleep(0.1)
-    assert _state_count(pool, _ElasticSlotState.ACTIVE) == 1
+    assert _state_count(pool, _ActorSlotState.ACTIVE) == 1
     assert result.get(timeout=10) is None
-    _wait_for(lambda: _state_count(pool, _ElasticSlotState.EMPTY) == 1)
+    _wait_for(lambda: _state_count(pool, _ActorSlotState.EMPTY) == 1)
 
     for value in (-1, -2, -3):
         assert pool.apply(abs, (value,)) == abs(value)
-        _wait_for(lambda: _state_count(pool, _ElasticSlotState.EMPTY) == 1)
+        _wait_for(lambda: _state_count(pool, _ActorSlotState.EMPTY) == 1)
 
     pool.close()
     pool.join()
@@ -1209,8 +1204,8 @@ def test_idle_reaping_preserves_minimum_capacity(shutdown_only):
     results = [pool.apply_async(time.sleep, (0.1,)) for _ in range(4)]
     assert [result.get(timeout=20) for result in results] == [None] * 4
     _wait_for(
-        lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 1
-        and _state_count(pool, _ElasticSlotState.EMPTY) == 1
+        lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 1
+        and _state_count(pool, _ActorSlotState.EMPTY) == 1
     )
 
     pool.close()
@@ -1327,12 +1322,12 @@ def test_fixed_pool_uses_unified_actor_set(shutdown_only):
     pool = Pool(processes=2)
     callback_values = queue.Queue()
 
-    assert pool._elastic_actor_set is not None
-    assert pool._elastic_actor_set.max_size == 2
-    assert pool._elastic_actor_set._reaper is None
-    assert pool._elastic_actor_set.snapshot() == [
-        (_ElasticSlotState.ACTIVE, 0),
-        (_ElasticSlotState.ACTIVE, 0),
+    assert pool._actor_set is not None
+    assert pool._actor_set.max_size == 2
+    assert pool._actor_set._reaper is None
+    assert pool._actor_set.snapshot() == [
+        (_ActorSlotState.ACTIVE, 0),
+        (_ActorSlotState.ACTIVE, 0),
     ]
     assert pool.map(abs, [-1, -2], chunksize=1) == [1, 2]
 
@@ -1363,6 +1358,29 @@ def test_fixed_pool_waits_for_and_propagates_initializer_failure(shutdown_only):
         Pool(processes=1, initializer=fail_initializer)
 
 
+def test_fixed_pool_cleans_up_if_initial_readiness_wait_fails(monkeypatch):
+    class FailingActorSet:
+        terminated = False
+
+        def wait_until_ready(self):
+            raise RuntimeError("readiness observation failed")
+
+        def terminate(self):
+            self.terminated = True
+
+    actor_set = FailingActorSet()
+    monkeypatch.setattr(Pool, "_init_ray", lambda *_args: (1, 1))
+    monkeypatch.setattr(
+        "ray.util.multiprocessing.pool._ActorSlotSet",
+        lambda *_args: actor_set,
+    )
+
+    with pytest.raises(RuntimeError, match="readiness observation failed"):
+        Pool(processes=1)
+
+    assert actor_set.terminated
+
+
 @pytest.mark.parametrize(
     ("option", "value"),
     [
@@ -1377,7 +1395,6 @@ def test_fixed_pool_keeps_advanced_actor_option_compatibility(
     ray.init(num_cpus=1)
     pool = Pool(processes=1, ray_remote_args={option: value})
 
-    assert pool._elastic_actor_set is None
     assert isinstance(pool._actor_set, _LegacyActorSet)
     assert pool.apply(abs, (-1,)) == 1
 
@@ -1412,7 +1429,7 @@ def test_joblib_uses_n_jobs_as_elastic_ceiling(shutdown_only):
         ray_remote_args={"num_cpus": 1},
     )
     assert backend.configure(n_jobs=2) == 2
-    assert backend._pool._elastic_actor_set.max_size == 2
+    assert backend._pool._actor_set.max_size == 2
     backend.terminate()
 
     with joblib.parallel_backend(

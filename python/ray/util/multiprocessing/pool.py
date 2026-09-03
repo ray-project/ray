@@ -171,7 +171,7 @@ class _TaskFailure:
     error: BaseException
 
 
-_ELASTIC_ACTOR_OPTION_DEFAULTS = {
+_ACTOR_SLOT_OPTION_DEFAULTS = {
     "max_concurrency": 1,
     "max_restarts": 0,
     "max_task_retries": 0,
@@ -180,7 +180,7 @@ _ELASTIC_ACTOR_OPTION_DEFAULTS = {
 
 def _validate_elastic_actor_options(ray_remote_args: Dict[str, Any]) -> None:
     """Reject actor lifecycle options that invalidate elastic slot ownership."""
-    for option, required_value in _ELASTIC_ACTOR_OPTION_DEFAULTS.items():
+    for option, required_value in _ACTOR_SLOT_OPTION_DEFAULTS.items():
         if option in ray_remote_args and ray_remote_args[option] != required_value:
             raise ValueError(
                 f"Elastic Ray Pools require {option}={required_value}; "
@@ -199,10 +199,22 @@ class _LegacyActorSet:
     ):
         self._create_actor = create_actor
         self._maxtasksperchild = maxtasksperchild
-        self._actors = [(create_actor(), 0) for _ in range(size)]
+        self._actors = []
         self._deletion_refs = []
         self._current_index = 0
-        ray.get([actor.ping.remote() for actor, _ in self._actors])
+        try:
+            for _ in range(size):
+                self._actors.append((create_actor(), 0))
+            ray.get([actor.ping.remote() for actor, _ in self._actors])
+        except BaseException:
+            for actor, _ in self._actors:
+                try:
+                    ray.kill(actor)
+                except BaseException:
+                    logger.exception(
+                        "Failed to clean up a Pool actor after construction failed"
+                    )
+            raise
 
     @property
     def max_size(self) -> int:
@@ -250,7 +262,7 @@ class _LegacyActorSet:
         self._deletion_refs.append(actor.__ray_terminate__.remote())
 
 
-class _ElasticSlotState(Enum):
+class _ActorSlotState(Enum):
     EMPTY = auto()
     STARTING = auto()
     ACTIVE = auto()
@@ -258,8 +270,8 @@ class _ElasticSlotState(Enum):
 
 
 @dataclass
-class _ElasticSlot:
-    """One bounded actor slot owned by ``_ElasticActorSet``.
+class _ActorSlot:
+    """One bounded actor slot owned by ``_ActorSlotSet``.
 
     All fields are protected by the actor set's condition. ``EMPTY`` owns no
     actor or refs. Every other state owns an actor. ``STARTING`` may own a
@@ -271,7 +283,7 @@ class _ElasticSlot:
     """
 
     generation: int = 0
-    state: _ElasticSlotState = _ElasticSlotState.EMPTY
+    state: _ActorSlotState = _ActorSlotState.EMPTY
     actor: Any = None
     outstanding: int = 0
     tasks_submitted: int = 0
@@ -280,7 +292,7 @@ class _ElasticSlot:
     exit_ref: Any = None
 
 
-class _ElasticActorSet:
+class _ActorSlotSet:
     """Own actor capacity without taking ownership of tasks or results.
 
     Ray actor mailboxes remain the task queue and ObjectRefs remain the result
@@ -300,7 +312,7 @@ class _ElasticActorSet:
         self._min_size = min_size
         self._idle_timeout_s = idle_timeout_s
         self._maxtasksperchild = maxtasksperchild
-        self._slots = [_ElasticSlot() for _ in range(max_size)]
+        self._slots = [_ActorSlot() for _ in range(max_size)]
         self._condition = threading.Condition()
         self._closed = False
         self._error: Optional[BaseException] = None
@@ -344,7 +356,7 @@ class _ElasticActorSet:
     def wait_until_ready(self) -> None:
         """Wait for initial capacity, preserving fixed Pool construction."""
         with self._condition:
-            while any(slot.state is _ElasticSlotState.STARTING for slot in self._slots):
+            while any(slot.state is _ActorSlotState.STARTING for slot in self._slots):
                 if self._error is not None:
                     raise self._error
                 self._condition.wait()
@@ -357,22 +369,20 @@ class _ElasticActorSet:
             while True:
                 self._raise_if_unavailable_locked()
                 active = [
-                    slot
-                    for slot in self._slots
-                    if slot.state is _ElasticSlotState.ACTIVE
+                    slot for slot in self._slots if slot.state is _ActorSlotState.ACTIVE
                 ]
                 empty = next(
                     (
                         slot
                         for slot in self._slots
-                        if slot.state is _ElasticSlotState.EMPTY
+                        if slot.state is _ActorSlotState.EMPTY
                     ),
                     None,
                 )
                 starting = [
                     slot
                     for slot in self._slots
-                    if slot.state is _ElasticSlotState.STARTING
+                    if slot.state is _ActorSlotState.STARTING
                 ]
                 capacity = active + starting
                 if empty is not None and (
@@ -383,12 +393,12 @@ class _ElasticActorSet:
                     active = [
                         slot
                         for slot in self._slots
-                        if slot.state is _ElasticSlotState.ACTIVE
+                        if slot.state is _ActorSlotState.ACTIVE
                     ]
                     starting = [
                         slot
                         for slot in self._slots
-                        if slot.state is _ElasticSlotState.STARTING
+                        if slot.state is _ActorSlotState.STARTING
                     ]
                 capacity = active + starting
                 if capacity:
@@ -400,8 +410,8 @@ class _ElasticActorSet:
                         capacity,
                         key=lambda candidate: (
                             candidate.outstanding
-                            + (candidate.state is _ElasticSlotState.STARTING),
-                            candidate.state is _ElasticSlotState.STARTING,
+                            + (candidate.state is _ActorSlotState.STARTING),
+                            candidate.state is _ActorSlotState.STARTING,
                         ),
                     )
                     break
@@ -430,7 +440,7 @@ class _ElasticActorSet:
             if (
                 self._maxtasksperchild is not None
                 and slot.tasks_submitted == self._maxtasksperchild
-                and slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+                and slot.state in (_ActorSlotState.STARTING, _ActorSlotState.ACTIVE)
             ):
                 # Actor calls are serial and the termination request is queued
                 # after every accepted batch. Mark the slot as draining now so
@@ -447,13 +457,10 @@ class _ElasticActorSet:
             self._closed = True
             for slot in self._slots:
                 if slot.state in (
-                    _ElasticSlotState.STARTING,
-                    _ElasticSlotState.ACTIVE,
+                    _ActorSlotState.STARTING,
+                    _ActorSlotState.ACTIVE,
                 ):
-                    if (
-                        slot.state is _ElasticSlotState.STARTING
-                        and slot.outstanding == 0
-                    ):
+                    if slot.state is _ActorSlotState.STARTING and slot.outstanding == 0:
                         actors_to_kill.append(slot.actor)
                     self._begin_draining_locked(slot)
             self._condition.notify_all()
@@ -474,25 +481,21 @@ class _ElasticActorSet:
             actors = [
                 slot.actor
                 for slot in self._slots
-                if slot.state is _ElasticSlotState.DRAINING
+                if slot.state is _ActorSlotState.DRAINING
             ]
         for actor in actors:
             ray.kill(actor)
 
     def join(self) -> None:
         with self._condition:
-            while any(
-                slot.state is not _ElasticSlotState.EMPTY for slot in self._slots
-            ):
+            while any(slot.state is not _ActorSlotState.EMPTY for slot in self._slots):
                 if self._error is not None:
-                    raise RuntimeError(
-                        "Elastic Pool actor cleanup failed"
-                    ) from self._error
+                    raise RuntimeError("Pool actor cleanup failed") from self._error
                 self._condition.wait()
         if self._reaper is not None:
             self._reaper.join()
 
-    def snapshot(self) -> List[Tuple[_ElasticSlotState, int]]:
+    def snapshot(self) -> List[Tuple[_ActorSlotState, int]]:
         """Return state and outstanding counts for tests and diagnostics."""
         with self._condition:
             return [(slot.state, slot.outstanding) for slot in self._slots]
@@ -501,12 +504,12 @@ class _ElasticActorSet:
         if self._closed:
             raise ValueError("Pool not running")
         if self._error is not None:
-            raise RuntimeError("Elastic Pool actor management failed") from self._error
+            raise RuntimeError("Pool actor management failed") from self._error
 
-    def _create_slot_locked(self, slot: Optional[_ElasticSlot] = None) -> _ElasticSlot:
+    def _create_slot_locked(self, slot: Optional[_ActorSlot] = None) -> _ActorSlot:
         if slot is None:
             slot = next(
-                slot for slot in self._slots if slot.state is _ElasticSlotState.EMPTY
+                slot for slot in self._slots if slot.state is _ActorSlotState.EMPTY
             )
         # Actor creation is an external side effect and may fail synchronously.
         # Do not publish ACTIVE until a handle exists, so the slot remains
@@ -516,7 +519,7 @@ class _ElasticActorSet:
         # failure must retain this slot instead of making it reusable while
         # the actor may still exist.
         slot.generation += 1
-        slot.state = _ElasticSlotState.STARTING
+        slot.state = _ActorSlotState.STARTING
         slot.actor = actor
         slot.outstanding = 0
         slot.tasks_submitted = 0
@@ -538,11 +541,11 @@ class _ElasticActorSet:
             raise
         return slot
 
-    def _actor_ready(self, slot: _ElasticSlot, generation: int, future) -> None:
+    def _actor_ready(self, slot: _ActorSlot, generation: int, future) -> None:
         with self._condition:
             if (
                 slot.generation != generation
-                or slot.state is not _ElasticSlotState.STARTING
+                or slot.state is not _ActorSlotState.STARTING
             ):
                 return
             try:
@@ -563,7 +566,7 @@ class _ElasticActorSet:
                     self._error = error
                 self._condition.notify_all()
                 return
-            slot.state = _ElasticSlotState.ACTIVE
+            slot.state = _ActorSlotState.ACTIVE
             slot.readiness_ref = None
             if slot.outstanding == 0:
                 slot.idle_since = time.monotonic()
@@ -572,15 +575,15 @@ class _ElasticActorSet:
 
     def _batch_completed(
         self,
-        slot: _ElasticSlot,
+        slot: _ActorSlot,
         generation: int,
         future,
     ) -> None:
         with self._condition:
             if slot.generation != generation or slot.state not in (
-                _ElasticSlotState.STARTING,
-                _ElasticSlotState.ACTIVE,
-                _ElasticSlotState.DRAINING,
+                _ActorSlotState.STARTING,
+                _ActorSlotState.ACTIVE,
+                _ActorSlotState.DRAINING,
             ):
                 return
             try:
@@ -604,35 +607,35 @@ class _ElasticActorSet:
             if slot.outstanding < 0:
                 self._error = RuntimeError("Pool actor completion count underflow")
             elif slot.outstanding == 0:
-                if slot.state is _ElasticSlotState.DRAINING:
+                if slot.state is _ActorSlotState.DRAINING:
                     if slot.exit_ref is None:
                         self._submit_termination_locked(slot)
-                elif slot.state is _ElasticSlotState.ACTIVE:
+                elif slot.state is _ActorSlotState.ACTIVE:
                     slot.idle_since = time.monotonic()
                     self._yield_to_pending_work_locked(slot)
                 for pending_slot in self._slots:
                     if (
-                        pending_slot.state is _ElasticSlotState.STARTING
+                        pending_slot.state is _ActorSlotState.STARTING
                         and pending_slot.outstanding == 0
                     ):
                         self._begin_draining_locked(pending_slot)
             self._condition.notify_all()
 
-    def _yield_to_pending_work_locked(self, slot: _ElasticSlot) -> None:
-        if slot.state is not _ElasticSlotState.ACTIVE or slot.outstanding != 0:
+    def _yield_to_pending_work_locked(self, slot: _ActorSlot) -> None:
+        if slot.state is not _ActorSlotState.ACTIVE or slot.outstanding != 0:
             return
         if any(
-            candidate.state is _ElasticSlotState.STARTING and candidate.outstanding > 0
+            candidate.state is _ActorSlotState.STARTING and candidate.outstanding > 0
             for candidate in self._slots
         ):
             self._begin_draining_locked(slot)
 
-    def _begin_draining_locked(self, slot: _ElasticSlot) -> None:
+    def _begin_draining_locked(self, slot: _ActorSlot) -> None:
         assert slot.state in (
-            _ElasticSlotState.STARTING,
-            _ElasticSlotState.ACTIVE,
+            _ActorSlotState.STARTING,
+            _ActorSlotState.ACTIVE,
         )
-        slot.state = _ElasticSlotState.DRAINING
+        slot.state = _ActorSlotState.DRAINING
         slot.idle_since = None
         if slot.outstanding > 0 and self._error is None:
             # Ray's special actor termination method is not a completion
@@ -645,9 +648,9 @@ class _ElasticActorSet:
         self._submit_termination_locked(slot, allow_outstanding=self._error is not None)
 
     def _submit_termination_locked(
-        self, slot: _ElasticSlot, allow_outstanding: bool = False
+        self, slot: _ActorSlot, allow_outstanding: bool = False
     ) -> None:
-        assert slot.state is _ElasticSlotState.DRAINING
+        assert slot.state is _ActorSlotState.DRAINING
         assert allow_outstanding or slot.outstanding == 0
         assert slot.exit_ref is None
         # Readiness success cannot prove actor exit, so even a STARTING actor
@@ -673,11 +676,11 @@ class _ElasticActorSet:
             self._error = error
             self._condition.notify_all()
 
-    def _actor_exited(self, slot: _ElasticSlot, generation: int, future) -> None:
+    def _actor_exited(self, slot: _ActorSlot, generation: int, future) -> None:
         with self._condition:
             if (
                 slot.generation != generation
-                or slot.state is not _ElasticSlotState.DRAINING
+                or slot.state is not _ActorSlotState.DRAINING
             ):
                 return
             try:
@@ -700,20 +703,20 @@ class _ElasticActorSet:
 
     def _release_dead_actor_locked(
         self,
-        slot: _ElasticSlot,
+        slot: _ActorSlot,
         startup_error: Optional[BaseException] = None,
     ) -> None:
         """Release one actor whose exit Ray has unambiguously confirmed."""
         previous_state = slot.state
         assert previous_state in (
-            _ElasticSlotState.STARTING,
-            _ElasticSlotState.ACTIVE,
-            _ElasticSlotState.DRAINING,
+            _ActorSlotState.STARTING,
+            _ActorSlotState.ACTIVE,
+            _ActorSlotState.DRAINING,
         )
         self._clear_slot_locked(slot)
         if self._closed:
             return
-        if previous_state is _ElasticSlotState.STARTING:
+        if previous_state is _ActorSlotState.STARTING:
             if self._capacity_locked() < self._min_size:
                 # Automatically recreating a permanently failing initializer
                 # would create an unbounded actor-start loop. Converge
@@ -724,8 +727,8 @@ class _ElasticActorSet:
         self._restore_min_size_locked()
 
     @staticmethod
-    def _clear_slot_locked(slot: _ElasticSlot) -> None:
-        slot.state = _ElasticSlotState.EMPTY
+    def _clear_slot_locked(slot: _ActorSlot) -> None:
+        slot.state = _ActorSlotState.EMPTY
         slot.actor = None
         slot.outstanding = 0
         slot.tasks_submitted = 0
@@ -739,7 +742,7 @@ class _ElasticActorSet:
         capacity = self._capacity_locked()
         while capacity < self._min_size:
             empty = next(
-                (slot for slot in self._slots if slot.state is _ElasticSlotState.EMPTY),
+                (slot for slot in self._slots if slot.state is _ActorSlotState.EMPTY),
                 None,
             )
             if empty is None:
@@ -753,7 +756,7 @@ class _ElasticActorSet:
 
     def _capacity_locked(self) -> int:
         return sum(
-            slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+            slot.state in (_ActorSlotState.STARTING, _ActorSlotState.ACTIVE)
             for slot in self._slots
         )
 
@@ -761,9 +764,7 @@ class _ElasticActorSet:
         while True:
             with self._condition:
                 if self._closed:
-                    if all(
-                        slot.state is _ElasticSlotState.EMPTY for slot in self._slots
-                    ):
+                    if all(slot.state is _ActorSlotState.EMPTY for slot in self._slots):
                         return
                     self._condition.wait()
                     continue
@@ -773,13 +774,13 @@ class _ElasticActorSet:
                 idle = [
                     slot
                     for slot in self._slots
-                    if slot.state is _ElasticSlotState.ACTIVE
+                    if slot.state is _ActorSlotState.ACTIVE
                     and slot.outstanding == 0
                     and slot.idle_since is not None
                 ]
                 excess = max(
                     0,
-                    sum(slot.state is _ElasticSlotState.ACTIVE for slot in self._slots)
+                    sum(slot.state is _ActorSlotState.ACTIVE for slot in self._slots)
                     - self._min_size,
                 )
                 idle.sort(key=lambda slot: slot.idle_since)
@@ -1303,13 +1304,12 @@ class Pool:
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
         ray_remote_args = ray_remote_args or {}
-        self._elastic_actor_set: Optional[_ElasticActorSet] = None
         autoscale = any(
             option is not None for option in (min_size, max_size, idle_timeout_s)
         )
-        use_legacy_actor_pool = not autoscale and any(
+        use_legacy_actor_set = not autoscale and any(
             option in ray_remote_args and ray_remote_args[option] != required_value
-            for option, required_value in _ELASTIC_ACTOR_OPTION_DEFAULTS.items()
+            for option, required_value in _ACTOR_SLOT_OPTION_DEFAULTS.items()
         )
         if autoscale:
             _validate_elastic_actor_options(ray_remote_args)
@@ -1333,7 +1333,7 @@ class Pool:
                 raise ValueError("min_size must be between 0 and max_size")
             if idle_timeout_s < 0:
                 raise ValueError("idle_timeout_s must be non-negative")
-        elif not use_legacy_actor_pool:
+        elif not use_legacy_actor_set:
             min_size = max_size = processes
             idle_timeout_s = 60.0
 
@@ -1342,7 +1342,7 @@ class Pool:
         def create_actor():
             return pool_actor.remote(initializer, initargs)
 
-        if use_legacy_actor_pool:
+        if use_legacy_actor_set:
             self._pool_size = processes
             self._actor_set = _LegacyActorSet(
                 create_actor,
@@ -1351,16 +1351,25 @@ class Pool:
             )
         else:
             self._pool_size = max_size
-            self._elastic_actor_set = _ElasticActorSet(
+            actor_set = _ActorSlotSet(
                 create_actor,
                 min_size,
                 max_size,
                 idle_timeout_s,
                 maxtasksperchild,
             )
-            self._actor_set = self._elastic_actor_set
             if not autoscale:
-                self._elastic_actor_set.wait_until_ready()
+                try:
+                    actor_set.wait_until_ready()
+                except BaseException:
+                    try:
+                        actor_set.terminate()
+                    except BaseException:
+                        logger.exception(
+                            "Failed to clean up a Pool after construction failed"
+                        )
+                    raise
+            self._actor_set = actor_set
 
     def _init_ray(self, processes=None, ray_address=None, autoscale=False):
         # Initialize ray. If ray is already initialized, we do nothing.
