@@ -762,12 +762,23 @@ class KubeRayProvider(ICloudInstanceProvider):
                     return None
 
             try:
-                # DELETE the idle RayClusters. 404 is treated as a successful delete so it will not raise here.
+                # DELETE the idle RayCluster.
                 self._k8s_api_client.delete(path)
                 logger.info(f"Deleted {self._cluster_name}")
+            except requests.HTTPError as e:
+                if e.response.status_code == 404:
+                    # HTTP status code 404 is treated as a successful delete.
+                    logger.info(f"{self._cluster_name} was already deleted.")
+                else:
+                    logger.exception(f"Failed to delete {self._cluster_name}")
             except Exception:
                 logger.exception(f"Failed to delete {self._cluster_name}")
 
+            return None
+
+        spec_idle_terminate = self._ray_cluster.get("spec", {}).get("idleTerminate")
+        if spec_idle_terminate:
+            logger.info(f"spec.IdleTerminate is already true in {self._cluster_name}")
             return None
 
         # Merge-patch spec.idleTerminate=true if noDriverTimeoutPolicy is Suspend

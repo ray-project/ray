@@ -398,7 +398,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
-        if result.status_code not in {200, 404}:
+        if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
 
