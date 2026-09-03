@@ -116,6 +116,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, UnnestExpr):
+            return self.visit_unnest(expr)
         elif isinstance(expr, MonotonicallyIncreasingIdExpr):
             return self.visit_monotonically_increasing_id(expr)
         elif isinstance(expr, RandomExpr):
@@ -152,6 +154,22 @@ class _ExprVisitor(ABC, Generic[T]):
     @abstractmethod
     def visit_star(self, expr: "StarExpr") -> T:
         pass
+
+    def visit_unnest(self, expr: "UnnestExpr") -> T:
+        """Handle an ``UnnestExpr``.
+
+        Concrete, unlike the other ``visit_*`` methods: ``UnnestExpr`` is a
+        plan-time marker that ``Project.__post_init__`` desugars away, so no
+        visitor running during planning or evaluation can encounter one. Only
+        the visitors reachable from user code before ``with_columns`` override
+        this; the rest inherit an error that names the real constraint instead
+        of the generic "unsupported expression type" from ``visit``.
+        """
+        raise TypeError(
+            "unnest() expands to multiple columns, so it has no single value "
+            "to evaluate. Pass it directly to `with_columns`; it cannot be "
+            "composed into another expression."
+        )
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
@@ -302,6 +320,9 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         return False
 
     def visit_star(self, expr: "StarExpr") -> bool:
+        return False
+
+    def visit_unnest(self, expr: "UnnestExpr") -> bool:
         return False
 
     def visit_monotonically_increasing_id(

@@ -235,6 +235,30 @@ def test_unnest_pushdown_prunes_unused_columns(ray_start_regular_shared, tmp_pat
     ]
 
 
+def test_unnest_is_registered_with_expr_visitor():
+    """``UnnestExpr`` is dispatched by ``_ExprVisitor``, so introspecting an
+    unnest before passing it to ``with_columns`` works instead of raising the
+    generic "unsupported expression type" error."""
+    from ray.data.expressions import random as random_expr
+
+    expr = unnest(col("stats"))
+
+    # ``repr`` renders the tree rather than raising.
+    assert "UNNEST" in repr(expr)
+    assert "COL('stats')" in repr(expr)
+
+    # Idempotency delegates to the wrapped expression: unnesting only
+    # reshapes the value into columns.
+    assert expr.is_idempotent()
+    assert not unnest(random_expr()).is_idempotent()
+
+    # An unnest denotes multiple columns, so it has no PyArrow lowering. It
+    # reports that rather than raising, and the raising path explains why.
+    assert not expr._is_pyarrow_convertible()
+    with pytest.raises(TypeError, match="expands to multiple columns"):
+        expr.to_pyarrow()
+
+
 if __name__ == "__main__":
     import sys
 
