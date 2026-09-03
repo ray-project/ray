@@ -20,6 +20,7 @@ from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
+from ray_release.reporter.observability_agent import ObservabilityAgentReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.result import Result
 
@@ -129,6 +130,10 @@ def main(
     # off quickly. We should remove this when the new db reporter is stable.
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
+
+    # Reported last, so that the agent's analysis of a failed test run shows up
+    # at the end of the buildkite step output, after the result was recorded.
+    reporters.append(ObservabilityAgentReporter())
 
     try:
         result = run_release_test(
