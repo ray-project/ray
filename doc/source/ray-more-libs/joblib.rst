@@ -76,12 +76,11 @@ idle actors:
 
   register_ray()
   with joblib.parallel_backend(
-      "ray",
+      'ray',
       n_jobs=8,
-      min_size=0,
-      max_size=8,
+      min_size=1,
       idle_timeout_s=60,
-      ray_remote_args={"num_cpus": 1},
+      ray_remote_args=dict(num_cpus=1),
   ):
       search.fit(digits.data, digits.target)
 

@@ -161,19 +161,6 @@ class PoolTaskError(Exception):
         self.underlying = underlying
 
 
-def _kill_all_actors(actors: Iterable[Any]) -> None:
-    """Kill actors from either scheduling path, reporting the first failure."""
-    first_error = None
-    for actor in actors:
-        try:
-            ray.kill(actor)
-        except BaseException as error:
-            if first_error is None:
-                first_error = error
-    if first_error is not None:
-        raise first_error
-
-
 class _LegacyActorSet:
     """Compatibility adapter for fixed pools with advanced actor options."""
 
@@ -248,6 +235,24 @@ class _LegacyActorSet:
 
 
 class _ActorSlotState(Enum):
+    """Lifecycle of one bounded actor slot.
+
+    The normal lifecycle is::
+
+        [EMPTY] -- create --> [STARTING] -- ready --> [ACTIVE]
+           ^                     |                       |
+           |                     | close / task limit    | close / task limit
+           |                     |                       | idle timeout
+           |                     |                       | yield to pending work
+           |                     v                       v
+           +-- exit confirmed -- [DRAINING] <------------+
+
+        [STARTING] or [ACTIVE] -- confirmed actor death --> [EMPTY]
+
+    A ``STARTING`` actor with accepted work is waiting for Ray resources and
+    is never considered idle.
+    """
+
     EMPTY = auto()
     STARTING = auto()
     ACTIVE = auto()
@@ -615,6 +620,13 @@ class _ActorSlotSet:
             self._condition.notify_all()
 
     def _yield_to_pending_work_locked(self, slot: _ActorSlot) -> None:
+        """Release idle resources needed by work already assigned elsewhere.
+
+        This is the only normal path that retires an ACTIVE actor without
+        waiting for ``idle_timeout_s``. Calls assigned to a STARTING actor
+        cannot migrate back to this actor, so retaining it could strand that
+        work until the idle timeout even though it has no outstanding calls.
+        """
         if slot.state is not _ActorSlotState.ACTIVE or slot.outstanding != 0:
             return
         if any(
@@ -796,6 +808,19 @@ class _ActorSlotSet:
                         candidates[0].idle_since + self._idle_timeout_s - now,
                     )
                 self._condition.wait(timeout)
+
+
+def _kill_all_actors(actors: Iterable[Any]) -> None:
+    """Kill actors from either scheduling path, reporting the first failure."""
+    first_error = None
+    for actor in actors:
+        try:
+            ray.kill(actor)
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
 
 
 @dataclass(frozen=True)

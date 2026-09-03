@@ -52,12 +52,14 @@ additional configuration, both bounds resolve to ``processes``. Set a lower
 
 .. code-block:: python
 
-  pool = Pool(
-      min_size=0,
-      max_size=64,
+  with Pool(
+      processes=64,
+      min_size=1,
       idle_timeout_s=60,
-      ray_remote_args={"num_cpus": 1},
-  )
+      ray_remote_args=dict(num_cpus=1),
+  ) as pool:
+      for result in pool.map(f, range(100)):
+          print(result)
 
 The pool creates actors as work arrives and retires actors above ``min_size``
 after ``idle_timeout_s``. Use ``ray_remote_args`` to specify CPUs, GPUs, or
