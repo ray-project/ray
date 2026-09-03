@@ -184,7 +184,7 @@ ray.get(pool.close.remote())
 
 ### Pass custom OCI configurations to gVisor
 
-For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
+For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
 
 :::{note}
 `_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. To help shape them, open an issue describing your use case.
@@ -195,7 +195,7 @@ The `_oci_spec_transform_fn` callable receives the fully generated OCI specifica
 * **Host mounts**: Mount host directories, read-only datasets, or model weights into the sandbox container.
 * **Namespace and mount details**: Configure namespace or mount behavior that the first-class options don't cover.
 
-Internet access, DNS, and Linux capabilities each have a first-class option: `network=`, `dns=`, and `capabilities=`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
+Internet access, DNS, and Linux capabilities each have a first-class option: `network`, `dns`, and `capabilities`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
 
 ```python
 import ray
@@ -267,9 +267,9 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 
 | Mode | Network access | `/etc/resolv.conf` | Security property |
 | --- | --- | --- | --- |
-| `none` *(default)* | None | untouched | No egress. |
+| `none` *(default)* | None | untouched | No egress. This is the recommended setting for untrusted code. |
 | `public` | Host egress | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Egress works, but the sandbox inherits nothing from the host's resolver configuration. No internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. |
-| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
 
 To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
@@ -288,7 +288,7 @@ sb = sandbox.create(
 
 ### DNS in locked-down networks
 
-Some VPCs block outbound port 53 to public resolvers, where the `public` defaults can't resolve. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
+Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `public` DNS settings can't resolve queries. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture
 
