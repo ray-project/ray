@@ -705,7 +705,6 @@ SECURITY.md
 CONTRIBUTING.rst
 LICENSE
 pylintrc
-semgrep.yml
 setup_hooks.sh
 .pre-commit-config.yaml
 .isort.cfg
