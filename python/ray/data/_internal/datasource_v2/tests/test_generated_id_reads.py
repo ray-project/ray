@@ -161,6 +161,116 @@ def test_infer_schema_advertises_generated_id(tmp_path, generated_id_checkpoint_
     assert schema.field(GEN_ID_COL).type == GENERATED_ID_COLUMN_TYPE
 
 
+def _file_fragments_value(fragments):
+    """One file's struct value from (fragment_id, num_rows, committed) tuples."""
+    entries = []
+    num_fully = 0
+    for fragment_id, num_rows, committed in fragments:
+        fully = len(committed) == num_rows
+        num_fully += fully
+        entries.append(
+            {
+                "fragment_id": fragment_id,
+                "num_rows": num_rows,
+                "num_checkpointed_rows": len(committed),
+                "checkpointed_row_ids": (
+                    [] if fully else [i in set(committed) for i in range(num_rows)]
+                ),
+            }
+        )
+    return {
+        "num_fragments": len(fragments),
+        "fully_checkpointed": num_fully == len(fragments),
+        "fragments": entries,
+    }
+
+
+def _checkpointed_manifest(paths, fragments_by_path):
+    """Whole-file manifest whose rows carry compact checkpoint structs."""
+    from ray.data.checkpoint.generated_id import CHECKPOINTED_FILE_FRAGMENTS_TYPE
+
+    values = [
+        (
+            _file_fragments_value(fragments_by_path[p])
+            if p in fragments_by_path
+            else None
+        )
+        for p in paths
+    ]
+    return FileManifest.construct_manifest(
+        paths=paths,
+        sizes=[os.path.getsize(p) for p in paths],
+        chunk_metadatas=[None] * len(paths),
+        checkpoint_file_fragments=[
+            pa.array([v], type=CHECKPOINTED_FILE_FRAGMENTS_TYPE)[0] for v in values
+        ],
+    )
+
+
+def test_reader_skips_fully_checkpointed_row_groups(
+    tmp_path, generated_id_checkpoint_config
+):
+    path = str(tmp_path / "data.parquet")
+    # 2 row groups of 3 rows; both fully committed -> nothing to read.
+    _write_parquet(path, num_rows=6, row_group_size=3)
+    manifest = _checkpointed_manifest(
+        [path], {path: [(0, 3, [0, 1, 2]), (1, 3, [0, 1, 2])]}
+    )
+    tables = list(ParquetFileReader().read(manifest))
+    assert tables == []
+
+
+def test_reader_filters_partially_checkpointed_row_group(
+    tmp_path, generated_id_checkpoint_config
+):
+    path = str(tmp_path / "data.parquet")
+    # Row group 0 (x=0..2): row 1 committed. Row group 1 (x=3..5): fully
+    # committed. x equals the file row position.
+    _write_parquet(path, num_rows=6, row_group_size=3)
+    manifest = _checkpointed_manifest([path], {path: [(0, 3, [1]), (1, 3, [0, 1, 2])]})
+    combined = pa.concat_tables(ParquetFileReader().read(manifest))
+    assert combined.column("x").to_pylist() == [0, 2]
+    # Surviving rows keep their original in-group positions.
+    ids = combined.column(GEN_ID_COL).to_pylist()
+    assert [(v[FRAGMENT_FIELD], v[ROW_ID_FIELD]) for v in ids] == [(0, 0), (0, 2)]
+
+
+def test_reader_partial_filter_across_batches(tmp_path, generated_id_checkpoint_config):
+    path = str(tmp_path / "data.parquet")
+    # One row group of 6 rows, rows 1 and 4 committed, read in batches of 2.
+    _write_parquet(path, num_rows=6, row_group_size=6)
+    manifest = _checkpointed_manifest([path], {path: [(0, 6, [1, 4])]})
+    reader = ParquetFileReader(batch_size=2)
+    combined = pa.concat_tables(reader.read(manifest))
+    assert combined.column("x").to_pylist() == [0, 2, 3, 5]
+    row_ids = [v[ROW_ID_FIELD] for v in combined.column(GEN_ID_COL).to_pylist()]
+    assert row_ids == [0, 2, 3, 5]
+
+
+def test_reader_no_skip_for_unmatched_checkpoint(
+    tmp_path, generated_id_checkpoint_config
+):
+    path = str(tmp_path / "data.parquet")
+    other = str(tmp_path / "other.parquet")
+    _write_parquet(path, num_rows=4, row_group_size=2)
+    _write_parquet(other, num_rows=4, row_group_size=2)
+    # The checkpoint only covers a different file; this one reads in full.
+    manifest = _checkpointed_manifest([path], {other: [(0, 2, [0, 1])]})
+    combined = pa.concat_tables(ParquetFileReader().read(manifest))
+    assert combined.num_rows == 4
+
+
+def test_reader_ignores_manifest_without_checkpoint_column(
+    tmp_path, generated_id_checkpoint_config
+):
+    """First run: generated-ID on, but no checkpoint column on the manifest."""
+    path = str(tmp_path / "data.parquet")
+    _write_parquet(path, num_rows=4, row_group_size=2)
+    combined = pa.concat_tables(ParquetFileReader().read(_whole_file_manifest([path])))
+    assert combined.num_rows == 4
+    assert GEN_ID_COL in combined.column_names
+
+
 def test_reads_unaffected_without_config(tmp_path):
     path = str(tmp_path / "data.parquet")
     _write_parquet(path, num_rows=4, row_group_size=2)
