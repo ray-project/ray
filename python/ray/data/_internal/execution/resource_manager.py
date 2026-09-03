@@ -135,6 +135,7 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        self._consumer_held_bytes: int = 0
         self._has_external_consumer: bool = False
 
         # Executor sink (DAG root: unique op with no output_dependencies).
@@ -175,6 +176,22 @@ class ResourceManager:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
 
+    def set_consumer_held_bytes(self, num_bytes: int) -> None:
+        """Set object store memory consumers hold past their ``ObjectRef``.
+
+        Zero-copy batch views keep blocks resident after the ref is released,
+        so ``BlockRefCounter`` misses them. Distinct from
+        ``external_consumer_bytes``, which measures intake capacity.
+        """
+        assert (
+            num_bytes >= 0
+        ), f"consumer held bytes must be non-negative, got {num_bytes}"
+        self._consumer_held_bytes = num_bytes
+
+    def get_consumer_held_bytes(self) -> int:
+        """Get object store memory held by consumers past their ``ObjectRef``."""
+        return self._consumer_held_bytes
+
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"
     ) -> int:
@@ -185,6 +202,11 @@ class ResourceManager:
 
         self._mem_op_internal[op] = op.metrics.obj_store_mem_pending_task_outputs or 0
         self._mem_op_outputs[op] = op.estimate_object_store_usage()
+        if op is self._output_operator:
+            # Blocks the consumer still reads but no longer holds a ref to.
+            # Attributed here because the consumer reports a single total and
+            # cannot say which operator produced each block.
+            self._mem_op_outputs[op] += self._consumer_held_bytes
 
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 

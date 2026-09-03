@@ -13,6 +13,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
@@ -20,6 +21,7 @@ from ray.data._internal.block_batching.interfaces import (
     ResolvedBlock,
 )
 from ray.data._internal.block_batching.util import (
+    ConsumerHeldMemory,
     _calculate_ref_hits,
     blocks_to_batches,
     collate,
@@ -659,3 +661,20 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_consumer_held_memory_tracks_in_flight_batches():
+    """Bytes stay counted from batch build until release, and never go
+    negative when a batch is dropped without being yielded."""
+    held = ConsumerHeldMemory(Batcher(batch_size=1, ensure_copy=False))
+    assert held.total_bytes() == 0
+
+    held.on_batch_built(100)
+    held.on_batch_built(50)
+    assert held.total_bytes() == 150
+
+    held.on_batch_released(100)
+    assert held.total_bytes() == 50
+
+    held.on_batch_released(999)
+    assert held.total_bytes() == 0
