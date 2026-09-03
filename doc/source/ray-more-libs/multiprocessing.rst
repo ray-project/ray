@@ -73,8 +73,9 @@ or readiness polling. Actor resources do not change implicitly; use
 ``ray_remote_args`` when actors should request CPUs, GPUs, or custom resources.
 Elastic slot ownership relies on a serial, non-restarting actor mailbox, so
 elastic pools reject non-default ``max_concurrency``, ``max_restarts``, and
-``max_task_retries`` actor options. Fixed pools configured with those advanced
-options retain their legacy scheduling path for compatibility.
+``max_task_retries`` actor options as well as ``get_if_exists=True``. Fixed
+pools configured with those advanced options retain their legacy scheduling
+path for compatibility.
 
 ``maxtasksperchild`` also applies to elastic pools. An elastic actor retires
 after accepting that many batches. Its slot remains occupied until Ray confirms

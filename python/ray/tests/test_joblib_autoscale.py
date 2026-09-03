@@ -348,6 +348,30 @@ def test_legacy_actor_set_cleans_up_after_readiness_failure(monkeypatch):
     assert killed == created
 
 
+def test_terminate_attempts_all_actors_before_raising(monkeypatch):
+    actors = [_FakeActor(), _FakeActor()]
+    actor_set = _ActorSlotSet(
+        lambda: actors.pop(0), min_size=2, max_size=2, idle_timeout_s=60
+    )
+    owned_actors = [slot.actor for slot in actor_set._slots]
+    kill_attempts = []
+
+    def kill_actor(actor):
+        kill_attempts.append(actor)
+        if actor is owned_actors[0]:
+            raise RuntimeError("first kill failed")
+
+    monkeypatch.setattr(ray, "kill", kill_actor)
+
+    with pytest.raises(RuntimeError, match="first kill failed"):
+        actor_set.terminate()
+
+    assert kill_attempts == owned_actors
+    for actor in owned_actors:
+        actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
 def test_starting_slot_becomes_active_only_after_readiness():
     actor = _FakeActor(ready=False)
     actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
@@ -808,6 +832,7 @@ def test_joblib_elastic_pool_supports_maxtasksperchild(shutdown_only):
 @pytest.mark.parametrize(
     ("option", "value"),
     [
+        ("get_if_exists", True),
         ("max_concurrency", 2),
         ("max_restarts", 1),
         ("max_task_retries", 1),
@@ -1318,6 +1343,23 @@ def test_fixed_pool_keeps_advanced_actor_option_compatibility(
 ):
     ray.init(num_cpus=1)
     pool = Pool(processes=1, ray_remote_args={option: value})
+
+    assert isinstance(pool._actor_set, _LegacyActorSet)
+    assert pool.apply(abs, (-1,)) == 1
+
+    pool.close()
+    pool.join()
+
+
+def test_fixed_pool_keeps_get_if_exists_compatibility(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        processes=1,
+        ray_remote_args={
+            "name": f"fixed-pool-{time.monotonic_ns()}",
+            "get_if_exists": True,
+        },
+    )
 
     assert isinstance(pool._actor_set, _LegacyActorSet)
     assert pool.apply(abs, (-1,)) == 1

@@ -172,6 +172,7 @@ class _TaskFailure:
 
 
 _ACTOR_SLOT_OPTION_DEFAULTS = {
+    "get_if_exists": False,
     "max_concurrency": 1,
     "max_restarts": 0,
     "max_task_retries": 0,
@@ -186,6 +187,19 @@ def _validate_elastic_actor_options(ray_remote_args: Dict[str, Any]) -> None:
                 f"Elastic Ray Pools require {option}={required_value}; "
                 f"got {ray_remote_args[option]!r}"
             )
+
+
+def _kill_all_actors(actors: Iterable[Any]) -> None:
+    """Attempt every kill before propagating the first failure."""
+    first_error = None
+    for actor in actors:
+        try:
+            ray.kill(actor)
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
 
 
 class _LegacyActorSet:
@@ -240,8 +254,7 @@ class _LegacyActorSet:
             self._stop_actor(actor)
 
     def terminate(self) -> None:
-        for actor, _ in self._actors:
-            ray.kill(actor)
+        _kill_all_actors(actor for actor, _ in self._actors)
 
     def join(self) -> None:
         self._wait_for_stopping_actors()
@@ -483,8 +496,7 @@ class _ActorSlotSet:
                 for slot in self._slots
                 if slot.state is _ActorSlotState.DRAINING
             ]
-        for actor in actors:
-            ray.kill(actor)
+        _kill_all_actors(actors)
 
     def join(self) -> None:
         with self._condition:
@@ -1271,8 +1283,8 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
             the pool. See :func:`ray.remote` for details. Elastic pools require
-            serial, non-restarting actors and reject non-default lifecycle and
-            task-retry options.
+            serial, non-restarting, uniquely created actors and reject
+            non-default lifecycle, task-retry, and get-or-create options.
         min_size: minimum number of actors retained by an elastic pool.
             Supplying any elastic option enables elastic capacity management.
         max_size: maximum number of actor slots in an elastic pool. Defaults
