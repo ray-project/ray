@@ -6,6 +6,11 @@ from typing import Dict, List, Optional, Union
 
 import yaml
 
+from ray._common.runtime_env_package import (
+    PY_MODULES,
+    WORKING_DIR,
+    validate_package_extension,
+)
 from ray._private.path_utils import is_path
 from ray._private.runtime_env.packaging import parse_path
 
@@ -17,10 +22,9 @@ def validate_path(path: str) -> None:
     parse_path(path)
 
 
-def validate_uri(uri: str):
+def validate_uri(uri: str, field: str):
     try:
-        from ray._common.runtime_env_uri import parse_uri
-        from ray._private.runtime_env.protocol import Protocol
+        from ray._common.runtime_env_uri import Protocol, parse_uri
 
         protocol, path = parse_uri(uri)
     except ValueError:
@@ -30,13 +34,8 @@ def validate_uri(uri: str):
             "(i.e., passed to `ray.init`)."
         )
 
-    supported_extensions = (".zip", ".whl", ".tar.gz", ".tgz")
-    if protocol in Protocol.remote_protocols() and not any(
-        path.endswith(ext) for ext in supported_extensions
-    ):
-        raise ValueError(
-            "Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs."
-        )
+    if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
+        validate_package_extension(path, field, display_path=uri.split("?", 1)[0])
 
 
 def _handle_local_deps_requirement_file(requirements_file: str):
@@ -62,7 +61,7 @@ def validate_py_modules_uris(py_modules_uris: List[str]) -> List[str]:
         if not isinstance(module, str):
             raise TypeError("`py_module` must be a string, got " f"{type(module)}.")
 
-        validate_uri(module)
+        validate_uri(module, PY_MODULES)
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
@@ -83,7 +82,7 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
         if is_path(module):
             validate_path(module)
         else:
-            validate_uri(module)
+            validate_uri(module, PY_MODULES)
 
     return py_modules
 
@@ -95,7 +94,7 @@ def validate_working_dir_uri(working_dir_uri: str) -> str:
             "`working_dir` must be a string, got " f"{type(working_dir_uri)}."
         )
 
-    validate_uri(working_dir_uri)
+    validate_uri(working_dir_uri, WORKING_DIR)
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
@@ -111,7 +110,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     if is_path(working_dir):
         validate_path(working_dir)
     else:
-        validate_uri(working_dir)
+        validate_uri(working_dir, WORKING_DIR)
 
     return working_dir
 
