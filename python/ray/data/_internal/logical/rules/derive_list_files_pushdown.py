@@ -25,7 +25,9 @@ class DeriveListFilesPushdown(Rule):
     it is no stronger than what the downstream ``ReadFiles`` applies. This rule
     derives that state from the scanner once, after the optimize loop, instead
     of having every pushdown rule mirror onto ``ListFiles``. Non-``ReadFiles``
-    consumers (e.g. after ``PushdownCountFiles``) clear the constraints.
+    consumers clear the constraints -- unless the ``ListFiles`` says
+    ``pushdown_is_final``, which is how a rule that rewrote the consumer keeps
+    the constraints it deliberately set (see ``PushdownCountFiles``).
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
@@ -42,6 +44,10 @@ class DeriveListFilesPushdown(Rule):
             new_inputs: list[LogicalOperator] = []
             changed = False
             for input_op in inputs:
+                if isinstance(input_op, ListFiles) and input_op.pushdown_is_final:
+                    # A rule already set these and vouched for the consumer.
+                    new_inputs.append(input_op)
+                    continue
                 if isinstance(input_op, ListFiles) and (
                     input_op.predicate is not predicate
                     or input_op.projected_columns != projected_columns

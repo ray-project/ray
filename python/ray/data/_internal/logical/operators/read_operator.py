@@ -474,6 +474,13 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
+    # Set by a rule that has already fixed the constraints above *and* knows
+    # that whatever consumes this listing applies them, even though that
+    # consumer is not a ``ReadFiles``. ``DeriveListFilesPushdown`` then leaves
+    # this node alone instead of clearing it -- see ``PushdownCountFiles``,
+    # whose ``count_rows`` applies the scanner's filter through the same reader
+    # the ``ReadFiles`` would have used.
+    pushdown_is_final: bool = False
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

@@ -6,6 +6,9 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
+from ray.data._internal.datasource_v2.logical_optimizers import (
+    derive_list_files_pushdown,
+)
 from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
@@ -108,11 +111,32 @@ class PushdownCountFiles(Rule):
             )
             return plan
 
+        # Keep the predicate on the listing, and say so, because
+        # ``DeriveListFilesPushdown`` would otherwise clear it: this consumer is
+        # a ``MapBatches``, not a ``ReadFiles``. Keeping it is sound -- and, for
+        # a source that answers ``metadata_row_count_is_exact`` *under* a filter,
+        # required. ``count_rows`` applies the filter through the same reader
+        # the deleted ``ReadFiles`` would have used, so the listing prunes by
+        # exactly what the consumer applies. Without it, a source like Iceberg
+        # (whose listing is what prunes files, and whose per-file metadata says
+        # whether the filter is fully satisfied) would list the whole table and
+        # return an unfiltered count.
+        #
+        # The other two constraints stay unset: ``limit`` cannot be present at
+        # all here, and ``projected_columns`` only ever fed the metadata-aware
+        # indexer that this rule just replaced.
+        predicate, _, limit = derive_list_files_pushdown(scanner)
+        assert limit is None, "metadata_row_count_is_exact must refuse a limit"
+
         # ``ListFiles`` is frozen, so ``replace`` it with a fresh indexer.
         list_files = dataclasses.replace(
             list_files,
             file_partitioner=None,
             file_indexer=whole_file_indexer,
+            predicate=predicate,
+            projected_columns=None,
+            limit=None,
+            pushdown_is_final=True,
         )
 
         # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but

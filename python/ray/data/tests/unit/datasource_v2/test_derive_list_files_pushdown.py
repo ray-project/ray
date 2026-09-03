@@ -171,6 +171,35 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
     assert derived.limit is None
 
 
+def test_final_state_is_kept_when_consumer_is_not_read_files(tmp_path):
+    """The opt-out a rule takes when it rewrote the consumer itself.
+
+    ``PushdownCountFiles`` deletes the ``ReadFiles`` and puts a ``MapBatches``
+    in its place, but that ``MapBatches`` counts through the same reader the
+    ``ReadFiles`` would have used -- so it applies the predicate, and clearing
+    it off the listing would mean pruning less than the consumer applies. Which
+    for a source whose listing is what prunes files means counting rows the
+    predicate rejects. The flag is how that rule says so; nothing infers it.
+    """
+    read_files = _mk_read_files(tmp_path)
+    list_files = replace(
+        _source_list_files(read_files),
+        predicate=col("a") > 2,
+        pushdown_is_final=True,
+    )
+    count_rows = MapBatches(
+        fn=lambda batch: batch,
+        input_dependencies=[list_files],
+        batch_format="pyarrow",
+        can_modify_num_rows=True,
+    )
+
+    derived = _list_files_of(_apply(count_rows))
+
+    assert derived.predicate == col("a") > 2
+    assert derived.limit is None
+
+
 class _WeakenScannerPredicate(Rule):
     """Stand-in for a future rule that rewrites the scanner's predicate."""
 

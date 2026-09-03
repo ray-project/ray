@@ -3410,39 +3410,230 @@ class TestIcebergDatasourceV2:
         assert datasource.infer_schema(None).names == ["col_a", "col_b", "col_c"]
         assert datasource.resolve_partitioning(None) is None
 
-    def test_count_declines_the_metadata_pushdown(self, restore_data_context):
-        """Iceberg answers neither count hook yet, so the rule declines.
+    def test_count_is_answered_from_iceberg_metadata(self, restore_data_context):
+        """``count()`` must read no data when nothing can reduce the row count.
 
-        ``PushdownCountFiles`` asks two questions -- is the metadata row count
-        exact under this scan, and can the listing emit one row per file -- and
-        both default to "no". Neither ``IcebergScanner`` nor
-        ``IcebergFileIndexer`` overrides them, so ``count()`` keeps its
-        ``ReadFiles`` and gets the answer by reading. That is the fail-closed
-        default doing its job with a real datasource behind it rather than a
-        stub, and it is what a later change deliberately flips.
+        Iceberg writes each data file's ``record_count`` into its own
+        manifests, so the whole answer is already in the listing task's output
+        -- unlike the Parquet path, which still has to fetch a footer per file.
+
+        This replaces ``test_count_declines_the_metadata_pushdown``, which
+        pinned the fail-closed default that the two hooks added here override.
         """
-        from ray.data._internal.logical.operators.read_operator import ReadFiles
+        from ray.data._internal.datasource_v2.listing.iceberg_file_indexer import (
+            IcebergFileIndexer,
+        )
+        from ray.data._internal.logical.operators.map_operator import MapBatches
+        from ray.data._internal.logical.operators.read_operator import (
+            ListFiles,
+            ReadFiles,
+        )
 
         restore_data_context.use_iceberg_datasource_v2 = True
+        expected = len(self._load_table().scan().to_arrow())
 
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
         )
-        plan = _optimized_count_plan(ds)
-        assert any(isinstance(op, ReadFiles) for op in _walk(plan.dag)), (
-            "the count must still go through a read, got operators: "
-            f"{_get_operator_types(plan)}"
-        )
-        # The fixture table has positional deletes, so the right answer is
-        # below ``record_count`` -- which is exactly why the metadata hooks
-        # cannot be answered "yes" for free.
-        catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-        expected = len(
-            catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_arrow()
-        )
-        assert expected < len(create_pa_table())
+        dag = _optimized_count_plan(ds).dag
+
+        assert isinstance(dag, MapBatches)
+        assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+        # The rule rebuilds ``ListFiles`` with whatever ``as_whole_file_indexer``
+        # returns. For Parquet that is a *different*, plainer indexer, because
+        # the footer one bin-packs row groups and can emit a file once per bin.
+        # Ours must survive intact: it plans the table, and a plain path-walking
+        # indexer has nothing to walk.
+        (list_files,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
+        assert isinstance(list_files.file_indexer, IcebergFileIndexer)
+        assert list_files.file_partitioner is None
+
         assert ds.count() == expected
+
+    @pytest.mark.parametrize(
+        "predicate,free",
+        [
+            (col("col_c") == 3, True),
+            (col("col_a") < 50, False),
+            (col("col_b") == "a", False),
+        ],
+        ids=["partition_column", "data_column", "unprojected_data_column"],
+    )
+    def test_count_pushdown_survives_a_filter(
+        self, restore_data_context, predicate, free
+    ):
+        """A filtered ``count()`` is still answered without a read.
+
+        Iceberg plans a residual per file -- the part of the filter the file's
+        partition values do not already satisfy -- so a filter on the partition
+        column leaves every listed file exactly countable from its
+        ``record_count``. A filter on a data column does not, and those files
+        are decoded; the answer is right either way, which is why the scanner
+        does not decline outright.
+
+        ``col_b`` is the case that would break a naive implementation: the
+        count projection is ``col_a`` alone, so the filter names a column the
+        projection does not. PyIceberg reads the union.
+        """
+        from ray.data._internal.datasource_v2.listing.iceberg_manifest import (
+            RESIDUAL_IS_TRUE_COLUMN_NAME,
+        )
+        from ray.data._internal.logical.operators.read_operator import (
+            ListFiles,
+            ReadFiles,
+        )
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).filter(expr=predicate)
+
+        count_plan = _optimized_count_plan(ds)
+        assert not any(isinstance(op, ReadFiles) for op in _walk(count_plan.dag))
+
+        # The listing has to prune by the same predicate the count relies on.
+        # ``DeriveListFilesPushdown`` clears these constraints for a consumer
+        # that is not a ``ReadFiles``, and the count rewrite makes the consumer
+        # a ``MapBatches``, so this only holds because the rule pins them.
+        (list_files,) = [
+            op for op in _walk(count_plan.dag) if isinstance(op, ListFiles)
+        ]
+        assert list_files.predicate == predicate
+        assert list_files.pushdown_is_final
+
+        # ``count()`` before ``take_all()``, and on a fresh ``Dataset``:
+        # materializing one makes ``count()`` read the block metadata it just
+        # produced instead of re-optimizing, which hides a wrong count.
+        counted = ds.count()
+        expected = len(ds.take_all())
+        assert expected > 0, "predicate must match something to be a real test"
+        assert counted == expected
+
+        # The mechanism, not just the answer: whether the count was free is
+        # exactly whether every listed file's residual came back ``AlwaysTrue``.
+        indexer = self._indexer()
+        residuals = [
+            value
+            for manifest in indexer.list_files(
+                None, filesystem=None, predicate=predicate
+            )
+            for value in manifest.as_block()[RESIDUAL_IS_TRUE_COLUMN_NAME].to_pylist()
+        ]
+        assert residuals and all(residuals) == free
+
+    def test_count_pushdown_declines_a_limit(self, restore_data_context):
+        """A limit is applied while reading; no metadata says where it stops."""
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).limit(7)
+
+        assert any(
+            isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag)
+        )
+        assert ds.count() == 7
+
+    def test_read_metadata_subtracts_deleted_rows(self, tmp_path):
+        """A file with delete files is counted by reading it, not by metadata.
+
+        ``record_count`` counts rows the file holds, including ones a delete
+        file removes, so trusting it on a merge-on-read table would over-report.
+        This is the one branch of ``read_metadata`` that touches data, and it is
+        the branch PyIceberg's own ``count()`` takes for the same reason.
+        """
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.listing.iceberg_manifest import (
+            RECORD_COUNT_COLUMN_NAME,
+            manifest_from_scan_tasks,
+        )
+        from ray.data._internal.datasource_v2.readers.iceberg_file_reader import (
+            IcebergFileReader,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        reader = IcebergFileReader(
+            table_metadata=table.metadata,
+            io=table.io,
+            projected_schema=table.scan().projection(),
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
+        def count(scan_task) -> int:
+            manifest = manifest_from_scan_tasks([scan_task], table.metadata)
+            (metadata,) = reader.read_metadata(manifest)
+            return metadata.num_rows
+
+        clean_count = count(task)
+        assert clean_count == task.file.record_count
+
+        deleted_positions = [0, 2]
+        delete_path = tmp_path / "count-pos-deletes.parquet"
+        pq.write_table(
+            pa.table(
+                {
+                    "file_path": pa.array(
+                        [task.file.file_path] * len(deleted_positions), pa.string()
+                    ),
+                    "pos": pa.array(deleted_positions, pa.int64()),
+                }
+            ),
+            delete_path,
+        )
+        delete_file = DataFile.from_args(
+            content=DataFileContent.POSITION_DELETES,
+            file_path=f"file://{delete_path}",
+            file_format=FileFormat.PARQUET,
+            partition=task.file.partition,
+            record_count=len(deleted_positions),
+            file_size_in_bytes=delete_path.stat().st_size,
+        )
+        dirty = FileScanTask(task.file, delete_files={delete_file})
+
+        assert count(dirty) == clean_count - len(deleted_positions)
+        # The manifest still carries the pre-delete number, so the subtraction
+        # is the reader's doing, not the encoder's.
+        manifest = manifest_from_scan_tasks([dirty], table.metadata)
+        assert manifest.as_block()[RECORD_COUNT_COLUMN_NAME].to_pylist() == [
+            clean_count
+        ]
+
+    def test_reader_declines_metadata_under_a_limit(self):
+        """The reader's own guard, independent of the scanner's.
+
+        ``metadata_row_count_is_exact`` already stops the rule from asking, so
+        this is the second of two fail-closed layers: a caller that reaches
+        ``read_metadata`` another way still cannot be handed a partial count.
+        A row filter is deliberately *not* refused here -- ``read_metadata``
+        accounts for one per file.
+        """
+        from ray.data._internal.datasource_v2.readers.iceberg_file_reader import (
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.readers.supports_metadata import (
+            MetadataType,
+        )
+
+        table = self._load_table()
+        kwargs = {
+            "table_metadata": table.metadata,
+            "io": table.io,
+            "projected_schema": table.scan().projection(),
+        }
+        limited = IcebergFileReader(**kwargs, row_filter=pyi_expr.AlwaysTrue(), limit=5)
+        assert limited.available_metadata() == set()
+
+        filtered = IcebergFileReader(
+            **kwargs, row_filter=pyi_expr.LessThan("col_a", 50)
+        )
+        assert filtered.available_metadata() == {MetadataType.NUM_ROWS}
 
 
 if __name__ == "__main__":
