@@ -63,7 +63,7 @@ _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
         "automatic": [
             {
                 "exit_status": os.environ.get("BUILDKITE_RETRY_CODE", 79),
-                "limit": os.environ.get("BUILDKITE_MAX_RETRIES", 1),
+                "limit": int(os.environ.get("BUILDKITE_MAX_RETRIES") or 1),
             }
         ]
     },
@@ -163,7 +163,8 @@ def get_step(
 
     # Set after the env update above so a per-test environment cannot clobber it.
     num_retries = test.get("run", {}).get("num_retries")
-    if num_retries:
+    # An explicit 0 disables retries, so it has to be distinguished from unset.
+    if num_retries is not None:
         step["retry"]["automatic"][0]["limit"] = num_retries
         # Keep the in-job view of the retry budget aligned with Buildkite's, so
         # that _is_transient_error knows which attempt is the last one.

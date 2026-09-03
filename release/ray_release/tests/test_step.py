@@ -5,7 +5,11 @@ from unittest.mock import patch
 import pytest
 
 from ray_release.bazel import bazel_runfile
-from ray_release.buildkite.step import get_step, get_step_for_test_group
+from ray_release.buildkite.step import (
+    _DEFAULT_STEP_TEMPLATE,
+    get_step,
+    get_step_for_test_group,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
 
@@ -53,10 +57,26 @@ def test_get_step_without_num_retries(mock):
     test = _stub_test({"run": {"script": "python test.py", "timeout": 100}})
     with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
         step = get_step(test, run_id=2)
-    # Buildkite falls back to its own default, and the job to the one in
-    # run_release_test.sh; neither is overridden here.
-    assert step["retry"]["automatic"][0]["limit"] == 1
+    # Neither the buildkite limit nor the in-job budget is overridden; the job
+    # falls back to the default in run_release_test.sh.
+    assert (
+        step["retry"]["automatic"][0]["limit"]
+        == _DEFAULT_STEP_TEMPLATE["retry"]["automatic"][0]["limit"]
+    )
     assert "BUILDKITE_MAX_RETRIES" not in step["env"]
+
+
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+def test_get_step_with_zero_num_retries(mock):
+    test = _stub_test(
+        {"run": {"script": "python test.py", "timeout": 100, "num_retries": 0}}
+    )
+    with patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"}):
+        step = get_step(test, run_id=2)
+    # An explicit 0 disables retries on both sides, rather than being read as
+    # "not configured" and falling back to the default.
+    assert step["retry"]["automatic"][0]["limit"] == 0
+    assert step["env"]["BUILDKITE_MAX_RETRIES"] == "0"
 
 
 @patch("ray_release.test.Test.update_from_s3", return_value=None)
