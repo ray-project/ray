@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
-    from ray.data.checkpoint import CheckpointConfig
-
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -62,6 +60,7 @@ from ray.data._internal.logical.operators import (
     Zip,
 )
 from ray.data._internal.planner.checkpoint import (
+    plan_list_files_op_with_checkpoint_filter,
     plan_read_files_op_with_checkpoint_filter,
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,
@@ -287,23 +286,20 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
-            if (
-                getattr(checkpoint_config, "has_generated_id_column", False)
-                and data_file_dir is not None
-            ):
-                # The id_column path cleans up pending checkpoints (and their
-                # partially written data files) inside checkpoint load, which
-                # the generated-ID path doesn't plan. Clean here instead so a
-                # retry after a mid-write crash doesn't leave stale output.
-                self._clean_pending_checkpoints(
-                    checkpoint_config, logical_plan.context, data_file_dir, data_file_fs
-                )
-
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                checkpoint_config, data_file_dir, data_file_fs
-            )
+            # NOTE: Pending-checkpoint cleanup runs inside checkpoint load on
+            # both paths: the id_column filter op and the generated-ID compact
+            # load each clean before reading committed IDs.
+            if checkpoint_config.has_generated_id_column:
+                self._validate_generated_id_plan(logical_plan)
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_generated_id(
+                    checkpoint_callback.load_checkpoint
+                )
+            else:
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                    data_file_dir, data_file_fs
+                )
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)
@@ -409,37 +405,11 @@ class Planner:
                 return datasink.unresolved_path, datasink.filesystem
         return None, None
 
-    @staticmethod
-    def _clean_pending_checkpoints(
-        checkpoint_config: "CheckpointConfig",
-        data_context: DataContext,
-        data_file_dir: str,
-        data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
-    ) -> None:
-        """Delete pending checkpoints and their partially written data files."""
-        # Lazy import: ``checkpoint_filter`` participates in an import cycle
-        # with ``ray.data.context``.
-        from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
-
-        manager_cls = (
-            checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
-        )
-        manager = manager_cls(checkpoint_config, data_context)
-        manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
-
     def _get_plan_fns_for_checkpointing(
         self,
-        checkpoint_config: "CheckpointConfig",
         data_file_dir: Optional[str] = None,
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
-        if getattr(checkpoint_config, "has_generated_id_column", False):
-            # Generated struct IDs can't go through the numpy-based
-            # checkpoint filter, so only the write side is planned: a rerun
-            # re-reads every row (at-least-once) instead of restoring.
-            # Restore routing for generated IDs is planned via ListFiles once
-            # the row-group skip machinery exists.
-            return {Write: plan_write_op_with_checkpoint_writer}
         plan_fns = {
             Read: partial(
                 plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
@@ -452,6 +422,65 @@ class Planner:
             Write: plan_write_op_with_checkpoint_writer,
         }
         return plan_fns
+
+    def _get_plan_fns_for_generated_id(
+        self,
+        load_checkpoint: Callable,
+    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        """Plan-fn overrides for the generated-ID checkpointing path.
+
+        Unlike the id_column path, no actor-pool filter is wrapped around
+        ``Read`` / ``ReadFiles``: skipping happens at the source. ``ListFiles``
+        tasks receive the compact checkpoint block (loaded by the callback at
+        execution start) to drop fully-checkpointed files, and the Parquet
+        reader skips committed row groups and rows inline. The write 2PC is
+        shared with the id_column path — the generated column name is aliased
+        onto ``CheckpointConfig.id_column``.
+        """
+        return {
+            ListFiles: partial(
+                plan_list_files_op_with_checkpoint_filter,
+                load_checkpoint=load_checkpoint,
+            ),
+            Write: plan_write_op_with_checkpoint_writer,
+        }
+
+    def _validate_generated_id_plan(self, logical_plan: LogicalPlan) -> None:
+        """Require every source of a generated-ID plan to be a V2 Parquet read.
+
+        Generated row IDs are derived from Parquet row-group structure, so
+        only ``ReadFiles`` backed by a ``ParquetScanner`` can produce them.
+        Called only for plans that already passed
+        ``_check_supports_checkpointing``, so ``schema()`` / ``count()``
+        plans never trip this.
+        """
+        from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
+            ParquetScanner,
+        )
+        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+        def _validate(op: LogicalOperator) -> None:
+            if isinstance(op, ReadFiles):
+                if not isinstance(op.scanner, ParquetScanner):
+                    raise InvalidCheckpointingConfig(
+                        "`generated_id_column` checkpointing only supports "
+                        "Parquet data sources, but this plan reads "
+                        f"{op.datasource_name!r} data. Use `id_column` with "
+                        "an existing ID column instead."
+                    )
+                return
+            if isinstance(op, Read):
+                raise InvalidCheckpointingConfig(
+                    "`generated_id_column` checkpointing only supports Parquet "
+                    "reads on the V2 datasource path (`ray.data.read_parquet` "
+                    "with `DataContext.use_datasource_v2` enabled), but this "
+                    f"plan reads from {op.datasource.get_name()!r}. "
+                    "Use `id_column` with an existing ID column instead."
+                )
+            for input_dep in op.input_dependencies:
+                _validate(input_dep)
+
+        _validate(logical_plan.dag)
 
     def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
         """Check if the logical plan supports checkpointing.
