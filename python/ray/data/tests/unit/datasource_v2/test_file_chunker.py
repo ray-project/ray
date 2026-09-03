@@ -7,8 +7,7 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ChunkMetadata,
     LineDelimitedFileChunker,
     LineDelimitedFileChunkMetadata,
-    ParquetFileChunker,
-    ParquetFileChunkMetadata,
+    ParquetRowGroupChunkMetadata,
     WholeFileChunker,
     create_chunk_metadata,
 )
@@ -17,22 +16,39 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
 class TestCreateChunkMetadata:
     def test_validates_missing_keys(self):
         with pytest.raises(ValueError, match="Missing required keys"):
-            create_chunk_metadata(ParquetFileChunkMetadata, chunk_idx=0)
+            create_chunk_metadata(ParquetRowGroupChunkMetadata, row_group_ids=(0,))
 
     def test_validates_unexpected_keys(self):
         with pytest.raises(ValueError, match="Unexpected keys"):
             create_chunk_metadata(
-                ParquetFileChunkMetadata,
-                chunk_idx=0,
-                total_num_chunks=1,
+                ParquetRowGroupChunkMetadata,
+                row_group_ids=(0,),
+                num_rows=1,
+                uncompressed_size=10,
+                fully_matched=True,
+                rg_sizes=(),
+                rg_rows=(),
                 extra_field="boom",
             )
 
     def test_returns_dict_with_keys(self):
         md = create_chunk_metadata(
-            ParquetFileChunkMetadata, chunk_idx=2, total_num_chunks=5
+            ParquetRowGroupChunkMetadata,
+            row_group_ids=(0, 1),
+            num_rows=5,
+            uncompressed_size=10,
+            fully_matched=True,
+            rg_sizes=(),
+            rg_rows=(),
         )
-        assert md == {"chunk_idx": 2, "total_num_chunks": 5}
+        assert md == {
+            "row_group_ids": (0, 1),
+            "num_rows": 5,
+            "uncompressed_size": 10,
+            "fully_matched": True,
+            "rg_sizes": (),
+            "rg_rows": (),
+        }
 
 
 class TestWholeFileChunker:
@@ -63,74 +79,30 @@ class TestLineDelimitedFileChunker:
         assert chunks == [(None, 1024)]
 
 
-class TestParquetFileChunker:
-    def test_small_file_yields_whole(self):
-        chunker = ParquetFileChunker(target_chunk_size=256 * 1024 * 1024)
-        chunks = list(
-            chunker.generate_chunk_metadatas("data.parquet", 100 * 1024 * 1024)
-        )
-        assert chunks == [(None, 100 * 1024 * 1024)]
-
-    def test_at_target_yields_whole(self):
-        chunker = ParquetFileChunker(target_chunk_size=256 * 1024 * 1024)
-        chunks = list(
-            chunker.generate_chunk_metadatas("data.parquet", 256 * 1024 * 1024)
-        )
-        assert chunks == [(None, 256 * 1024 * 1024)]
-
-    @pytest.mark.parametrize(
-        "file_size,expected_num_chunks",
-        [
-            (257 * 1024 * 1024, 2),
-            (300 * 1024 * 1024, 2),
-            (512 * 1024 * 1024, 2),
-            (600 * 1024 * 1024, 3),
-            (1024 * 1024 * 1024, 4),
-        ],
-    )
-    def test_large_files_produce_chunks(self, file_size, expected_num_chunks):
-        target_chunk_size = 256 * 1024 * 1024
-        chunker = ParquetFileChunker(target_chunk_size=target_chunk_size)
-        chunks = list(chunker.generate_chunk_metadatas("data.parquet", file_size))
-        assert len(chunks) == expected_num_chunks
-        total_size = 0
-        for i, (md, chunk_size) in enumerate(chunks):
-            assert isinstance(md, dict)
-            assert md["chunk_idx"] == i
-            assert md["total_num_chunks"] == expected_num_chunks
-            if i < expected_num_chunks - 1:
-                assert chunk_size == target_chunk_size
-            else:
-                assert chunk_size == file_size - target_chunk_size * i
-            total_size += chunk_size
-        assert total_size == file_size
-
-    def test_default_target_chunk_size_from_context(self, restore_data_context):
-        from ray.data.context import DataContext
-
-        DataContext.get_current().parquet_chunker_target_chunk_size = 1024
-        chunker = ParquetFileChunker()
-        assert chunker._target_chunk_size == 1024
-
-    def test_ctor_arg_takes_precedence_over_context(self, restore_data_context):
-        from ray.data.context import DataContext
-
-        DataContext.get_current().parquet_chunker_target_chunk_size = 1024
-        chunker = ParquetFileChunker(target_chunk_size=2048)
-        assert chunker._target_chunk_size == 2048
-
-
 def test_chunk_metadata_subclasses_are_typeddicts():
     # Ensures the subclasses don't accidentally inherit unrelated keys.
     pmd: ChunkMetadata = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=0, total_num_chunks=1
+        ParquetRowGroupChunkMetadata,
+        row_group_ids=(0,),
+        num_rows=1,
+        uncompressed_size=10,
+        fully_matched=True,
+        rg_sizes=(),
+        rg_rows=(),
     )
     lmd: ChunkMetadata = create_chunk_metadata(
         LineDelimitedFileChunkMetadata,
         chunk_byte_start_idx=0,
         chunk_byte_end_idx=10,
     )
-    assert set(pmd.keys()) == {"chunk_idx", "total_num_chunks"}
+    assert set(pmd.keys()) == {
+        "row_group_ids",
+        "num_rows",
+        "uncompressed_size",
+        "fully_matched",
+        "rg_sizes",
+        "rg_rows",
+    }
     assert set(lmd.keys()) == {"chunk_byte_start_idx", "chunk_byte_end_idx"}
 
 
