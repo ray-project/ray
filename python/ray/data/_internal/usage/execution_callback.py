@@ -164,6 +164,7 @@ class UsageCallback(ExecutionCallback):
         # sink (WriteParquet / WriteCustom) rather than the internal
         # materialize() the write runs through.
         from ray.data._internal.logical.operators.write_operator import Write
+
         root = self._logical_plan.dag
         if isinstance(root, Write):
             consumption_api = self.anonymize_op_name(root)

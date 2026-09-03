@@ -106,9 +106,9 @@ def test_write_consumption_api_from_plan(reset_collector, mock_record, executor)
     """A write execution runs through materialize() internally, so the executor
     carries ``materialize``; build_usage_info overrides it with the anonymized
     sink read from the Write op at the plan root (WriteParquet, WriteCustom)."""
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.logical.operators.write_operator import Write
-    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 
     read_ds = ray.data.range(1)
     write_op = Write(

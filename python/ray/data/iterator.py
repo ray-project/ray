@@ -355,7 +355,9 @@ class DataIterator(abc.ABC):
             An iterable over rows of the dataset.
         """
         batch_iterable = self._iter_batches(
-            batch_size=None, batch_format=None, prefetch_batches=1,
+            batch_size=None,
+            batch_format=None,
+            prefetch_batches=1,
             consumption_api="iter_rows",
         )
 

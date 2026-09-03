@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray import cloudpickle
 from ray._common.test_utils import wait_for_condition
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -22,7 +23,6 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
