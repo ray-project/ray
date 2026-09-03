@@ -55,9 +55,11 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _read_ipc,
 )
 
-# PartitionFn/ReduceFn contracts are shared with the object-store variant.
-# External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
+# PartitionFn/ReduceFn/BlockTransformer contracts are shared with the object-store
+# variant. External shuffle is single-input (for now), so ReduceFn's outer list
+# always has length 1.
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
+    BlockTransformer,
     PartitionFn,
     ReduceFn,
 )
@@ -65,11 +67,13 @@ from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
     OutputBlockSizeOption,
 )
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
+    BlockType,
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
@@ -89,6 +93,7 @@ def _external_shuffle_map_task(
     map_id: int,
     shuffle_id: str,
     compression: Optional[str] = None,
+    block_transformer: Optional[BlockTransformer] = None,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file under
     ``out_dir``, and return a ``ShuffleHandle`` (on-disk path +
@@ -109,10 +114,25 @@ def _external_shuffle_map_task(
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
+        block_transformer: Optional transform applied to the concatenation of
+            all input blocks before partitioning (e.g. map-side partial
+            aggregation). May change the block schema.
 
     Returns:
         ShuffleHandle describing the on-disk shards for reducers to fetch.
     """
+    if block_transformer is not None:
+        arrow_inputs = [
+            TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
+            for block in blocks
+            if BlockAccessor.for_block(block).num_rows() > 0
+        ] or [
+            TableBlockAccessor.try_convert_block_type(
+                blocks[0], block_type=BlockType.ARROW
+            )
+        ]
+        combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
+        blocks = (block_transformer(combined_input),)
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
@@ -137,20 +157,20 @@ def _external_shuffle_map_task(
     try:
         with open(tmp_path, "wb") as out_file:
             writer = _PartitionWriter(out_file, map_id, compression)
-            for blk in blocks:
+            for block in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
                 # (partition_fn, IPC serialize) is Arrow-only. No-op when
                 # already Arrow.
-                if not isinstance(blk, pa.Table):
-                    blk = BlockAccessor.for_block(blk).to_arrow()
+                if not isinstance(block, pa.Table):
+                    block = BlockAccessor.for_block(block).to_arrow()
                 if output_schema is None:
                     # First-seen schema; reducer uses it to type empty
                     # partitions (ShuffleHandle["schema"]).
-                    output_schema = getattr(blk, "schema", None)
-                if blk.num_rows == 0:
+                    output_schema = getattr(block, "schema", None)
+                if block.num_rows == 0:
                     continue
-                for partition_id, shard in partition_fn(blk).items():
+                for partition_id, shard in partition_fn(block).items():
                     writer.add_shard(partition_id, shard)
             writer.flush_all()
 
@@ -218,6 +238,7 @@ def _external_shuffle_reduce_task(
     map_transformer: Optional[Any],
     map_task_context: Optional["TaskContext"],
     data_context: Optional["DataContext"],
+    emit_empty_partition: bool = True,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch this partition's shards from every mapper over Arrow
     Flight, run ``reduce_fn`` on the accumulated tables, and yield ``(block,
@@ -241,6 +262,11 @@ def _external_shuffle_reduce_task(
             output stream (or None).
         map_task_context: TaskContext for the fused map, or None.
         data_context: DataContext to install for the fused map, or None.
+        emit_empty_partition: If True (default), a partition with no shards
+            yields one schema-typed empty block. Aggregations pass False: the
+            mapper-propagated schema is the pre-finalize partial-aggregate
+            schema, so a placeholder built from it would conflict with
+            finalized non-empty partitions.
     """
     start_time_s = time.perf_counter()
 
@@ -293,9 +319,13 @@ def _external_shuffle_reduce_task(
     # N-block contract holds when the operator fast path was skipped
     # (fused map, or wrapper schema missing). Do not call reduce_fn on
     # ``[[]]``: concat/sort reduces yield nothing for empty input.
+    # With ``emit_empty_partition=False`` no placeholder is emitted, but a
+    # fused map (if any) still runs over the empty stream (e.g. Write).
     if not sources:
 
         def _empty_blocks():
+            if not emit_empty_partition:
+                return
             assert output_schema is not None
             yield output_schema.empty_table()
 

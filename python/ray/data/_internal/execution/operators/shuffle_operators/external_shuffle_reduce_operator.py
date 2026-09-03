@@ -89,6 +89,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ExternalHashShuffleReduce",
+        should_emit_empty_partitions: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -102,6 +103,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
+        self._emit_empty_partitions: bool = should_emit_empty_partitions
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------
@@ -172,7 +174,10 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             and isinstance(schema, pa.Schema)
             and estimated_rows == 0
         ):
-            self._emit_empty_partition(refs, schema)
+            if self._emit_empty_partitions:
+                self._emit_empty_partition(refs, schema)
+            else:
+                refs.destroy_if_owned()
             return
 
         # Wrapper carries a single ObjectRef pointing at the map op's
@@ -222,6 +227,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._fused_output_map_transformer,
             map_task_context,
             self.data_context,
+            self._emit_empty_partitions,
         )
 
         data_task = DataOpTask(

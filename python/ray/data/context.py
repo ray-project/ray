@@ -771,10 +771,10 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_external_hash_shuffle: Whether keyed ``repartition()`` under the
-            ``SHUFFLE_V2`` strategy uses the external (on-disk, file-transport)
-            shuffle instead of the object store. Other operations (aggregate,
-            join) currently ignore this flag. Defaults to the
+        use_external_hash_shuffle: Whether keyed ``repartition()`` and
+            aggregations under the ``SHUFFLE_V2`` strategy use the external
+            (on-disk, file-transport) shuffle instead of the object store.
+            Join currently ignores this flag. Defaults to the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable
             (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
