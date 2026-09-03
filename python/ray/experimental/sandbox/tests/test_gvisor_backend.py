@@ -1,5 +1,6 @@
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -324,8 +325,23 @@ def test_resolve_exec_user(tmp_path, monkeypatch):
     assert backend._resolve_exec_user("1000", "img") == "1000"
     assert backend._resolve_exec_user("1000:1000", "img") == "1000:1000"
     assert backend._resolve_exec_user("postfix", "img") == "102:104"
+    # "name:gid" resolves the name and honors the explicit gid.
+    assert backend._resolve_exec_user("postfix:999", "img") == "102:999"
     with pytest.raises(SandboxExecError):
         backend._resolve_exec_user("nosuch", "img")
+
+
+def test_kill_pasta_missing_pidfile_is_noop(tmp_path):
+    """No pasta.pid (the non-public path) means nothing to reap."""
+    GVisorSandboxBackend()._kill_pasta(str(tmp_path))
+
+
+def test_kill_pasta_signals_recorded_pid(tmp_path):
+    """A recorded pasta pid is SIGKILLed on teardown."""
+    proc = subprocess.Popen(["sleep", "30"])
+    (tmp_path / "pasta.pid").write_text(f"{proc.pid}\n")
+    GVisorSandboxBackend()._kill_pasta(str(tmp_path))
+    assert proc.wait(timeout=5) != 0
 
 
 _PUBLIC_HOST_NETNS_ENV = "RAY_SANDBOX_PUBLIC_HOST_NETNS"
@@ -390,6 +406,12 @@ def test_build_run_command_public_wraps_with_pasta(no_host_netns):
         "/tmp/rd/netns.pid",
         "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
         "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user",
+        # pasta's daemon pid is recorded so teardown can reap it.
+        "--pid /tmp/rd/pasta.pid",
+        # The wait loop fast-fails if the holder dies and refuses an empty
+        # NSPID (which would resolve to /proc//ns/net).
+        "kill -0 $HOLDER",
+        '[ -n "$NSPID" ]',
         "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
         "--network host",
         "--overlay2=root:dir=/tmp/rd/overlay",

@@ -187,11 +187,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
-                if time.time() - start_time > timeout:
-                    raise SandboxTimeoutError(
-                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                    )
-
                 state_args = self._runsc_base_args(config) + ["state", sandbox_id]
                 res = subprocess.run(state_args, capture_output=True, text=True)
                 if res.returncode == 0:
@@ -209,6 +204,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             raise
                         pass
 
+                # Check the deadline only after polling state, so a sandbox
+                # that reached 'running' just as the deadline passed is
+                # observed and kept rather than torn down unpolled.
+                if time.time() - start_time > timeout:
+                    raise SandboxTimeoutError(
+                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                    )
+
                 time.sleep(0.1)
         except Exception:
             # Delete runsc's container state, then kill the whole group:
@@ -216,6 +219,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # holder and the pasta daemon.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
+            self._kill_pasta(root_dir)
             stderr_file.close()
             shutil.rmtree(root_dir, ignore_errors=True)
             raise
@@ -257,6 +261,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if proc:
                 self._terminate_tree(proc)
 
+            # pasta daemonizes out of that group, so reap it by its
+            # recorded pid (no-op when no pasta ran).
+            self._kill_pasta(root_dir)
+
             if stderr_file:
                 try:
                     stderr_file.close()
@@ -282,7 +290,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             SandboxExecError: When a named user is not in the image's
                 /etc/passwd.
         """
-        head = user.split(":", 1)[0]
+        head, sep, specified_gid = user.partition(":")
         if head.isdigit():
             return user
         rootfs = os.path.join(self._image_manager.get_image_dir(image), "rootfs")
@@ -294,8 +302,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             passwd = ""
         for line in passwd.splitlines():
             parts = line.split(":")
-            if len(parts) >= 4 and parts[0] == user:
-                return f"{parts[2]}:{parts[3]}"
+            # Match on the name alone; when the caller wrote "name:gid",
+            # honor the explicit gid instead of the passwd login group.
+            if len(parts) >= 4 and parts[0] == head:
+                gid = specified_gid if sep and specified_gid else parts[3]
+                return f"{parts[2]}:{gid}"
         raise SandboxExecError(
             f"user {user!r} not found in the image's /etc/passwd; "
             "pass a numeric uid or uid:gid instead"
@@ -459,9 +470,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
-        """Best-effort ``runsc delete -force`` for teardown paths."""
+        """Best-effort ``runsc delete -force`` for teardown paths.
+
+        Bounded by a timeout: a wedged gVisor (the usual reason a create
+        timed out) must not block the process-group kill and pasta reap
+        that follow, which is what actually frees the sandbox.
+        """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
-        subprocess.run(del_args, capture_output=True)
+        try:
+            subprocess.run(del_args, capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
 
     def _build_run_command(
         self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
@@ -488,6 +507,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         args.extend(["run", "--bundle", root_dir, sandbox_id])
         if use_pasta:
             pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+            pasta_pidfile = shlex.quote(os.path.join(root_dir, "pasta.pid"))
             runsc = " ".join(shlex.quote(a) for a in args)
             pasta = " ".join(["pasta", *_PASTA_FLAGS])
             script = (
@@ -495,16 +515,42 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # --kill-child ties it to this script's process group.
                 "unshare --user --map-root-user --net --fork --kill-child "
                 f"bash -c 'echo $$ > {pidfile}; exec sleep infinity' & "
-                f"for i in $(seq 1 100); do [ -s {pidfile} ] && break; sleep 0.1; done; "
-                f"NSPID=$(cat {pidfile}); "
+                "HOLDER=$!; "
+                # Stop waiting the moment the holder dies (permission/seccomp
+                # failure) instead of spinning the full 10s, then require a
+                # non-empty NSPID so a lost holder can't yield /proc//ns/net.
+                f"for i in $(seq 1 100); do [ -s {pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                f"NSPID=$(cat {pidfile} 2>/dev/null); "
+                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # pasta runs from the pod side (its uplink is the pod's real
                 # interface), attaches to the holder's namespaces, and
-                # daemonizes; it exits when the namespaces empty.
-                f"{pasta} --netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user && "
+                # daemonizes; --pid records the daemon so teardown can reap
+                # it (it escapes _terminate_tree's process group via setsid).
+                f"{pasta} --netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user "
+                f"--pid {pasta_pidfile} && "
                 f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
             )
             return ["bash", "-c", script]
         return args
+
+    def _kill_pasta(self, root_dir: str) -> None:
+        """SIGKILL the pasta daemon recorded for this sandbox, if any.
+
+        pasta daemonizes with ``setsid()``, so it leaves the process group
+        that :meth:`_terminate_tree` reaps and would otherwise leak on passt
+        builds that don't self-exit when the namespaces empty. Its pid is in
+        ``{root_dir}/pasta.pid`` (written via ``pasta --pid`` in
+        :meth:`_build_run_command`); a missing file means no pasta ran.
+        """
+        try:
+            pid = int(Path(os.path.join(root_dir, "pasta.pid")).read_text().strip())
+        except (OSError, ValueError):
+            return
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
         """SIGKILL the sandbox process group and reap the Popen.
