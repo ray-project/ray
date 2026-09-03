@@ -206,6 +206,7 @@ class DataIterator(abc.ABC):
             An iterable over record batches.
         """
         return self._iter_batches(
+            consumption_api="iter_batches",
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -237,6 +238,7 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
+        consumption_api: str = "unknown",
     ) -> Iterable[DataBatch]:
         batch_format = _apply_batch_format(batch_format)
 
@@ -252,6 +254,9 @@ class DataIterator(abc.ABC):
                 stats,
                 executor,
             ) = self._to_ref_bundle_iterator()
+            # Tag the execution with the consuming API for usage telemetry.
+            if executor is not None:
+                executor._consumption_api = consumption_api
 
             dataset_tags = self._get_dataset_tag()
 
@@ -350,7 +355,8 @@ class DataIterator(abc.ABC):
             An iterable over rows of the dataset.
         """
         batch_iterable = self._iter_batches(
-            batch_size=None, batch_format=None, prefetch_batches=1
+            batch_size=None, batch_format=None, prefetch_batches=1,
+            consumption_api="iter_rows",
         )
 
         def _wrapped_iterator():
@@ -588,6 +594,7 @@ class DataIterator(abc.ABC):
             collate_fn = _PinMemoryCollateFnWrapper(collate_fn)
 
         return self._iter_batches(
+            consumption_api="iter_torch_batches",
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,

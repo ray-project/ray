@@ -6806,6 +6806,7 @@ class Dataset:
         """
         batch_format = _apply_batch_format(batch_format)
         return self.iterator()._iter_batches(
+            consumption_api="iter_batches",
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -7748,7 +7749,7 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
 
-        bundle: RefBundle = copy._execute()
+        bundle: RefBundle = copy._execute(consumption_api="materialize")
         blocks_with_metadata = bundle.blocks
 
         # TODO(hchen): Here we generate the same number of blocks as
@@ -8383,7 +8384,9 @@ class Dataset:
         return _CacheMetadataIterator(bundle_iter, executor._topology, self)
 
     @omit_traceback_stdout
-    def _execute(self, preserve_order: bool = False) -> RefBundle:
+    def _execute(
+        self, preserve_order: bool = False, consumption_api: str = "unknown"
+    ) -> RefBundle:
         """Execute this dataset eagerly, returning a RefBundle.
 
         Returns the cached RefBundle if execution has already happened against
@@ -8420,6 +8423,7 @@ class Dataset:
                 )
             else:
                 with self._create_executor() as executor:
+                    executor._consumption_api = consumption_api
                     bundles = self._execute_dag(executor, preserve_order=preserve_order)
                     bundle = RefBundle.merge_ref_bundles(list(bundles))
                     executor.get_stats().set_uuid_recursive(self._uuid)

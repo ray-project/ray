@@ -22,6 +22,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
@@ -855,6 +856,31 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
     assert extract_values("id", ds.take_all()) == list(range(10000))
+
+
+def test_streaming_split_consumption_api(ray_start_10_cpus_shared, tmp_path):
+    """Ray Train-style ingest via ``streaming_split`` tags its executor as
+    ``streaming_split``. The executor runs in the remote SplitCoordinator actor,
+    so the callback (defined here so it cloudpickles by value) writes the tag to
+    a shared temp file for the driver to read. ``streaming_split(1)`` keeps it
+    single-consumer, avoiding the multi-shard barrier and its threads."""
+    tag_file = tmp_path / "consumption_api"
+
+    class CaptureConsumptionAPI(ExecutionCallback):
+        def after_execution_succeeds(self, executor):
+            tag_file.write_text(executor._consumption_api)
+
+    ctx = DataContext.get_current()
+    original = list(ctx.custom_execution_callback_classes)
+    ctx.custom_execution_callback_classes.append(CaptureConsumptionAPI)
+    try:
+        (it,) = ray.data.range(1).streaming_split(1)
+        for _ in it.iter_batches():
+            pass
+        wait_for_condition(lambda: tag_file.exists())
+        assert tag_file.read_text() == "streaming_split"
+    finally:
+        ctx.custom_execution_callback_classes[:] = original
 
 
 if __name__ == "__main__":

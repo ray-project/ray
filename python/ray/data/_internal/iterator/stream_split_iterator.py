@@ -313,8 +313,11 @@ class SplitCoordinator:
                         self._current_executor.shutdown(force=True)
 
                     ds = self._base_dataset
-                    # Re-execute dataset
+                    # Re-execute dataset. The coordinator creates the
+                    # executor directly (not via a consumption method),
+                    # so tag it here for usage collection.
                     self._current_executor = ds._create_executor()
+                    self._current_executor._consumption_api = "streaming_split"
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )

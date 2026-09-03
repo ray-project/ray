@@ -159,6 +159,14 @@ class UsageCallback(ExecutionCallback):
         # _started_at, and before_execution_starts/_finish set _executor.
         assert self._started_at is not None
         assert self._executor is not None
+        consumption_api = self._executor._consumption_api
+        # A write lands a Write op at the plan root; surface the anonymized
+        # sink (WriteParquet / WriteCustom) rather than the internal
+        # materialize() the write runs through.
+        from ray.data._internal.logical.operators.write_operator import Write
+        root = self._logical_plan.dag
+        if isinstance(root, Write):
+            consumption_api = util.anonymize_op_name(root)
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
@@ -168,6 +176,7 @@ class UsageCallback(ExecutionCallback):
             detected_issues=collector.collect_issues(
                 self._collect_detected_issues(self._executor)
             ),
+            consumption_api=consumption_api,
         )
 
     def _collect_detected_issues(
