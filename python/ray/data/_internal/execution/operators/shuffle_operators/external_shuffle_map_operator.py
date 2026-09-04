@@ -1,12 +1,3 @@
-"""ExternalHashShuffleMapOp — map phase of the external-shuffle variant.
-
-Drives one ``_external_shuffle_map_task`` per input group and, once all mappers finish,
-emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
-each carrying the SAME shared Ray object (the list of handle refs)
-and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
-body live in ``external_shuffle_runtime.py`` / ``external_shuffle_tasks.py``.
-"""
-
 import functools
 import logging
 import os
@@ -36,6 +27,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
+    BlockTransformer,
     PartitionFn,
     _external_shuffle_map_task,
 )
@@ -80,6 +72,7 @@ class ExternalHashShuffleMapOp(
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
+        block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
@@ -92,6 +85,7 @@ class ExternalHashShuffleMapOp(
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
@@ -253,6 +247,7 @@ class ExternalHashShuffleMapOp(
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             compression=compression,
+            block_transformer=self._block_transformer,
         )
 
         task = MetadataOpTask(

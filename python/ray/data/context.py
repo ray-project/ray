@@ -771,12 +771,11 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_external_hash_shuffle: Whether keyed ``repartition()`` under the
-            ``SHUFFLE_V2`` strategy uses the external (on-disk, file-transport)
-            shuffle instead of the object store. Other operations (aggregate,
-            join) currently ignore this flag. Defaults to the
-            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable
-            (``False`` when unset).
+        use_external_hash_shuffle: Whether keyed ``repartition()``,
+            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
+            external (on-disk, file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
+            environment variable (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -914,8 +913,9 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # Whether to use the on-disk (file-transport) path for hash-shuffle
-    # repartition. When False, use the object-store path.
+    # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
+    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # When False, use the object-store path.
     use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
 
     ################################################################
