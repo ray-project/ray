@@ -1,10 +1,8 @@
 """Wire-level tests for the gRPC facade.
 
-The facade is driven directly over gRPC with the vendored client stubs — no
-third-party client SDK is imported — against the same fake resolver and runtime
-seams the REST app tests use. Skipped when the optional ``grpclib`` package (the
-async gRPC framework the facade is built on) is not installed, which is the case
-in Ray's default CI image.
+The facade is driven over gRPC with the vendored client stubs against the
+same fake resolver and runtime seams the REST app tests use. Skipped when
+the optional ``grpclib`` package is not installed.
 """
 
 from __future__ import annotations
@@ -23,16 +21,14 @@ from ray.experimental.sandbox.http.tests.conftest import (
     FakeSandboxRuntime,
 )
 
-# grpclib is optional and absent from Ray's default CI image. Import it
-# (and everything built on it) behind a guard so the module still imports
-# and its tests are collected -- then skipped -- rather than erroring out
-# collection (a module-level importorskip collects nothing, which pytest
-# reports as exit code 5 / no tests, failing the bazel target).
+# Guarded import so the module collects (and skips) without grpclib; a
+# module-level importorskip would collect nothing and fail the bazel target.
 try:
     from grpclib.client import Channel
     from grpclib.exceptions import GRPCError
     from grpclib.server import Server
 
+    from ray.experimental.sandbox.http import grpc_facade
     from ray.experimental.sandbox.http._proto import (
         sandbox_control_pb2 as api_pb2,
         sandbox_exec_pb2 as sr_pb2,
@@ -89,11 +85,13 @@ def _channel(port: int) -> Tuple[Channel, ModalClientStub, TaskCommandRouterStub
     return channel, ModalClientStub(channel), TaskCommandRouterStub(channel)
 
 
-async def _make_sandbox(control: ModalClientStub, name: str = "test-session") -> str:
+async def _make_sandbox(
+    control: ModalClientStub,
+    name: str = "test-session",
+    app_name: str = "facade-test",
+) -> str:
     """Drive the create handshake the client SDK performs, over the wire."""
-    app = await control.AppGetOrCreate(
-        api_pb2.AppGetOrCreateRequest(app_name="facade-test")
-    )
+    app = await control.AppGetOrCreate(api_pb2.AppGetOrCreateRequest(app_name=app_name))
     image = await control.ImageGetOrCreate(
         api_pb2.ImageGetOrCreateRequest(
             image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
@@ -149,12 +147,7 @@ async def _read_stdout(router: TaskCommandRouterStub, exec_id: str) -> bytes:
 
 
 def test_wire_paths_match_contract() -> None:
-    """The vendored stubs route on the external service's exact method paths.
-
-    gRPC dispatches on the fully qualified method path, so these literals are
-    the compatibility contract — an unmodified client reaches the facade only
-    if they match byte-for-byte.
-    """
+    """The vendored stubs route on the external service's exact method paths."""
     mapping = {}
     for servicer in build_servicers(
         handle_resolver=FakeResolver(), advertise_url="http://x"
@@ -248,8 +241,6 @@ def test_full_sandbox_lifecycle(tmp_path) -> None:
                     "write_code": write_code.code,
                     "downloaded": downloaded,
                     "deleted": bool(runtime.deleted),
-                    # The actor must be killed too — a live actor after
-                    # terminate leaks its CPU reservation.
                     "actor_killed": bool(resolver.killed),
                 }
             finally:
@@ -287,6 +278,106 @@ def test_named_create_is_idempotent() -> None:
 
     first_id, second_id = asyncio.run(scenario())
     assert first_id == second_id
+
+
+def test_named_sandboxes_are_scoped_to_app() -> None:
+    """The same sandbox name under two apps yields two sandboxes."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[str, str]:
+        resolver = FakeResolver()
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                first = await _make_sandbox(control, name="shared", app_name="app-a")
+                second = await _make_sandbox(control, name="shared", app_name="app-b")
+                return first, second
+            finally:
+                channel.close()
+
+    first_id, second_id = asyncio.run(scenario())
+    assert first_id != second_id
+
+
+class _DeadHandle:
+    """A handle whose actor has died: every call raises ``ActorDiedError``."""
+
+    def __getattr__(self, name: str) -> Any:
+        class _Method:
+            def remote(self, *args: Any, **kwargs: Any) -> "asyncio.Task":
+                async def _raise() -> None:
+                    from ray.exceptions import ActorDiedError
+
+                    raise ActorDiedError()
+
+                return asyncio.get_running_loop().create_task(_raise())
+
+        return _Method()
+
+
+def test_named_create_replaces_dead_actor() -> None:
+    """A named create whose actor died kills it and boots a fresh sandbox."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[str, str, List[str], bool]:
+        resolver = FakeResolver()
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                first = await _make_sandbox(control, name="same-name")
+                dead = _DeadHandle()
+                resolver.handles[first] = dead
+                second = await _make_sandbox(control, name="same-name")
+                return first, second, resolver.killed, resolver.handles[second] is dead
+            finally:
+                channel.close()
+
+    first_id, second_id, killed, still_dead = asyncio.run(scenario())
+    assert first_id == second_id
+    assert killed == [first_id]
+    assert not still_dead
+
+
+def test_wait_with_zero_timeout_polls() -> None:
+    """``timeout=0`` is the SDK's poll(): return at once with no result."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[int, float]:
+        resolver = FakeResolver()
+        resolver.next_runtime = FakeSandboxRuntime()
+        async with _Facade(resolver, port):
+            channel, control, _ = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                await _wait_running(control, sandbox_id)
+                started = asyncio.get_running_loop().time()
+                resp = await control.SandboxWait(
+                    api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
+                )
+                return resp.result.status, asyncio.get_running_loop().time() - started
+            finally:
+                channel.close()
+
+    status, elapsed = asyncio.run(scenario())
+    assert status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED
+    assert elapsed < 1.0
+
+
+def test_exec_table_evicts_finished_records(monkeypatch) -> None:
+    """Finished execs are evicted past the cap; running ones are kept."""
+    monkeypatch.setattr(grpc_facade, "_MAX_EXEC_RECORDS", 3)
+
+    async def scenario() -> List[str]:
+        state = grpc_facade._FacadeState(FakeResolver(), None, "http://x")
+        running = grpc_facade._ExecRecord(kind="fs", handle=None)
+        state.add_exec("running", running)
+        for i in range(4):
+            record = grpc_facade._ExecRecord(kind="fs", handle=None)
+            record.finish(0)
+            state.add_exec(f"done-{i}", record)
+        return list(state.execs)
+
+    assert asyncio.run(scenario()) == ["running", "done-2", "done-3"]
 
 
 def test_read_missing_file_is_typed() -> None:

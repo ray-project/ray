@@ -425,6 +425,25 @@ docker run --privileged -p 8000:8000 \
     RAY_SANDBOX_API_TOKEN=dev-token serve run --host 0.0.0.0 ray.experimental.sandbox.http.app:build_app'
 ```
 
+### gRPC facade for third-party sandbox clients
+
+`ray.experimental.sandbox.http.grpc_facade` serves the same detached sandbox actors over gRPC. It implements the subset of a third-party sandbox SDK's control-plane and command-router services that the SDK's Sandbox API uses, so you can point an unmodified client at a Ray cluster to create sandboxes, run commands, and use the client's filesystem API.
+
+The facade requires `grpclib`. Run it on a node that can reach the cluster and hand clients the URL it advertises:
+
+```bash
+pip install grpclib
+python -m ray.experimental.sandbox.http.grpc_facade \
+  --host 0.0.0.0 --port 50051 --advertise-url http://<facade-host>:50051
+```
+
+Keep these limits in mind:
+
+* **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.
+* **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
+* **State**: The facade keeps exec state in memory, so run one facade process per cluster.
+* **Network**: The facade doesn't enforce network allowlists. It grants open egress instead.
+
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.

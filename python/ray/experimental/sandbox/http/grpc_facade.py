@@ -1,34 +1,19 @@
-"""Wire-compatible gRPC facade over Ray Sandbox.
+"""gRPC facade over Ray Sandbox for third-party sandbox clients.
 
-Implements the subset of a sandbox client's control plane (``ModalClient``)
-and exec plane (``TaskCommandRouter``) gRPC services that the client SDK uses
-for its Sandbox API, backed by the same detached ``SandboxHost`` actors as the
-REST API in ``app.py``. An unmodified client pointed at this server can create
-sandboxes, exec commands, and use the filesystem API against a Ray cluster.
+Implements the subset of a sandbox client SDK's control-plane
+(``ModalClient``) and command-router (``TaskCommandRouter``) services that
+its Sandbox API uses, backed by the same detached ``SandboxHost`` actors as
+the REST API in ``app.py``. An unmodified client pointed at this server can
+create sandboxes, run commands, and use its filesystem API against a Ray
+cluster. The wire contract is vendored under ``_proto/``.
 
-The wire contract (service names, method names, message field numbers) is
-vendored under ``_proto/`` as a minimal, self-contained protobuf/grpclib stub
-set, so the facade needs no third-party client package to build or test.
+The facade keeps no registry: object ids carry their payload (``im-`` wraps
+an image ref, ``st-`` a secret's env dict) and the sandbox id doubles as the
+client task id. The exec table is the one piece of in-process state, so run
+a single facade process per cluster.
 
-Design notes:
-
-- The facade is stateless where possible: object ids carry their own payload
-  (``im-<b64 docker ref>`` for images, ``st-<b64 env json>`` for secrets, and
-  the sandbox id doubles as the client task id), so no registry survives a
-  restart and any state a request needs travels inside the request.
-- Exec state is the one exception: the router keeps an in-process table
-  mapping client exec ids to SandboxHost exec jobs and to in-flight filesystem
-  operations. Run a single facade process per cluster.
-- The client's ``sandbox.filesystem`` API is implemented client-side on top of
-  ``exec`` of a helper binary (``/__modal/.bin/modal-sandbox-fs-tools``).
-  Sandbox images do not contain that binary; the router recognizes its argv
-  and emulates the WriteFile / ReadFile / ListFiles commands with SandboxHost
-  file operations instead of running anything. ListFiles reports an empty
-  entry list — enough for existence and is-directory probes, which is all the
-  SDK's typed errors need.
-
-Requires ``grpclib`` (the async gRPC server framework the facade is built on);
-run with ``python -m ray.experimental.sandbox.http.grpc_facade``.
+Requires ``grpclib``. Run with
+``python -m ray.experimental.sandbox.http.grpc_facade``.
 """
 
 import argparse
@@ -46,6 +31,9 @@ from typing import Any, Dict, List, Optional
 from ray.experimental.sandbox.http.app import (
     SANDBOX_ID_PREFIX,
     RayActorHandleResolver,
+    _is_actor_gone,
+    _is_actor_unavailable,
+    _is_unschedulable,
 )
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.util.annotations import DeveloperAPI
@@ -73,8 +61,8 @@ from ray.experimental.sandbox.http._proto import (
 
 logger = logging.getLogger(__name__)
 
-# Path of the helper binary the client SDK execs for its filesystem API; execs
-# of this argv are emulated, never run. This is the SDK's own wire constant.
+# Helper binary the client SDK execs for its filesystem API. Sandbox images
+# do not contain it; execs of this argv are emulated, never run.
 _FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
 
 # Exit codes for exec jobs that did not produce one of their own.
@@ -82,24 +70,25 @@ _EXIT_TIMEOUT = 124
 _EXIT_ERROR = 126
 
 _LONG_POLL_SECONDS = 15.0
+_WAIT_MAX_SECONDS = 55.0
+_SCHEDULING_GRACE_SECONDS = 10.0
+_PULL_TIMEOUT_SECONDS = 1800.0
+_START_TIMEOUT_SECONDS = 120.0
+_READ_BOUND_SECONDS = 600.0
+_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
+_WRITE_BOUND_SECONDS = 120.0
+_STDIO_CHUNK_BYTES = 256 * 1024
+_MAX_EXEC_RECORDS = 1000
 
-# Filesystem writes are flushed to the sandbox in bounded slices so one huge
-# upload cannot outrun the per-call scheduling bound.
-_FS_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
-_FS_WRITE_BOUND_SECONDS = 120.0
 
+def _new_sandbox_id(key: Optional[str] = None) -> str:
+    """Mint a sandbox id in the client's V1 shape: ``sb-`` plus 22 base62 chars.
 
-def _new_sandbox_id(token: Optional[str] = None) -> str:
-    """Mint a sandbox id in the client's V1 id shape: ``sb-`` + 22 base62 chars.
-
-    The SDK routes ids of any other shape to its V2 backend, which requires
-    auth-token RPCs this facade does not serve. Hex is a base62 subset.
+    The SDK routes ids of any other shape to its V2 backend, which needs
+    auth-token RPCs the facade does not serve. Hex is a base62 subset.
     """
-    if token is not None:
-        suffix = hashlib.sha256(token.encode("utf-8")).hexdigest()[:22]
-    else:
-        suffix = uuid.uuid4().hex[:22]
-    return f"{SANDBOX_ID_PREFIX}{suffix}"
+    suffix = hashlib.sha256(key.encode()).hexdigest() if key else uuid.uuid4().hex
+    return f"{SANDBOX_ID_PREFIX}{suffix[:22]}"
 
 
 def _encode_id(prefix: str, payload: Any) -> str:
@@ -135,11 +124,11 @@ def _fill_unimplemented(cls: type) -> type:
     return cls
 
 
-def _image_ref_from_proto(image: Any) -> str:
-    """Extract the registry ref from a registry Image proto.
+def _image_ref_from_dockerfile(image: Any) -> str:
+    """Extract the registry ref from an Image proto.
 
-    Anything beyond a single FROM (plus harmless metadata commands) means the
-    client asked for a server-side image build, which Ray Sandbox does not do.
+    Anything beyond a single FROM plus metadata-only commands asks for a
+    server-side image build, which Ray Sandbox does not do.
     """
     ref = None
     for line in image.dockerfile_commands:
@@ -155,10 +144,7 @@ def _image_ref_from_proto(image: Any) -> str:
                     "Ray Sandbox gRPC facade",
                 )
             ref = stripped.split(None, 1)[1].strip()
-        elif keyword in ("ENTRYPOINT", "CMD", "ENV", "WORKDIR", "LABEL"):
-            # Metadata-only commands; sandbox creation overrides them anyway.
-            continue
-        else:
+        elif keyword not in ("ENTRYPOINT", "CMD", "ENV", "WORKDIR", "LABEL"):
             raise GRPCError(
                 Status.INVALID_ARGUMENT,
                 f"image build step {stripped!r} is not supported: the "
@@ -179,10 +165,6 @@ def _env_from_secret_ids(secret_ids: Any) -> Dict[str, str]:
     return env
 
 
-def _sanitize_stderr(message: str) -> bytes:
-    return message.encode("utf-8", errors="replace")
-
-
 def _fs_error(error_kind: str, message: str) -> bytes:
     return json.dumps({"error_kind": error_kind, "message": message}).encode()
 
@@ -191,10 +173,9 @@ def _fs_error(error_kind: str, message: str) -> bytes:
 class _ExecRecord:
     """One client exec id and how the facade services it."""
 
-    kind: str  # "host" | "fs"
+    kind: str  # "host" (a SandboxHost exec job) or "fs" (an emulated file op)
     handle: Any
     host_exec_id: Optional[str] = None
-    # Filesystem ops (kind == "fs") resolve to buffered results.
     fs_path: Optional[str] = None
     fs_write: bool = False
     stdin_chunks: List[bytes] = field(default_factory=list)
@@ -235,24 +216,26 @@ class _FacadeState:
             raise GRPCError(Status.NOT_FOUND, f"exec {exec_id!r} not found")
         return record
 
-
-# How long past its own long-poll budget an actor call may take before the
-# actor is considered unreachable (unscheduled on a scaling cluster, or on a
-# lost node). Mirrors the REST app's _bounded_call.
-_SCHEDULING_GRACE_SECONDS = 10.0
+    def add_exec(self, exec_id: str, record: _ExecRecord) -> None:
+        """Register an exec, evicting the oldest finished ones past the cap."""
+        self.execs[exec_id] = record
+        excess = len(self.execs) - _MAX_EXEC_RECORDS
+        for key, existing in list(self.execs.items()):
+            if excess <= 0:
+                break
+            if existing.finished.is_set():
+                del self.execs[key]
+                excess -= 1
 
 
 async def _bounded(awaitable: Any, extra_wait: float = 0.0) -> Any:
-    """Await a SandboxHost call, but never block behind actor scheduling.
+    """Await a SandboxHost call, mapping actor failures to gRPC statuses.
 
-    A named detached actor exists the moment it is created, but on a cluster
-    that is still scaling it may not be *scheduled* for a long time — and a
-    call to an unscheduled actor blocks indefinitely. Bounding every call
-    keeps that pressure visible on the wire (UNAVAILABLE, which the client
-    SDK retries) instead of hanging the client silently.
-
-    A dead actor (OOM, lost node) maps to NOT_FOUND: that is the client SDK's
-    "task shut down" signal, the one status its retry loops stop on.
+    A call to an actor that is not scheduled yet (the cluster may still be
+    scaling) blocks indefinitely, so every call is capped at its own
+    long-poll budget plus a grace period. Unreachable actors map to
+    UNAVAILABLE, which the client SDK retries; a dead actor maps to
+    NOT_FOUND, the SDK's "task shut down" signal.
     """
     try:
         return await asyncio.wait_for(
@@ -261,21 +244,34 @@ async def _bounded(awaitable: Any, extra_wait: float = 0.0) -> Any:
     except asyncio.TimeoutError:
         raise GRPCError(
             Status.UNAVAILABLE,
-            "sandbox actor is not reachable (cluster may still be scaling)",
+            "sandbox actor is not reachable; the cluster may still be scaling",
         )
     except Exception as exc:
-        try:
-            from ray.exceptions import RayActorError
-        except ImportError:
-            raise
-        if isinstance(exc, RayActorError):
-            raise GRPCError(Status.NOT_FOUND, "sandbox is gone (its actor has died)")
+        if _is_actor_unavailable(exc):
+            raise GRPCError(
+                Status.UNAVAILABLE, "sandbox actor is temporarily unavailable"
+            )
+        if _is_actor_gone(exc):
+            raise GRPCError(Status.NOT_FOUND, "sandbox is gone; its actor has died")
+        if _is_unschedulable(exc):
+            raise GRPCError(
+                Status.FAILED_PRECONDITION,
+                f"sandbox cannot be scheduled: {str(exc)[:300]}",
+            )
         raise
+
+
+async def _is_alive(handle: Any) -> bool:
+    """False only when the actor has died; an unscheduled actor counts as alive."""
+    try:
+        await _bounded(handle.describe.remote())
+    except GRPCError as exc:
+        return exc.status != Status.NOT_FOUND
+    return True
 
 
 async def _await_host_exec(record: _ExecRecord) -> Dict[str, Any]:
     """Long-poll a SandboxHost exec job until it reaches a terminal state."""
-    polls = 0
     while True:
         info = await _bounded(
             record.handle.get_exec.remote(
@@ -286,20 +282,8 @@ async def _await_host_exec(record: _ExecRecord) -> Dict[str, Any]:
         if info.get("error_code"):
             raise GRPCError(Status.NOT_FOUND, info.get("message", "exec lost"))
         if info["status"] != "running":
-            logger.info(
-                "exec %s finished: status=%s exit=%s",
-                record.host_exec_id,
-                info["status"],
-                info.get("exit_code"),
-            )
+            record.finished.set()
             return info
-        polls += 1
-        if polls % 20 == 0:  # roughly every 5 minutes
-            logger.info(
-                "exec %s still running after ~%ds",
-                record.host_exec_id,
-                int(polls * _LONG_POLL_SECONDS),
-            )
 
 
 def _host_exit_code(info: Dict[str, Any]) -> int:
@@ -314,10 +298,16 @@ def _host_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
     if want_stdout:
         return (info.get("stdout") or "").encode("utf-8", errors="replace")
     stderr = (info.get("stderr") or "").encode("utf-8", errors="replace")
-    # Surface spawn/timeout failures on stderr, where clients look for them.
+    # Spawn and timeout failures surface on stderr, where clients look.
     if info["status"] in ("error", "timeout") and info.get("error"):
-        stderr += _sanitize_stderr(f"\n[ray-sandbox] {info['error']}".lstrip("\n"))
+        stderr += f"\n[ray-sandbox] {info['error']}".lstrip("\n").encode(
+            "utf-8", errors="replace"
+        )
     return stderr
+
+
+def _terminated() -> Any:
+    return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
 
 
 @_fill_unimplemented
@@ -348,9 +338,8 @@ class RaySandboxControlServicer(ModalClientBase):
                 environment_id=_encode_id("en-", name),
                 metadata=api_pb2.EnvironmentMetadata(
                     name=name,
-                    # 2025.06+ mounts the client's deps at runtime instead
-                    # of baking them in, so a registry image reduces to a
-                    # bare FROM — the only image shape the facade runs.
+                    # From 2025.06 the SDK mounts its own dependencies at
+                    # runtime, so a registry image reduces to a bare FROM.
                     settings=api_pb2.EnvironmentSettings(
                         image_builder_version="2025.06"
                     ),
@@ -367,17 +356,18 @@ class RaySandboxControlServicer(ModalClientBase):
         if request.object_creation_type not in anonymous_types:
             raise GRPCError(
                 Status.UNIMPLEMENTED,
-                "only anonymous/ephemeral secrets (an inline dict) are "
+                "only anonymous or ephemeral secrets (an inline dict) are "
                 "supported by the Ray Sandbox gRPC facade",
             )
-        secret_id = _encode_id("st-", dict(request.env_dict))
         await stream.send_message(
-            api_pb2.SecretGetOrCreateResponse(secret_id=secret_id)
+            api_pb2.SecretGetOrCreateResponse(
+                secret_id=_encode_id("st-", dict(request.env_dict))
+            )
         )
 
     async def ImageGetOrCreate(self, stream: Any) -> None:
         request = await stream.recv_message()
-        ref = _image_ref_from_proto(request.image)
+        ref = _image_ref_from_dockerfile(request.image)
         await stream.send_message(
             api_pb2.ImageGetOrCreateResponse(
                 image_id=_encode_id("im-", ref),
@@ -388,8 +378,7 @@ class RaySandboxControlServicer(ModalClientBase):
         )
 
     async def ImageJoinStreaming(self, stream: Any) -> None:
-        # The image is pulled at sandbox boot, not at image build time, so
-        # the "build" completes instantly.
+        # Images are pulled at sandbox boot, so the "build" is already done.
         await stream.recv_message()
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
@@ -401,10 +390,10 @@ class RaySandboxControlServicer(ModalClientBase):
 
     async def SandboxCreate(self, stream: Any) -> None:
         request = await stream.recv_message()
-        info = self._create_sandbox(request)
+        sandbox_id = await self._create_sandbox(request)
         await stream.send_message(
             api_pb2.SandboxCreateResponse(
-                sandbox_id=info["sandbox_id"],
+                sandbox_id=sandbox_id,
                 metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
             )
         )
@@ -412,25 +401,31 @@ class RaySandboxControlServicer(ModalClientBase):
     async def SandboxCreateV2(self, stream: Any) -> None:
         await self.SandboxCreate(stream)
 
-    def _create_sandbox(self, request: Any) -> Dict[str, Any]:
+    async def _create_sandbox(self, request: Any) -> str:
         state = self._state
         settings = state.settings
         definition = request.definition
 
-        image = _image_ref_from_proto_id(definition.image_id)
-        env = _env_from_secret_ids(definition.secret_ids)
-        labels = {tag.tag_name: tag.tag_value for tag in request.tags}
+        if definition.name:
+            # Names are unique per app while the sandbox lives, so a named
+            # create is idempotent: retries converge on the existing actor.
+            sandbox_id = _new_sandbox_id(f"{request.app_id}/{definition.name}")
+            existing = state.resolver.get(sandbox_id)
+            if existing is not None:
+                if await _is_alive(existing):
+                    return sandbox_id
+                # The previous actor died (node loss, OOM); recreate it.
+                state.resolver.kill(existing)
+        else:
+            sandbox_id = _new_sandbox_id()
 
         network_type = definition.network_access.network_access_type
-        if network_type == api_pb2.NetworkAccess.BLOCKED:
-            network = "none"
-        else:
-            if network_type == api_pb2.NetworkAccess.ALLOWLIST:
-                logger.warning(
-                    "Network allowlists are not enforced by the Ray Sandbox "
-                    "gRPC facade; granting open egress instead."
-                )
-            network = "public"
+        if network_type == api_pb2.NetworkAccess.ALLOWLIST:
+            logger.warning(
+                "Network allowlists are not enforced by the Ray Sandbox gRPC "
+                "facade; granting open egress instead."
+            )
+        network = "none" if network_type == api_pb2.NetworkAccess.BLOCKED else "public"
 
         resources = definition.resources
         cpu_request = resources.milli_cpu / 1000.0 if resources.milli_cpu else None
@@ -440,48 +435,20 @@ class RaySandboxControlServicer(ModalClientBase):
         memory_request_mb = resources.memory_mb or None
         memory_limit_mb = resources.memory_mb_max or None
 
-        ttl = (
-            min(definition.timeout_secs, settings.max_ttl_seconds)
-            if definition.timeout_secs
-            else settings.max_ttl_seconds
-        )
-
-        # Sandbox names are unique per app while alive; deriving the id
-        # from the name makes create retries converge on one actor
-        # (get_if_exists on the named actor makes the race atomic).
-        sandbox_id = _new_sandbox_id(definition.name or None)
-
-        if list(definition.entrypoint_args) not in (
-            [],
-            ["sh", "-c", "sleep infinity"],
-            ["sleep", "infinity"],
-        ):
-            logger.debug(
-                "Ignoring sandbox entrypoint %s: Ray Sandbox keeps sandboxes "
-                "alive with its own keepalive.",
-                list(definition.entrypoint_args),
-            )
-
-        actor_options: Dict[str, Any] = {
-            "num_cpus": (
-                cpu_request
-                if cpu_request is not None
-                else (
-                    cpu_limit
-                    if cpu_limit is not None
-                    else settings.default_actor_num_cpus
-                )
-            ),
-        }
-        request_mb = (
-            memory_request_mb if memory_request_mb is not None else memory_limit_mb
-        )
+        num_cpus = cpu_request or cpu_limit or settings.default_actor_num_cpus
+        actor_options: Dict[str, Any] = {"num_cpus": num_cpus}
+        request_mb = memory_request_mb or memory_limit_mb
         if request_mb is not None:
             actor_options["memory"] = request_mb * 1024 * 1024
 
+        ttl = settings.max_ttl_seconds
+        if definition.timeout_secs:
+            ttl = min(definition.timeout_secs, ttl)
+
+        # entrypoint_args are ignored: SandboxHost keeps the sandbox alive.
         spec = {
-            "image": image,
-            "env": env,
+            "image": _decode_id("im-", definition.image_id),
+            "env": _env_from_secret_ids(definition.secret_ids),
             "workdir": definition.workdir or None,
             "ttl_seconds": ttl,
             "network": network,
@@ -492,9 +459,9 @@ class RaySandboxControlServicer(ModalClientBase):
             "capabilities": list(settings.default_capabilities),
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,
-            "image_pull_timeout_seconds": _pull_timeout_seconds(),
-            "start_timeout_seconds": 120.0,
-            "labels": labels,
+            "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
+            "start_timeout_seconds": _START_TIMEOUT_SECONDS,
+            "labels": {tag.tag_name: tag.tag_value for tag in request.tags},
         }
         host_settings = {
             "max_output_bytes": settings.max_output_bytes,
@@ -508,9 +475,12 @@ class RaySandboxControlServicer(ModalClientBase):
         )
         handle.boot.remote()
         logger.info(
-            "Created sandbox %s (image=%s, network=%s)", sandbox_id, image, network
+            "Created sandbox %s (image=%s, network=%s)",
+            sandbox_id,
+            spec["image"],
+            network,
         )
-        return {"sandbox_id": sandbox_id}
+        return sandbox_id
 
     async def SandboxGetTaskId(self, stream: Any) -> None:
         request = await stream.recv_message()
@@ -522,25 +492,21 @@ class RaySandboxControlServicer(ModalClientBase):
         except GRPCError as exc:
             if exc.status != Status.UNAVAILABLE:
                 raise
-            # An unscheduled actor is indistinguishable from a booting one to
-            # the client; an empty task id keeps the SDK in its poll loop
-            # instead of surfacing a transient scaling delay as an error.
+            # An unscheduled actor looks like a booting one to the client:
+            # an empty task id keeps the SDK polling.
             await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
             return
         status = info["status"]
-        if status == "running":
-            # The sandbox id doubles as the client task id.
-            response = api_pb2.SandboxGetTaskIdResponse(task_id=request.sandbox_id)
-        elif status in ("error", "terminated"):
+        if status in ("error", "terminated"):
             raise GRPCError(
                 Status.FAILED_PRECONDITION,
                 f"sandbox {request.sandbox_id} is {status}: "
                 f"{info.get('error') or 'no longer running'}",
             )
-        else:
-            # Still pulling/starting; an empty task id makes the SDK poll.
-            response = api_pb2.SandboxGetTaskIdResponse(task_id="")
-        await stream.send_message(response)
+        # The sandbox id doubles as the task id once running; an empty task
+        # id while pulling or starting makes the SDK poll.
+        task_id = request.sandbox_id if status == "running" else ""
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=task_id))
 
     async def SandboxGetTaskIdV2(self, stream: Any) -> None:
         await self.SandboxGetTaskId(stream)
@@ -548,13 +514,13 @@ class RaySandboxControlServicer(ModalClientBase):
     async def SandboxWait(self, stream: Any) -> None:
         request = await stream.recv_message()
         handle = self._state.resolver.get(request.sandbox_id)
-        deadline = asyncio.get_running_loop().time() + min(request.timeout or 0, 55)
+        loop = asyncio.get_running_loop()
+        # timeout=0 is the SDK's non-blocking poll(); wait() loops with 10s.
+        deadline = loop.time() + min(request.timeout, _WAIT_MAX_SECONDS)
         result = None
         while True:
             if handle is None:
-                result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-                )
+                result = _terminated()
                 break
             try:
                 info = await _bounded(
@@ -562,27 +528,19 @@ class RaySandboxControlServicer(ModalClientBase):
                 )
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    # Actor died: from the client's view the sandbox ended.
-                    result = api_pb2.GenericResult(
-                        status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-                    )
+                    result = _terminated()
                     break
-                # Unreachable actor: treat as still-pending until the deadline.
-                if asyncio.get_running_loop().time() >= deadline:
-                    break
-                continue
-            if info["status"] == "terminated":
-                result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-                )
+                info = None  # Unreachable actor: still pending.
+            if info is not None and info["status"] == "terminated":
+                result = _terminated()
                 break
-            if info["status"] == "error":
+            if info is not None and info["status"] == "error":
                 result = api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=info.get("error") or "sandbox failed",
                 )
                 break
-            if asyncio.get_running_loop().time() >= deadline:
+            if loop.time() >= deadline:
                 break
             await asyncio.sleep(1.0)
         response = api_pb2.SandboxWaitResponse()
@@ -598,10 +556,8 @@ class RaySandboxControlServicer(ModalClientBase):
                 await _bounded(handle.terminate.remote(), extra_wait=30.0)
             except Exception as exc:
                 logger.debug("terminate(%s): %s", request.sandbox_id, exc)
-            # terminate() only deletes the sandbox; the actor must be killed
-            # by the caller (mirrors the REST DELETE endpoint). Skipping this
-            # leaks the actor's CPU reservation and starves later sandboxes
-            # out of the cluster.
+            # terminate() only deletes the sandbox; killing the actor
+            # releases its cluster reservation (as in the REST DELETE).
             self._state.resolver.kill(handle)
             logger.info("Terminated sandbox %s", request.sandbox_id)
         await stream.send_message(api_pb2.SandboxTerminateResponse())
@@ -614,29 +570,20 @@ class RaySandboxControlServicer(ModalClientBase):
         await stream.send_message(
             api_pb2.TaskGetCommandRouterAccessResponse(
                 url=self._state.advertise_url,
-                # Deliberately not a parseable JWT: the SDK treats that as
-                # "no client-side expiry" and only refreshes on
-                # UNAUTHENTICATED, which this facade never returns.
+                # Not a parseable JWT on purpose: the SDK then applies no
+                # client-side expiry and only refreshes on UNAUTHENTICATED.
                 jwt="ray-sandbox-facade",
             )
         )
 
 
-def _image_ref_from_proto_id(image_id: str) -> str:
-    return _decode_id("im-", image_id)
-
-
-def _pull_timeout_seconds() -> float:
-    return float(os.environ.get("RAY_SANDBOX_PULL_TIMEOUT_SECONDS", "1800"))
-
-
 @_fill_unimplemented
 @DeveloperAPI
 class RaySandboxRouterServicer(TaskCommandRouterBase):
-    """Exec-plane RPCs: start, stdio, stdin, poll/wait.
+    """Exec-plane RPCs: start, stdio, stdin, poll, and wait.
 
-    The client SDK talks to this service directly at the URL handed out by
-    ``TaskGetCommandRouterAccess``; here that is the same server.
+    The client SDK reaches this service at the URL handed out by
+    ``TaskGetCommandRouterAccess``, which here is the same server.
     """
 
     def __init__(self, state: _FacadeState) -> None:
@@ -647,26 +594,12 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
         state = self._state
         handle = state.require_handle(request.task_id)
 
-        env = dict(request.env)
-        env.update(_env_from_secret_ids(request.secret_ids))
-
         command = list(request.command_args)
         if command and command[0] == _FS_TOOLS_PATH:
-            logger.info(
-                "exec %s @ %s: fs-tools %s",
-                request.exec_id,
-                request.task_id,
-                command[1:2],
-            )
             record = await self._start_fs_op(handle, command)
         else:
-            logger.info(
-                "exec %s @ %s: argv=%s timeout=%s",
-                request.exec_id,
-                request.task_id,
-                [c[:80] for c in command[:3]],
-                request.timeout_secs or None,
-            )
+            env = dict(request.env)
+            env.update(_env_from_secret_ids(request.secret_ids))
             started = await _bounded(
                 handle.start_exec.remote(
                     command,
@@ -683,7 +616,8 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
             record = _ExecRecord(
                 kind="host", handle=handle, host_exec_id=started["exec_id"]
             )
-        state.execs[request.exec_id] = record
+        logger.debug("exec %s on %s: %s", request.exec_id, request.task_id, command[:2])
+        state.add_exec(request.exec_id, record)
         await stream.send_message(sr_pb2.TaskExecStartResponse())
 
     async def _start_fs_op(self, handle: Any, command: List[str]) -> _ExecRecord:
@@ -704,8 +638,9 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
             # Content arrives over stdin; the write happens at stdin EOF.
             record.fs_write = True
         elif name == "ReadFile":
-            # Generous bound: downloads can be multi-hundred-MB archives.
-            result = await _bounded(handle.read_file.remote(path), extra_wait=600.0)
+            result = await _bounded(
+                handle.read_file.remote(path), extra_wait=_READ_BOUND_SECONDS
+            )
             if result.get("error_code") == "file_not_found":
                 record.finish(1, stderr=_fs_error("NotFound", "path does not exist"))
             elif result.get("error_code"):
@@ -715,15 +650,19 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
             else:
                 record.finish(0, stdout=result["content"])
         elif name == "ListFiles":
-            # Emulated with a shell probe. The entry list is intentionally
-            # empty: the SDK's typed errors (NotFound / NotDirectory) are what
-            # callers use for existence and is-directory checks.
+            # A shell probe that reports only the typed errors (NotFound,
+            # NotDirectory) the SDK's existence and directory checks need;
+            # the entry list itself is empty.
             quoted = shlex.quote(path)
+            not_found = shlex.quote(
+                _fs_error("NotFound", "path does not exist").decode()
+            )
+            not_dir = shlex.quote(
+                _fs_error("NotDirectory", "path is not a directory").decode()
+            )
             probe = (
-                f"if [ ! -e {quoted} ]; then "
-                f"printf %s {shlex.quote(_fs_error('NotFound', 'path does not exist').decode())} >&2; exit 1; "
-                f"elif [ ! -d {quoted} ]; then "
-                f"printf %s {shlex.quote(_fs_error('NotDirectory', 'path is not a directory').decode())} >&2; exit 1; "
+                f"if [ ! -e {quoted} ]; then printf %s {not_found} >&2; exit 1; "
+                f"elif [ ! -d {quoted} ]; then printf %s {not_dir} >&2; exit 1; "
                 f"else printf '[]'; fi"
             )
             started = await _bounded(handle.start_exec.remote(["/bin/sh", "-c", probe]))
@@ -744,25 +683,23 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
         return record
 
     async def _finish_write(self, record: _ExecRecord) -> None:
-        """Flush buffered stdin to the sandbox file and finish the record.
+        """Flush buffered stdin to the sandbox file in bounded slices.
 
-        Chunked so each actor call stays under the scheduling bound no matter
-        how large the upload is, and wrapped so the record ALWAYS finishes:
-        the client waits on this exec's exit code concurrently with stdin, so
-        a record left pending would make it retry that wait forever.
+        The record always finishes, even on failure: the client waits on the
+        exec's exit code concurrently with stdin and would retry forever on a
+        record left pending.
         """
         content = b"".join(record.stdin_chunks)
         record.stdin_chunks.clear()
-        logger.info("fs write %s: %d bytes", record.fs_path, len(content))
         try:
-            offset = 0
-            while True:
-                chunk = content[offset : offset + _FS_WRITE_CHUNK_BYTES]
+            for offset in range(0, max(len(content), 1), _WRITE_CHUNK_BYTES):
                 result = await _bounded(
                     record.handle.write_file.remote(
-                        record.fs_path, chunk, append=offset > 0
+                        record.fs_path,
+                        content[offset : offset + _WRITE_CHUNK_BYTES],
+                        append=offset > 0,
                     ),
-                    extra_wait=_FS_WRITE_BOUND_SECONDS,
+                    extra_wait=_WRITE_BOUND_SECONDS,
                 )
                 if result.get("error_code"):
                     record.finish(
@@ -772,9 +709,6 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
                         ),
                     )
                     return
-                offset += len(chunk)
-                if offset >= len(content):
-                    break
             record.finish(0)
         except GRPCError as exc:
             record.finish(1, stderr=_fs_error("Other", f"write failed: {exc.message}"))
@@ -794,10 +728,11 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
             await record.finished.wait()
             data = record.stdout if want_stdout else record.stderr
         data = data[request.offset :]
-        chunk_size = 256 * 1024
-        for start in range(0, len(data), chunk_size):
+        for start in range(0, len(data), _STDIO_CHUNK_BYTES):
             await stream.send_message(
-                sr_pb2.TaskExecStdioReadResponse(data=data[start : start + chunk_size])
+                sr_pb2.TaskExecStdioReadResponse(
+                    data=data[start : start + _STDIO_CHUNK_BYTES]
+                )
             )
 
     async def TaskExecStdinWrite(self, stream: Any) -> None:
@@ -836,7 +771,7 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
 
     def _buffer_stdin(self, record: _ExecRecord, data: bytes, offset: int) -> None:
         if record.kind == "host":
-            # SandboxHost execs have no stdin; nothing sensible to do with it.
+            # SandboxHost execs have no stdin.
             raise GRPCError(
                 Status.UNIMPLEMENTED,
                 "exec stdin is not supported by the Ray Sandbox gRPC facade",
@@ -865,6 +800,7 @@ class RaySandboxRouterServicer(TaskCommandRouterBase):
             if info.get("error_code"):
                 raise GRPCError(Status.NOT_FOUND, info.get("message", "exec lost"))
             if info["status"] != "running":
+                record.finished.set()
                 response.code = _host_exit_code(info)
         elif record.finished.is_set():
             response.code = record.exit_code
@@ -902,8 +838,8 @@ def build_servicers(
     Args:
         settings: Server settings; defaults are production-safe.
         handle_resolver: Test seam, same surface as in ``create_app``.
-        advertise_url: URL handed to clients for the command router; must
-            route back to this same server.
+        advertise_url: Command-router URL handed to clients; must route
+            back to this same server.
 
     Returns:
         The control-plane and command-router servicers, ready for
