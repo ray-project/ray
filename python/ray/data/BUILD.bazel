@@ -1841,6 +1841,34 @@ py_test(
 )
 
 py_test(
+    name = "test_rate_based_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_rate_based_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_rate_based_cluster_autoscaler_e2e",
+    size = "medium",
+    srcs = ["tests/test_rate_based_cluster_autoscaler_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_ref_bundle",
     size = "small",
     srcs = ["tests/test_ref_bundle.py"],

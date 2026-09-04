@@ -15,6 +15,11 @@ from .default_autoscaling_coordinator import (
 )
 from .default_cluster_autoscaler_v2 import DefaultClusterAutoscalerV2
 from .placement_group_cluster_autoscaler import PlacementGroupClusterAutoscaler
+from .rate_based_cluster_autoscaler import RateBasedClusterAutoscaler
+from .supports_cluster_autoscaling import (
+    ClusterAutoscalingMetrics,
+    SupportsClusterAutoscaling,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
@@ -30,6 +35,7 @@ DEFAULT_CLUSTER_AUTOSCALER_VERSION = "V2"
 
 class ClusterAutoscalerVersion(str, enum.Enum):
     V2 = "V2"
+    RATE_BASED = "RATE_BASED"
 
 
 def create_cluster_autoscaler(
@@ -62,6 +68,14 @@ def create_cluster_autoscaler(
             scheduling_strategy_large_args=data_context.scheduling_strategy_large_args,
         )
 
+    elif cluster_autoscaler_version == ClusterAutoscalerVersion.RATE_BASED:
+        return RateBasedClusterAutoscaler.create(
+            topology,  # pyrefly: ignore[bad-argument-type]
+            data_context.execution_options,
+            resource_manager,
+            execution_id=execution_id,
+        )
+
     elif cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
             resource_manager,
@@ -80,6 +94,9 @@ def create_cluster_autoscaler(
 
 __all__ = [
     "ClusterAutoscaler",
+    "RateBasedClusterAutoscaler",
+    "SupportsClusterAutoscaling",
+    "ClusterAutoscalingMetrics",
     # Objects related to the `AutoscalingCoordinator`.
     "AutoscalingCoordinator",
     "DefaultAutoscalingCoordinator",
