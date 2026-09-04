@@ -170,6 +170,14 @@ def run_cell(
     rec = json.loads(line[len("CELL_JSON ") :])
     rec["wall_incl_startup_s"] = round(time.perf_counter() - t0, 1)
     print(f"    {tag:<40} {rec}", flush=True)
+    # Fold in the query's own benchmark.py result (per-operator wall/cpu,
+    # per-task dists, node-mem monitor) like release_regression_probe does;
+    # summary.json otherwise carried walls only (2026-09-04 q17 leg).
+    try:
+        with open(env["TEST_OUTPUT_JSON"]) as fh:
+            rec["bench"] = next(iter(json.load(fh).values()))
+    except Exception:
+        rec["bench"] = {}
     return rec
 
 
