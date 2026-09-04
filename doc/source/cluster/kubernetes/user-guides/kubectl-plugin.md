@@ -181,6 +181,76 @@ $ kubectl ray delete raycluster-sample
 $ kubectl ray delete raycluster-sample-2
 ```
 
+(kubectl-plugin-tpu)=
+### Create a TPU worker group
+
+Run these commands on a GKE cluster with TPU nodes. See {ref}`the GKE TPU cluster setup <kuberay-gke-tpu-cluster-setup>` to create the cluster, and {ref}`Use TPUs with KubeRay <kuberay-tpu>` for TPU scheduling on Ray. Use the same flags with `kubectl ray create workergroup`.
+
+When you set `--worker-tpu` to a value greater than 0, set these flags:
+
+- `--worker-node-selectors` with `cloud.google.com/gke-tpu-accelerator` and `cloud.google.com/gke-tpu-topology`
+- `--num-of-hosts` equal to the topology chip count divided by `--worker-tpu`
+
+The default `--num-of-hosts` is 1, which matches single-host topologies. The plugin validates these values against the [GKE TPU availability table](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#availability) and rejects invalid combinations.
+
+#### Create a 2D TPU slice
+
+2D accelerators such as `tpu-v5-lite-podslice` and `tpu-v6e-slice` use topologies of the form `AxB`. Some topologies allow more than one `--worker-tpu` value. `2x4` has 8 chips and allows 4 or 8 TPUs per host, so both `--worker-tpu 8 --num-of-hosts 1` and `--worker-tpu 4 --num-of-hosts 2` are valid.
+
+Create a single-host TPU cluster. `1x1` is 1 chip, so use 1 TPU per host and 1 host:
+
+```text
+$ kubectl ray create cluster raycluster-tpu-sample --worker-tpu 1 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=tpu-v5-lite-podslice,cloud.google.com/gke-tpu-topology=1x1
+Created Ray Cluster: raycluster-tpu-sample
+```
+
+A `4x4` topology has 16 chips. With 4 TPUs per host, set `--num-of-hosts` to 4. The following command fails because `--num-of-hosts` defaults to 1:
+
+```text
+$ kubectl ray create cluster raycluster-tpu-sample-2 --worker-tpu 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=tpu-v6e-slice,cloud.google.com/gke-tpu-topology=4x4
+Error: numOfHosts must be 4 for accelerator "tpu-v6e-slice" with topology "4x4" and 4 TPUs per host, got 1. See https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#availability
+```
+
+Set `--num-of-hosts` to 4:
+
+```text
+$ kubectl ray create cluster raycluster-tpu-sample-2 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=tpu-v6e-slice,cloud.google.com/gke-tpu-topology=4x4
+Created Ray Cluster: raycluster-tpu-sample-2
+```
+
+#### Create a 3D TPU slice
+
+v4, v5p, and tpu7x use 3D topologies of the form `AxBxC`. The accelerator values are `tpu-v4-podslice`, `tpu-v5p-slice`, and `tpu7x`. These accelerators always use 4 TPUs per host, so `--worker-tpu` must be 4. Set `--num-of-hosts` to the product of the three dimensions divided by 4. Single-host 3D is `2x2x1`, not `1x1`.
+
+The plugin also rejects invalid 3D shapes. `2x2x1` is a special case and always allowed. For topologies with 64 chips or fewer, each dimension must be even. Above 64 chips, each dimension must be multiples of 4, with `A <= B <= C` - for example, `8x4x4` has 128 chips but fails because `8 > 4`.
+
+Create a 3D multi-host TPU cluster. `2x2x2` has 8 chips, so use 4 TPUs per host and 2 hosts:
+
+```text
+$ kubectl ray create cluster raycluster-tpu-sample-3 --worker-tpu 4 --num-of-hosts 2 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=tpu-v4-podslice,cloud.google.com/gke-tpu-topology=2x2x2
+Created Ray Cluster: raycluster-tpu-sample-3
+```
+
+#### Skip TPU validation
+
+If GKE supports a TPU configuration that the plugin hasn't listed yet, pass `--skip-tpu-validation`. The plugin then skips accelerator, topology, and host-count checks.
+
+```text
+$ kubectl ray create cluster raycluster-tpu-sample-4 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=ACCELERATOR,cloud.google.com/gke-tpu-topology=TOPOLOGY --skip-tpu-validation
+Created Ray Cluster: raycluster-tpu-sample-4
+```
+
+#### Delete the TPU clusters
+
+Use `kubectl ray delete` to remove the clusters:
+
+```text
+$ kubectl ray delete raycluster-tpu-sample
+$ kubectl ray delete raycluster-tpu-sample-2
+$ kubectl ray delete raycluster-tpu-sample-3
+$ kubectl ray delete raycluster-tpu-sample-4
+```
+
 ### Example 2: RayJob Submission
 
 `kubectl ray job submit` is a wrapper around the `ray job submit` command. It can automatically forward the ports to the Ray cluster and submit the job. This command can also provision an ephemeral cluster if the user doesn't provide a RayJob.
