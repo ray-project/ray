@@ -36,6 +36,8 @@ from ray.data.datasource import (
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    BigQueryClientProvider,  # noqa: F401
+    DefaultBigQueryClientProvider,  # noqa: F401
     KafkaAuthConfig,  # noqa: F401
     from_arrow,
     from_arrow_refs,
@@ -209,7 +211,9 @@ __all__ = [
     "Catalog",
     "ReaderFormat",
     "ResolvedSource",
+    "BigQueryClientProvider",
     "DatabricksUnityCatalog",
+    "DefaultBigQueryClientProvider",
     "KafkaAuthConfig",
     "Preprocessor",
 ]

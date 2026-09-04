@@ -25,6 +25,10 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
+from ray.data._internal.datasource.bigquery_client_provider import (  # noqa: F401
+    BigQueryClientProvider,
+    DefaultBigQueryClientProvider,
+)
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
@@ -1464,6 +1468,7 @@ def read_bigquery(
     dataset: Optional[str] = None,
     query: Optional[str] = None,
     *,
+    client_provider: Optional[BigQueryClientProvider] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -1513,6 +1518,28 @@ def read_bigquery(
                 query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
             )
 
+        To authenticate with something other than Application Default
+        Credentials, or to point the clients at a specific endpoint, pass a
+        ``client_provider``:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from google.oauth2 import service_account
+            from ray.data import DefaultBigQueryClientProvider
+
+            credentials = service_account.Credentials.from_service_account_file(
+                "/path/to/key.json"
+            )
+            ds = ray.data.read_bigquery(
+                project_id="my_project",
+                dataset="my_dataset.my_table",
+                client_provider=DefaultBigQueryClientProvider(
+                    project_id="my_project", credentials=credentials
+                ),
+            )
+
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
             For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`_.
@@ -1520,6 +1547,11 @@ def read_bigquery(
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         query: The SQL query to execute. `query` and `dataset` are mutually exclusive.
             If `query` is provided, the query result is read as the dataset.
+        client_provider: A :class:`~ray.data.BigQueryClientProvider` that builds the
+            BigQuery clients used for this read. Use it to supply explicit
+            credentials, a custom endpoint, or other client options. Defaults to
+            :class:`~ray.data.DefaultBigQueryClientProvider`, which uses Application
+            Default Credentials.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -1550,7 +1582,12 @@ def read_bigquery(
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
     """  # noqa: E501
-    datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
+    datasource = BigQueryDatasource(
+        project_id=project_id,
+        dataset=dataset,
+        query=query,
+        client_provider=client_provider,
+    )
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
