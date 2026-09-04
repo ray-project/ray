@@ -210,17 +210,17 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
       RayLease lease = work->lease_;
       RAY_LOG(DEBUG) << "Scheduling pending lease "
                      << lease.GetLeaseSpecification().LeaseId();
-      auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
+      const auto result = cluster_resource_scheduler_.GetBestSchedulableNode(
           lease.GetLeaseSpecification(),
           /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
                                                             : lease.GetPreferredNodeID(),
           /*exclude_local_node*/ false,
-          /*requires_object_store_memory*/ false,
-          &is_infeasible);
+          /*requires_object_store_memory*/ false);
+      is_infeasible = result.IsInfeasible();
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
-      if (scheduling_node_id.IsNil()) {
+      if (!result.IsScheduled()) {
         RAY_LOG(DEBUG) << "No node found to schedule a lease "
                        << lease.GetLeaseSpecification().LeaseId() << " is infeasible?"
                        << is_infeasible;
@@ -230,8 +230,9 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
         if ((lease.GetLeaseSpecification().IsNodeAffinitySchedulingStrategy() &&
              !lease.GetLeaseSpecification().GetNodeAffinitySchedulingStrategySoft()) ||
             (affinity_values.has_value() && !affinity_values->empty())) {
-          // This can only happen if the target node doesn't exist or is infeasible.
-          // The lease will never be schedulable in either case so we should fail it.
+          // This can only happen if the target node doesn't exist or is infeasible, or
+          // if it is full and fail_on_unavailable was set. The lease should fail
+          // immediately in all of these cases.
           if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
             ReplyCancelled(
                 *work,
@@ -256,7 +257,7 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
         break;
       }
 
-      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
+      NodeID node_id = NodeID::FromBinary(result.node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_it = work_queue.erase(work_it);
     }
@@ -307,18 +308,16 @@ void ClusterLeaseManager::TryScheduleInfeasibleLease() {
     RAY_LOG(DEBUG)
         << "Check if the infeasible lease is schedulable in any node. lease_id:"
         << lease.GetLeaseSpecification().LeaseId();
-    bool is_infeasible;
-    cluster_resource_scheduler_.GetBestSchedulableNode(
+    const auto result = cluster_resource_scheduler_.GetBestSchedulableNode(
         lease.GetLeaseSpecification(),
         /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
                                                           : lease.GetPreferredNodeID(),
         /*exclude_local_node*/ false,
-        /*requires_object_store_memory*/ false,
-        &is_infeasible);
+        /*requires_object_store_memory*/ false);
 
     // There is no node that has feasible resources to run the request.
     // Move on to the next shape.
-    if (is_infeasible) {
+    if (result.IsInfeasible()) {
       RAY_LOG(DEBUG) << "No feasible node found for lease "
                      << lease.GetLeaseSpecification().LeaseId();
       shapes_it++;
