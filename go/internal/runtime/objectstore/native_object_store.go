@@ -156,6 +156,14 @@ func cgoObjectIDArray(objectIDs []*ids.ObjectID) ([]*C.char, []C.int, func()) {
 type NativeObjectStore struct {
 	shutdownLock        *sync.RWMutex
 	resolveActorAddress func(context.Context, ids.ActorID) (*proto.Address, error)
+	// cgoMu serializes the CGO write/refcount operations that mutate the C++
+	// CoreWorker object store (Put, PutWithID, Add/RemoveLocalReference,
+	// Delete). Concurrent CGO writes are unsafe in the C++ reference counter,
+	// and the ObjectRef release worker can issue a RemoveLocalReference on its
+	// own goroutine while the caller performs a Put. Read-only queries
+	// (Get/Wait/GetOwnerAddress/GetOwnershipInfo) are not protected; they do not
+	// mutate reference counts.
+	cgoMu sync.Mutex
 }
 
 func NewNativeObjectStore(shutdownLock *sync.RWMutex, resolveActorAddress func(context.Context, ids.ActorID) (*proto.Address, error)) *NativeObjectStore {
@@ -285,6 +293,9 @@ func (n *NativeObjectStore) GetAllReferenceCounts() (map[ids.ObjectID][2]int64, 
 }
 
 func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress []byte) (*ids.ObjectID, error) {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+
 	ownerAddrPtr, ownerAddrSize, ownerPinner := cgoByteSlice(ownerAddress)
 	defer ownerPinner.Unpin()
 
@@ -310,6 +321,9 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress 
 }
 
 func (n *NativeObjectStore) nativePutWithID(objectID *ids.ObjectID, obj *object.NativeRayObject) error {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+
 	cObjectIDData, cObjectIDSize, cleanupObjectID := cgoBytes(objectID.Binary())
 	defer cleanupObjectID()
 
@@ -418,6 +432,8 @@ func (n *NativeObjectStore) nativeWait(objectIDs []*ids.ObjectID, numObjects int
 }
 
 func (n *NativeObjectStore) nativeDelete(objectIDs []*ids.ObjectID, localOnly bool) error {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
 	if len(objectIDs) == 0 {
 		return nil
 	}
@@ -439,11 +455,14 @@ func (n *NativeObjectStore) nativeDelete(objectIDs []*ids.ObjectID, localOnly bo
 }
 
 func (n *NativeObjectStore) nativeAddLocalReference(objectID *ids.ObjectID) error {
-	binary := objectID.Binary()
-	cObjectIDData := (*C.char)(C.CBytes(binary))
-	defer C.free(unsafe.Pointer(cObjectIDData))
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
 
-	result := C.CObjectStore_AddLocalReference(cObjectIDData, C.int(len(binary)))
+	binary := objectID.Binary()
+	cObjectIDData, cObjectIDSize, pinner := cgoByteSlice(binary)
+	defer pinner.Unpin()
+
+	result := C.CObjectStore_AddLocalReference(cObjectIDData, cObjectIDSize)
 	if result != 0 {
 		return fmt.Errorf("CObjectStore_AddLocalReference failed with error code: %d", result)
 	}
@@ -451,11 +470,14 @@ func (n *NativeObjectStore) nativeAddLocalReference(objectID *ids.ObjectID) erro
 }
 
 func (n *NativeObjectStore) nativeRemoveLocalReference(objectID *ids.ObjectID) error {
-	binary := objectID.Binary()
-	cObjectIDData := (*C.char)(C.CBytes(binary))
-	defer C.free(unsafe.Pointer(cObjectIDData))
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
 
-	result := C.CObjectStore_RemoveLocalReference(cObjectIDData, C.int(len(binary)))
+	binary := objectID.Binary()
+	cObjectIDData, cObjectIDSize, pinner := cgoByteSlice(binary)
+	defer pinner.Unpin()
+
+	result := C.CObjectStore_RemoveLocalReference(cObjectIDData, cObjectIDSize)
 	if result != 0 {
 		return fmt.Errorf("CObjectStore_RemoveLocalReference failed with error code: %d", result)
 	}

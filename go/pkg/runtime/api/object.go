@@ -366,28 +366,36 @@ func setupObjectRefFinalizer[T any](ref *ObjectRef[T], objectIDForFinalizer ids.
 	runtime.SetFinalizer(ref, func(r *ObjectRef[T]) {
 		fmt.Fprintf(os.Stderr, "[%s] ObjectRef finalizer called for objectID=%s\n", logPrefix, objectIDForFinalizer.Hex())
 
-		// Acquire read lock on finalizerMu - this blocks if shutdown is running
-		// After acquiring the lock, we are guaranteed that shutdown is either:
-		// 1. Not yet started (shutdownComplete=false)
-		// 2. Already completed (shutdownComplete=true)
-		// But never in-progress, which prevents the SIGSEGV race condition
+		// Acquire read lock on finalizerMu - this blocks if shutdown is running.
+		// This guarantees shutdown is either not started or complete, never
+		// in-progress, matching the previous finalizer ordering.
 		finalizerMu.RLock()
 		defer finalizerMu.RUnlock()
 
 		if !r.released.CompareAndSwap(false, true) {
 			return
 		}
-		// Double-check if shutdown has completed - if so, skip RemoveLocalReference
-		// This check is now safe because we hold the read lock
+		// Double-check if shutdown has completed - if so, skip the release.
+		// This check is safe because we hold the read lock.
 		if shutdownComplete.Load() {
 			return
 		}
-		// Use the captured objectID copy, not r.objectID which may be corrupted
-		h, ok := tryGetHandle()
-		if ok && h != nil {
-			rr := h.Runtime()
-			if rr != nil && rr.GetObjectStore() != nil {
-				_ = rr.GetObjectStore().RemoveLocalReference(&objectIDForFinalizer)
+		// Do NOT call CGO here: Go runs finalizers on a GC-specialized goroutine
+		// where a CGO call into the C++ CoreWorker object store can segfault. The
+		// object ID is enqueued instead; a background worker performs the CGO
+		// RemoveLocalReference outside the GC context.
+		//
+		// The enqueue is non-blocking: if the worker queue is full, the object ID
+		// is dropped. Dropping only delays the reference release (the C++ object
+		// store keeps the object alive via its reference count); it never blocks
+		// the GC goroutine. A nil queue means the release worker is not running
+		// (runtime not initialized, or already shut down), in which case there is
+		// no local reference to remove.
+		if releaseQueue != nil {
+			select {
+			case releaseQueue <- objectIDForFinalizer:
+			default:
+				// Queue full or worker unavailable; drop the release request.
 			}
 		}
 	})
