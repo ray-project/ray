@@ -364,6 +364,16 @@ class MCAPDatasource(FileBasedDatasource):
 
         ratio = sum(ratios) / len(ratios)
         logger.debug(f"Estimated MCAP encoding ratio from sampling is {ratio}.")
+
+        if self._selects_subset():
+            # The lower bound guards against reporting a decompressed file as
+            # smaller than its compressed form. Under a filter this quantity is
+            # not a decompression ratio at all -- it is selected in-memory bytes
+            # over *total* on-disk bytes, and is legitimately far below 1 when
+            # the filter excludes the bulk of the file. Flooring it there would
+            # report the whole file's size for a read of a small part of it.
+            return ratio
+
         return max(ratio, MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
     def _estimate_file_inmemory_size(self, path: str) -> Optional[int]:
@@ -490,36 +500,69 @@ class MCAPDatasource(FileBasedDatasource):
             block = BlockAccessor.for_block(block).fill_column("path", path)
         return BlockAccessor.for_block(block)
 
-    def _selected_channel_message_counts(self, summary: "Summary") -> Dict[int, int]:
+    def _selects_subset(self) -> bool:
+        """Whether any filter narrows the read to part of a file."""
+        return bool(self._topics or self._time_range or self._message_types)
+
+    def _time_range_overlap_fraction(self, summary: "Summary") -> float:
+        """Return the fraction of a file's time span that ``time_range`` covers.
+
+        The summary records only the file's first and last message times, not a
+        per-channel distribution, so this assumes a channel publishes at a
+        roughly constant rate -- which is what a sensor recording does. Without
+        it, a one-second window on a twenty-second file is extrapolated across
+        all twenty seconds.
+
+        Returns 1.0 when no time range is set, or when the file reports no span.
+        """
+        if self._time_range is None:
+            return 1.0
+
+        statistics = summary.statistics
+        span = statistics.message_end_time - statistics.message_start_time
+        if span <= 0:
+            return 1.0
+
+        overlap_start = max(self._time_range.start_time, statistics.message_start_time)
+        overlap_end = min(self._time_range.end_time, statistics.message_end_time)
+        return max(0.0, (overlap_end - overlap_start) / span)
+
+    def _selected_channel_message_counts(self, summary: "Summary") -> Dict[int, float]:
         """Return the per-channel message counts a read selects.
+
+        Exact for a topic filter, which the summary resolves through
+        ``channel_message_counts``, and approximated for ``time_range`` by the
+        share of the file's span it covers. ``message_types`` has no equivalent
+        in the summary and is not modelled, so a read using it selects at most
+        this many messages.
 
         Empty when the summary carries no per-channel breakdown, which callers
         must handle: the total in ``statistics.message_count`` can be present
         without it.
         """
         counts = summary.statistics.channel_message_counts
-        if not self._topics:
-            return dict(counts)
+        fraction = self._time_range_overlap_fraction(summary)
 
         return {
-            channel_id: count
+            channel_id: count * fraction
             for channel_id, count in counts.items()
-            if channel_id in summary.channels
-            and summary.channels[channel_id].topic in self._topics
+            if not self._topics
+            or (
+                channel_id in summary.channels
+                and summary.channels[channel_id].topic in self._topics
+            )
         }
 
-    def _count_selected_messages(self, summary: "Summary") -> int:
+    def _count_selected_messages(self, summary: "Summary") -> float:
         """Return an upper bound on how many messages of a file a read selects.
-
-        Only the topic filter is resolvable from the summary. ``time_range``
-        and ``message_types`` are not represented there, so a read using them
-        selects at most this many messages.
 
         Used to decide whether anything is selected at all, and to scale the
         sample when the summary carries no per-channel breakdown.
         """
-        if not self._topics:
-            return summary.statistics.message_count
+        if not self._topics and not summary.statistics.channel_message_counts:
+            return summary.statistics.message_count * self._time_range_overlap_fraction(
+                summary
+            )
 
         return sum(self._selected_channel_message_counts(summary).values())
 

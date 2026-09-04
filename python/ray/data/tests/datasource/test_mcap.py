@@ -518,6 +518,73 @@ def create_skewed_mcap_file(file_path: str) -> None:
         writer.finish()
 
 
+def create_episode_mcap_file(file_path: str) -> None:
+    """Create a video-dominated recording with light, high-rate state.
+
+    The shape of a robotics episode: a few camera topics carrying almost all of
+    the bytes as incompressible frames, alongside a fast proprioception topic
+    whose messages are tiny. Reading only the state topics selects a small
+    fraction of the file, and a one-second window selects 200 proprio messages
+    -- above the sampling cap, so the estimate has to be extrapolated rather
+    than measured outright.
+    """
+    from mcap.writer import Writer
+
+    duration_s, frame_bytes = 4, 8_000
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+
+        # A small schema definition, as a real recording carries: the file has
+        # to be dominated by camera *payload*, not by the schema each row
+        # repeats, or the state topics stop being light.
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=b"uint8[] data\n",
+        )
+        cameras = [
+            writer.register_channel(
+                schema_id=schema_id,
+                topic=f"/cam{i}/compressed",
+                message_encoding="cdr",
+            )
+            for i in range(2)
+        ]
+        proprio = writer.register_channel(
+            schema_id=schema_id, topic="/proprio", message_encoding="cdr"
+        )
+
+        messages = []
+        for i in range(duration_s * 30):  # cameras at 30 Hz
+            log_time = int(i * 1e9 / 30)
+            for channel_id in cameras:
+                # Incompressible, so the chunks do not collapse on disk.
+                messages.append((log_time, channel_id, os.urandom(frame_bytes)))
+        for i in range(duration_s * 200):  # proprio at 200 Hz
+            messages.append((int(i * 1e9 / 200), proprio, b"p" * 100))
+
+        for sequence, (log_time, channel_id, data) in enumerate(sorted(messages)):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=data,
+                sequence=sequence,
+            )
+
+        writer.finish()
+
+
+@pytest.fixture
+def episode_mcap_file(tmp_path):
+    """Fixture providing a video-dominated recording with high-rate state."""
+    path = os.path.join(tmp_path, "episode.mcap")
+    create_episode_mcap_file(path)
+    return path
+
+
 @pytest.fixture
 def binary_mcap_file(tmp_path):
     """Fixture providing an MCAP file with 360 binary messages."""
@@ -702,12 +769,10 @@ def test_estimate_inmemory_data_size_filter_selecting_nothing(
         paths=[binary_mcap_file], topics={"/no_such_topic"}
     ).estimate_inmemory_data_size()
 
-    on_disk_size = os.path.getsize(binary_mcap_file)
-    assert estimate < on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
-    # The measured zero floors at the ratio lower bound rather than falling
-    # through to the default.
-    assert estimate == on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-
+    # The measured zero is carried through rather than falling back to the
+    # default ratio. The ratio lower bound does not apply under a filter, so
+    # nothing selected estimates as nothing.
+    assert estimate == 0
     assert ray.data.read_mcap(binary_mcap_file, topics={"/no_such_topic"}).count() == 0
 
 
@@ -731,6 +796,66 @@ def test_estimate_inmemory_data_size_weights_channels_by_summary_counts(
     # this file by close to an order of magnitude, so this band is only
     # reachable by weighting each channel separately.
     assert 0.7 * actual <= estimate <= 1.5 * actual
+
+
+def test_estimate_inmemory_data_size_below_on_disk_size_under_filter(
+    ray_start_regular_shared, episode_mcap_file
+):
+    """A filter selecting a small part of a file must estimate below its size.
+
+    The encoding ratio is floored at 1 so that a decompressed file is never
+    reported as smaller than its compressed form. Under a filter the quantity
+    is not a decompression ratio -- it is selected bytes over *total* on-disk
+    bytes -- and on a video-dominated recording, reading only the state topics
+    is legitimately far below 1.
+    """
+    on_disk_size = os.path.getsize(episode_mcap_file)
+    estimate = MCAPDatasource(
+        paths=[episode_mcap_file], topics={"/proprio"}
+    ).estimate_inmemory_data_size()
+    actual = (
+        ray.data.read_mcap(episode_mcap_file, topics={"/proprio"})
+        .materialize()
+        .size_bytes()
+    )
+
+    # Flooring the ratio here would report the whole file.
+    assert estimate < on_disk_size
+    assert 0.5 * actual <= estimate <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_time_window_above_sample_cap(
+    ray_start_regular_shared, episode_mcap_file
+):
+    """A time window wider than the sample cap must still track the window.
+
+    A one-second window selects 200 proprio messages, above
+    ``MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES``, so sampling stops early and
+    the result is extrapolated. The summary cannot express a time range, so
+    without scaling by the window's share of the file's span the estimate is
+    the whole recording's worth of messages.
+    """
+    time_range = (0, 1_000_000_000)  # 1 s of a 4 s recording
+
+    unfiltered = MCAPDatasource(
+        paths=[episode_mcap_file], topics={"/proprio"}
+    ).estimate_inmemory_data_size()
+    windowed = MCAPDatasource(
+        paths=[episode_mcap_file],
+        topics={"/proprio"},
+        time_range=TimeRange(*time_range),
+    ).estimate_inmemory_data_size()
+    actual = (
+        ray.data.read_mcap(
+            episode_mcap_file, topics={"/proprio"}, time_range=time_range
+        )
+        .materialize()
+        .size_bytes()
+    )
+
+    # A quarter of the recording, so roughly a quarter of the rows.
+    assert windowed < unfiltered / 2
+    assert 0.5 * actual <= windowed <= 2 * actual
 
 
 def test_read_mcap_orders_messages_by_log_time(ray_start_regular_shared, tmp_path):
