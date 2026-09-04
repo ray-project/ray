@@ -65,6 +65,8 @@ def _run_script_capturing(test_script, extra_env, *args):
         "MAX_RETRIES": "1",
         **extra_env,
     }
+    if "RELEASE_TEST_OBS_AGENT_FILE" not in extra_env:
+        env.pop("RELEASE_TEST_OBS_AGENT_FILE", None)
     proc = subprocess.run(
         f"{test_script} {' '.join(args)}",
         shell=True,
@@ -305,6 +307,33 @@ def test_analysis_from_an_earlier_attempt_is_not_reported_against_a_later_one(
     # Both attempts ran, and the second one produced no analysis of its own.
     assert "Release test finished with final exit code 40 after 2/2 tries" in output
     assert "analysis from the first attempt" not in output
+
+
+def test_the_default_analysis_path_is_under_the_results_dir(tmpdir):
+    """The default has to land where the artifact copy will pick it up."""
+    results_dir = os.path.join(tmpdir, "results")
+    os.makedirs(results_dir)
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        # The script exports the path it chose, so the stub can write to it
+        # without the test naming it.
+        fp.write('echo "the analysis" > "${RELEASE_TEST_OBS_AGENT_FILE}"\nexit 40\n')
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_RESULTS_DIR": results_dir,
+        },
+        "test_name",
+    )
+
+    assert "+++ :robot_face: Observability agent analysis" in output
+    assert "  the analysis" in output
+    assert os.path.exists(os.path.join(results_dir, "obs_agent_analysis.txt"))
 
 
 if __name__ == "__main__":
