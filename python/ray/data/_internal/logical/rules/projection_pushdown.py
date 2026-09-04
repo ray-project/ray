@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
@@ -349,65 +350,86 @@ class ProjectionPushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
-        # first, so the fuse/push steps can carry the narrowed columns into the
-        # read.
-        new_dag = dag._apply_transform(self._prune_aggregate_input)
+        # Top-down pass: thread the columns each operator's consumers reference
+        # down the plan and insert pruning projections below interior
+        # pass-through operators (joins, aggregates, sorts, unions). The
+        # fuse/push steps then carry the narrowed columns into the reads.
+        new_dag = self._prune_columns(dag, None)
         new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
-    @classmethod
-    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
-        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
-        columns it consumes (group keys + each aggregation's target column).
-
-        The aggregation drops every other column anyway, so pruning them before
-        the shuffle avoids dragging unused (often wide) columns through it --
-        which otherwise inflates both the aggregator's memory reservation and
-        the bytes shuffled. The inserted projection is fused/pushed toward the
-        read by the steps in ``apply``.
-        """
-        from dataclasses import replace
-
-        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-        from ray.data.aggregate import AggregateFnV2
+    @staticmethod
+    def _prune_input(input_op: LogicalOperator, required: Set[str]) -> LogicalOperator:
+        """Return a pure-prune ``Project`` of ``required`` over ``input_op``,
+        preserving input column order, or ``input_op`` unchanged when its schema
+        is unknown or it already produces no more than ``required`` (which keeps
+        the fixed-point optimizer idempotent)."""
         from ray.data.expressions import col
 
-        if not isinstance(op, Aggregate):
-            return op
-
-        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
-        required: List[str] = list(keys)
-        for agg in op.aggs:
-            # A generic ``AggregateFn`` may read arbitrary columns, so only
-            # prune when every aggregation declares the column it reads.
-            if not isinstance(agg, AggregateFnV2):
-                return op
-            target = agg.get_target_column()
-            if target is not None:
-                required.append(target)
-
-        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
-        # global count reading no columns).
-        required = list(dict.fromkeys(required))
-        if not required:
-            return op
-
-        input_op = op.input_dependencies[0]
         schema = input_op.infer_schema()
         if schema is None or not hasattr(schema, "names"):
-            return op  # unknown schema: can't prove pruning helps
+            return input_op
+        columns = list(schema.names)
+        keep = [c for c in columns if c in required]
+        if not keep or len(keep) == len(columns):
+            return input_op
+        return Project(exprs=[col(c) for c in keep], input_dependencies=[input_op])
 
-        # Insert only when ``required`` is a strict subset of the input columns:
-        # this guarantees there's something to drop and keeps the rule
-        # idempotent (once the input yields exactly ``required`` nothing more is
-        # inserted, so the fixed-point optimizer terminates).
-        if not set(required) < set(schema.names):
+    @classmethod
+    def _prune_columns(
+        cls, op: LogicalOperator, required: Optional[Set[str]]
+    ) -> LogicalOperator:
+        """Top-down column pruning.
+
+        ``required`` is the set of ``op``'s output columns referenced by
+        consumers above it (``None`` means "all of them are needed"). For each
+        input, recurse with the columns that input must produce, and -- for
+        interior pass-through operators (``Join``/``Aggregate``/``Sort``/
+        ``Union``) -- insert a pure-prune ``Project`` so unused columns are
+        dropped *before* the operator (and any shuffle it performs) runs.
+
+        A ``Project`` already drops columns it doesn't output, so it only threads
+        the requirement down (capping its child would just create a redundant
+        ``Project`` the fuse step removes). Opaque operators (e.g. UDF maps) may
+        read any input column, so their inputs are left untouched (``required``
+        for the child is ``None``), which safely blocks pruning beneath them.
+        """
+        children = op.input_dependencies
+        if not children:
+            # Leaf (``Read``/``InputData``); column pruning into the data source
+            # is handled separately by ``_push_projection_into_read_op``.
             return op
 
-        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
-        return replace(op, input_dependencies=[prune])
+        # Determine what each input must produce.
+        if isinstance(op, Project) and not op.has_star_expr():
+            referenced = _collect_referenced_columns(op.exprs)
+            per_child = [None] if referenced is None else [set(referenced)]
+        elif isinstance(op, LogicalOperatorSupportsProjectionPassThrough):
+            per_child = op.required_input_columns(
+                None if required is None else frozenset(required)
+            )
+        else:
+            per_child = None
+        if per_child is None:
+            per_child = [None] * len(children)
+
+        # Only interior pass-through operators drag unused columns through (and
+        # through a shuffle), so only they cap their inputs.
+        cap_inputs = isinstance(op, LogicalOperatorSupportsProjectionPassThrough)
+
+        new_children: List[LogicalOperator] = []
+        changed = False
+        for child, child_required in zip(children, per_child):
+            new_child = cls._prune_columns(child, child_required)
+            if cap_inputs and child_required is not None:
+                new_child = cls._prune_input(new_child, child_required)
+            new_children.append(new_child)
+            changed = changed or new_child is not child
+
+        if not changed:
+            return op
+        return op._with_new_input_dependencies(new_children)
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
