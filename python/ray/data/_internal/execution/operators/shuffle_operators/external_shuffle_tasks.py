@@ -210,7 +210,7 @@ def _external_shuffle_map_task(
     }
 
 
-@ray.remote
+@ray.remote  # pyrefly: ignore[no-matching-overload]
 def _external_shuffle_reduce_task(
     *handles_by_input: List[ShuffleHandle],
     partition_id: int,
@@ -271,12 +271,12 @@ def _external_shuffle_reduce_task(
     ) -> List[List[pa.Table]]:
         if num_inputs == 1:
             return tables_by_input
-        return [
-            tables
-            if tables or schemas_by_input[i] is None
-            else [schemas_by_input[i].empty_table()]
-            for i, tables in enumerate(tables_by_input)
-        ]
+        out: List[List[pa.Table]] = []
+        for tables, schema in zip(tables_by_input, schemas_by_input):
+            if not tables and schema is not None:
+                tables = [schema.empty_table()]
+            out.append(tables)
+        return out
 
     def _yield_with_stats(block: Block):
         """Yield ``block`` then its pickled metadata. The two-yield protocol
@@ -318,11 +318,6 @@ def _external_shuffle_reduce_task(
             ):
                 yield from _yield_with_stats(out_block)
 
-    # No shards for this partition anywhere. Single-input: yield a typed empty
-    # table (do not call reduce_fn on ``[[]]``: concat/sort reduces yield
-    # nothing for empty input). Multi-input: reduce_fn owns the empty
-    # semantics (an outer join's empty side can still produce rows). A fused
-    # map (if any) still runs over the resulting stream.
     if not any(sources_by_input):
         if num_inputs == 1:
 
