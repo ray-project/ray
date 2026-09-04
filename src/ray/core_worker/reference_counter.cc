@@ -898,8 +898,8 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     // not set the deletion callback because it may never get called.
     return false;
   } else if (freed_objects_.contains(object_id)) {
-    // The object has been freed by the language frontend, so it
-    // should be deleted immediately.
+    // The object's plasma copy was dropped on purpose, so it should be deleted
+    // immediately.
     return false;
   }
 
@@ -937,7 +937,8 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (freed_objects_.contains(object_id)) {
-      // The object has been freed by the language frontend.
+      // The object's plasma copy was dropped on purpose, so do not start
+      // tracking a location for it again.
       return;
     }
 

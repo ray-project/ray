@@ -775,7 +775,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectPutAfterFirstRequest) {
   EXPECT_EQ("meta", reply2.object().metadata());
 }
 
-TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
+TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectDeletedFromStoreBetweenRequests) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
 
@@ -827,7 +827,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
                   std::function<void()> success,
                   std::function<void()> failure) { promise2.set_value(s); });
 
-  // Object is freed, so the callback is stored until the object is put back in the store
+  // The object is gone from the store, so the callback is held until it is put back
   ASSERT_FALSE(io_service_.poll_one());
 }
 
@@ -886,6 +886,54 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   // Not calling io_service_.run_one() because the callback is called on the main thread
   ASSERT_TRUE(future2.get().ok());
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
+}
+
+// An object whose plasma copy the owner dropped on purpose is still answered, from the
+// in-plasma marker SealExisting leaves in the store, not held like the deleted-from-store
+// case above. SealExisting itself is not covered: this fixture has no plasma store
+// provider.
+TEST_F(CoreWorkerTest, HandleGetObjectStatusPlasmaFreedObjectStillAnswered) {
+  auto object_id = ObjectID::FromRandom();
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  // Same order as SealExisting takes on its pin_object == false path.
+  reference_counter_->FreePlasmaObjects({object_id});
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA);
+  memory_store_->Put(in_plasma, object_id, reference_counter_->HasReference(object_id));
+
+  rpc::GetObjectStatusRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
+
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  rpc::GetObjectStatusReply reply;
+
+  core_worker_->HandleGetObjectStatus(
+      request,
+      &reply,
+      [&promise](Status s, std::function<void()>, std::function<void()>) {
+        promise.set_value(s);
+      });
+
+  // poll_one rather than run_one: a regression fails here instead of blocking forever.
+  ASSERT_TRUE(io_service_.poll_one());
+  ASSERT_TRUE(future.get().ok());
+  EXPECT_EQ(reply.status(), rpc::GetObjectStatusReply::CREATED);
+  // The borrower is pointed at plasma, which is what the owner dropping the copy without
+  // pinning it means.
+  EXPECT_TRUE(reply.object().data().empty());
+  EXPECT_EQ(reply.object().metadata(),
+            std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA)));
 }
 
 namespace {
