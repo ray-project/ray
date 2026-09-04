@@ -477,12 +477,6 @@ void GcsServer::RegisterRpcServices() {
         max_rpcs));
   }
 
-  // RaySyncer is registered through the same leader-gating proxy as the other
-  // services for consistency. Its sole method StartSync is *allowed* on a passive
-  // GCS (see LeaderGatedRaySyncerHandler): it is a side-effect-free stream already
-  // scoped upstream at node registration. The proxy exists so any future method
-  // added to the service must explicitly choose its own leader policy.
-  // ray_syncer_service_ (the real handler) is created in InitRaySyncer().
   rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerGrpcService>(
       MaybeGate(gated_ray_syncer_handler_, *ray_syncer_service_)));
 }

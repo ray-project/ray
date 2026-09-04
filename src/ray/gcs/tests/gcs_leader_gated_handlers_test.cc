@@ -1316,8 +1316,7 @@ TEST(GcsLeaderGatedHandlersTest, TestRayEventExportGating) {
 // =========================================================================
 // RaySyncer Service Gating Tests (stream RPC ALLOWED even when passive).
 // Unlike every other gated handler, StartSync must be forwarded regardless of
-// leadership: it is a side-effect-free stream already scoped upstream at node
-// registration. This test guards that contract against a future change that
+// leadership. This test guards that contract against a future change that
 // wrongly gates it.
 // =========================================================================
 
