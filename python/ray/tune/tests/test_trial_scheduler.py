@@ -2359,6 +2359,42 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(2, 260)), TrialScheduler.STOP
         )
 
+    def testAsyncHBNoneMetric(self):
+        # A trial reporting None for the metric must not crash the scheduler: _Bracket.on_result
+        # warns and leaves the trial running, and the None is not recorded as a rung result.
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1,
+        )
+        t1 = Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_result(None, t1, result(1, 450))
+
+        t2 = Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, t2)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result(1, None)),
+            TrialScheduler.CONTINUE,
+        )
+        for _, recorded in scheduler._brackets[0]._rungs:
+            self.assertNotIn(t2.trial_id, recorded)
+
+        # on_trial_complete goes through the same path
+        t3 = Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, t3)
+        scheduler.on_trial_complete(None, t3, result(1, None))
+
+        # and a genuinely underperforming trial is still stopped
+        t4 = Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, t4)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t4, result(1, 0)), TrialScheduler.STOP
+        )
+
     def testAsyncHBSaveRestore(self):
         _, tmpfile = tempfile.mkstemp()
 
