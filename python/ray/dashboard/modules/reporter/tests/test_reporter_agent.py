@@ -1,8 +1,10 @@
 import asyncio
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock
 
+import pytest
 from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
 
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
@@ -40,3 +42,7 @@ def test_export_processes_metrics_off_event_loop() -> None:
 
     assert [kind for kind, _ in metric_calls] == ["histogram", "number"]
     assert all(thread_id != threading.get_ident() for _, thread_id in metric_calls)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
