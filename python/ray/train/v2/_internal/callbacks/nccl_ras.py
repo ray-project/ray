@@ -489,16 +489,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Track frozen communicators and escalate user-facing hang messaging.
 
         A communicator is deadlocked only when *no* rank advanced *any* op since
-        the last poll: a real hang blocks every rank, so every op freezes. Its
+        the last poll: a real hang blocks every rank, so every op freezes. It's
         possible for an op mismatch to occur and NCCL continue which isn't
         detected currently.
         """
         if self.prev_report is None:
             return
 
+        # 0. Compute the sequential ras report op count difference
         op_diff = compute_report_op_diff(self.prev_report, report)
 
-        # 1. Classify each communicator
+        # 1. Identify confirmed hanging mismatched communicator
         new_comm_deadlock_count: Dict[str, int] = {}
         confirmed_comm_hangs: List[str] = []
         for comm_id in report.mismatched_comms:
@@ -521,34 +522,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         # 2. Handle confirmed comm hangs
         if confirmed_comm_hangs:
-            ras_human_output = self.query_ras_on_workers("text")
-            if ras_human_output:
-                logger.warning("%s", ras_human_output)
-
-            try:
-                dump_dir = self.dump_workers_stack_traces()
-            except Exception:
-                logger.exception("Trying to dump worker stack traces failed.")
-                dump_dir = None
-
-            message = (
-                f"{len(confirmed_comm_hangs)} of "
-                f"{len(report.comm_op_counts)} communicators have a "
-                f"collective mismatch and made no progress for "
-                f"{self._confirm_duration_s:.0f} seconds "
-                f"({self._confirm_poll_counts} polls). "
-                "This usually means that the collective is deadlocked / hanging. "
-                "The possible reasons for this is: a rank hit a divergent code "
-                "path, exited early, a GPU or network hardware failure, or a "
-                "collective was launched with a mismatched shape, dtype, or call order.\n"
-                "To debug:\n"
-                "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
-                f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n"
-            )
-            if self._action == NCCL_RAS_ACTION_FAIL:
-                raise NCCLHangError(message, worker_failures={})
-            elif self._action == NCCL_RAS_ACTION_OBSERVE:
-                logger.warning(message)
+            self.handle_confirmed_hangs(confirmed_comm_hangs, report)
 
         # 3. Handle unfrozen comms
         for comm_id, count in self.comm_deadlock_count.items():
@@ -564,70 +538,106 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     count,
                 )
 
-        # 4. Any comm no longer frozen is dropped from the streak counts.
+        # 4. Any comm no longer frozen is dropped from the streak count
         self.comm_deadlock_count = new_comm_deadlock_count
 
         # 5. Handle suspected frozen comms
         if self.comm_deadlock_count:
-            total_comms = len(report.comm_op_counts)
-            confirm_s = self._confirm_poll_counts * self._poll_interval_s
-            escalation = (
-                f"A NCCLHangError will be raised after {confirm_s:.0f} seconds if this persists."
-                if self._action == NCCL_RAS_ACTION_FAIL
-                else ""
+            self.handle_suspected_hangs(report)
+
+    def handle_confirmed_hangs(
+        self, confirmed_comm_hangs: List[str], report: RASReport
+    ):
+        ras_human_output = self.query_ras_on_workers("text")
+        if ras_human_output:
+            logger.warning("%s", ras_human_output)
+
+        try:
+            dump_dir = self.dump_workers_stack_traces()
+        except Exception:
+            logger.exception("Trying to dump worker stack traces failed.")
+            dump_dir = None
+
+        message = (
+            f"{len(confirmed_comm_hangs)} of "
+            f"{len(report.comm_op_counts)} communicators have a "
+            f"collective mismatch and made no progress for "
+            f"{self._confirm_duration_s:.0f} seconds "
+            f"({self._confirm_poll_counts} polls). "
+            "This usually means that the collective is deadlocked / hanging. "
+            "The possible reasons for this is: a rank hit a divergent code "
+            "path, exited early, a GPU or network hardware failure, or a "
+            "collective was launched with a mismatched shape, dtype, or call order.\n"
+            "To debug:\n"
+            "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
+            f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n"
+        )
+        if self._action == NCCL_RAS_ACTION_FAIL:
+            raise NCCLHangError(message, worker_failures={})
+        elif self._action == NCCL_RAS_ACTION_OBSERVE:
+            logger.warning(message)
+
+    def handle_suspected_hangs(self, report: RASReport):
+        # Communicators that just crossed the first-suspicion threshold this poll
+        new_suspicions = [
+            comm_id
+            for comm_id, count in self.comm_deadlock_count.items()
+            if count == self._suspicion_polls
+        ]
+
+        total_comms = len(report.comm_op_counts)
+        confirm_s = self._confirm_poll_counts * self._poll_interval_s
+        escalation = (
+            f"A NCCLHangError will be raised after {confirm_s:.0f} seconds if this persists."
+            if self._action == NCCL_RAS_ACTION_FAIL
+            else ""
+        )
+
+        # Log first suspicious of a communicator
+        if new_suspicions:
+            logger.warning(
+                "Possible NCCL hang detected! %d of %d communicators (%s) have "
+                "made no progress over %.0f seconds (%d consecutive polls). "
+                "Continuing to monitor, this might be a transient stall. %s",
+                len(new_suspicions),
+                total_comms,
+                ", ".join(new_suspicions),
+                self._suspicion_polls * self._poll_interval_s,
+                self._suspicion_polls,
+                escalation,
             )
 
-            # Announce communicators that just crossed the first-suspicion
-            # threshold this poll so the user learns which are being watched.
-            new_suspicions = [
-                comm_id
+        # Periodically log every still-frozen communicator in a single
+        # message (with each one's stalled duration) and  log the RAS
+        # human report for all communicators.
+        if any(
+            count % self._periodic_warn_polls == 0
+            for count in self.comm_deadlock_count.values()
+        ):
+            stalled_comms = ", ".join(
+                f"{comm_id} for {count * self._poll_interval_s:.0f}s"
                 for comm_id, count in self.comm_deadlock_count.items()
-                if count == self._suspicion_polls
-            ]
-            if new_suspicions:
-                logger.warning(
-                    "Possible NCCL hang detected! %d of %d communicators (%s) have "
-                    "made no progress over %.0f seconds (%d consecutive polls). "
-                    "Continuing to monitor, this might be a transient stall. %s",
-                    len(new_suspicions),
-                    total_comms,
-                    ", ".join(new_suspicions),
-                    self._suspicion_polls * self._poll_interval_s,
-                    self._suspicion_polls,
-                    escalation,
+            )
+            periodic_escalation = ""
+            if self._action == NCCL_RAS_ACTION_FAIL:
+                max_count = max(self.comm_deadlock_count.values())
+                remaining_polls = self._confirm_poll_counts - max_count
+                remaining_s = remaining_polls * self._poll_interval_s
+                periodic_escalation = (
+                    f"A NCCLHangError will be raised in {remaining_s:.0f} seconds "
+                    f"({remaining_polls} more polls) if this persists."
                 )
-
-            # Periodically remind about every still-frozen communicator in a
-            # single message (with each one's stalled duration) and fetch the RAS
-            # report once, rather than once per communicator.
-            if any(
-                count % self._periodic_warn_polls == 0
-                for count in self.comm_deadlock_count.values()
-            ):
-                stalled = ", ".join(
-                    f"{comm_id} for {count * self._poll_interval_s:.0f}s"
-                    for comm_id, count in self.comm_deadlock_count.items()
-                )
-                periodic_escalation = ""
-                if self._action == NCCL_RAS_ACTION_FAIL:
-                    max_count = max(self.comm_deadlock_count.values())
-                    remaining_polls = self._confirm_poll_counts - max_count
-                    remaining_s = remaining_polls * self._poll_interval_s
-                    periodic_escalation = (
-                        f"A NCCLHangError will be raised in {remaining_s:.0f} seconds "
-                        f"({remaining_polls} more polls) if this persists."
-                    )
-                logger.warning(
-                    "NCCL hang still suspected! %d of %d communicators (%s) have made "
-                    "no progress. %s",
-                    len(self.comm_deadlock_count),
-                    total_comms,
-                    stalled,
-                    periodic_escalation,
-                )
-                ras_human_output = self.query_ras_on_workers("text")
-                if ras_human_output:
-                    logger.info("%s", ras_human_output)
+            logger.warning(
+                "NCCL hang still suspected! %d of %d communicators (%s) have made "
+                "no progress. %s",
+                len(self.comm_deadlock_count),
+                total_comms,
+                stalled_comms,
+                periodic_escalation,
+            )
+            ras_human_output = self.query_ras_on_workers("text")
+            if ras_human_output:
+                logger.info("%s", ras_human_output)
 
     def drive_ras_query(self) -> Optional[RASReport]:
         """Drive the throttled JSON RAS poll without blocking the event loop.
