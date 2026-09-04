@@ -631,7 +631,7 @@ gcs-oauth2-boto-plugin==3.3
     # via gsutil
 gitdb==4.0.12
     # via gitpython
-gitpython==3.1.47
+gitpython==3.1.58
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   mlflow-skinny
