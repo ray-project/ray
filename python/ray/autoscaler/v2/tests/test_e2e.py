@@ -6,6 +6,11 @@ from typing import Dict
 
 import pytest
 
+# RayConfig reads the auth mode once at import; pin a fixed token before
+# importing ray so the cluster and this process agree regardless of ~/.ray.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
+
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.test_utils import wait_for_condition

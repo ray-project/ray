@@ -39,14 +39,28 @@ def set_env_var(key: str, val: Optional[str] = None):
             os.environ[key] = old_val
 
 
+# Fixed token so the `ray start --head` and `ray job submit` subprocesses share
+# the same credential.
+_TEST_AUTH_TOKEN = "test_token_12345678901234567890123456789012"
+
+
+@contextmanager
+def _token_auth_env():
+    with set_env_var("RAY_AUTH_MODE", "token"), set_env_var(
+        "RAY_AUTH_TOKEN", _TEST_AUTH_TOKEN
+    ):
+        yield
+
+
 @pytest.fixture
 def ray_start_stop():
-    subprocess.check_output(["ray", "start", "--head"])
-    try:
-        with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
-            yield
-    finally:
-        subprocess.check_output(["ray", "stop", "--force"])
+    with _token_auth_env():
+        subprocess.check_output(["ray", "start", "--head"])
+        try:
+            with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
+                yield
+        finally:
+            subprocess.check_output(["ray", "stop", "--force"])
 
 
 @contextmanager
@@ -54,11 +68,12 @@ def ray_cluster_manager():
     """
     Used not as fixture in case we want to set RAY_ADDRESS first.
     """
-    subprocess.check_output(["ray", "start", "--head"])
-    try:
-        yield
-    finally:
-        subprocess.check_output(["ray", "stop", "--force"])
+    with _token_auth_env():
+        subprocess.check_output(["ray", "start", "--head"])
+        try:
+            yield
+        finally:
+            subprocess.check_output(["ray", "stop", "--force"])
 
 
 def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
