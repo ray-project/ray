@@ -51,7 +51,11 @@ def _run_script(test_script, state_file, *exits):
 
 
 def _run_script_capturing(test_script, extra_env, *args):
-    """Run the real release test script and return its combined output."""
+    """Run the real release test script and return its output.
+
+    stderr is merged into stdout so that the returned text preserves the order
+    the two streams were actually written in; the tests assert on that order.
+    """
     env = {
         **os.environ,
         "NO_INSTALL": "1",
@@ -65,10 +69,11 @@ def _run_script_capturing(test_script, extra_env, *args):
         f"{test_script} {' '.join(args)}",
         shell=True,
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
     )
-    return proc.stdout + proc.stderr
+    return proc.stdout
 
 
 def test_obs_agent_analysis_is_printed_in_its_own_group(tmpdir):
@@ -139,6 +144,36 @@ def test_stale_analysis_is_not_reported_against_a_later_attempt(tmpdir):
     )
 
     assert "stale analysis" not in output
+
+
+def test_analysis_cannot_open_a_buildkite_group_of_its_own(tmpdir):
+    """The summary is agent-written prose; it must not be read as markup."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        fp.write(
+            f'printf "summary line\\n--- not a group\\n+++ nor this\\n" '
+            f"> {analysis_file}\nexit 40\n"
+        )
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
+        },
+        "test_name",
+    )
+
+    assert "+++ :robot_face: Observability agent analysis" in output
+    # Every line of the analysis is indented, so none of them sits at the start
+    # of a line where buildkite would read it as a group header.
+    for line in ("summary line", "--- not a group", "+++ nor this"):
+        assert f"  {line}" in output
+        assert f"\n{line}" not in output
 
 
 def test_repeat(setup):
