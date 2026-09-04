@@ -416,6 +416,48 @@ def test_generated_id_rerun_rereads_all_rows(
     assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
 
 
+def test_generated_id_pending_cleanup_before_rerun(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Pending-checkpoint cleanup doesn't depend on the ID type: a generated-ID
+    rerun after a mid-write crash must delete leftover pending checkpoints and
+    their partially written data files before writing again."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    out = os.path.join(tmp_path, "out")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+    committed_before = {
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    }
+    assert committed_before
+
+    # Simulate a crashed run: a pending checkpoint whose 2PC never committed,
+    # plus the matching partially written data file.
+    stale_base = "crashed_write_0000"
+    pq.write_table(
+        pa.table({"generated_id_col": ["fake"]}),
+        os.path.join(ckpt_path, f"{stale_base}{PENDING_CHECKPOINT_SUFFIX}.parquet"),
+    )
+    stale_data_file = os.path.join(out, f"{stale_base}.parquet")
+    pq.write_table(pa.table({ID_COL: [-1]}), stale_data_file)
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+
+    remaining = os.listdir(ckpt_path)
+    assert not any(PENDING_CHECKPOINT_SUFFIX in f for f in remaining)
+    assert committed_before <= set(remaining)
+    assert not os.path.exists(stale_data_file)
+
+
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [

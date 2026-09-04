@@ -285,6 +285,18 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
+            if (
+                getattr(checkpoint_config, "has_generated_id_column", False)
+                and data_file_dir is not None
+            ):
+                # The id_column path cleans up pending checkpoints (and their
+                # partially written data files) inside checkpoint load, which
+                # the generated-ID path doesn't plan. Clean here instead so a
+                # retry after a mid-write crash doesn't leave stale output.
+                self._clean_pending_checkpoints(
+                    checkpoint_config, logical_plan.context, data_file_dir, data_file_fs
+                )
+
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
@@ -388,6 +400,24 @@ class Planner:
             if isinstance(datasink, _FileDatasink):
                 return datasink.unresolved_path, datasink.filesystem
         return None, None
+
+    @staticmethod
+    def _clean_pending_checkpoints(
+        checkpoint_config: "CheckpointConfig",
+        data_context: DataContext,
+        data_file_dir: str,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> None:
+        """Delete pending checkpoints and their partially written data files."""
+        # Lazy import: ``checkpoint_filter`` participates in an import cycle
+        # with ``ray.data.context``.
+        from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
+
+        manager_cls = (
+            checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
+        )
+        manager = manager_cls(checkpoint_config, data_context)
+        manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
     def _get_plan_fns_for_checkpointing(
         self,
