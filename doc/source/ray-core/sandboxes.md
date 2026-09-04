@@ -349,118 +349,6 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
-## HTTP API service
-
-Ray Sandbox ships an experimental REST API service so you can manage sandboxes from outside the Ray cluster with nothing but an HTTP client and a bearer token. The service is a FastAPI app on Ray Serve (`ray.experimental.sandbox.http`). Each sandbox is held by a named, detached actor, so the service itself is stateless and its replicas can scale or restart without losing sandboxes.
-
-Image pulls and commands can far outlive an HTTP request and the load balancer in front of a deployed service, so creation and execution are asynchronous. `POST` returns immediately and clients poll, optionally long-polling with `wait_seconds` for up to 30 seconds per request.
-
-### Endpoints
-
-All endpoints sit under `/api/v1`. Except for `GET /health`, they require `Authorization: Bearer <token>` when a token is configured.
-
-| Method and path | Description |
-| --- | --- |
-| `GET /health` | Liveness probe; never requires auth. |
-| `POST /sandboxes` | Create a sandbox. Returns `202` with `status: pending`. Poll until `running` or `error`. Send a `client_token` to make creation idempotent, so a retry returns `200` with the existing sandbox. |
-| `GET /sandboxes?label=k=v` | List sandboxes, optionally filtered by labels. |
-| `GET /sandboxes/{id}?wait_seconds=N` | Sandbox status; long-polls while it boots. |
-| `DELETE /sandboxes/{id}` | Terminate the sandbox and its actor. Idempotent from any state. |
-| `POST /sandboxes/{id}/execs` | Start a command. Returns `202` with an `exec_id`, or `409` while the sandbox isn't running. A string command runs under the sandbox's shell, `/bin/bash` by default and configurable per sandbox and per exec via `shell`. A list runs argv-style. |
-| `GET /sandboxes/{id}/execs/{exec_id}?wait_seconds=N` | Exec status and result: `running`, `completed` with `exit_code`, `stdout`, and `stderr`, `timeout`, or `error`. Output is capped per stream by `max_output_bytes` with a loud truncation marker. |
-| `PUT /sandboxes/{id}/files?path=/abs/path` | Write the raw request body to a file in the sandbox. Returns `413` above `max_file_bytes`. Pass `append=true` to extend the file, which lets clients chunk large uploads under proxy body-size limits. |
-| `GET /sandboxes/{id}/files?path=/abs/path` | Read a file from the sandbox as `application/octet-stream`. |
-
-Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..."}}`. The codes are `401 unauthorized`, `404 sandbox_not_found`, `404 exec_not_found`, `404 file_not_found`, `409 conflict`, `409 unschedulable`, `400 invalid_request`, `413 payload_too_large`, and FastAPI's native `422` for schema violations. The full OpenAPI schema is served at `/openapi.json`.
-
-Server behavior worth knowing:
-
-* **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
-* **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
-* **Network modes**: The modes are the Python API's, validated by Ray: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
-
-### Self-hosted quickstart
-
-On a Linux machine or cluster with `runsc` on `PATH`:
-
-```bash
-pip install "ray[serve]"
-export RAY_SANDBOX_API_TOKEN=dev-token   # Optional. Unset disables app-level auth.
-serve run ray.experimental.sandbox.http.app:build_app
-```
-
-```bash
-curl -s -H "Authorization: Bearer dev-token" \
-  -H "Content-Type: application/json" \
-  -d '{"image": "busybox:latest", "readonly": false, "shell": "/bin/sh"}' \
-  http://localhost:8000/api/v1/sandboxes
-```
-
-Builder arguments configure the server. See `ray.experimental.sandbox.http.schemas.SandboxAPISettings` for the full list. For example:
-
-```bash
-serve run ray.experimental.sandbox.http.app:build_app max_ttl_seconds=86400 num_replicas=2
-```
-
-### Deploying as an Anyscale service
-
-Build a cluster image whose worker nodes have `runsc`:
-
-```dockerfile
-FROM anyscale/ray:2.58.0-py312
-RUN ARCH=$(uname -m | sed 's/arm64/aarch64/') && \
-    curl -fsSL -o /usr/local/bin/runsc \
-      "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" && \
-    curl -fsSL -o /usr/local/bin/pasta \
-      "https://passt.top/builds/latest/x86_64/pasta" && \
-    chmod +x /usr/local/bin/runsc /usr/local/bin/pasta
-```
-
-The `pasta` binary is only needed for `network="public"`; passt.top publishes static builds for x86_64 only, so on arm64 nodes install the distro's `passt` package instead. For multi-uid ownership, additionally install `uidmap` and allocate subordinate ranges:
-
-```dockerfile
-RUN sudo apt-get update && sudo apt-get install -y uidmap && \
-    echo "ray:100000:65536" | sudo tee -a /etc/subuid /etc/subgid
-```
-
-Then deploy the builder as the service's application:
-
-```yaml
-# service.yaml
-name: ray-sandbox-api
-image_uri: <your-registry>/ray-sandbox-api:latest
-applications:
-  - name: sandbox-api
-    import_path: ray.experimental.sandbox.http.app:build_app
-    args:
-      max_ttl_seconds: 86400
-```
-
-```bash
-anyscale service deploy -f service.yaml
-```
-
-Anyscale services require their own bearer token at the platform edge, so leave `RAY_SANDBOX_API_TOKEN` unset and hand clients the service's base URL and token. Consumers such as the [Harbor](https://harborframework.com) `ray-sandbox` environment take exactly that pair as `RAY_SANDBOX_API_URL` and `RAY_SANDBOX_API_KEY`.
-
-### Local development loop on macOS
-
-`runsc` is Linux-only. Develop against the service in a privileged container:
-
-```bash
-docker run --privileged -p 8000:8000 \
-  -v ~/path/to/ray/python/ray/experimental/sandbox:/overlay:ro \
-  rayproject/ray:nightly-py312 bash -lc '
-    pip install "ray[serve]" &&
-    SITE=$(python -c "import ray, os; print(os.path.dirname(ray.__file__))") &&
-    cp -r /overlay/* "$SITE/experimental/sandbox/" &&
-    ARCH=$(uname -m | sed "s/arm64/aarch64/") &&
-    curl -fsSL -o /usr/local/bin/runsc "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" &&
-    { curl -fsSL -o /usr/local/bin/pasta "https://passt.top/builds/latest/x86_64/pasta" || sudo apt-get install -y passt; } &&
-    chmod +x /usr/local/bin/runsc /usr/local/bin/pasta 2>/dev/null;
-    RAY_SANDBOX_API_TOKEN=dev-token serve run --host 0.0.0.0 ray.experimental.sandbox.http.app:build_app'
-```
-
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.
@@ -470,7 +358,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
-* **`pasta` not found for `network="public"`**: Install the passt package (or a [static build](https://passt.top/builds/latest/)) on worker nodes, enable the HTTP API's `auto_install_pasta` setting, or set `RAY_SANDBOX_PUBLIC_HOST_NETNS=1` on workers to run `public` sandboxes in the worker's shared network namespace (the pre-namespace behavior, without port isolation).
+* **`pasta` not found for `network="public"`**: Install the passt package (or a [static build](https://passt.top/builds/latest/)) on worker nodes, or set `RAY_SANDBOX_PUBLIC_HOST_NETNS=1` on workers to run `public` sandboxes in the worker's shared network namespace (the pre-namespace behavior, without port isolation).
 * **`public` sandboxes fail to start with a tap or namespace error**: pasta needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The pasta error appears in the sandbox's `runsc.stderr.log` and in the creation error message; fall back to the kill switch or `network="host"` until the node environment provides both.
 * **Files all appear owned by root, or `chown` fails with "Invalid argument"**: The node lacks multi-uid prerequisites (uidmap package, `/etc/subuid`/`/etc/subgid` ranges), the pod runs with `allowPrivilegeEscalation: false` (disables the setuid `newuidmap`/`newgidmap` helpers), or the pod itself runs under a sandboxed runtime such as gVisor (GKE Sandbox), whose kernel accepts only single-entry self-maps — even privileged writes to a child `uid_map` fail there, so multi-uid needs regular runc-backed nodes. The service probes at boot, logs the fallback reason once, and runs single-uid. Also note gVisor's own `runsc spec` capability default is far narrower than Docker's: traversing another user's `0700` directory as root needs `CAP_DAC_OVERRIDE`, so pass `DOCKER_DEFAULT_CAPABILITIES` for Docker-like behavior. `RAY_SANDBOX_SINGLE_UID=1` on workers forces the single-uid behavior fleet-wide.
 
