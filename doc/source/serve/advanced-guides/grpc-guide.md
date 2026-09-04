@@ -12,6 +12,7 @@ This section helps you understand how to:
 - Start Serve with gRPC enabled
 - Deploy gRPC applications
 - Send gRPC requests to Serve deployments
+- Explore your gRPC API with server reflection
 - Check proxy health
 - Work with gRPC metadata 
 - Use streaming and model composition
@@ -142,6 +143,76 @@ Sending a gRPC request:
 
 Read more about gRPC clients in Python: [https://grpc.io/docs/languages/python/basics/#client](https://grpc.io/docs/languages/python/basics/#client)
 
+
+(serve-grpc-server-reflection)=
+## Explore your gRPC API with server reflection
+Serve's gRPC proxy supports the [gRPC server reflection protocol](https://grpc.io/docs/guides/reflection/). With reflection enabled, standard tools such as [grpcurl](https://github.com/fullstorydev/grpcurl), [grpcui](https://github.com/fullstorydev/grpcui), and Postman can discover, describe, and call the gRPC services registered on the proxy without needing local copies of your `.proto` files—similar to how FastAPI's `/docs` page works for HTTP.
+
+The examples below use the `UserDefinedService` and generated `user_defined_protos_pb2_grpc` module from [Define a gRPC service](custom-serve-grpc-service) at the top of this guide.
+
+Server reflection is off by default. Enable it with the `enable_reflection` option:
+
+::::{tab-set}
+
+:::{tab-item} CLI
+```bash
+serve start \
+  --grpc-port 9000 \
+  --grpc-servicer-functions user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server \
+  --grpc-enable-reflection
+```
+:::
+
+:::{tab-item} Python API
+```python
+from ray import serve
+from ray.serve.config import gRPCOptions
+
+serve.start(
+    grpc_options=gRPCOptions(
+        port=9000,
+        grpc_servicer_functions=[
+            "user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        ],
+        enable_reflection=True,
+    ),
+)
+```
+:::
+
+:::{tab-item} Serve config file
+```yaml
+grpc_options:
+  port: 9000
+  grpc_servicer_functions:
+    - user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server
+  enable_reflection: true
+```
+:::
+
+::::
+
+Reflection requires the [`grpcio-reflection`](https://pypi.org/project/grpcio-reflection/) package to be installed where the proxy runs, with a version matching the installed `grpcio` package.
+
+With reflection enabled, list and describe your services with `grpcurl`:
+```bash
+$ grpcurl -plaintext localhost:9000 list
+grpc.reflection.v1alpha.ServerReflection
+userdefinedprotos.UserDefinedService
+
+$ grpcurl -plaintext localhost:9000 describe userdefinedprotos.UserDefinedService
+```
+
+Or launch `grpcui` for an interactive web UI to browse and call your RPC methods:
+```bash
+grpcui -plaintext localhost:9000
+```
+
+:::{note}
+Like other gRPC proxy options, `enable_reflection` is fixed at Serve startup. Changing it requires shutting Serve down and restarting it, not a config update. Reflection advertises the names and types of all user-defined gRPC services registered on the proxy across all applications; it doesn't expose request data or your application code.
+
+If Serve runs with the HAProxy-based proxy and more than one application is deployed, reflection requests must include the `application` metadata (for example, `grpcurl -H "application: app1" ...`); without it, HAProxy can't attribute the request to an application and returns `NOT_FOUND`. If a load balancer or ingress in front of Serve routes gRPC by path, it must also route the reflection service's path prefix, `/grpc.reflection.`.
+:::
 
 (serve-grpc-proxy-health-checks)=
 ## Check proxy health

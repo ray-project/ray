@@ -95,6 +95,7 @@ replace-imports-with-any = [
     "ray.cloudpickle.*",
     "fastapi.*",
     "grpc.*",
+    "grpc_reflection.*",
     "memray",
     "opentelemetry.*",
     "numpy",

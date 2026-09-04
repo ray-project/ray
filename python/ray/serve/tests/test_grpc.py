@@ -1618,5 +1618,58 @@ def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance):
     ray.get(server_cancelled_signal.wait.remote(), timeout=5)
 
 
+@pytest.mark.parametrize("enable_reflection", [False, True])
+def test_grpc_proxy_server_reflection(ray_cluster, enable_reflection: bool):
+    """Test the gRPC server reflection protocol on Serve's gRPC proxy.
+
+    When `enable_reflection` is set, a reflection client (speaking the same
+    protocol as grpcurl and grpcui) can list and describe the user-defined
+    services, while Serve's built-in API service is not advertised. When it's
+    unset (the default), reflection RPCs return UNIMPLEMENTED. User-defined
+    RPCs route to replicas either way.
+    """
+    pytest.importorskip("grpc_reflection")
+    from google.protobuf.descriptor_pool import DescriptorPool
+    from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
+        ProtoReflectionDescriptorDatabase,
+    )
+
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=9000,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            ],
+            enable_reflection=enable_reflection,
+        ),
+    )
+    serve.run(g)
+
+    channel = grpc.insecure_channel(get_application_url("gRPC", use_localhost=True))
+    reflection_db = ProtoReflectionDescriptorDatabase(channel)
+
+    if enable_reflection:
+        services = reflection_db.get_services()
+        assert "ray.serve.UserDefinedService" in services
+        assert "grpc.reflection.v1alpha.ServerReflection" in services
+        assert "ray.serve.RayServeAPIService" not in services
+
+        pool = DescriptorPool(reflection_db)
+        service = pool.FindServiceByName("ray.serve.UserDefinedService")
+        method_names = {method.name for method in service.methods}
+        assert {"__call__", "Method1", "Streaming"} <= method_names
+    else:
+        with pytest.raises(grpc.RpcError) as exc_info:
+            reflection_db.get_services()
+        assert exc_info.value.code() == grpc.StatusCode.UNIMPLEMENTED
+
+    # User-defined RPCs are still routed to replicas.
+    ping_grpc_call_method(channel, "default")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

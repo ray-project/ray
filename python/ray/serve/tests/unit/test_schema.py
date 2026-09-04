@@ -19,6 +19,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    gRPCOptions,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -1023,16 +1024,22 @@ class TestServeDeploySchema:
             ServeDeploySchema.model_validate(deploy_config_dict)
 
     def test_deploy_with_grpc_options(self):
-        """gRPC options can be specified."""
+        """gRPC options can be specified and round-trip to `gRPCOptions`."""
 
         deploy_config_dict = {
             "grpc_options": {
                 "port": 9000,
                 "grpc_servicer_functions": ["foo.bar"],
+                "enable_reflection": True,
             },
             "applications": [],
         }
-        ServeDeploySchema.model_validate(deploy_config_dict)
+        deploy_schema = ServeDeploySchema.model_validate(deploy_config_dict)
+        grpc_options = gRPCOptions(**deploy_schema.grpc_options.model_dump())
+        assert grpc_options.port == 9000
+        assert grpc_options.grpc_servicer_functions == ["foo.bar"]
+        assert grpc_options.enable_reflection is True
+        assert gRPCOptions().enable_reflection is False
 
     @pytest.mark.parametrize(
         "input_val,error,output_val",

@@ -1000,6 +1000,15 @@ class gRPCOptionsSchema(BaseModel):
         default=None,
         description="The timeout for gRPC requests. Defaults to no timeout.",
     )
+    enable_reflection: bool = Field(
+        default=False,
+        description=(
+            "Enable the gRPC server reflection protocol on Serve's gRPC proxy "
+            "so tools such as grpcurl and grpcui can discover and call the "
+            "registered gRPC services. Requires the `grpcio-reflection` "
+            "package to be installed. Defaults to False."
+        ),
+    )
 
 
 @PublicAPI(stability="stable")

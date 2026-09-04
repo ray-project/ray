@@ -11,7 +11,9 @@ from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
     GRPC_MAX_STATUS_DETAILS_LENGTH,
     _truncate_message,
+    enable_server_reflection,
     get_grpc_response_status,
+    get_service_names,
     gRPCGenericServer,
 )
 from ray.serve._private.proxy_request_response import gRPCStreamingType
@@ -37,6 +39,20 @@ def fake_service_handler_factory(
     return foo
 
 
+def add_servicer_to_server(service_name: str, method_name: str, servicer, server):
+    rpc_method_handlers = {
+        method_name: grpc.unary_unary_rpc_method_handler(
+            getattr(servicer, method_name),
+            request_deserializer=AnyProto.FromString,
+            response_serializer=AnyProto.SerializeToString,
+        ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+        service_name, rpc_method_handlers
+    )
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
 def test_grpc_server():
     """Test `gRPCGenericServer` did the correct overrides.
 
@@ -48,19 +64,6 @@ def test_grpc_server():
     service_name = "ray.serve.ServeAPIService"
     method_name = "ServeRoutes"
 
-    def add_test_servicer_to_server(servicer, server):
-        rpc_method_handlers = {
-            method_name: grpc.unary_unary_rpc_method_handler(
-                servicer.ServeRoutes,
-                request_deserializer=AnyProto.FromString,
-                response_serializer=AnyProto.SerializeToString,
-            ),
-        }
-        generic_handler = grpc.method_handlers_generic_handler(
-            service_name, rpc_method_handlers
-        )
-        server.add_generic_rpc_handlers((generic_handler,))
-
     grpc_server = gRPCGenericServer(fake_service_handler_factory)
     dummy_servicer = Mock()
 
@@ -68,7 +71,7 @@ def test_grpc_server():
     # the add_servicer_to_server function.
     assert grpc_server.generic_rpc_handlers == []
 
-    add_test_servicer_to_server(dummy_servicer, grpc_server)
+    add_servicer_to_server(service_name, method_name, dummy_servicer, grpc_server)
 
     # `generic_rpc_handlers` should be populated after add_servicer_to_server is called.
     assert len(grpc_server.generic_rpc_handlers) == 1
@@ -98,6 +101,93 @@ def test_grpc_server():
         method_handlers.stream_stream()
         == f"stream_stream call from {service_method}".encode()
     )
+
+
+def test_grpc_server_passthrough_service():
+    """Handlers for a passthrough service are registered unmodified, while
+    handlers for other services are still overridden."""
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_passthrough_service("test.PassthroughService")
+    dummy_servicer = Mock()
+
+    add_servicer_to_server(
+        "test.PassthroughService", "Echo", dummy_servicer, grpc_server
+    )
+    add_servicer_to_server("test.UserService", "Predict", dummy_servicer, grpc_server)
+
+    passthrough_handler, user_handler = (
+        handlers[0] for handlers in grpc_server.generic_rpc_handlers
+    )
+
+    passthrough_method = passthrough_handler._method_handlers[
+        "/test.PassthroughService/Echo"
+    ]
+    assert passthrough_method.unary_unary == dummy_servicer.Echo
+    assert passthrough_method.response_serializer is not None
+
+    user_method = user_handler._method_handlers["/test.UserService/Predict"]
+    assert user_method.unary_unary != dummy_servicer.Predict
+    assert user_method.response_serializer is None
+
+
+def test_get_service_names():
+    """Service names are derived from registered method handler keys."""
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    dummy_servicer = Mock()
+
+    add_servicer_to_server("foo.FooService", "MethodA", dummy_servicer, grpc_server)
+    add_servicer_to_server("foo.FooService", "MethodB", dummy_servicer, grpc_server)
+    add_servicer_to_server("bar.BarService", "MethodC", dummy_servicer, grpc_server)
+
+    assert get_service_names(grpc_server.generic_rpc_handlers) == {
+        "foo.FooService",
+        "bar.BarService",
+    }
+
+
+def test_enable_server_reflection():
+    """Reflection handlers survive un-clobbered and advertise user-defined
+    services, but not Serve's built-in API service."""
+    pytest.importorskip("grpc_reflection")
+    from grpc_reflection.v1alpha import reflection
+
+    from ray.serve.generated.serve_pb2_grpc import (
+        add_RayServeAPIServiceServicer_to_server,
+    )
+
+    user_service_name = "test.UserService"
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    dummy_servicer = Mock()
+    add_RayServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
+    add_servicer_to_server(user_service_name, "Predict", dummy_servicer, grpc_server)
+
+    enable_server_reflection(grpc_server)
+
+    handlers_by_service = {
+        service_name: handlers[0]
+        for handlers in grpc_server.generic_rpc_handlers
+        for service_name in get_service_names([handlers])
+    }
+    reflection_handler = handlers_by_service[reflection.SERVICE_NAME]
+    reflection_method = reflection_handler._method_handlers[
+        f"/{reflection.SERVICE_NAME}/ServerReflectionInfo"
+    ]
+
+    # The reflection handler executes on the server itself, not overridden
+    # to route to replicas.
+    assert reflection_method.response_serializer is not None
+    reflection_servicer = reflection_method.stream_stream.__self__
+    advertised_services = reflection_servicer._service_names
+    assert user_service_name in advertised_services
+    assert reflection.SERVICE_NAME in advertised_services
+    assert "ray.serve.RayServeAPIService" not in advertised_services
+
+    # User handlers are still overridden.
+    user_method = handlers_by_service[user_service_name]._method_handlers[
+        f"/{user_service_name}/Predict"
+    ]
+    assert user_method.response_serializer is None
+    assert user_method.unary_unary != dummy_servicer.Predict
 
 
 def test_ray_serve_grpc_context_serializable():
