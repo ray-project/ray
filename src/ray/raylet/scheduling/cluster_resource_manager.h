@@ -231,7 +231,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithInfeasibleNodesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,
               FallbackSchedulesAvailableNodeOverUnavailablePrimary);
   FRIEND_TEST(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority);

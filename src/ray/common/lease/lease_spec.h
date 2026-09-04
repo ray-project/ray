@@ -56,6 +56,9 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
   bool GetNodeAffinitySchedulingStrategySoft() const;
+  /// Whether the lease may only run on specific nodes: a hard
+  /// NodeAffinitySchedulingStrategy, or a node id label selector.
+  bool HasHardNodeAffinity() const;
   std::vector<ObjectID> GetDependencyIds() const;
   const std::vector<rpc::ObjectReference> &GetDependencies() const;
 

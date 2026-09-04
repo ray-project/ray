@@ -33,8 +33,8 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
         is_node_alive_(is_node_alive),
         bundle_location_index_(pg_location_index) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  NodeSchedulingResult Schedule(const ResourceRequest &resource_request,
+                                SchedulingOptions options) override;
 
   const scheduling::NodeID local_node_id_;
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
@@ -42,9 +42,9 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
   const BundleLocationIndex &bundle_location_index_;
 
  private:
-  bool IsNodeFeasibleAndAvailable(const scheduling::NodeID &node_id,
-                                  const ResourceRequest &resource_request,
-                                  bool avoid_gpu_nodes);
+  NodeSchedulingResult TryNode(const scheduling::NodeID &node_id,
+                               const ResourceRequest &resource_request,
+                               bool avoid_gpu_nodes);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
