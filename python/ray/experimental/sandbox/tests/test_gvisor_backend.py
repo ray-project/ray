@@ -11,6 +11,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
+    SandboxExecError,
     SandboxNotFoundError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -303,6 +304,32 @@ def test_image_workdir_sets_cwd_without_becoming_writable():
         assert runtime.exec(instance_id, "touch /go/probe").exit_code == 0
     finally:
         runtime.delete(instance_id)
+
+
+def test_resolve_exec_user(tmp_path, monkeypatch):
+    """Numeric users pass through; names resolve via the image's passwd."""
+    backend = GVisorSandboxBackend()
+    img_dir = tmp_path / "img"
+    (img_dir / "rootfs" / "etc").mkdir(parents=True)
+    (img_dir / "rootfs" / "etc" / "passwd").write_text(
+        "root:x:0:0:root:/root:/bin/bash\n"
+        "postfix:x:102:104::/var/spool/postfix:/usr/sbin/nologin\n"
+    )
+    (img_dir / "rootfs" / "etc" / "group").write_text("mail:x:8:\n")
+    monkeypatch.setattr(
+        backend._image_manager, "get_image_dir", lambda image: str(img_dir)
+    )
+
+    assert backend._resolve_exec_user("1000", "img") == "1000"
+    assert backend._resolve_exec_user("1000:1000", "img") == "1000:1000"
+    assert backend._resolve_exec_user("postfix", "img") == "102:104"
+    assert backend._resolve_exec_user("postfix:8", "img") == "102:8"
+    assert backend._resolve_exec_user("postfix:mail", "img") == "102:8"
+    assert backend._resolve_exec_user("1000:mail", "img") == "1000:8"
+    with pytest.raises(SandboxExecError):
+        backend._resolve_exec_user("nosuch", "img")
+    with pytest.raises(SandboxExecError):
+        backend._resolve_exec_user("postfix:nosuch", "img")
 
 
 if __name__ == "__main__":
