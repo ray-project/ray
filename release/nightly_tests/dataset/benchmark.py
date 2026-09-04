@@ -242,6 +242,21 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         ("max_uss_per_task_bytes", "max_uss_per_task"),
         ("avg_max_rss_per_task_bytes", "average_max_rss_per_task"),
         ("max_rss_per_task_bytes", "max_rss_per_task"),
+        # Operator TOTALS (seconds summed over the op's tasks) for the part of a
+        # task the reader-level timers cannot see: block generation is the
+        # transform's own wall (reader + block build), serialization is the
+        # worker's plasma put of each output (``object_creation_dur_s`` per
+        # generated object), and the two backpressure walls are the driver's
+        # (time it could not launch tasks / time it held outputs). Divide by
+        # ``num_tasks_finished`` for a per-task mean. Findings M117–M119: a
+        # read task's duration minus its in-iterator decode leaves ~5 s that
+        # is not CPU and not the planner's yield — this splits it.
+        ("block_generation_time_s_total", "block_generation_time"),
+        ("block_serialization_time_s_total", "block_serialization_time_s"),
+        ("task_gen_and_ser_time_s_total", "task_block_gen_and_ser_time_s"),
+        ("task_submission_backpressure_s_total", "task_submission_backpressure_time"),
+        ("task_output_backpressure_s_total", "task_output_backpressure_time"),
+        ("num_tasks_finished", "num_tasks_finished"),
     ]
     # (result-dict key, extra_metrics key) for the full per-task distributions.
     # ``max_uss_bytes``/``max_rss_bytes`` are DistributionTracker.as_dict() outputs:
