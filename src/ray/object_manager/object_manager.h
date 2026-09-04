@@ -445,8 +445,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Lagging mirror of objects this ObjectManager believes are resident in the
   /// local plasma store (metadata used for pushes/pulls). Updated from plasma
   /// add/delete notifications, so it can briefly disagree with the store after
-  /// eviction or spill. Distinct from LocalObjectManager::local_objects_, which
-  /// tracks primary-copy pin/spill/free bookkeeping on the raylet.
+  /// eviction or spill.
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_plasma_objects_;
 
   /// This is used as the callback identifier in Pull for
