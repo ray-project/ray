@@ -24,8 +24,27 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
+const MIN_METRICS_RANGE_MS = 30_000;
+
+const createCompletedJobTimeRange = (startTime: number, endTime: number) => {
+  const duration = endTime - startTime;
+  const padding = Math.max(0, (MIN_METRICS_RANGE_MS - duration) / 2);
+
+  return { from: Math.max(0, startTime - padding), to: endTime + padding };
+};
+
 export const JobDetailChartsPage = () => {
   const { job, msg, isLoading, params } = useJobDetail();
+
+  const nodeCountTimeRange: { from: number; to: number | "now" } | undefined =
+    job?.start_time !== null && job?.start_time !== undefined
+      ? job.end_time !== null && job.end_time !== undefined
+        ? createCompletedJobTimeRange(job.start_time, job.end_time)
+        : {
+            from: Math.max(0, job.start_time - MIN_METRICS_RANGE_MS),
+            to: "now",
+          }
+      : undefined;
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
   const [taskTableExpanded, setTaskTableExpanded] = useState(false);
@@ -167,7 +186,10 @@ export const JobDetailChartsPage = () => {
             },
           })}
         >
-          <NodeCountCard sx={{ flex: "1 0 500px" }} />
+          <NodeCountCard
+            sx={{ flex: "1 0 500px" }}
+            timeRange={nodeCountTimeRange}
+          />
           <Section flex="1 1 500px">
             <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
