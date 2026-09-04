@@ -52,4 +52,6 @@ xmltodict==0.13.0
 # constrained to Ray Data's tested pyarrow (python/requirements/data/pyarrow-latest.txt)
 # by the docbuild depset in ci/raydepsets/configs/docs.depsets.yaml, so leave this
 # unversioned and let that constraint track Ray Data rather than pinning it here.
+# Installing this file directly (pip install -r) resolves pyarrow unconstrained;
+# install the compiled lock in python/deplocks/docs/ to match the CI docs build.
 pyarrow

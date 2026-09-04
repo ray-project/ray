@@ -17,8 +17,11 @@ depsets:
     # Pin pyarrow to the version Ray Data tests against instead of hand-maintaining
     # a separate pin in requirements-doc.txt. pyarrow is in the docs build only
     # because rendered Ray Data docstrings import it, so it should track Ray Data's
-    # tested version. This file's other entries (pandas, modin, ...) are inert here
-    # because the docs build doesn't resolve them.
+    # tested version. This file also pins pandas, modin, and others; they're inert
+    # here today because the docs build doesn't resolve them, but if it ever pulls
+    # one in, it would be constrained to Ray Data's tested version too. That's the
+    # same intent, but keep it in mind before adding a heavy Ray Data package to the
+    # docs build, and prefer a pyarrow-only constraint file if the coupling grows.
     constraints:
       - python/requirements/data/pyarrow-latest.txt
     output: python/deplocks/docs/docbuild_depset_py${PYTHON_VERSION}.lock
