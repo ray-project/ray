@@ -185,11 +185,12 @@ inline ray::stats::Sum GetGcsRedisRequestPayloadBytesSumMetric() {
   return ray::stats::Sum{
       /*name=*/"gcs_redis_request_payload_bytes",
       /*description=*/
-      "Bytes of Redis command arguments sent by the GCS: the sum of the byte "
-      "lengths of the RESP arguments, including the command verb, the Redis "
-      "key, hash field names and values. Excludes RESP framing, TLS and TCP/IP "
-      "overhead; GCS values are not compressed. Counted once per logical "
-      "command, not per retry.",
+      "Bytes of Redis command arguments accepted for sending by the GCS Redis "
+      "client: the sum of the byte lengths of the RESP arguments, including the "
+      "command verb, the Redis key, hash field names and values. Excludes RESP "
+      "framing, TLS and TCP/IP overhead; GCS values are not compressed. Recorded "
+      "on the first successful submission of each logical command; retries are "
+      "not counted again.",
       /*unit=*/"bytes",
       /*tag_keys=*/{"Command", "TableName"},
   };
@@ -214,10 +215,10 @@ inline ray::stats::Count GetGcsRedisCommandCountCounterMetric() {
   return ray::stats::Count{
       /*name=*/"gcs_redis_command_count",
       /*description=*/
-      "Number of Redis commands issued by the GCS, broken down by command and "
-      "table. Batched operations count once per chunk and a table scan counts "
-      "once per HSCAN round, so this is a count of round trips rather than of "
-      "StoreClient calls.",
+      "Number of logical Redis commands accepted for sending by the GCS Redis "
+      "client, broken down by command and table. Batched operations count once "
+      "per chunk and a table scan counts once per HSCAN command. Retries are not "
+      "counted again, so this is not a count of network round trips.",
       /*unit=*/"",
       /*tag_keys=*/{"Command", "TableName"},
   };

@@ -22,6 +22,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/redis_context.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
@@ -100,6 +101,52 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
                   .ok());
 
   io_service.run();
+}
+
+TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
+  auto local_io_service = std::make_unique<instrumented_io_context>(
+      /*emit_metrics=*/false, /*running_on_single_thread=*/true);
+  ray::Clock clock;
+  observability::FakeCounter request_bytes;
+  observability::FakeCounter response_bytes;
+  observability::FakeCounter command_count;
+  RedisMetrics metrics{request_bytes, response_bytes, command_count};
+  auto context = std::make_unique<RedisContext>(*local_io_service, clock, metrics);
+  ASSERT_TRUE(context
+                  ->Connect("127.0.0.1",
+                            TEST_REDIS_SERVER_PORTS.front(),
+                            /*username=*/"",
+                            /*password=*/"")
+                  .ok());
+
+  // Leave the wrapper alive but make command submission fail immediately. The
+  // raw context is released first because hiredis invokes the disconnect
+  // callback while freeing it, and that callback resets the wrapper again.
+  auto *raw_context = context->async_context().GetRawRedisAsyncContext();
+  ASSERT_NE(raw_context, nullptr);
+  context->async_context().ResetRawRedisAsyncContext();
+  redisAsyncFree(raw_context);
+
+  auto request = std::make_unique<RedisRequestContext>(
+      *local_io_service,
+      [](std::shared_ptr<CallbackReply>) {},
+      &context->async_context(),
+      std::vector<std::string>{"HGET", "key"},
+      clock,
+      &metrics,
+      "NODE");
+  request->Run();
+  ASSERT_EQ(local_io_service->poll_one(), 1u);
+
+  EXPECT_TRUE(request_bytes.GetTagToValue().empty());
+  EXPECT_TRUE(response_bytes.GetTagToValue().empty());
+  EXPECT_TRUE(command_count.GetTagToValue().empty());
+
+  // Run() scheduled a delayed retry. Destroy its handler before deleting the
+  // self-owned request, while keeping the io_service alive for socket teardown.
+  context.reset();
+  local_io_service.reset();
+  request.reset();
 }
 }  // namespace gcs
 }  // namespace ray

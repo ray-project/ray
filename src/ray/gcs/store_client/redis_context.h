@@ -132,11 +132,12 @@ using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 /// \return The payload bytes it carries, 0 for replies that carry none.
 size_t ResponsePayloadBytes(const redisReply &reply);
 
-/// Maximum byte length of the normalized Redis Command label.
-inline constexpr size_t kMaxRedisCommandLabelLength = 16;
+/// Command label for Redis verbs outside the fixed set used by GCS.
+inline constexpr std::string_view kOtherRedisCommandLabel = "OTHER";
 
-/// Normalizes a Redis verb for use as a metric label by converting its first
-/// kMaxRedisCommandLabelLength bytes to uppercase ASCII.
+/// Normalizes a Redis verb against the fixed set used by GCS. Matching is
+/// case-insensitive; an unknown verb maps to kOtherRedisCommandLabel so the
+/// metric's Command label has bounded cardinality.
 ///
 /// \param verb The Redis command verb to normalize.
 /// \return An owned, normalized label value.
@@ -153,8 +154,8 @@ std::string NormalizeRedisCommandLabel(std::string_view verb);
 inline constexpr std::string_view kNoTable = "NONE";
 inline constexpr std::string_view kAllTables = "ALL";
 
-/// Metrics recorded for every async Redis command. Held by reference: the
-/// referents are owned by GcsServerMetrics and outlive the RedisContext.
+/// Metrics for async Redis commands accepted by hiredis. Held by reference:
+/// the referents are owned by GcsServerMetrics and outlive the RedisContext.
 struct RedisMetrics {
   ray::observability::MetricInterface &request_payload_bytes_sum;
   ray::observability::MetricInterface &response_payload_bytes_sum;
@@ -166,7 +167,9 @@ struct RedisRequestContext {
   /// \param metrics Payload metrics to record into, or nullptr to record
   /// nothing. Null both when the payload metrics are disabled by config and in
   /// the standalone namespace-cleanup process, which has no metrics exporter.
-  /// \param table_label The GCS table label copied into this request.
+  /// \param table_label The GCS table label copied into this request when
+  /// metrics are enabled. Values become metric labels and must come from a
+  /// fixed set rather than user-controlled data.
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       RedisAsyncContext *context,
@@ -179,9 +182,14 @@ struct RedisRequestContext {
                               void *raw_reply,
                               void *privdata);
 
+  /// Schedule one submission attempt on the Redis io_service. Serializing the
+  /// submission with hiredis response callbacks keeps this self-owned context
+  /// alive until all post-submission bookkeeping is complete.
   void Run();
 
  private:
+  void RunOnRedisIoService();
+
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
@@ -196,10 +204,12 @@ struct RedisRequestContext {
 
   // Nullable; see the constructor docs.
   RedisMetrics *metrics_;
-  // Owned copies: the reply is delivered long after the caller's command and
-  // table label are gone.
+  // Populated only when metrics_ is non-null. The reply is delivered long after
+  // the caller's command and table label are gone, so the labels are owned.
   std::string command_label_;
   std::string table_label_;
+  size_t request_payload_bytes_{0};
+  bool request_metrics_recorded_{false};
 
   // Ray metrics
   ray::stats::Histogram ray_metric_gcs_latency_{
@@ -212,7 +222,7 @@ struct RedisRequestContext {
 
 class RedisContext {
  public:
-  /// \param metrics Payload metrics for every command run through this context,
+  /// \param metrics Payload metrics for commands accepted through this context,
   /// or nullopt to record nothing.
   ///
   /// Held **by value** rather than by pointer on purpose. A RedisContext is

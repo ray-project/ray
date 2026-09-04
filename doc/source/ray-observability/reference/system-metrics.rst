@@ -42,15 +42,15 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
-   * - `ray_gcs_redis_request_payload_bytes`
+   * - OpenTelemetry: `ray_gcs_redis_request_payload_bytes`; OpenCensus: `ray_gcs_redis_request_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
      - `Command`, `TableName`
-     - Application bytes in Redis command arguments sent by the GCS, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes the verb, Redis key, field names, and values; excludes RESP framing, TLS, and TCP/IP overhead. Counted once per logical command, not per retry. `Command` is the uppercase Redis verb truncated to 16 bytes; `TableName` is a GCS table, `NONE`, or `ALL`.
-   * - `ray_gcs_redis_response_payload_bytes`
+     - Application bytes in Redis command arguments accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes the verb, Redis key, field names, and values; excludes RESP framing, TLS, and TCP/IP overhead. Recorded on the first successful submission of each logical command; retries are not counted again. `Command` is a fixed uppercase verb or `OTHER`; `TableName` is a GCS table, `NONE`, or `ALL`.
+   * - OpenTelemetry: `ray_gcs_redis_response_payload_bytes`; OpenCensus: `ray_gcs_redis_response_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
      - `Command`, `TableName`
      - Application bytes in Redis replies received by the GCS, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes bulk/status strings, HSCAN field names, and integer decimal text; excludes nil replies, error replies that are retried, RESP framing, TLS, and TCP/IP overhead.
-   * - `ray_gcs_redis_command_count_total`
+   * - OpenTelemetry and OpenCensus: `ray_gcs_redis_command_count_total`
      - `Command`, `TableName`
-     - Number of Redis commands issued by the GCS, by command and GCS table. Exported only when the GCS storage backend is Redis. Counts Redis commands, not `StoreClient` calls: batches count per chunk and table scans per HSCAN round, and a retried command counts once. Divide the byte metrics by this for mean bytes per Redis command. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. The byte metrics omit `_total` under OpenTelemetry because they are non-monotonic sums; legacy OpenCensus also exports them with `_total`.
+     - Number of logical Redis commands accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Batches count per chunk and table scans per HSCAN command; retries are not counted again, so this is not a count of network round trips. Divide the byte metrics by this for mean bytes per logical command. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. Ray's `Sum` instrument is exposed as an OpenTelemetry up-down counter even though these byte metrics only record positive deltas, which is why its Prometheus name has no `_total` suffix on that backend.
    * - `ray_memory_manager_worker_eviction_total`
      - `Type`, `Name`
      - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).

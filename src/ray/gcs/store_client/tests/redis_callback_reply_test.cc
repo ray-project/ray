@@ -251,21 +251,32 @@ TEST(TestResponsePayloadBytes, ScanArrayCountsCursorAndFieldNames) {
   ASSERT_EQ(expected, 4u + 9u + 64u + 9u + 128u);
 }
 
-TEST(TestNormalizeRedisCommandLabel, PreservesUppercaseVerb) {
-  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), "HGETALL");
+TEST(TestNormalizeRedisCommandLabel, PreservesKnownCommands) {
+  const std::vector<std::string> known_commands{"HSET",
+                                                "HSETNX",
+                                                "HGET",
+                                                "HMGET",
+                                                "HDEL",
+                                                "HEXISTS",
+                                                "HSCAN",
+                                                "SCAN",
+                                                "INCRBY",
+                                                "DEL",
+                                                "UNLINK",
+                                                "PING",
+                                                "INFO"};
+  for (const auto &command : known_commands) {
+    EXPECT_EQ(NormalizeRedisCommandLabel(command), command);
+  }
 }
 
 TEST(TestNormalizeRedisCommandLabel, UppercasesAsciiVerb) {
   EXPECT_EQ(NormalizeRedisCommandLabel("hSeTnX"), "HSETNX");
 }
 
-TEST(TestNormalizeRedisCommandLabel, TruncatesToMaximumLength) {
-  const std::string exact(kMaxRedisCommandLabelLength, 'a');
-  EXPECT_EQ(NormalizeRedisCommandLabel(exact),
-            std::string(kMaxRedisCommandLabelLength, 'A'));
-
-  const std::string too_long = exact + "suffix";
-  EXPECT_EQ(NormalizeRedisCommandLabel(too_long),
-            std::string(kMaxRedisCommandLabelLength, 'A'));
+TEST(TestNormalizeRedisCommandLabel, UnknownCommandsMapToOther) {
+  EXPECT_EQ(NormalizeRedisCommandLabel(""), kOtherRedisCommandLabel);
+  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), kOtherRedisCommandLabel);
+  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(128, 'x')), kOtherRedisCommandLabel);
 }
 }  // namespace ray::gcs

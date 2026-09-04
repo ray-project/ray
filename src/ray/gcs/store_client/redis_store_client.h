@@ -37,6 +37,8 @@ namespace gcs {
 // Typed key to avoid forgetting to prepend external_storage_namespace.
 struct RedisKey {
   const std::string external_storage_namespace;
+  // This becomes a TableName metric label. Keep it in the fixed GCS table-name
+  // domain and never put user-controlled data here.
   const std::string table_name;
   std::string ToString() const;
 };
