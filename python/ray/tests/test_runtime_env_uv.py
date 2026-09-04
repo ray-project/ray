@@ -11,6 +11,7 @@ import pytest
 
 import ray
 from ray._private.runtime_env import virtualenv_utils
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 
 @pytest.fixture(scope="function")
@@ -114,16 +115,23 @@ def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     assert ray.get(f.remote()) == "2.32.3"
 
 
-def test_package_install_from_working_dir_requirements(shutdown_only, tmp_path):
-    requirements_file = tmp_path / "requirements.txt"
-    requirements_file.write_text("requests==2.32.3")
-
-    ray.init(
-        runtime_env={
-            "working_dir": str(tmp_path),
+def test_package_cache_with_working_dir_requirements(shutdown_only, tmp_path):
+    ray.init(num_cpus=2)
+    runtime_envs = []
+    for version in ("2.32.3", "2.32.2"):
+        working_dir = tmp_path / version
+        working_dir.mkdir()
+        (working_dir / "requirements.txt").write_text(f"requests=={version}\n")
+        runtime_env = {
+            "working_dir": str(working_dir),
             "uv": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
         }
-    )
+        upload_working_dir_if_needed(
+            runtime_env,
+            include_gitignore=False,
+            scratch_dir=str(tmp_path),
+        )
+        runtime_envs.append((runtime_env, version))
 
     @ray.remote
     def get_requests_version():
@@ -131,7 +139,11 @@ def test_package_install_from_working_dir_requirements(shutdown_only, tmp_path):
 
         return requests.__version__
 
-    assert ray.get(get_requests_version.remote()) == "2.32.3"
+    for runtime_env, version in runtime_envs:
+        assert (
+            ray.get(get_requests_version.options(runtime_env=runtime_env).remote())
+            == version
+        )
 
 
 # Install different versions of the same package across different tasks, used to check

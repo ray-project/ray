@@ -1,4 +1,5 @@
 import sys
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -43,6 +44,49 @@ async def test_run(mock_install_uv, mock_install_uv_packages, tmp_path):
 
     uv_processor = uv.UvProcessor(target_dir=target_dir, runtime_env=runtime_env)
     await uv_processor._run()
+
+
+def test_get_uri_changes_with_referenced_working_dir():
+    packages = ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"]
+    first = {"uv": packages, "working_dir": "gcs://first.zip"}
+    second = {"uv": packages, "working_dir": "gcs://second.zip"}
+    first_before = deepcopy(first)
+    second_before = deepcopy(second)
+
+    assert uv.get_uri(first) != uv.get_uri(second)
+    assert first == first_before
+    assert second == second_before
+
+
+def test_get_uri_changes_with_referenced_env_var_in_install_options():
+    uv_config = {
+        "packages": ["demo-package==1.0"],
+        "uv_pip_install_options": ["--find-links=$UV_FIND_LINKS"],
+    }
+    first = {"uv": uv_config, "env_vars": {"UV_FIND_LINKS": "/first"}}
+    second = {"uv": uv_config, "env_vars": {"UV_FIND_LINKS": "/second"}}
+
+    assert uv.get_uri(first) != uv.get_uri(second)
+
+
+def test_get_uri_ignores_unreferenced_env_vars():
+    first = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "first"}}
+    second = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "second"}}
+    legacy_uri = "uv://" + uv._get_uv_hash(uv_dict={"packages": ["demo-package==1.0"]})
+
+    assert uv.get_uri(first) == uv.get_uri(second) == legacy_uri
+
+
+def test_get_uri_keeps_undefined_env_vars_stable():
+    runtime_env = {
+        "uv": {
+            "packages": ["demo-package==1.0"],
+            "uv_pip_install_options": ["--find-links=${UNDEFINED}"],
+        }
+    }
+    legacy_uri = "uv://" + uv._get_uv_hash(uv_dict=runtime_env["uv"])
+
+    assert uv.get_uri(runtime_env) == legacy_uri
 
 
 @pytest.mark.asyncio

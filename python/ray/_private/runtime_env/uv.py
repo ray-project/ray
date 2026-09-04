@@ -13,6 +13,7 @@ from typing import Dict, List, Mapping, Optional
 
 from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import try_to_create_directory
+from ray._private import ray_constants
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
@@ -22,23 +23,57 @@ from ray._private.utils import get_directory_size_bytes
 default_logger = logging.getLogger(__name__)
 
 _ENV_VAR_PATTERN = re.compile(r"\$(\w+|\{[^}]*\})", re.ASCII)
+_UV_ENV_VAR_FIELDS = ("packages", "uv_pip_install_options")
+
+
+def _get_env_var_name(match: re.Match) -> str:
+    name = match.group(1)
+    if name.startswith("{"):
+        name = name[1:-1]
+    return name
 
 
 def _expand_env_vars(value: str, env: Mapping[str, str]) -> str:
     """Expand shell-style variables using a per-install environment snapshot."""
 
     def replace(match: re.Match) -> str:
-        name = match.group(1)
-        if name.startswith("{"):
-            name = name[1:-1]
-        return env.get(name, match.group(0))
+        return env.get(_get_env_var_name(match), match.group(0))
 
     return _ENV_VAR_PATTERN.sub(replace, value)
 
 
-def _get_uv_hash(uv_dict: Dict) -> str:
+def _get_uv_hash_env_vars(uv_dict: Dict, runtime_env: Dict) -> Dict[str, str]:
+    """Return per-runtime values referenced by fields expanded during install."""
+    referenced_vars = set()
+    for field in _UV_ENV_VAR_FIELDS:
+        for value in uv_dict.get(field, []):
+            referenced_vars.update(
+                _get_env_var_name(match) for match in _ENV_VAR_PATTERN.finditer(value)
+            )
+
+    hash_env = {}
+    working_dir_var = ray_constants.RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR
+    working_dir = runtime_env.get("working_dir")
+    if working_dir_var in referenced_vars and working_dir is not None:
+        # The local working directory is node- and session-specific.  Its URI is the
+        # stable content identifier that is available before the directory is unpacked.
+        hash_env[working_dir_var] = working_dir
+
+    runtime_env_vars = runtime_env.get("env_vars") or {}
+    for name in referenced_vars:
+        if name in runtime_env_vars:
+            # Match install-time precedence: explicit env_vars override process env.
+            hash_env[name] = runtime_env_vars[name]
+    return hash_env
+
+
+def _get_uv_hash(uv_dict: Dict, env_vars: Optional[Mapping[str, str]] = None) -> str:
     """Get a deterministic hash value for `uv` related runtime envs."""
-    serialized_uv_spec = json.dumps(uv_dict, sort_keys=True)
+    hash_input = uv_dict
+    if env_vars:
+        # Keep existing cache keys unchanged when no expanded value affects install.
+        hash_input = {"uv": uv_dict, "env_vars": dict(env_vars)}
+    serialized_uv_spec = json.dumps(hash_input, sort_keys=True)
     hash_val = hashlib.sha1(serialized_uv_spec.encode("utf-8")).hexdigest()
     return hash_val
 
@@ -48,14 +83,16 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     uv = runtime_env.get("uv")
     if uv is not None:
         if isinstance(uv, dict):
-            uri = "uv://" + _get_uv_hash(uv_dict=uv)
+            uv_dict = uv
         elif isinstance(uv, list):
-            uri = "uv://" + _get_uv_hash(uv_dict=dict(packages=uv))
+            uv_dict = dict(packages=uv)
         else:
             raise TypeError(
                 "uv field received by RuntimeEnvAgent must be "
                 f"list or dict, not {type(uv).__name__}."
             )
+        env_vars = _get_uv_hash_env_vars(uv_dict, runtime_env)
+        uri = "uv://" + _get_uv_hash(uv_dict=uv_dict, env_vars=env_vars)
     else:
         uri = None
     return uri
