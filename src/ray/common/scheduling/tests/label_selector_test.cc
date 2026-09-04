@@ -15,11 +15,15 @@
 #include "ray/common/scheduling/label_selector.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <map>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -206,6 +210,76 @@ TEST(LabelSelectorTest, Deduplication) {
       "instance", LabelSelectorOperator::LABEL_IN, {"spot"});
   selector.AddConstraint(duplicate_constraint);
   ASSERT_EQ(selector.GetConstraints().size(), 4);
+}
+
+namespace {
+
+LabelSelector OneConstraint(std::string key,
+                            LabelSelectorOperator op,
+                            absl::flat_hash_set<std::string> values) {
+  LabelSelector selector;
+  selector.AddConstraint(LabelConstraint(std::move(key), op, std::move(values)));
+  return selector;
+}
+
+LabelSelector RegionSelector(absl::flat_hash_set<std::string> values) {
+  return OneConstraint("region", LabelSelectorOperator::LABEL_IN, std::move(values));
+}
+
+}  // namespace
+
+// LabelConstraint values form an unordered set, so their hash must be order-independent
+// to match operator==. We shuffle inputs to force diverse internal memory layouts
+// (caused by insertion order and internal salting) and verify hash stability.
+TEST(LabelSelectorTest, EqualSelectorsHashEquallyWhateverTheValueOrder) {
+  std::vector<std::string> values;
+  values.reserve(64);
+  for (int i = 0; i < 64; i++) {
+    values.push_back("region-" + std::to_string(i));
+  }
+  const LabelSelector reference =
+      RegionSelector(absl::flat_hash_set<std::string>(values.begin(), values.end()));
+
+  absl::flat_hash_set<size_t> hashes;
+  absl::flat_hash_set<std::vector<std::string>> layouts;
+  std::mt19937 rng(20260826);
+  for (int round = 0; round < 16; round++) {
+    std::shuffle(values.begin(), values.end(), rng);
+    absl::flat_hash_set<std::string> set(values.begin(), values.end());
+    const LabelSelector selector = RegionSelector(std::move(set));
+    // operator== compares the constraint vectors, so it also passes when both sides are
+    // empty; the count needs its own assertion, which also guards the [0] below.
+    ASSERT_EQ(selector.GetConstraints().size(), 1u);
+    ASSERT_EQ(selector, reference);
+    const auto &stored = selector.GetConstraints()[0].GetLabelValues();
+    layouts.insert(std::vector<std::string>(stored.begin(), stored.end()));
+    hashes.insert(absl::HashOf(selector));
+  }
+
+  // Without more than one layout the hash assertion below holds for an order-dependent
+  // hash too, so the test would pass while guarding nothing.
+  ASSERT_GT(layouts.size(), 1u);
+  EXPECT_EQ(hashes.size(), 1u);
+}
+
+// Verify that the values are mixed into the hash.
+TEST(LabelSelectorTest, SelectorsWithDifferentValuesHashDifferently) {
+  EXPECT_NE(absl::HashOf(RegionSelector({"us-east", "us-west"})),
+            absl::HashOf(RegionSelector({"eu-central", "ap-south"})));
+  EXPECT_NE(absl::HashOf(RegionSelector({"us-east", "us-west"})),
+            absl::HashOf(RegionSelector({"us-east", "us-west", "eu-central"})));
+  EXPECT_NE(absl::HashOf(RegionSelector({})), absl::HashOf(RegionSelector({"us-east"})));
+}
+
+// Verify that both the key and the operator are mixed into the hash.
+TEST(LabelSelectorTest, SelectorsDifferingOnlyInKeyOrOperatorHashDifferently) {
+  const absl::flat_hash_set<std::string> values = {"us-east"};
+  EXPECT_NE(
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_IN, values)),
+      absl::HashOf(OneConstraint("zone", LabelSelectorOperator::LABEL_IN, values)));
+  EXPECT_NE(
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_IN, values)),
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_NOT_IN, values)));
 }
 
 }  // namespace ray
