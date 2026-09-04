@@ -289,9 +289,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   /// Metadata for primary copies this raylet owns (owner address, freed flag,
-  /// size). Distinct from ObjectManager::local_plasma_objects_, which is only a
-  /// lagging mirror of plasma residency for object transfer.
-  /// Every entry here should also be in exactly one of:
+  /// size).
+  /// All objects in this hashmap should also be in exactly one of the
+  /// following maps:
   /// - pinned_objects_: objects pinned in shared memory
   /// - objects_pending_spill_: objects pinned and waiting for spill to complete
   /// - spilled_objects_url_: objects already spilled
