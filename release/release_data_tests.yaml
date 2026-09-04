@@ -44,9 +44,8 @@
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
-    anyscale_sdk_2026: true
-    byod:
       type: cpu
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
