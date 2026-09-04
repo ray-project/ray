@@ -1,7 +1,7 @@
 - file: ray-overview/getting-started
   title: "Get Started"
-- file: ray-overview/use-cases
-  title: "Use Cases"
+- file: cluster/kubernetes/index
+  title: "KubeRay"
 - file: ray-overview/examples
   title: "Example Gallery"
 - file: ray-overview/installation

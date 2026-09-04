@@ -1228,8 +1228,16 @@ def setup_context(app, pagename, templatename, context, doctree):
             container = nodes.container(classes=["ref-container"])
             container.append(paragraph)
 
+            # A tab stays highlighted across its whole section, not just on the
+            # section's landing page. Section-scoped tabs (APIs, KubeRay) publish
+            # their root docname as `navbar_active_file` from _ext/api_sidebar.py,
+            # which runs at html-page-context priority 900 -- after this closure is
+            # built at priority 500, but before the template calls it, and it mutates
+            # the same `context` dict. Tabs outside a section fall back to an exact
+            # page match, which is the historical behavior.
+            active_file = context.get("navbar_active_file") or pagename
             list_item = nodes.list_item(
-                classes=["active-link"] if item.get("file") == pagename else []
+                classes=["active-link"] if item.get("file") == active_file else []
             )
             list_item.append(container)
 
@@ -1423,16 +1431,14 @@ def collect_example_orphans(
     example_orphan_documents = set()
 
     for config in example_configs:
-        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to(
-            "source"
-        )
+        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to("source")
 
         example_config = ExampleConfig(config_path, srcdir)
         for example in example_config:
             if not example.link.startswith("http"):
                 # Normalize path and remove file extension to get docname
                 normalized = pathlib.PurePath(os.path.normpath(example.link))
-                docname = str(normalized.with_suffix(''))
+                docname = str(normalized.with_suffix(""))
                 example_orphan_documents.add(docname)
 
     return example_orphan_documents
