@@ -102,6 +102,7 @@ TARGETS = {
     "map_groups_autoscaling_hash_shuffle_column02+column14": "wall",
     # peak-memory regressions (tUSS / wUSS peak)
     "read_large_parquet_autoscaling": "memory",
+    "read_large_parquet_fixed_size": "memory",
     "write_parquet": "memory",
     "tpch_q6_fixed_size_hash_shuffle": "memory",
     "tpch_q6_fixed_size_hash_shuffle_v2": "memory",

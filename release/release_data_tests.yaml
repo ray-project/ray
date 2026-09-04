@@ -2990,6 +2990,85 @@
       read_and_consume_benchmark.py s3://ray-benchmark-data-internal-us-west-2/large-parquet/
       --format parquet --iter-bundles --memory 3650722201
 
+# --- read_large_parquet_fixed_size  [memory] ---
+- name: read_large_parquet_fixed_size_2x2_pa_multi
+  frequency: manual
+  python: '3.10'
+  cluster:
+    byod:
+      runtime_env:
+      - RAY_DATA_BENCH_NODE_MEM_MONITOR=1
+      - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+      - RAYTEST_FAIL_ON_WORKER_OOM=1
+      - RAYTEST_FAIL_ON_DEAD_NODES=1
+      - RAYTEST_FAIL_ON_SPILLING=1
+      - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: fixed_size_cpu_compute.yaml
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: RAY_DATA_USE_ARROW_RS_PARQUET_READER=0 python read_and_consume_benchmark.py s3://ray-benchmark-data-internal-us-west-2/large-parquet/
+      --format parquet --iter-bundles --memory 3650722201
+
+- name: read_large_parquet_fixed_size_2x2_rs_multi
+  frequency: manual
+  python: '3.10'
+  cluster:
+    byod:
+      runtime_env:
+      - RAY_DATA_BENCH_NODE_MEM_MONITOR=1
+      - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+      - RAYTEST_FAIL_ON_WORKER_OOM=1
+      - RAYTEST_FAIL_ON_DEAD_NODES=1
+      - RAYTEST_FAIL_ON_SPILLING=1
+      - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: fixed_size_cpu_compute.yaml
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: RAY_DATA_USE_ARROW_RS_PARQUET_READER=1 python read_and_consume_benchmark.py s3://ray-benchmark-data-internal-us-west-2/large-parquet/
+      --format parquet --iter-bundles --memory 3650722201
+
+- name: read_large_parquet_fixed_size_2x2_rstrim_multi
+  frequency: manual
+  python: '3.10'
+  cluster:
+    byod:
+      runtime_env:
+      - RAY_DATA_BENCH_NODE_MEM_MONITOR=1
+      - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+      - RAYTEST_FAIL_ON_WORKER_OOM=1
+      - RAYTEST_FAIL_ON_DEAD_NODES=1
+      - RAYTEST_FAIL_ON_SPILLING=1
+      - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: fixed_size_cpu_compute.yaml
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: RAY_DATA_USE_ARROW_RS_PARQUET_READER=1 RAY_DATA_ARROW_RS_MALLOC_TRIM=1 python
+      read_and_consume_benchmark.py s3://ray-benchmark-data-internal-us-west-2/large-parquet/
+      --format parquet --iter-bundles --memory 3650722201
+
+- name: read_large_parquet_fixed_size_2x2_rseos_multi
+  frequency: manual
+  python: '3.10'
+  cluster:
+    byod:
+      runtime_env:
+      - RAY_DATA_BENCH_NODE_MEM_MONITOR=1
+      - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+      - RAYTEST_FAIL_ON_WORKER_OOM=1
+      - RAYTEST_FAIL_ON_DEAD_NODES=1
+      - RAYTEST_FAIL_ON_SPILLING=1
+      - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
+    cluster_compute: fixed_size_cpu_compute.yaml
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: RAY_DATA_USE_ARROW_RS_PARQUET_READER=1 RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1 python
+      read_and_consume_benchmark.py s3://ray-benchmark-data-internal-us-west-2/large-parquet/
+      --format parquet --iter-bundles --memory 3650722201
+
 # --- write_parquet  [memory] ---
 - name: write_parquet_2x2_pa_multi
   frequency: manual
