@@ -1020,6 +1020,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
+  /// Owns the RaySyncer stream handler; the gRPC service registered below only holds a
+  /// reference to it, so it must outlive the RPC server.
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
+
   /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
   /// we issue a GC command so that none of the messages are dropped.
   int64_t gc_command_sync_version_ = 0;

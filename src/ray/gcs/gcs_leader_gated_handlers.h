@@ -20,6 +20,7 @@
 
 #include "ray/common/status.h"
 #include "ray/gcs/grpc_service_interfaces.h"
+#include "ray/ray_syncer/ray_syncer.h"
 
 namespace ray {
 namespace gcs {
@@ -487,6 +488,26 @@ class LeaderGatedRayEventExportHandler
 
  private:
   rpc::events::RayEventExportGcsServiceHandler &handler_;
+  const std::function<bool()> is_leader_fn_;
+};
+
+class LeaderGatedRaySyncerHandler : public syncer::RaySyncerStreamHandler {
+ public:
+  using HandlerType = syncer::RaySyncerStreamHandler;
+  LeaderGatedRaySyncerHandler(syncer::RaySyncerStreamHandler &handler,
+                              std::function<bool()> is_leader_fn)
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+
+  // Allowed on passive GCS. It must not be gated because of the legitimate stream between
+  // the local raylet and the GCS on the passive head node. Any NEW method added to
+  // RaySyncerStreamHandler must decide its own leader policy here -- do not assume it can
+  // be allowed like StartSync.
+  syncer::SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) override {
+    return handler_.StartSync(context);
+  }
+
+ private:
+  syncer::RaySyncerStreamHandler &handler_;
   const std::function<bool()> is_leader_fn_;
 };
 

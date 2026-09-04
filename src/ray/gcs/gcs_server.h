@@ -336,6 +336,7 @@ class GcsServer {
   std::unique_ptr<LeaderGatedObservabilityPubSubHandler>
       gated_observability_pubsub_handler_;
   std::unique_ptr<LeaderGatedRayEventExportHandler> gated_ray_event_export_handler_;
+  std::unique_ptr<LeaderGatedRaySyncerHandler> gated_ray_syncer_handler_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

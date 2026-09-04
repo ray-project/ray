@@ -477,11 +477,14 @@ void GcsServer::RegisterRpcServices() {
         max_rpcs));
   }
 
-  // RaySyncer is an in-memory resource-view stream (not a request/response handler).
-  // It cannot follow the above pattern to be leader gated.
-  // It has no shared-storage writes or leader-only side effects, so it is exempt.
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
-      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
+  // RaySyncer is registered through the same leader-gating proxy as the other
+  // services for consistency. Its sole method StartSync is *allowed* on a passive
+  // GCS (see LeaderGatedRaySyncerHandler): it is a side-effect-free stream already
+  // scoped upstream at node registration. The proxy exists so any future method
+  // added to the service must explicitly choose its own leader policy.
+  // ray_syncer_service_ (the real handler) is created in InitRaySyncer().
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerGrpcService>(
+      MaybeGate(gated_ray_syncer_handler_, *ray_syncer_service_)));
 }
 
 void GcsServer::Stop() {
@@ -825,7 +828,10 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  // The RaySyncerService is constructed and registered in RegisterRpcServices().
+  // Create the stream handler here alongside the syncer; RegisterRpcServices()
+  // only wraps it in the leader-gating proxy and registers it.
+  ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
 }
 
 void GcsServer::InitFunctionManager() {

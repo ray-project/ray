@@ -1313,5 +1313,40 @@ TEST(GcsLeaderGatedHandlersTest, TestRayEventExportGating) {
   }
 }
 
+// =========================================================================
+// RaySyncer Service Gating Tests (stream RPC ALLOWED even when passive).
+// Unlike every other gated handler, StartSync must be forwarded regardless of
+// leadership: it is a side-effect-free stream already scoped upstream at node
+// registration. This test guards that contract against a future change that
+// wrongly gates it.
+// =========================================================================
+
+class MockRaySyncerStreamHandler : public syncer::RaySyncerStreamHandler {
+ public:
+  syncer::SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) override {
+    called_ = true;
+    return nullptr;
+  }
+
+  bool called_ = false;
+};
+
+TEST(GcsLeaderGatedHandlersTest, TestRaySyncerAllowedRegardlessOfLeadership) {
+  MockRaySyncerStreamHandler underlying;
+  bool is_leader = false;
+  LeaderGatedRaySyncerHandler proxy(underlying, [&is_leader]() { return is_leader; });
+
+  // Passive: StartSync is still forwarded (NOT gated, unlike other handlers).
+  underlying.called_ = false;
+  proxy.StartSync(/*context=*/nullptr);
+  EXPECT_TRUE(underlying.called_);
+
+  // Leader: also forwarded.
+  is_leader = true;
+  underlying.called_ = false;
+  proxy.StartSync(/*context=*/nullptr);
+  EXPECT_TRUE(underlying.called_);
+}
+
 }  // namespace gcs
 }  // namespace ray

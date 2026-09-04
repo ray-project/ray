@@ -224,7 +224,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
       "RaySyncer.BroadcastMessage");
 }
 
-ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
+SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
   auto reactor = std::make_shared<RayServerBidiReactor>(
       context,
       syncer_.GetIOContext(),
