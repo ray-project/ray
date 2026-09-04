@@ -1,17 +1,13 @@
 # Production requirements. This is what readthedocs.com picks up
 
 # Declared explicitly because Python 3.12 and later no longer ship setuptools.
-#
-# The <82 ceiling this pin used to carry is gone. It existed because
-# sphinxcontrib-redoc imported pkg_resources at module load and setuptools
-# 82.0.0 removed it; replacing that extension with sphinxcontrib-openapi (which
-# needs neither) removed the constraint. Verified by importing every extension
-# conf.py loads in an environment with no setuptools and no importable
-# pkg_resources: all of them succeed.
-#
-# The version is still pinned rather than unpinned outright, because that's a
-# separate change with its own resolve to verify. A follow-up can lift it.
-setuptools==80.9.0
+# Pinned and kept in sync with the deplock so deplock regeneration is
+# deterministic and Dependabot keeps proposing bumps. The old <82 ceiling is
+# gone: it existed only because sphinxcontrib-redoc imported pkg_resources at
+# module load and setuptools 82.0.0 removed it, and that extension was replaced
+# with sphinxcontrib-openapi (which needs neither). The pin is now free to track
+# current setuptools; bump it deliberately rather than removing it.
+setuptools==84.0.0
 
 # Syntax highlighting
 Pygments==2.18.0
