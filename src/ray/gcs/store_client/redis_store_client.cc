@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <regex>
 #include <string>
@@ -121,11 +122,21 @@ void RedisStoreClient::MGetValues(
 
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
                                    const RedisClientOptions &options,
-                                   ClockInterface &clock)
+                                   ClockInterface &clock,
+                                   std::optional<RedisMetrics> metrics)
     : io_service_(io_service),
       options_(options),
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      primary_context_(std::make_shared<RedisContext>(io_service, clock)) {
+      // Read the kill switch once here instead of at every recording site: when
+      // it is off the context holds no metrics and the disabled path costs the
+      // null check RedisRequestContext already performs. The context owns the
+      // metrics because it outlives this client whenever a scan is in flight --
+      // see the RedisContext constructor docs.
+      primary_context_(std::make_shared<RedisContext>(
+          io_service,
+          clock,
+          ::RayConfig::instance().gcs_redis_payload_metrics_enabled() ? std::move(metrics)
+                                                                      : std::nullopt)) {
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   RAY_CHECK_OK(primary_context_->Connect(options.ip,
                                          options.port,
@@ -295,7 +306,8 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
         return;
       }
     }
-    // Send the actual request
+    // Send the actual request. RedisContext derives the Command label from the
+    // first argument, so only the table attribution is supplied here.
     primary_context_->RunArgvAsync(
         command.ToRedisArgs(),
         [this,
@@ -312,7 +324,8 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
           if (redis_callback) {
             redis_callback(reply);
           }
-        });
+        },
+        command.redis_key.table_name);
   };
 
   {
@@ -414,7 +427,10 @@ void RedisStoreClient::RedisScanner::Scan() {
       // releases its self_ref in Scan().
       [this, self_ref = self_ref_](const std::shared_ptr<CallbackReply> &reply) {
         OnScanCallback(reply);
-      });
+      },
+      // One logical command in a multi-round scan: the counters aggregate every
+      // HSCAN command, not every AsyncGetAll call. Retries are not counted again.
+      redis_key_.table_name);
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
@@ -462,7 +478,8 @@ void RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
            std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
         auto job_id = static_cast<int>(reply->ReadAsInteger());
         std::move(callback).Post("GcsStore.GetNextJobID", job_id);
-      });
+      },
+      "JobCounter");
 }
 
 void RedisStoreClient::AsyncGetKeys(const std::string &table_name,
@@ -509,7 +526,7 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
     std::move(callback).Dispatch("RedisStoreClient.AsyncCheckHealth", status);
   };
 
-  primary_context_->RunArgvAsync({"PING"}, redis_callback);
+  primary_context_->RunArgvAsync({"PING"}, redis_callback, kNoTable);
 }
 
 // Cleans up all Redis HASHes whose keys carry the given external storage
@@ -564,9 +581,15 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     std::vector<std::string> cmd{
         "SCAN", std::to_string(cursor), "MATCH", match_pattern, "COUNT", scan_count};
     std::promise<std::shared_ptr<CallbackReply>> promise;
-    context.RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
-      promise.set_value(reply);
-    });
+    // Labels are supplied even though this process has no metrics exporter
+    // (the RedisContext above is built without a RedisMetrics), so the call
+    // site stays honest if that ever changes.
+    context.RunArgvAsync(
+        cmd,
+        [&promise](const std::shared_ptr<CallbackReply> &reply) {
+          promise.set_value(reply);
+        },
+        kAllTables);
 
     auto reply = promise.get_future().get();
     std::vector<std::string> scan_result;
@@ -592,10 +615,12 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     // handful of keys, so there is nothing to gain from batching.
     auto del_cmd = std::vector<std::string>{delete_command, key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
-    context.RunArgvAsync(del_cmd,
-                         [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
-                           prom.set_value(callback_reply);
-                         });
+    context.RunArgvAsync(
+        del_cmd,
+        [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+          prom.set_value(callback_reply);
+        },
+        kAllTables);
     return prom.get_future().get()->ReadAsInteger();
   };
   size_t num_deleted = 0;
