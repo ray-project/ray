@@ -174,11 +174,7 @@ def test_max_calls_releases_resources(shutdown_only):
 
 
 def test_hung_worker_releases_pinned_lease_args(shutdown_only):
-    """E2E: max_calls + hung DrainAndShutdown must release pinned lease args.
-
-    C++ ``ReturnWorkerLeaseWithWorkerExitingReleasesPinnedArgs`` is the
-    primary unit test. This checks the real worker path via debug_state.
-    """
+    """E2E: max_calls + hung DrainAndShutdown must release pinned lease args."""
     import glob
 
     import numpy as np
