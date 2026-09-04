@@ -132,6 +132,7 @@ class SGLangServer:
                     "deployment/replica labels."
                 )
 
+        self.engine = Engine(**self.engine_kwargs)
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
