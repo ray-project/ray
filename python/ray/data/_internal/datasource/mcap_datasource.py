@@ -3,6 +3,18 @@
 MCAP is a standardized format for storing timestamped messages from robotics and
 autonomous systems, commonly used for sensor data, control commands, and other
 time-series data.
+
+Format specification: https://mcap.dev/spec
+
+Two properties of the format shape this module:
+
+- A file's summary section, which carries the message counts and the channel
+  index, sits at the *end* of the file and is addressed by an offset in the
+  footer. A seekable reader reaches it in two seeks; a non-seekable one has to
+  scan every record to reconstruct it, and can only do so once.
+- Schemas are stored once per file, not once per message. The row
+  representation repeats them, so a file's in-memory size does not follow from
+  its size on disk.
 """
 
 import json
@@ -333,7 +345,10 @@ class MCAPDatasource(FileBasedDatasource):
         ratios = []
         for path, file_size in _sample_files(candidates):
             in_memory_size = self._estimate_file_inmemory_size(path)
-            if in_memory_size:
+            # Zero is a measurement, not a failure: it means the filter selects
+            # nothing from this file. Only `None` signals that the file could
+            # not be sampled.
+            if in_memory_size is not None:
                 ratios.append(in_memory_size / file_size)
 
         sampling_duration = time.perf_counter() - start_time

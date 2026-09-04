@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.data._internal.datasource.mcap_datasource import (
     MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT,
+    MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND,
     MCAPDatasource,
     TimeRange,
 )
@@ -627,6 +628,29 @@ def test_estimate_inmemory_data_size_narrow_time_range(
     # 10 of 360 messages: the estimate must fall, not stay flat.
     assert filtered < unfiltered / 10
     assert 0.5 * actual <= filtered <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_filter_selecting_nothing(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """A filter that selects no messages is a measurement, not a failure.
+
+    Sampling returns 0 for a file whose filter matches nothing. That is a real
+    result and must be distinguished from the `None` a failed sample returns:
+    treating it as a failure discards every sample and falls back to the
+    default ratio, overstating a read that returns no rows at all.
+    """
+    estimate = MCAPDatasource(
+        paths=[binary_mcap_file], topics={"/no_such_topic"}
+    ).estimate_inmemory_data_size()
+
+    on_disk_size = os.path.getsize(binary_mcap_file)
+    assert estimate < on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+    # The measured zero floors at the ratio lower bound rather than falling
+    # through to the default.
+    assert estimate == on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+
+    assert ray.data.read_mcap(binary_mcap_file, topics={"/no_such_topic"}).count() == 0
 
 
 def test_read_mcap_orders_messages_by_log_time(ray_start_regular_shared, tmp_path):
