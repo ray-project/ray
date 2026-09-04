@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -143,6 +144,33 @@ class TestMetricsPusher:
             assert state["B"] == i + 1
 
         await metrics_pusher.graceful_shutdown()
+
+    @pytest.mark.asyncio
+    async def test_graceful_shutdown_cancels_hung_task(self):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def hung_task():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task("hung", hung_task, 1)
+        await started.wait()
+
+        with patch(
+            "ray.serve._private.metrics_utils."
+            "METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S",
+            0.01,
+        ):
+            await metrics_pusher.graceful_shutdown()
+
+        assert cancelled.is_set()
+        assert metrics_pusher._async_tasks == {}
 
 
 def assert_timeseries_equal(actual, expected):
