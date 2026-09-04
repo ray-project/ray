@@ -84,7 +84,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "ZMQ_NUMPY"]
 
 _default_transports_registered = False
 
@@ -109,6 +109,18 @@ def _ensure_default_transports_registered():
             )
             register_tensor_transport(
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
+            )
+        except ImportError:
+            pass
+
+        try:
+            import numpy
+            import zmq  # noqa: F401
+
+            from ray.experimental.rdt.zmq_transport import ZmqNumpyTransport
+
+            register_tensor_transport(
+                "ZMQ_NUMPY", ["cpu"], ZmqNumpyTransport, numpy.ndarray
             )
         except ImportError:
             pass
