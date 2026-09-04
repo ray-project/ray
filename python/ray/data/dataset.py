@@ -2728,6 +2728,51 @@ class Dataset:
 
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
+    def streaming_split_push_based(
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List["NodeIdStr"]] = None,
+        target_buffer_rows: Optional[int] = None,
+    ) -> List[DataIterator]:
+        """PROTOTYPE: push-based variant of :meth:`streaming_split`.
+
+        Same contract as ``streaming_split``, but the returned iterators are
+        served by a coordinator that PUSHES blocks to the consuming actors
+        instead of the consumers pulling per block. Each returned iterator
+        must be iterated from inside a Ray actor. See
+        ``ray/data/_internal/iterator/push_based_split_iterator.py``.
+
+        Args:
+            n: Number of output iterators to return.
+            equal: If ``True``, each output iterator sees an exactly equal
+                number of rows.
+            locality_hints: A list of node ids corresponding to each iterator
+                location.
+            target_buffer_rows: How many rows each consumer keeps buffered
+                locally (the push flow-control credit); ``None`` uses the
+                default.
+
+        Returns:
+            The output iterator splits.
+        """
+        from ray.data._internal.iterator.push_based_split_iterator import (
+            PushBasedDataIterator,
+        )
+
+        op = StreamingSplit(
+            num_splits=n,
+            equal=equal,
+            input_dependencies=[self._logical_plan.dag],
+            locality_hints=locality_hints,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        split_dataset = Dataset._from_parent(self, logical_plan)
+        split_dataset._set_uuid(self._uuid)
+
+        return PushBasedDataIterator.create(split_dataset, n, target_buffer_rows)
+
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
     def split(
