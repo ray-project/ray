@@ -522,10 +522,6 @@ class NodeManagerTest : public ::testing::Test {
     return {lease_id, worker};
   }
 
-  size_t PinnedLeaseArgBytes() const {
-    return local_lease_manager_->GetPinnedLeaseArgumentsBytes();
-  }
-
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
@@ -1734,7 +1730,7 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
 TEST_F(NodeManagerTest,
        ReturnWorkerLeaseWithWorkerExitingReleasesPinnedArgs) {
   auto [lease_id, worker] = GrantLeaseWithPinnedArg(/*arg_bytes=*/1024);
-  ASSERT_GT(PinnedLeaseArgBytes(), 0);
+  ASSERT_GT(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
   ASSERT_EQ(leased_workers_.size(), 1u);
 
   rpc::ReturnWorkerLeaseRequest request;
@@ -1748,7 +1744,7 @@ TEST_F(NodeManagerTest,
       });
 
   EXPECT_EQ(leased_workers_.size(), 0u);
-  EXPECT_EQ(PinnedLeaseArgBytes(), 0);
+  EXPECT_EQ(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
 }
 
 }  // namespace ray::raylet
