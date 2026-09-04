@@ -261,5 +261,39 @@ def test_query_is_constant():
     assert DEBUG_SESSION_QUERY == "Why did this job fail?"
 
 
+@pytest.mark.parametrize(
+    "query_response",
+    [
+        {"result": None},
+        {"result": {"analysis": None}},
+        {"result": {"analysis": {"summary": SUMMARY}, "metadata": None}},
+    ],
+    ids=["null_result", "null_analysis", "null_metadata"],
+)
+def test_null_fields_in_the_query_response_do_not_raise(query_response, caplog):
+    """The agent sends explicit nulls, and this parsing is outside the try."""
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        )
+
+    assert "Observability agent analysis" in caplog.text
+
+
+def test_null_result_in_the_create_response_is_reported_clearly(caplog):
+    """A null result must reach the error below it, not an AttributeError."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value), [FakeResponse({"result": None})]
+        )
+
+    # The query is not attempted, and the failure names the missing field
+    # instead of surfacing an attribute lookup on None.
+    assert len(fake_post.requests) == 1
+    assert "contains no debug_session_id" in caplog.text
+    assert "AttributeError" not in caplog.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
