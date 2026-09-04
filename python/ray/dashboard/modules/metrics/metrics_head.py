@@ -399,7 +399,7 @@ class MetricsHead(SubprocessModule):
             (
                 content,
                 self._dashboard_uids["train"],
-            ) = generate_train_grafana_dashboard()
+            ) = generate_train_grafana_dashboard(self.session_name)
             f.write(content)
 
     def _create_default_prometheus_configs(self):

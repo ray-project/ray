@@ -38,6 +38,22 @@ py_test_module_list(
     ],
 )
 
+# Medium tests.
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_observability_annotation.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "large",
     files = [
