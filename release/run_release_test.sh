@@ -166,7 +166,10 @@ fi
 # after this would be filed under the analysis heading.
 if [[ -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
   echo "+++ :robot_face: Observability agent analysis"
-  cat "${RELEASE_TEST_OBS_AGENT_FILE}"
+  # Indented: the analysis is prose written by the agent, and a line of it that
+  # started with ---, +++ or ~~~ would otherwise open a buildkite group of its
+  # own and file the rest of the analysis under it.
+  sed 's/^/  /' "${RELEASE_TEST_OBS_AGENT_FILE}"
 fi
 
 if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then

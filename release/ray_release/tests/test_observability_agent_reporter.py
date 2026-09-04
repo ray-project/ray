@@ -105,9 +105,13 @@ def _report(
     if analysis_file:
         env[ANALYSIS_FILE_ENV] = analysis_file
     with (
+        # clear=True: run_release_test.sh exports RELEASE_TEST_OBS_AGENT_FILE, so
+        # an ambient value would otherwise decide whether these tests log or
+        # write, and three of them would fail.
         patch.dict(
             os.environ,
             env,
+            clear=True,
         ),
         patch("ray_release.reporter.observability_agent.requests.post", fake_post),
         patch(
@@ -388,8 +392,11 @@ def test_write_failures_never_propagate(caplog, tmpdir):
     """A reporter must not fail the test run, whatever open() raises."""
     analysis_file = os.path.join(tmpdir, "analysis.txt")
 
-    with caplog.at_level("INFO", logger=logger.name), patch(
-        "builtins.open", side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom")
+    with (
+        caplog.at_level("INFO", logger=logger.name),
+        patch(
+            "builtins.open", side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom")
+        ),
     ):
         _report(
             _result(ResultStatus.ERROR.value),
