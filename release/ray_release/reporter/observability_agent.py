@@ -162,9 +162,11 @@ class ObservabilityAgentReporter(Reporter):
             return None
 
         try:
-            with open(analysis_file, "wt") as fp:
+            # The agent writes prose, so the summary carries non-ascii
+            # characters; the encoding cannot be left to the container locale.
+            with open(analysis_file, "wt", encoding="utf-8") as fp:
                 fp.write(f"{message}\n")
-        except OSError as e:
+        except Exception as e:
             logger.warning(
                 f"Could not write the observability agent analysis to "
                 f"{analysis_file}: {e}"

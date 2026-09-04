@@ -363,5 +363,43 @@ def test_no_file_written_when_the_agent_is_not_triggered(tmpdir):
     assert not os.path.exists(analysis_file)
 
 
+def test_analysis_file_handles_non_ascii(tmpdir):
+    """The agent writes prose; an ascii container locale must not break it."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    summary = "No metric spikes \u2014 the runtime_env setup failed."
+    query_response = {
+        "result": {
+            "analysis": {"summary": summary},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        analysis_file=analysis_file,
+    )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        assert summary in fp.read()
+
+
+def test_write_failures_never_propagate(caplog, tmpdir):
+    """A reporter must not fail the test run, whatever open() raises."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with caplog.at_level("INFO", logger=logger.name), patch(
+        "builtins.open", side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom")
+    ):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    assert "Could not write the observability agent analysis" in caplog.text
+    assert SUMMARY in caplog.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
