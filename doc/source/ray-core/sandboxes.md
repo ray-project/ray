@@ -347,6 +347,108 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
+## HTTP API service
+
+Ray Sandbox ships an experimental REST API service so you can manage sandboxes from outside the Ray cluster with nothing but an HTTP client and a bearer token. The service is a FastAPI app on Ray Serve (`ray.experimental.sandbox.http`). Each sandbox is held by a named, detached actor, so the service itself is stateless and its replicas can scale or restart without losing sandboxes.
+
+Image pulls and commands can far outlive an HTTP request and the load balancer in front of a deployed service, so creation and execution are asynchronous. `POST` returns immediately and clients poll, optionally long-polling with `wait_seconds` for up to 30 seconds per request.
+
+### Endpoints
+
+All endpoints sit under `/api/v1`. Except for `GET /health`, they require `Authorization: Bearer <token>` when a token is configured.
+
+| Method and path | Description |
+| --- | --- |
+| `GET /health` | Liveness probe; never requires auth. |
+| `POST /sandboxes` | Create a sandbox. Returns `202` with `status: pending`. Poll until `running` or `error`. Send a `client_token` to make creation idempotent, so a retry returns `200` with the existing sandbox. |
+| `GET /sandboxes?label=k=v` | List sandboxes, optionally filtered by labels. |
+| `GET /sandboxes/{id}?wait_seconds=N` | Sandbox status; long-polls while it boots. |
+| `DELETE /sandboxes/{id}` | Terminate the sandbox and its actor. Idempotent from any state. |
+| `POST /sandboxes/{id}/execs` | Start a command. Returns `202` with an `exec_id`, or `409` while the sandbox isn't running. A string command runs under the sandbox's shell, `/bin/bash` by default and configurable per sandbox and per exec via `shell`. A list runs argv-style. |
+| `GET /sandboxes/{id}/execs/{exec_id}?wait_seconds=N` | Exec status and result: `running`, `completed` with `exit_code`, `stdout`, and `stderr`, `timeout`, or `error`. Output is capped per stream by `max_output_bytes` with a loud truncation marker. |
+| `PUT /sandboxes/{id}/files?path=/abs/path` | Write the raw request body to a file in the sandbox. Returns `413` above `max_file_bytes`. Pass `append=true` to extend the file, which lets clients chunk large uploads under proxy body-size limits. |
+| `GET /sandboxes/{id}/files?path=/abs/path` | Read a file from the sandbox as `application/octet-stream`. |
+
+Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..."}}`. The codes are `401 unauthorized`, `404 sandbox_not_found`, `404 exec_not_found`, `404 file_not_found`, `409 conflict`, `409 unschedulable`, `400 invalid_request`, `413 payload_too_large`, and FastAPI's native `422` for schema violations. The full OpenAPI schema is served at `/openapi.json`.
+
+Keep this server behavior in mind:
+
+* **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
+* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
+* **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
+* **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
+
+### Self-hosted quickstart
+
+On a Linux machine or cluster with `runsc` on `PATH`:
+
+```bash
+pip install "ray[serve]"
+export RAY_SANDBOX_API_TOKEN=dev-token   # Optional. Unset disables app-level auth.
+serve run ray.experimental.sandbox.http.app:build_app
+```
+
+```bash
+curl -s -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"image": "busybox:latest", "readonly": false, "shell": "/bin/sh"}' \
+  http://localhost:8000/api/v1/sandboxes
+```
+
+Builder arguments configure the server. See `ray.experimental.sandbox.http.schemas.SandboxAPISettings` for the full list. For example:
+
+```bash
+serve run ray.experimental.sandbox.http.app:build_app max_ttl_seconds=86400 num_replicas=2
+```
+
+### Deploying as an Anyscale service
+
+Build a cluster image whose worker nodes have `runsc`:
+
+```dockerfile
+FROM anyscale/ray:2.58.0-py312
+RUN ARCH=$(uname -m | sed 's/arm64/aarch64/') && \
+    curl -fsSL -o /usr/local/bin/runsc \
+      "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" && \
+    chmod +x /usr/local/bin/runsc
+```
+
+Then deploy the builder as the service's application:
+
+```yaml
+# service.yaml
+name: ray-sandbox-api
+image_uri: <your-registry>/ray-sandbox-api:latest
+applications:
+  - name: sandbox-api
+    import_path: ray.experimental.sandbox.http.app:build_app
+    args:
+      max_ttl_seconds: 86400
+```
+
+```bash
+anyscale service deploy -f service.yaml
+```
+
+Anyscale services require their own bearer token at the platform edge, so leave `RAY_SANDBOX_API_TOKEN` unset and hand clients the service's base URL and token. Consumers such as the [Harbor](https://harborframework.com) `ray-sandbox` environment take exactly that pair as `RAY_SANDBOX_API_URL` and `RAY_SANDBOX_API_KEY`.
+
+### Local development loop on macOS
+
+`runsc` is Linux-only. Develop against the service in a privileged container:
+
+```bash
+docker run --privileged -p 8000:8000 \
+  -v ~/path/to/ray/python/ray/experimental/sandbox:/overlay:ro \
+  rayproject/ray:nightly-py312 bash -lc '
+    pip install "ray[serve]" &&
+    SITE=$(python -c "import ray, os; print(os.path.dirname(ray.__file__))") &&
+    cp -r /overlay/* "$SITE/experimental/sandbox/" &&
+    ARCH=$(uname -m | sed "s/arm64/aarch64/") &&
+    curl -fsSL -o /usr/local/bin/runsc "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" &&
+    chmod +x /usr/local/bin/runsc &&
+    RAY_SANDBOX_API_TOKEN=dev-token serve run --host 0.0.0.0 ray.experimental.sandbox.http.app:build_app'
+```
+
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.
