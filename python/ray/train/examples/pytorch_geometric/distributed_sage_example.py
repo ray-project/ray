@@ -1,4 +1,4 @@
-# Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0
+# Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.5.3
 # /examples/multi_gpu/distributed_sampling.py
 
 import argparse
@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from filelock import FileLock
 from torch_geometric.datasets import FakeDataset, Reddit
-from torch_geometric.loader import NeighborSampler
+from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import SAGEConv
 from torch_geometric.transforms import RandomNodeSplit
 
@@ -28,24 +28,26 @@ class SAGE(torch.nn.Module):
             self.convs.append(SAGEConv(hidden_channels, hidden_channels))
         self.convs.append(SAGEConv(hidden_channels, out_channels))
 
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[: size[1]]  # Target nodes are always placed first.
-            x = self.convs[i]((x, x_target), edge_index)
+    def forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
             if i != self.num_layers - 1:
                 x = F.relu(x)
                 x = F.dropout(x, p=0.5, training=self.training)
         return x.log_softmax(dim=-1)
 
     @torch.no_grad()
-    def test(self, x_all, subgraph_loader):
-        for i in range(self.num_layers):
+    def inference(self, x_all, subgraph_loader, device):
+        # Layer-wise inference over the full graph: the representations of all
+        # nodes are computed one layer at a time, so only a batch of nodes and
+        # their direct neighbors need to be on the device at once.
+        for i, conv in enumerate(self.convs):
             xs = []
-            for batch_size, n_id, adj in subgraph_loader:
-                edge_index, _, size = adj
-                x = x_all[n_id.to(x_all.device)].to(train.torch.get_device())
-                x_target = x[: size[1]]
-                x = self.convs[i]((x, x_target), edge_index)
+            for batch in subgraph_loader:
+                x = x_all[batch.n_id].to(device)
+                x = conv(x, batch.edge_index.to(device))
+                # The seed nodes of a batch are always placed first.
+                x = x[: batch.batch_size]
                 if i != self.num_layers - 1:
                     x = F.relu(x)
                 xs.append(x.cpu())
@@ -60,67 +62,64 @@ def train_loop_per_worker(train_loop_config):
     batch_size = train_loop_config["batch_size"]
     num_epochs = train_loop_config["num_epochs"]
 
+    world_size = train.get_context().get_world_size()
+    rank = train.get_context().get_world_rank()
+    device = train.torch.get_device()
+
     data = dataset[0]
     train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
-    train_idx = train_idx.split(
-        train_idx.size(0) // train.get_context().get_world_size()
-    )[train.get_context().get_world_rank()]
+    train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
-    train_loader = NeighborSampler(
-        data.edge_index,
-        node_idx=train_idx,
-        sizes=[25, 10],
+    # Each worker samples mini-batches around its own shard of the training
+    # nodes, so no distributed sampler is needed. The loaders yield
+    # ``torch_geometric.data.Data`` objects rather than tensors, so they are
+    # not passed through ``train.torch.prepare_data_loader``; batches are moved
+    # to the device explicitly below.
+    train_loader = NeighborLoader(
+        data,
+        input_nodes=train_idx,
+        num_neighbors=[25, 10],
         batch_size=batch_size,
         shuffle=True,
     )
 
-    # Disable distributed sampler since the train_loader has already been split above.
-    train_loader = train.torch.prepare_data_loader(train_loader, add_dist_sampler=False)
-
     # Do validation on rank 0 worker only.
-    if train.get_context().get_world_rank() == 0:
-        subgraph_loader = NeighborSampler(
-            data.edge_index, node_idx=None, sizes=[-1], batch_size=2048, shuffle=False
-        )
-        subgraph_loader = train.torch.prepare_data_loader(
-            subgraph_loader, add_dist_sampler=False
+    if rank == 0:
+        subgraph_loader = NeighborLoader(
+            data, input_nodes=None, num_neighbors=[-1], batch_size=2048, shuffle=False
         )
 
     model = SAGE(dataset.num_features, 256, dataset.num_classes)
     model = train.torch.prepare_model(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    x, y = data.x.to(train.torch.get_device()), data.y.to(train.torch.get_device())
-
     for epoch in range(num_epochs):
         model.train()
 
-        # ``batch_size`` is the number of samples in the current batch.
-        # ``n_id`` are the ids of all the nodes used in the computation. This is
-        # needed to pull in the necessary features just for the current batch that is
-        # being trained on.
-        # ``adjs`` is a list of 3 element tuple consisting of ``(edge_index, e_id,
-        # size)`` for each sample in the batch, where ``edge_index``represent the
-        # edges of the sampled subgraph, ``e_id`` are the ids of the edges in the
-        # sample, and ``size`` holds the shape of the subgraph.
-        # See ``torch_geometric.loader.neighbor_sampler.NeighborSampler`` for more info.
-        for batch_size, n_id, adjs in train_loader:
+        # Each ``batch`` is the sampled subgraph around ``batch.batch_size`` seed
+        # nodes, which are always placed first; ``batch.x`` and ``batch.y`` hold
+        # the features and labels of every node in the subgraph, and
+        # ``batch.n_id`` maps them back to the ids in the full graph. See
+        # ``torch_geometric.loader.NeighborLoader`` for more info.
+        for batch in train_loader:
+            batch = batch.to(device)
             optimizer.zero_grad()
-            out = model(x[n_id], adjs)
-            loss = F.nll_loss(out, y[n_id[:batch_size]])
+            out = model(batch.x, batch.edge_index)[: batch.batch_size]
+            loss = F.nll_loss(out, batch.y[: batch.batch_size])
             loss.backward()
             optimizer.step()
 
-        if train.get_context().get_world_rank() == 0:
+        if rank == 0:
             print(f"Epoch: {epoch:03d}, Loss: {loss:.4f}")
 
         train_accuracy = validation_accuracy = test_accuracy = None
 
         # Do validation on rank 0 worker only.
-        if train.get_context().get_world_rank() == 0:
+        if rank == 0:
             model.eval()
-            with torch.no_grad():
-                out = model.module.test(x, subgraph_loader)
+            # ``prepare_model`` wraps the model in DistributedDataParallel.
+            unwrapped_model = getattr(model, "module", model)
+            out = unwrapped_model.inference(data.x, subgraph_loader, device)
             res = out.argmax(dim=-1) == data.y
             train_accuracy = int(res[data.train_mask].sum()) / int(
                 data.train_mask.sum()
