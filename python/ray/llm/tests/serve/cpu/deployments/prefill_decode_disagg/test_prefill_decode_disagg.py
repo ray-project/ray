@@ -5,8 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
+    LoraConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -35,24 +37,31 @@ async def _aiter(items):
 
 
 class _FakePrefillHandle:
-    """Fake prefill DeploymentHandle. Records each .chat/.completions remote
-    call with the session_id from any preceding ``.options(session_id=...)``,
-    and yields one chunk with kv_transfer_params back to the orchestrator."""
+    """Fake prefill DeploymentHandle that records request-routing options."""
 
-    def __init__(self, calls=None, session_id=None):
+    def __init__(self, calls=None, session_id=None, multiplexed_model_id=None):
         self.calls = calls if calls is not None else []
         self.session_id = session_id
+        self.multiplexed_model_id = multiplexed_model_id
 
     def options(self, **kwargs):
         return _FakePrefillHandle(
             calls=self.calls,
             session_id=kwargs.get("session_id", self.session_id),
+            multiplexed_model_id=kwargs.get(
+                "multiplexed_model_id", self.multiplexed_model_id
+            ),
         )
 
     def _method(self, name):
         def remote(request, raw_request_info):
             self.calls.append(
-                {"method": name, "request": request, "session_id": self.session_id}
+                {
+                    "method": name,
+                    "request": request,
+                    "session_id": self.session_id,
+                    "multiplexed_model_id": self.multiplexed_model_id,
+                }
             )
             return _aiter(
                 [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-1"})]
@@ -67,6 +76,46 @@ class _FakePrefillHandle:
     @property
     def completions(self):
         return self._method("completions")
+
+
+@pytest.mark.asyncio
+async def test_forwards_lora_id():
+    """Both P/D engines must resolve the adapter selected for the request."""
+    from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+        DefaultConnectorBackend,
+    )
+
+    server = PDDecodeServer.__new__(PDDecodeServer)
+    server._llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-model")
+    )
+    server._llm_config._kv_connector_backend = DefaultConnectorBackend(
+        server._llm_config
+    )
+    server._prefill_handle = _FakePrefillHandle()
+
+    async def _fake_super_completions(self, req, raw_info):
+        return _aiter(["decode-chunk"])
+
+    multiplexed_model_id = "test-model:adapter"
+    context_token = serve.context._serve_request_context.set(
+        serve.context._RequestContext(multiplexed_model_id=multiplexed_model_id)
+    )
+    try:
+        with patch.object(LLMServer, "completions", _fake_super_completions):
+            chunks = [
+                chunk
+                async for chunk in server._pd_handle_request(
+                    CompletionRequest(model=multiplexed_model_id, prompt="hi"), None
+                )
+            ]
+    finally:
+        serve.context._serve_request_context.reset(context_token)
+
+    assert chunks == ["decode-chunk"]
+    assert (
+        server._prefill_handle.calls[0]["multiplexed_model_id"] == multiplexed_model_id
+    )
 
 
 class TestPDServingArgs:
@@ -103,6 +152,17 @@ class TestPDServingArgs:
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
         assert args.ingress_cls_config.ingress_cls == OpenAiIngress
         assert args.ingress_deployment_config == {}
+
+    def test_lora_configs_match(self, pd_configs):
+        prefill, decode = pd_configs
+        decode.lora_config = LoraConfig(dynamic_lora_loading_path="s3://adapters")
+
+        with pytest.raises(ValueError, match="both prefill and decode"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
+
+        prefill.lora_config = LoraConfig(dynamic_lora_loading_path="s3://other")
+        with pytest.raises(ValueError, match="loading paths must be the same"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
 
     def test_flexible_input_types(self):
         """Test accepts dicts for prefill and decode configs."""
