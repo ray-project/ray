@@ -438,6 +438,27 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     AddLocalReference(object_id, CurrentCallSite());
   }
 
+  /// Register ownership of an object created in this worker with a
+  /// caller-supplied ObjectID. The language frontend (e.g. Go) generates and
+  /// knows the ObjectID before calling Put, so it must register ownership
+  /// explicitly; the three-argument CoreWorker::Put overload does this
+  /// automatically when it generates the ID.
+  void AddOwnedObject(
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const int64_t object_size,
+      bool add_local_ref = false,
+      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>()) {
+    reference_counter_->AddOwnedObject(object_id,
+                                       contained_ids,
+                                       rpc_address_,
+                                       CurrentCallSite(),
+                                       object_size,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       add_local_ref,
+                                       pinned_at_node_id);
+  }
+
   /// Decrease the reference count for this object ID. Should be called
   /// by the language frontend when a reference is destroyed.
   ///
@@ -518,6 +539,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// RegisterOwnershipInfoAndResolveFuture).
   /// \param[out] The RPC address of the worker that owns this object.
   rpc::Address GetOwnerAddressOrDie(const ObjectID &object_id) const;
+
+  /// Delete a list of objects from the plasma object store; called by Delete().
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only If true, the objects are only deleted from the local object
+  /// store.
+  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the RPC address of the worker that owns the given object.
   ///
@@ -791,6 +819,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /// Delete a list of objects. If local_only is false, a delete request is sent to the
+  /// owner of each object so that the objects are freed even if they are not present
+  /// locally. Regardless of local_only, the objects are always freed from the local
+  /// object director and the in-memory store.
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only Whether to only free locally-created objects.
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this

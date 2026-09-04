@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "zap",
+    srcs = [
+        "encoder.go",
+        "options.go",
+        "zap.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/log/zap",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/log",
+        "//go/pkg/log/lumberjack",
+        "@com_github_go_logr_logr//:logr",
+        "@com_github_go_logr_zapr//:zapr",
+        "@org_uber_go_zap//:zap",
+        "@org_uber_go_zap//zapcore",
+    ],
+)
+
+go_test(
+    name = "zap_test",
+    srcs = ["zap_test.go"],
+    embed = [":zap"],
+    deps = [
+        "//go/pkg/log/lumberjack",
+        "@com_github_go_logr_logr//:logr",
+        "@org_uber_go_zap//:zap",
+        "@org_uber_go_zap//zapcore",
+        "@org_uber_go_zap//zaptest/observer",
+    ],
+)

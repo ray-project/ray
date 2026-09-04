@@ -254,3 +254,16 @@ CLAUDE.local.md
 # Worktrees
 .worktrees/
 .claude/worktrees/
+
+# SDD workspace (plan scratch)
+.superpowers/
+
+# Local-only build environment (internal mirrors) not meant for the public repo.
+bazel/rewrite.txt
+
+# Local/internal working artifacts for the go-runtime open-source migration.
+# Not meant to be pushed to the public upstream repo.
+.log/
+.codex/
+.claude/outputs/
+*.patch

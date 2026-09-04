@@ -1,0 +1,54 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+
+# go_runtime.so shared library (Plugin mode)
+# Exports Initialize, Shutdown, RunTaskExecutionLoop as Go package-level variables
+# Includes object system (pkg/runtime/object) with MsgPack support
+# Note: plugin_exports.go contains Go exports and main() entry point
+#
+# Design note: No cdeps needed here because all CGO usage is in transitive
+# dependencies (//go/internal/runtime/cgo). The cgo package already declares
+# its own cdeps, which are automatically propagated to the final binary.
+go_binary(
+    name = "go_runtime_so",
+    out = "go_runtime.so",
+    # No cdeps - all CGO code is in //go/internal/runtime/cgo (transitive dependency)
+    embed = [":plugin_lib"],
+    gc_linkopts = [
+        "-s",  # strip symbol table and debug information
+        "-w",  # strip DWARF debug information
+    ],
+    importpath = "github.com/ray-project/ray/go/cmd/plugin",
+    linkmode = "plugin",
+    visibility = ["//visibility:public"],
+)
+
+# go_runtime.so shared library
+
+# Package go_runtime.so shared library
+pkg_files(
+    name = "go_runtime_so_files",
+    srcs = [":go_runtime_so"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/go/lib",
+    visibility = ["//visibility:private"],
+)
+
+go_library(
+    name = "plugin_lib",
+    srcs = ["plugin_exports.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/plugin",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/internal/errors",
+        "//go/internal/gcs/native",
+        "//go/internal/runtime/base",
+        "//go/internal/runtime/native",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/proto",
+    ],
+)

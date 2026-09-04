@@ -1,0 +1,78 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@bazel_gazelle//:def.bzl", "gazelle")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+
+# gazelle:prefix github.com/ray-project/ray/go
+gazelle(
+    name = "gazelle",
+    args = ["go"],
+    prefix = "github.com/ray-project/ray",
+)
+
+gazelle(
+    name = "gazelle-update-repos",
+    args = [
+        "-from_file=go/go.mod",
+        "-to_macro=go/dependencies.bzl%gazelle_dependencies",
+    ],
+    command = "update-repos",
+)
+
+# Package the raygo executable CLI tool (referenced from go/cmd/raygo/BUILD.bazel).
+pkg_files(
+    name = "raygo_executable_files",
+    srcs = ["//go/cmd/raygo"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/go/cmd",
+    visibility = ["//visibility:private"],
+)
+
+# Package the go_runtime.so shared library (referenced from go/cmd/plugin/BUILD.bazel).
+# Note: go_runtime.so is built in plugin mode.
+pkg_files(
+    name = "go_runtime_so_files",
+    srcs = ["//go/cmd/plugin:go_runtime_so"],
+    attributes = pkg_attributes(mode = "0755"),
+    prefix = "ray/go/lib",
+    visibility = ["//visibility:private"],
+)
+
+# The final zip archive contains two components:
+# 1. raygo - executable CLI tool (cmd directory)
+# 2. go_runtime.so - Go Runtime plugin shared library (lib directory)
+pkg_zip(
+    name = "ray_go_pkg_zip",
+    srcs = [
+        ":go_runtime_so_files",
+        ":raygo_executable_files",
+    ],
+    out = "ray_go_pkg.zip",
+    visibility = ["//visibility:public"],
+)
+
+# gen_ray_go_pkg Python script - extracts ray_go_pkg.zip into python/ray/go/.
+py_binary(
+    name = "gen_ray_go_pkg",
+    srcs = ["gen_ray_go_pkg.py"],
+    data = [
+        ":ray_go_pkg_zip",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//bazel:gen_extract",
+    ],
+)

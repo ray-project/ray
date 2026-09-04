@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "setup_worker",
+    srcs = ["setup_worker.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/raygo/setup_worker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/runtime_env",
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/proto",
+        "@com_github_spf13_cobra//:cobra",
+        "@com_github_spf13_pflag//:pflag",
+        "@org_uber_go_zap//zapcore",
+    ],
+)

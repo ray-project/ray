@@ -1,0 +1,64 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# Object serialization library with MsgPack support
+# Note: This is now a pure abstraction layer with no CGO dependencies
+go_library(
+    name = "object",
+    srcs = [
+        "actor_handle.go",
+        "buffer_pool.go",
+        "exception.go",
+        "exception_serializer.go",
+        "native_object.go",
+        "object_ref.go",
+        "object_ref_deserializer.go",
+        "object_store.go",
+        "serializer_factory.go",
+        "serializer_interface.go",
+        "threshold.go",
+        "type_converter.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/object",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
+
+# Unit tests for object serialization (internal test)
+# Note: local_mode_object_store_test.go was moved to internal/runtime/objectstore
+go_test(
+    name = "object_test",
+    srcs = [
+        "actor_handle_test.go",
+        "exception_serializer_test.go",
+        "gpu_mapping_test.go",
+        "object_ref_test.go",
+        "object_serializer_test.go",
+        "threshold_test.go",
+        "type_converter_test.go",
+    ],
+    embed = [":object"],
+    deps = [
+        "//go/pkg/ids",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)

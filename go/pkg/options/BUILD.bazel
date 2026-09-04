@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# options package provides common type definitions for Ray Go Runtime.
+# This package is designed to avoid circular dependencies and provide
+# a single source of truth for shared types.
+#
+# The package name "options" reflects its primary purpose: defining
+# configuration option types (RuntimeOptions, NetworkOptions, JobOptions,
+# InitializeOptions) used throughout the Ray Go Runtime.
+go_library(
+    name = "options",
+    srcs = ["runtime_options.go"],
+    importpath = "github.com/ray-project/ray/go/pkg/options",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+go_test(
+    name = "options_test",
+    srcs = ["runtime_options_test.go"],
+    embed = [":options"],
+    deps = [
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

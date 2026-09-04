@@ -534,6 +534,24 @@ python_grpc_compile(
     ],
 )
 
+# Minimal Go proto set for the Go runtime local-mode closed loop.
+# Generates only JobConfig/WorkerType (common.proto), GcsNodeInfo
+# (gcs.proto), RuntimeEnvInfo (public/runtime_environment.proto), and the
+# RuntimeEnv/RuntimeEnvConfig types they need. Used by //go/proto.
+load("@rules_proto_grpc//go:defs.bzl", "go_grpc_compile")
+
+go_grpc_compile(
+    name = "go_runtime_min_go_proto",
+    deps = [
+        ":autoscaler_proto",
+        ":common_proto",
+        ":gcs_proto",
+        ":profile_events_proto",
+        ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
 # Below is the serve proto
 
 proto_library(

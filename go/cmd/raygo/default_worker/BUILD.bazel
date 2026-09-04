@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# The default_worker library provides the worker subcommand for the Ray Go CLI,
+# used to start Ray worker processes.
+go_library(
+    name = "default_worker",
+    srcs = ["default_worker.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/raygo/default_worker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/worker",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)

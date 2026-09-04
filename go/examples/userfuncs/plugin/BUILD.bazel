@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# userfuncs_plugin builds the userfuncs plugin as a .so shared library.
+# Worker processes load this via the job code_search_path so both the driver
+# and the worker share the same function symbols.
+go_binary(
+    name = "userfuncs_plugin",
+    out = "userfuncs.so",
+    embed = [":plugin_lib"],
+    importpath = "github.com/ray-project/ray/go/examples/userfuncs/plugin",
+    linkmode = "plugin",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "plugin_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/examples/userfuncs/plugin",
+    visibility = ["//visibility:private"],
+    deps = ["//go/examples/userfuncs"],
+)

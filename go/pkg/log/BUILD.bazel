@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "log",
+    srcs = [
+        "context.go",
+        "delegating.go",
+        "log.go",
+        "null.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/log",
+    visibility = ["//visibility:public"],
+    deps = ["@com_github_go_logr_logr//:logr"],
+)
+
+go_test(
+    name = "log_test",
+    srcs = [
+        "context_test.go",
+        "delegating_test.go",
+        "log_test.go",
+        "null_test.go",
+        "testutil_test.go",
+    ],
+    embed = [":log"],
+    deps = ["@com_github_go_logr_logr//:logr"],
+)

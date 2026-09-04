@@ -168,6 +168,9 @@ if setup_spec.type == SetupType.RAY_CPP:
         for filename in filenames
     ]
 
+setup_spec.files_to_include += ["ray/go/cmd/raygo" + exe_suffix]
+setup_spec.files_to_include += ["ray/go/lib/go_runtime.so"]
+
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
@@ -599,6 +602,7 @@ def build(build_python, build_java, build_cpp, build_redis):
     bazel_targets = []
     if build_python:
         bazel_targets.append("//:gen_ray_pkg")
+        bazel_targets.append("//go:gen_ray_go_pkg")
     if build_cpp:
         bazel_targets.append("//cpp:gen_ray_cpp_pkg")
     if build_java:

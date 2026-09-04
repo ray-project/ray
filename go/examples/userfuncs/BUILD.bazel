@@ -1,0 +1,11 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "userfuncs",
+    srcs = ["funcs.go"],
+    importpath = "github.com/ray-project/ray/go/examples/userfuncs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/runtime/api",
+    ],
+)
