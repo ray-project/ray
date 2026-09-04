@@ -1,3 +1,4 @@
+import threading
 import time
 from unittest.mock import patch
 
@@ -226,6 +227,133 @@ def test_no_deadlock_when_downstream_capacity_policy_zeros_limit(
     ):
         # Without the escape hatch firing, this would hang.
         assert len(ds.take_all()) == num_blocks
+
+
+def _drain_split_and_measure(ds, num_consumers, watch_s):
+    """Drain every shard on its own thread; return (rows, total_gap_seconds).
+
+    Returns the largest gap between consecutive deliveries, with a trailing term
+    so a pipeline that stops and never resumes does not look gap-free.
+    """
+    stamps = [time.time()]
+    delivered = [0]
+    lock = threading.Lock()
+
+    def drain(split):
+        try:
+            for batch in split.iter_batches(batch_size=1):
+                with lock:
+                    stamps.append(time.time())
+                    delivered[0] += len(batch["i"])
+        except Exception:
+            pass
+
+    splits = ds.streaming_split(num_consumers, equal=True)
+    threads = [
+        threading.Thread(target=drain, args=(split,), daemon=True) for split in splits
+    ]
+    start = time.time()
+    try:
+        for t in threads:
+            t.start()
+        while time.time() - start < watch_s and any(t.is_alive() for t in threads):
+            time.sleep(0.5)
+        with lock:
+            seen = sorted(stamps)
+            rows = delivered[0]
+    finally:
+        # Release wedged consumers before Ray is torn down; `ray.shutdown()`
+        # with threads blocked in the split coordinator aborts the process.
+        ray.kill(splits[0]._coord_actor, no_restart=True)
+        for t in threads:
+            t.join(timeout=10)
+
+    gaps = [b - a for a, b in zip(seen, seen[1:])] + [time.time() - seen[-1]]
+    return rows, max(gaps)
+
+
+@pytest.mark.timeout(180)
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "OutputSplitter buffers before it dispatches, and the amount scales with "
+        "the consumer count while the object store budget does not. Past the "
+        "point where that buffering exceeds the budget, the producer is throttled "
+        "before it can fill the buffer, so the splitter never dispatches and "
+        "nothing drains to free the budget."
+    ),
+)
+def test_streaming_split_buffering_must_fit_object_store_budget(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """`OutputSplitter`'s buffering must fit the object store budget.
+
+    Why: two of its buffering requirements scale with the consumer count `n`,
+    and neither is accounted for in the budget:
+      - the locality cap, `2 * n` bundles, counted not measured
+        (output_splitter.py:99, :251), active when `locality_hints` are set;
+      - the `equal=True` reserve, which needs enough buffered rows to equalize
+        across `n` outputs (`_can_safely_dispatch` -> `_calculate_buffer_requirement`).
+    Blocks held in that buffer are billed to their producer, so the producer needs
+    headroom for the whole amount before the splitter will release anything.
+
+    What: holds memory pressure and data volume constant and varies only `n`. The
+    control leg (small `n`) is what rules out ordinary budget exhaustion; without
+    it this would be indistinguishable from that. Both requirements are active
+    here, so this shows the class of failure, not which of the two dominates.
+
+    Fails when the large-`n` leg delivers zero rows while the control leg
+    delivers everything.
+    """
+    store_mib = 300
+    block_mib = 5
+    # Enough data that the producer cannot simply finish -- `all_inputs_done`
+    # force-flushes the buffer (output_splitter.py:185) and would mask the stall.
+    num_blocks = 200
+    rows_per_block = 4
+    watch_s = 25.0
+
+    # Data's object store budget is half the store, so ~150MiB here.
+    #   n=2  -> 2*2*5MiB   =  20MiB, comfortably inside the budget
+    #   n=32 -> 2*32*5MiB  = 320MiB, more than twice the budget
+    control_consumers = 2
+    subject_consumers = 32
+
+    ray.init(num_cpus=4, object_store_memory=store_mib * MiB)
+
+    def make_ds():
+        return ray.data.range(
+            num_blocks * rows_per_block, override_num_blocks=num_blocks
+        ).map(
+            lambda row: {
+                "i": row["id"],
+                "pad": np.zeros(block_mib * MiB // rows_per_block // 8),
+            }
+        )
+
+    # Control leg: same pressure, priming volume inside the budget.
+    control_rows, control_gap = _drain_split_and_measure(
+        make_ds(), control_consumers, watch_s
+    )
+    if control_rows == 0:
+        pytest.skip(
+            f"control leg (n={control_consumers}) delivered nothing either, so "
+            f"this sizing no longer isolates the priming requirement"
+        )
+
+    subject_rows, subject_gap = _drain_split_and_measure(
+        make_ds(), subject_consumers, watch_s
+    )
+
+    assert subject_rows > 0, (
+        f"n={subject_consumers} delivered {subject_rows} rows in {watch_s}s "
+        f"(largest gap {subject_gap:.1f}s), while n={control_consumers} delivered "
+        f"{control_rows} rows under identical memory pressure. The only "
+        f"difference is the consumer count, which sets how much the splitter "
+        f"buffers before dispatching ({2 * subject_consumers} bundles = "
+        f"{2 * subject_consumers * block_mib}MiB) against a ~{store_mib // 2}MiB "
+        f"budget."
+    )
 
 
 def test_no_deadlock_with_preserve_order(
