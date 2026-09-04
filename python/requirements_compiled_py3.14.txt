@@ -2037,7 +2037,7 @@ responses==0.26.0
     # via
     #   -r python/requirements/ml/py313/data-requirements.txt
     #   moto
-restrictedpython==8.1
+restrictedpython==8.3a1.dev0
     # via aim
 retry-decorator==1.1.1
     # via

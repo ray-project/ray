@@ -5228,9 +5228,9 @@ requests==2.33.1 \
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
-restrictedpython==8.1 ; python_full_version < '3.12' \
-    --hash=sha256:4769449c6cdb10f2071649ba386902befff0eff2a8fd6217989fa7b16aeae926 \
-    --hash=sha256:4a69304aceacf6bee74bdf153c728221d4e3109b39acbfe00b3494927080d898
+restrictedpython==8.3a1.dev0 ; python_full_version < '3.12' \
+    --hash=sha256:060029a7ab4b1daf2c7a0a41e6df0a91a8ba1b932282d360f3e5af6a30cc1255 \
+    --hash=sha256:4180b848a35ff6e1b9e4e614f99da60076d7de37ddfc0711d306945a0a544369
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aim
