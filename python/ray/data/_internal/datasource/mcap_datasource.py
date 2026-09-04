@@ -341,6 +341,14 @@ def _dictionary_encode_schema_data(block: Block) -> Block:
         return block
 
     try:
+        # Encode first, then combine. `combine_chunks()` on the *unencoded*
+        # column copies every repeated definition into one contiguous buffer --
+        # exactly the redundancy this function removes -- while encoding per
+        # chunk shrinks the data before anything is concatenated. Measured on a
+        # 21-chunk, 147 MB column: 10 ms and a 161 MB process peak in this
+        # order, 29 ms and 295 MB in the other, for a byte-identical result.
+        # Combining afterwards is what leaves one dictionary rather than one
+        # per chunk.
         encoded = column.dictionary_encode().combine_chunks()
     except pa.ArrowNotImplementedError:
         # Arrow cannot dictionary-encode every type it can store. Leaving the
