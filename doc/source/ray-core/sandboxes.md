@@ -267,9 +267,9 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 
 | Mode | Network access | `/etc/resolv.conf` | Security property |
 | --- | --- | --- | --- |
-| `none` *(default)* | None | untouched | No egress. |
+| `none` *(default)* | None | untouched | No egress. This is the recommended setting for untrusted code. |
 | `public` | Host egress | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Egress works, but the sandbox inherits nothing from the host's resolver configuration. No internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. |
-| `host` | Full host network identity | Host's own file, mounted read-only (`dns` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
 
 To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:

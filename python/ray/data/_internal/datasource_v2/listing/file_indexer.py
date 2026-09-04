@@ -460,9 +460,8 @@ class NonSamplingFileIndexer(FileIndexer):
             path, file_size = file_info.path, file_info.size
 
             # Drive the chunker once per file; emit one manifest row per chunk.
-            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
-            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
-            # smaller than the target chunk size).
+            # ``chunk_metadata`` is ``None`` for whole-file chunks (the default
+            # ``WholeFileChunker`` behavior).
             for (
                 chunk_metadata,
                 chunk_size,

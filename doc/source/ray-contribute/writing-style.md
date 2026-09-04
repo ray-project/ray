@@ -265,6 +265,10 @@ Don't bold ordinary prose for emphasis, and don't bold inline code. Code styling
 - Use: "supports capacity reservations, spot instances, and on-demand instances"
 - Not: "supports **capacity reservations**, **spot instances**, and **on-demand instances**"
 
+:::{note}
+To italicize a term in reStructuredText, use `*term*`. Ray sets `default_role = "code"` in `conf.py`, so a bare single-backtick `` `term` `` renders as inline code, not italics. A single backtick in an `.rst` file is intentional inline code, not a rendering bug. MyST Markdown matches this: `*term*` is italics and `` `term` `` is inline code.
+:::
+
 ### Tables
 
 Use a Markdown table for simple rows with single-line cells. Always include a header row, and introduce the table with a sentence of prose. For cells that hold code blocks, multiple lines, or other complex content, use the `list-table` directive:
@@ -293,6 +297,8 @@ Ray docs use Sphinx cross-references, which resolve at build time and survive pa
   (my-label)=
   ## The section to link
   ```
+
+  Ray docs don't enable Sphinx's `autosectionlabel` extension, so a heading's text isn't a `{ref}` target on its own. Every section you link to needs an explicit label. The tradeoff favors stability: rewording a heading can't break an existing `{ref}`, because the label is a separate line that the edit leaves untouched.
 
 - Link between `.md` pages with a standard Markdown link: `[text](other-page.md)`.
 - Link to the API reference with autodoc cross-reference roles, such as `` {py:func}`ray.init` `` or `` {py:class}`ray.data.Dataset` ``.
