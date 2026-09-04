@@ -9,6 +9,7 @@ import pytest
 from ray_release.exception import ExitCode
 from ray_release.logger import logger
 from ray_release.reporter.observability_agent import (
+    ANALYSIS_FILE_ENV,
     COMMAND_FAILURE_RETURN_CODES,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
@@ -94,19 +95,25 @@ def _report(
     result: Result,
     responses: List[FakeResponse],
     skip_command_failures: bool = False,
+    analysis_file: Optional[str] = None,
 ) -> FakePost:
     fake_post = FakePost(responses)
-    with patch.dict(
-        os.environ,
-        {
-            "ANYSCALE_HOST": "https://console.anyscale-staging.com",
-            "ANYSCALE_CLI_TOKEN": "test_token",
-        },
-    ), patch(
-        "ray_release.reporter.observability_agent.requests.post", fake_post
-    ), patch(
-        "ray_release.reporter.observability_agent.SKIP_COMMAND_FAILURES",
-        skip_command_failures,
+    env = {
+        "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+        "ANYSCALE_CLI_TOKEN": "test_token",
+    }
+    if analysis_file:
+        env[ANALYSIS_FILE_ENV] = analysis_file
+    with (
+        patch.dict(
+            os.environ,
+            env,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.SKIP_COMMAND_FAILURES",
+            skip_command_failures,
+        ),
     ):
         ObservabilityAgentReporter().report_result(_test(), result)
     return fake_post
@@ -293,6 +300,67 @@ def test_null_result_in_the_create_response_is_reported_clearly(caplog):
     assert len(fake_post.requests) == 1
     assert "contains no debug_session_id" in caplog.text
     assert "AttributeError" not in caplog.text
+
+
+def test_analysis_written_to_file(caplog, tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt") as fp:
+        written = fp.read()
+    assert SUMMARY in written
+    assert SLACK_THREAD in written
+    assert FEEDBACK_REMINDER in written
+
+    # The message is handed to the file instead of being logged twice; only a
+    # pointer to it stays in the reporting output.
+    assert analysis_file in caplog.text
+    assert SUMMARY not in caplog.text
+
+
+def test_analysis_logged_when_no_file_is_configured(caplog):
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        )
+
+    assert SUMMARY in caplog.text
+
+
+def test_analysis_logged_when_the_file_cannot_be_written(caplog, tmpdir):
+    # A directory that does not exist, so open() raises.
+    analysis_file = os.path.join(tmpdir, "missing", "analysis.txt")
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    # The run is not failed by the write error; the analysis falls back to the
+    # log so that it is not lost.
+    assert "Could not write the observability agent analysis" in caplog.text
+    assert SUMMARY in caplog.text
+
+
+def test_no_file_written_when_the_agent_is_not_triggered(tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    _report(
+        _result(ResultStatus.SUCCESS.value),
+        [],
+        analysis_file=analysis_file,
+    )
+
+    assert not os.path.exists(analysis_file)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,12 @@ SKIP_COMMAND_FAILURES = False
 # which metrics and logs of the job to look at.
 DEBUG_SESSION_QUERY = "Why did this job fail?"
 
+# run_release_test.sh names a file here and prints it under its own buildkite
+# group once the test is over. Writing the analysis there instead of logging it
+# inline keeps it out of the middle of the reporting output, where it competes
+# with the other reporters and the traceback.
+ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
+
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
 # from the people who know what actually broke.
@@ -135,7 +141,37 @@ class ObservabilityAgentReporter(Reporter):
                 "thread; the full report and its feedback buttons cannot be "
                 "linked from here"
             )
-        logger.info(message)
+
+        analysis_file = self._write_analysis(message)
+        if analysis_file:
+            logger.info(
+                f"Observability agent analysis of job {job_id} written to "
+                f"{analysis_file}; it is printed at the end of this step"
+            )
+        else:
+            logger.info(message)
+
+    def _write_analysis(self, message: str) -> Optional[str]:
+        """Write the message to the file the test harness prints, if configured.
+
+        Returns the path written to, or None when no file is configured or the
+        write failed, in which case the caller logs the message inline instead.
+        """
+        analysis_file = os.environ.get(ANALYSIS_FILE_ENV)
+        if not analysis_file:
+            return None
+
+        try:
+            with open(analysis_file, "wt") as fp:
+                fp.write(f"{message}\n")
+        except OSError as e:
+            logger.warning(
+                f"Could not write the observability agent analysis to "
+                f"{analysis_file}: {e}"
+            )
+            return None
+
+        return analysis_file
 
     def _create_debug_session(self, job_id: str) -> str:
         """Create a debug session for the job and return its id."""

@@ -28,8 +28,11 @@ RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=${BUILDKITE_MAX_RETRIES:-1}
 BUILDKITE_RETRY_CODE=79
 BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
+# The observability agent reporter writes its analysis here instead of logging
+# it inline; this script prints it under its own group once the test is over.
+RELEASE_TEST_OBS_AGENT_FILE=${RELEASE_TEST_OBS_AGENT_FILE:-/tmp/obs_agent_analysis.txt}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE
 
 if [[ -n "${RAY_COMMIT_OF_WHEEL-}" ]]; then
   git config --global --add safe.directory /workdir
@@ -82,6 +85,9 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
   if [[ -z "${NO_ARTIFACTS}" ]]; then
     rm -rf "${RELEASE_RESULTS_DIR:?}"/* || true
   fi
+
+  # An analysis from a previous attempt must not be reported against this one.
+  rm -f "${RELEASE_TEST_OBS_AGENT_FILE}"
 
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
@@ -154,6 +160,13 @@ elif [[ "$EXIT_CODE" -ge 30 && "$EXIT_CODE" -lt 40 ]]; then
   echo "RELEASE MANAGER: This is likely an infra error that can be solved by RESTARTING this test."
 else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
+fi
+
+# Printed last: buildkite groups run until the next header, so anything printed
+# after this would be filed under the analysis heading.
+if [[ -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
+  echo "+++ :robot_face: Observability agent analysis"
+  cat "${RELEASE_TEST_OBS_AGENT_FILE}"
 fi
 
 if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then
