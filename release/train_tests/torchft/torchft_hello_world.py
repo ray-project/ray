@@ -14,7 +14,7 @@ python_depset.lock`), so no post_build_script is required.
 See the matching `torchft_hello_world` entry in release/release_tests.yaml for
 the cluster wiring (byod.type / byod.python_depset).
 
-The test simply proves the image works end to end: torch 2.9.0 + torchft import
+The test simply proves the image works end to end: torch 2.10.0 + torchft import
 cleanly and a tiny Ray Train v2 + torchft training loop runs to completion.
 """
 

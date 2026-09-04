@@ -35,7 +35,7 @@ jaxlib
 tensorflow-datasets
 tensorflow-metadata>=1.17.0
 tf-keras
-torchvision==0.24.0
+torchvision==0.25.0
 confluent-kafka
 zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)
 zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting py3.10
@@ -54,9 +54,9 @@ numcodecs==0.13.1 ; python_version < '3.11'
 # against Ray's av. The 0.5.x line (what the datasource is built and tested
 # against) decodes via torchcodec and imports cleanly.
 lerobot>=0.5.0,<0.6; python_version >= "3.12"
-# torchcodec 0.10.0 is built for torch 2.10 (its libtorchcodec fails to load
-# against our pinned torch 2.9.0 with a c10 ABI symbol error); cap to the 0.9.x
-# line, which lerobot 0.5.1 allows (torchcodec>=0.3,<0.11) and which loads on
-# torch 2.9.
-torchcodec<0.10; python_version >= "3.12"
+# torchcodec's libtorchcodec is ABI-bound to a torch minor and declares no torch
+# requirement in its metadata, so the line has to be pinned by hand: 0.10.x is
+# built for torch 2.10 (0.9.x fails to load against it with a c10 ABI symbol
+# error, and 0.11.x targets torch 2.11). lerobot 0.5.1 allows torchcodec>=0.3,<0.11.
+torchcodec>=0.10,<0.11; python_version >= "3.12"
 av; python_version >= "3.12"
