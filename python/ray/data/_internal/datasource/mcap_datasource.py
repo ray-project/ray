@@ -5,16 +5,6 @@ autonomous systems, commonly used for sensor data, control commands, and other
 time-series data.
 
 Format specification: https://mcap.dev/spec
-
-Two properties of the format shape this module:
-
-- A file's summary section, which carries the message counts and the channel
-  index, sits at the *end* of the file and is addressed by an offset in the
-  footer. A seekable reader reaches it in two seeks; a non-seekable one has to
-  scan every record to reconstruct it, and can only do so once.
-- Schemas are stored once per file, not once per message. The row
-  representation repeats them, so a file's in-memory size does not follow from
-  its size on disk.
 """
 
 import json
