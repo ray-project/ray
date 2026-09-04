@@ -51,6 +51,23 @@ def _run_script(test_script, state_file, *exits):
         return e.returncode
 
 
+RELEASE_TEST_SCRIPT = os.path.join(
+    os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+)
+
+# Every attempt of the stubs below exits 40, a command error, which is what the
+# in-script loop treats as final.
+COMMAND_ERROR_EPILOGUE = "Release test finished with final exit code 40"
+
+
+def _write_stub(tmpdir: str, body: str) -> str:
+    """Write a stand-in for the test workload and return the command for it."""
+    stub = os.path.join(tmpdir, "writer.sh")
+    with open(stub, "wt") as fp:
+        fp.write(body)
+    return f"bash {stub}"
+
+
 def _run_script_capturing(
     test_script: str, extra_env: Dict[str, str], *args: str
 ) -> str:
@@ -83,17 +100,13 @@ def _run_script_capturing(
 
 def test_obs_agent_analysis_is_printed_in_its_own_group(tmpdir):
     analysis_file = os.path.join(tmpdir, "analysis.txt")
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        fp.write(f'echo "the analysis" > {analysis_file}\nexit 40\n')
 
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
     output = _run_script_capturing(
-        test_script,
+        RELEASE_TEST_SCRIPT,
         {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RAY_TEST_SCRIPT": _write_stub(
+                tmpdir, f'echo "the analysis" > {analysis_file}\nexit 40\n'
+            ),
             "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
         },
         "test_name",
@@ -106,76 +119,48 @@ def test_obs_agent_analysis_is_printed_in_its_own_group(tmpdir):
     assert output.rstrip().endswith("the analysis")
 
 
-def test_no_group_when_there_is_no_analysis(tmpdir):
+@pytest.mark.parametrize(
+    "seeded,absent",
+    [
+        (None, "Observability agent analysis"),
+        ("stale analysis from a previous run\n", "stale analysis"),
+    ],
+    ids=["nothing_written", "leftover_from_a_previous_run"],
+)
+def test_nothing_is_reported_when_this_run_wrote_no_analysis(seeded, absent, tmpdir):
     analysis_file = os.path.join(tmpdir, "analysis.txt")
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        fp.write("exit 40\n")
+    if seeded is not None:
+        with open(analysis_file, "wt") as fp:
+            fp.write(seeded)
 
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
     output = _run_script_capturing(
-        test_script,
+        RELEASE_TEST_SCRIPT,
         {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RAY_TEST_SCRIPT": _write_stub(tmpdir, "exit 40\n"),
             "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
         },
         "test_name",
     )
 
-    # Positive control: every assertion below is about something being absent,
+    # Positive control: the assertion below is about something being absent,
     # and absence also holds when the script never ran at all. This line is
     # only printed once it reaches the end.
-    assert "Release test finished with final exit code 40" in output
-    assert "Observability agent analysis" not in output
-
-
-def test_leftover_analysis_from_a_previous_run_is_not_reported(tmpdir):
-    analysis_file = os.path.join(tmpdir, "analysis.txt")
-    with open(analysis_file, "wt") as fp:
-        fp.write("stale analysis from a previous attempt\n")
-
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        fp.write("exit 40\n")
-
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
-    output = _run_script_capturing(
-        test_script,
-        {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
-            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
-        },
-        "test_name",
-    )
-
-    # Positive control: every assertion below is about something being absent,
-    # and absence also holds when the script never ran at all. This line is
-    # only printed once it reaches the end.
-    assert "Release test finished with final exit code 40" in output
-    assert "stale analysis" not in output
+    assert COMMAND_ERROR_EPILOGUE in output
+    assert absent not in output
 
 
 def test_analysis_cannot_open_a_buildkite_group_of_its_own(tmpdir):
     """The summary is agent-written prose; it must not be read as markup."""
     analysis_file = os.path.join(tmpdir, "analysis.txt")
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        fp.write(
-            f'printf "summary line\\n--- not a group\\n+++ nor this\\n" '
-            f"> {analysis_file}\nexit 40\n"
-        )
 
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
     output = _run_script_capturing(
-        test_script,
+        RELEASE_TEST_SCRIPT,
         {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RAY_TEST_SCRIPT": _write_stub(
+                tmpdir,
+                f'printf "summary line\\n--- not a group\\n+++ nor this\\n" '
+                f"> {analysis_file}\nexit 40\n",
+            ),
             "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
         },
         "test_name",
@@ -284,23 +269,17 @@ def test_analysis_from_an_earlier_attempt_is_not_reported_against_a_later_one(
     """
     analysis_file = os.path.join(tmpdir, "analysis.txt")
     state_file = os.path.join(tmpdir, "state.txt")
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        fp.write(
-            f'if [[ -f "{state_file}" ]]; then exit 40; fi\n'
-            f'touch "{state_file}"\n'
-            f'echo "analysis from the first attempt" > "{analysis_file}"\n'
-            # 30 is an infra timeout, the only kind of exit the loop retries.
-            "exit 30\n"
-        )
-
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
     output = _run_script_capturing(
-        test_script,
+        RELEASE_TEST_SCRIPT,
         {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RAY_TEST_SCRIPT": _write_stub(
+                tmpdir,
+                f'if [[ -f "{state_file}" ]]; then exit 40; fi\n'
+                f'touch "{state_file}"\n'
+                f'echo "analysis from the first attempt" > "{analysis_file}"\n'
+                # 30 is an infra timeout, the only kind of exit the loop retries.
+                "exit 30\n",
+            ),
             "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
             "MAX_RETRIES": "2",
         },
@@ -316,19 +295,15 @@ def test_the_default_analysis_path_is_under_the_results_dir(tmpdir):
     """The default has to land where the artifact copy will pick it up."""
     results_dir = os.path.join(tmpdir, "results")
     os.makedirs(results_dir)
-    writer = os.path.join(tmpdir, "writer.sh")
-    with open(writer, "wt") as fp:
-        # The script exports the path it chose, so the stub can write to it
-        # without the test naming it.
-        fp.write('echo "the analysis" > "${RELEASE_TEST_OBS_AGENT_FILE}"\nexit 40\n')
-
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
     output = _run_script_capturing(
-        test_script,
+        RELEASE_TEST_SCRIPT,
         {
-            "RAY_TEST_SCRIPT": f"bash {writer}",
+            # The script exports the path it chose, so the stub can write to it
+            # without the test naming it.
+            "RAY_TEST_SCRIPT": _write_stub(
+                tmpdir,
+                'echo "the analysis" > "${RELEASE_TEST_OBS_AGENT_FILE}"\nexit 40\n',
+            ),
             "RELEASE_RESULTS_DIR": results_dir,
         },
         "test_name",
