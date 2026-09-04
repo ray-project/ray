@@ -1,5 +1,19 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_bridge.cc
-// GCS Client CGO 桥接 - 主文件：客户端创建/销毁和基础方法
+// GCS Client CGO bridge - main file: client create/destroy and base methods
 #include "gcs_client_bridge.h"
 #include "gcs_client_utils.h"
 #include "gcs_client_internal.h"
@@ -14,7 +28,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/raii.h"
 
-// 日志系统 RAII 初始化器（文件作用域，CGO 调用前自动初始化）
+// Logging system RAII initializer (file scope, initialized before CGO calls)
 static InitShutdownRAII g_ray_log_raii(
     ray::RayLog::StartRayLog,
     ray::RayLog::ShutDownRayLog,
@@ -25,7 +39,7 @@ static InitShutdownRAII g_ray_log_raii(
     0,   // log_rotation_max_size
     1);  // log_rotation_file_num
 
-// 内存管理工具函数：释放 strdup/malloc 分配的字符串
+// Memory management helpers: free strings allocated by strdup/malloc
 void ray_gcs_free_string(const char* str) {
     if (str) {
         free(const_cast<char*>(str));
@@ -34,7 +48,7 @@ void ray_gcs_free_string(const char* str) {
 
 extern "C" {
 
-// === GcsClient 创建/销毁 ===
+// === GcsClient create/destroy ===
 
 CGcsClient* ray_gcs_client_create(const char* address,
                                    const char* cluster_id_hex,
@@ -162,7 +176,7 @@ void ray_gcs_client_destroy(CGcsClient* client) {
     }
 }
 
-// === GcsClient 基础方法 ===
+// === GcsClient base methods ===
 
 const char* ray_gcs_client_address(CGcsClient* client) {
     if (!client) {

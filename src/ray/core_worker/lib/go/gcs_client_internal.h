@@ -1,5 +1,19 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_internal.h
-// GCS Client 内部结构定义 - 仅供内部实现使用
+// GCS Client internal struct definitions - for internal implementation only
 #pragma once
 
 #include <string>
@@ -9,21 +23,21 @@
 #include "ray/gcs_rpc_client/global_state_accessor.h"
 #include "ray/asio/instrumented_io_context.h"
 
-// 内部 CGO 桥接结构 - 不暴露给 Go 层
+// Internal CGO bridge struct - not exposed to the Go layer
 struct CGcsClient {
     std::string address;
     std::string cluster_id_hex;
     int64_t timeout_ms;
 
-    // 实际的 GCS 客户端（通过 InternalKV() 访问真实的 GCS KV 存储）
+    // The actual GCS client (accesses real GCS KV storage via InternalKV())
     std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-    // GlobalStateAccessor 用于同步访问 GCS 数据
+    // GlobalStateAccessor for synchronous access to GCS data
     std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor;
 
-    // io_service 生命周期管理：提升为成员变量避免悬空引用
+    // io_service lifetime management: promoted to a member to avoid dangling references
     std::unique_ptr<instrumented_io_context> io_service;
 
-    // io_service 后台运行线程
+    // io_service background thread
     std::unique_ptr<std::thread> io_thread;
 };

@@ -1,5 +1,19 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_kv.cc
-// GCS Client CGO 桥接 - KV 操作
+// GCS Client CGO bridge - KV operations
 #include "gcs_client_bridge.h"
 #include "gcs_client_utils.h"
 #include "gcs_client_internal.h"
@@ -12,7 +26,7 @@
 
 extern "C" {
 
-// === InternalKV 操作 ===
+// === InternalKV operations ===
 
 int ray_gcs_client_kv_get(CGcsClient* client,
                           const char* ns,
@@ -33,7 +47,7 @@ int ray_gcs_client_kv_get(CGcsClient* client,
         ns_str, key_str, ray::rpc::GetGcsTimeoutMs(), value);
 
     if (status.IsNotFound()) {
-        // 保留与 Go 侧契约：错误串 "Key not found" 映射为 gcs.ErrKeyNotFound
+        // Keep the Go-side contract: the error string "Key not found" maps to gcs.ErrKeyNotFound
         set_error(error_out, "Key not found");
         *data_out = nullptr;
         *size_out = 0;
@@ -48,7 +62,7 @@ int ray_gcs_client_kv_get(CGcsClient* client,
 
     *size_out = value.size();
     if (*size_out == 0) {
-        // 存在但值为空：Go 侧 (cData==nil||cSize==0) 返回 []byte{}, nil
+        // Present but empty value: Go side (cData==nil||cSize==0) returns []byte{}, nil
         *data_out = nullptr;
         return 0;
     }
@@ -125,7 +139,7 @@ int ray_gcs_client_kv_multi_get(CGcsClient* client,
 
     int i = 0;
     for (const auto& kv : values) {
-        // 初始化为 nullptr，确保失败时 cleanup 可安全释放已分配元素
+        // Initialize to nullptr so cleanup can safely free allocated elements on failure
         key_arr[i] = nullptr;
         val_arr[i] = nullptr;
         size_arr[i] = 0;
@@ -168,7 +182,7 @@ int ray_gcs_client_kv_multi_get(CGcsClient* client,
             }
             memcpy(val_arr[i], kv.second.data(), size_arr[i]);
         }
-        // size==0 时 val_arr[i] 保持 nullptr：Go 侧 size>0 才读取，free(nullptr) 安全
+        // When size==0 val_arr[i] stays nullptr: Go only reads when size>0, free(nullptr) is safe
         i++;
     }
 
@@ -206,7 +220,7 @@ int ray_gcs_client_kv_put(CGcsClient* client,
         set_error(error_out, status.ToString().c_str());
         return -1;
     }
-    // added=true 表示新增；overwrite=false 且键已存在时 added=false（非错误）
+    // added=true means inserted; added=false when overwrite=false and the key exists (not an error)
     *success_out = added ? 1 : 0;
     return 0;
 }
@@ -260,7 +274,7 @@ int ray_gcs_client_kv_keys(CGcsClient* client,
         return -1;
     }
 
-    // 真实 API 返回的 key 已不含 namespace 前缀，直接输出即可
+    // The real API returns keys without the namespace prefix; output them as-is
     if (!allocate_string_array(keys, keys_out, count_out)) {
         set_error(error_out, "Failed to allocate memory for keys array");
         return -1;
