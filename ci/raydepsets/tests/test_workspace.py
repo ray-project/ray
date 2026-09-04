@@ -178,5 +178,147 @@ def test_invalid_build_arg_set_in_config():
         )
 
 
+def _load_config_from_yaml(tmpdir, yaml_contents: str):
+    with open(Path(tmpdir) / "test.depsets.yaml", "w") as f:
+        f.write(yaml_contents)
+    workspace = Workspace(dir=tmpdir)
+    return workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
+
+
+def test_schema_compile_requires_requirements_or_packages():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_compile
+      operation: compile
+      output: out.txt
+""",
+            )
+        assert "Invalid compile depset bad_compile" in str(e.value)
+        assert "must set at least one of: packages, requirements" in str(e.value)
+
+
+def test_schema_rejects_field_not_valid_for_operation():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_compile
+      operation: compile
+      requirements:
+          - requirements_test.txt
+      depsets:
+          - some_other_depset
+      output: out.txt
+""",
+            )
+        assert "'depsets' was unexpected" in str(e.value)
+
+
+def test_schema_expand_requires_depsets():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_expand
+      operation: expand
+      requirements:
+          - requirements_test.txt
+      output: out.txt
+""",
+            )
+        assert "Invalid expand depset bad_expand" in str(e.value)
+        assert "'depsets' is a required property" in str(e.value)
+
+
+def test_schema_subset_requires_source_depset_and_requirements():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_subset
+      operation: subset
+      output: out.txt
+""",
+            )
+        assert "'source_depset' is a required property" in str(e.value)
+        assert "'requirements' is a required property" in str(e.value)
+
+
+def test_schema_relax_requires_packages():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_relax
+      operation: relax
+      source_depset: some_depset
+""",
+            )
+        assert "'packages' is a required property" in str(e.value)
+
+
+def test_schema_relax_output_is_optional():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = _load_config_from_yaml(
+            tmpdir,
+            """
+depsets:
+    - name: relax_no_output
+      operation: relax
+      source_depset: some_depset
+      packages:
+          - emoji
+""",
+        )
+        assert config.depsets[0].name == "relax_no_output"
+
+
+def test_schema_invalid_operation():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_op
+      operation: uncompile
+      output: out.txt
+""",
+            )
+        assert (
+            "Invalid operation: uncompile for depset bad_op in config test.depsets.yaml"
+            in str(e.value)
+        )
+
+
+def test_schema_wrong_field_type():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError) as e:
+            _load_config_from_yaml(
+                tmpdir,
+                """
+depsets:
+    - name: bad_types
+      operation: compile
+      requirements: requirements_test.txt
+      output: out.txt
+""",
+            )
+        assert "$.requirements" in str(e.value)
+        assert "is not of type 'array'" in str(e.value)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

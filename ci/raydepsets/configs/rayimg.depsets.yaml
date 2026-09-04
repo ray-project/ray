@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../depsets.schema.json
 build_arg_sets:
   # Regular (non-GPU) build args: no CUDA_CODE, so depsets that template
   # ${CUDA_CODE} cannot accidentally pull a CUDA index for a CPU Python build.

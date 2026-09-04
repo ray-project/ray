@@ -1,0 +1,132 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "raydepsets config",
+    "description": "Schema for ci/raydepsets *.depsets.yaml config files. Each depset entry is validated against the schema for its operation: compile, expand, subset, or relax.",
+    "type": "object",
+    "required": ["depsets"],
+    "additionalProperties": false,
+    "properties": {
+        "build_arg_sets": {
+            "description": "Named sets of build args. A depset listing a build arg set under its own build_arg_sets key is expanded once per set, with ${VAR} placeholders substituted.",
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {"type": "string"}
+            }
+        },
+        "depsets": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/depset"}
+        }
+    },
+    "$defs": {
+        "string_list": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1
+        },
+        "depset": {
+            "type": "object",
+            "required": ["name", "operation"],
+            "properties": {
+                "operation": {
+                    "description": "How this depset is produced: compile (uv pip compile from requirements/packages), expand (recompile the union of other depsets plus extra requirements), subset (recompile a subset of requirements constrained by a source depset's lock), relax (remove packages from a source depset's lock file).",
+                    "enum": ["compile", "expand", "subset", "relax"]
+                }
+            },
+            "allOf": [
+                {
+                    "if": {"properties": {"operation": {"const": "compile"}}, "required": ["operation"]},
+                    "then": {"$ref": "#/$defs/compile"}
+                },
+                {
+                    "if": {"properties": {"operation": {"const": "expand"}}, "required": ["operation"]},
+                    "then": {"$ref": "#/$defs/expand"}
+                },
+                {
+                    "if": {"properties": {"operation": {"const": "subset"}}, "required": ["operation"]},
+                    "then": {"$ref": "#/$defs/subset"}
+                },
+                {
+                    "if": {"properties": {"operation": {"const": "relax"}}, "required": ["operation"]},
+                    "then": {"$ref": "#/$defs/relax"}
+                }
+            ]
+        },
+        "compile": {
+            "description": "Compile a lock file from requirements files and/or a list of packages with uv pip compile.",
+            "type": "object",
+            "required": ["name", "operation", "output"],
+            "anyOf": [
+                {"required": ["requirements"]},
+                {"required": ["packages"]}
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "operation": {"const": "compile"},
+                "output": {"description": "Workspace-relative path of the lock file to write.", "type": "string", "minLength": 1},
+                "requirements": {"description": "Workspace-relative requirements files to compile.", "$ref": "#/$defs/string_list"},
+                "packages": {"description": "Package specifiers to compile, passed to uv via stdin.", "$ref": "#/$defs/string_list"},
+                "constraints": {"description": "Workspace-relative constraint files (uv -c).", "$ref": "#/$defs/string_list"},
+                "append_flags": {"description": "uv flags appended to the default flags.", "$ref": "#/$defs/string_list"},
+                "override_flags": {"description": "uv flags replacing same-named default flags.", "$ref": "#/$defs/string_list"},
+                "include_setuptools": {"description": "Keep setuptools in the lock file instead of marking it unsafe.", "type": "boolean"},
+                "pre_hooks": {"description": "Shell commands run before this depset builds.", "$ref": "#/$defs/string_list"},
+                "build_arg_sets": {"description": "Build arg set names this depset is expanded for.", "$ref": "#/$defs/string_list"}
+            }
+        },
+        "expand": {
+            "description": "Recompile the union of other depsets' requirements plus optional extra requirements into one lock file.",
+            "type": "object",
+            "required": ["name", "operation", "output", "depsets"],
+            "additionalProperties": false,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "operation": {"const": "expand"},
+                "output": {"description": "Workspace-relative path of the lock file to write.", "type": "string", "minLength": 1},
+                "depsets": {"description": "Names of depsets to expand from.", "$ref": "#/$defs/string_list"},
+                "requirements": {"description": "Extra workspace-relative requirements files to include.", "$ref": "#/$defs/string_list"},
+                "constraints": {"description": "Workspace-relative constraint files (uv -c).", "$ref": "#/$defs/string_list"},
+                "append_flags": {"description": "uv flags appended to the default flags.", "$ref": "#/$defs/string_list"},
+                "override_flags": {"description": "uv flags replacing same-named default flags.", "$ref": "#/$defs/string_list"},
+                "include_setuptools": {"description": "Keep setuptools in the lock file instead of marking it unsafe.", "type": "boolean"},
+                "pre_hooks": {"description": "Shell commands run before this depset builds.", "$ref": "#/$defs/string_list"},
+                "build_arg_sets": {"description": "Build arg set names this depset is expanded for.", "$ref": "#/$defs/string_list"}
+            }
+        },
+        "subset": {
+            "description": "Recompile a subset of a source depset's requirements, constrained by the source depset's lock file.",
+            "type": "object",
+            "required": ["name", "operation", "output", "source_depset", "requirements"],
+            "additionalProperties": false,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "operation": {"const": "subset"},
+                "output": {"description": "Workspace-relative path of the lock file to write.", "type": "string", "minLength": 1},
+                "source_depset": {"description": "Name of the depset whose lock file constrains this subset.", "type": "string", "minLength": 1},
+                "requirements": {"description": "Requirements files to keep; must be a subset of the source depset's requirements.", "$ref": "#/$defs/string_list"},
+                "append_flags": {"description": "uv flags appended to the default flags.", "$ref": "#/$defs/string_list"},
+                "override_flags": {"description": "uv flags replacing same-named default flags.", "$ref": "#/$defs/string_list"},
+                "include_setuptools": {"description": "Keep setuptools in the lock file instead of marking it unsafe.", "type": "boolean"},
+                "pre_hooks": {"description": "Shell commands run before this depset builds.", "$ref": "#/$defs/string_list"},
+                "build_arg_sets": {"description": "Build arg set names this depset is expanded for.", "$ref": "#/$defs/string_list"}
+            }
+        },
+        "relax": {
+            "description": "Remove packages from a source depset's lock file without recompiling.",
+            "type": "object",
+            "required": ["name", "operation", "source_depset", "packages"],
+            "additionalProperties": false,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "operation": {"const": "relax"},
+                "output": {"description": "Workspace-relative path of the lock file to write. Defaults to overwriting the source depset's lock file.", "type": "string", "minLength": 1},
+                "source_depset": {"description": "Name of the depset whose lock file is relaxed.", "type": "string", "minLength": 1},
+                "packages": {"description": "Packages to remove from the lock file.", "$ref": "#/$defs/string_list"},
+                "pre_hooks": {"description": "Shell commands run before this depset builds.", "$ref": "#/$defs/string_list"},
+                "build_arg_sets": {"description": "Build arg set names this depset is expanded for.", "$ref": "#/$defs/string_list"}
+            }
+        }
+    }
+}

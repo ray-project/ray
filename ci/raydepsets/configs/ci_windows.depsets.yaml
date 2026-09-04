@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../depsets.schema.json
 # Windows CI driver deps, resolved for py3.8/windows and pip-installed on the agent.
 # TODO(elliot-barn): Remove this depset once the Windows CI system Python is upgraded
 # to 3.10; the driver deps can then be bundled via Bazel like other platforms.

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../depsets.schema.json
 build_arg_sets:
   cpu:
     PYTHON_VERSION: py312
