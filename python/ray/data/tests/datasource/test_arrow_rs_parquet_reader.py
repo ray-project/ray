@@ -3227,6 +3227,8 @@ def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
     once per ``read()`` stream — not per file, not per batch — and never when
     the knob is off. The libc call itself is Linux-only, so the test counts the
     module-level trampoline the ``finally`` invokes."""
+    import time
+
     from pyarrow.fs import LocalFileSystem
 
     from ray.data._internal.datasource_v2.readers import (
@@ -3246,9 +3248,12 @@ def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
     manifest = _make_manifest(paths, [os.path.getsize(p) for p in paths], [None, None])
 
     calls = {"n": 0}
-    monkeypatch.setattr(
-        mod, "_malloc_trim_now", lambda: calls.__setitem__("n", calls["n"] + 1)
-    )
+
+    def _fake_trim():
+        calls["n"] += 1
+        time.sleep(0.002)  # measurable, so the timed value is provably > 0
+
+    monkeypatch.setattr(mod, "_malloc_trim_now", _fake_trim)
     ctx = DataContext.get_current()
     old = ctx.arrow_rs_malloc_trim_eos
     try:
@@ -3256,10 +3261,15 @@ def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
         reader = mod.ArrowRsParquetFileReader(filesystem=LocalFileSystem())
         assert pa.concat_tables(list(reader.read(manifest))).num_rows == 4
         assert calls["n"] == 0, "knob off must never trim"
+        assert reader.pop_task_stats() == {"trim_wall_s": 0.0}
 
         ctx.arrow_rs_malloc_trim_eos = True
         assert pa.concat_tables(list(reader.read(manifest))).num_rows == 4
         assert calls["n"] == 1, "one trim per read() stream (2 files, many batches)"
+        # The trim is timed per stream and drained by pop_task_stats() — what
+        # the ReadFiles transform folds into ReadFilesTaskStats.trim_wall_s.
+        assert reader.pop_task_stats()["trim_wall_s"] >= 0.002
+        assert reader.pop_task_stats() == {"trim_wall_s": 0.0}, "drained"
 
         # A consumer that stops early still ends the stream exactly once.
         gen = reader.read(manifest)

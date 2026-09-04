@@ -112,6 +112,7 @@ Prototype limitations (documented, not hidden)
 import json
 import logging
 import os
+import time
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
@@ -230,7 +231,7 @@ def _malloc_trim_now() -> None:
         _LIBC_MALLOC_TRIM(0)
 
 
-def _maybe_trim_at_stream_end() -> None:
+def _maybe_trim_at_stream_end() -> float:
     """End-of-stream allocator lever (``DataContext.arrow_rs_malloc_trim_eos``).
 
     Why: under task churn glibc keeps the reader's freed decode heap resident
@@ -239,11 +240,19 @@ def _maybe_trim_at_stream_end() -> None:
     free AND disables the dynamic mmap threshold, costing 24-36% wall (M61/M64).
     Trimming ONCE per task stream releases the same retained pages while the
     allocator behaves normally during decode. No-op unless the knob is on.
+
+    Returns the wall seconds the trim took (0.0 when off). Under this lever
+    the col02 map_groups fleet cell ran 2.37x pa wall (findings M107) — the
+    time is surfaced per task as ``ReadFilesTaskStats.trim_wall_s`` so the
+    "trim cost" vs "placement" hypotheses can be told apart from result.json.
     """
     from ray.data.context import DataContext
 
-    if DataContext.get_current().arrow_rs_malloc_trim_eos:
-        _malloc_trim_now()
+    if not DataContext.get_current().arrow_rs_malloc_trim_eos:
+        return 0.0
+    start_s = time.perf_counter()
+    _malloc_trim_now()
+    return time.perf_counter() - start_s
 
 
 # Set the first time this worker actually decodes a fragment natively, so the
@@ -1279,6 +1288,16 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         nothing to refine from actual data (unlike the base reader)."""
         return None
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Wall seconds of end-of-stream trims since the last pop_task_stats().
+        self._trim_wall_s = 0.0
+
+    @override
+    def pop_task_stats(self) -> Dict[str, float]:
+        trim_wall_s, self._trim_wall_s = self._trim_wall_s, 0.0
+        return {"trim_wall_s": trim_wall_s}
+
     @override
     def read(self, input_split: "FileManifest") -> "Iterator[pa.Table]":
         """Pyarrow-free Parquet read for supported files.
@@ -1301,8 +1320,9 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         try:
             yield from self._read_split(input_split)
         finally:
-            # Once per task stream, whichever path served it (no-op unless on).
-            _maybe_trim_at_stream_end()
+            # Once per task stream, whichever path served it (no-op unless on);
+            # timed, drained per task by :meth:`pop_task_stats`.
+            self._trim_wall_s += _maybe_trim_at_stream_end()
 
     def _read_split(self, input_split: "FileManifest") -> "Iterator[pa.Table]":
         # Reader-wide ineligibility: unsupported filesystem, or a Parquet-format

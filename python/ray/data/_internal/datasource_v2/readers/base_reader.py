@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic, Iterator
+from typing import Dict, Generic, Iterator
 
 import pyarrow as pa
 
@@ -17,6 +17,15 @@ class Reader(ABC, Generic[InputSplit]):
     The Reader is created by Scanner.create_reader() and is configured with all
     pushdown optimizations (columns, predicates, limits) that were applied.
     """
+
+    def pop_task_stats(self) -> Dict[str, float]:
+        """Reader-specific per-task counters, drained (reset to zero) by the call.
+
+        Keys are ``ReadFilesTaskStats`` field names (currently ``trim_wall_s``);
+        the ``ReadFiles`` transform calls this once each ``read()`` stream has
+        ended and adds the values into the task's stats. Default: nothing.
+        """
+        return {}
 
     @abstractmethod
     def read(self, input_split: InputSplit) -> Iterator[pa.Table]:

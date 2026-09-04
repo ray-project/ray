@@ -82,6 +82,7 @@ def plan_read_files_op(
         decode_wall_s = 0.0
         decoded_bytes = decoded_batches = decoded_rows = peak_batch_bytes = 0
         manifests = 0
+        trim_wall_s = 0.0
         # File-level predicate pruning (partition predicates pushed down
         # onto the scanner) runs per incoming manifest block. Only
         # ``FileScanner`` subclasses expose ``prune_manifest``; the base
@@ -120,8 +121,11 @@ def plan_read_files_op(
                 if block_udf is not None:
                     table = block_udf(table)
                 yield table
-            # Fold in the drain wall time in case a flush block follows.
-            task_stats._update(decode_wall_s=decode_wall_s)
+            # Reader-specific per-stream counters (the arrow-rs end-of-stream
+            # trim's wall time), drained now that this stream has ended, plus
+            # the drain wall time — in case a flush block follows.
+            trim_wall_s += reader.pop_task_stats().get("trim_wall_s", 0.0)
+            task_stats._update(decode_wall_s=decode_wall_s, trim_wall_s=trim_wall_s)
 
     return MapOperator.create(
         MapTransformer(

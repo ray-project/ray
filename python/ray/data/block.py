@@ -246,6 +246,12 @@ class ReadFilesTaskStats(CustomOpStats):
     peak_batch_bytes: int = 0
     # Number of (non-empty, post-pruning) file manifests the task read.
     manifests: int = 0
+    # Wall seconds the reader spent in its end-of-stream finalizer — for the
+    # arrow-rs reader, the ``arrow_rs_malloc_trim_eos`` glibc ``malloc_trim(0)``
+    # (0 for readers without one). CONTAINED in ``decode_wall_s``: the
+    # finalizer runs inside the iterator's final ``next()``. Readers hand it
+    # over through ``Reader.pop_task_stats``.
+    trim_wall_s: float = 0.0
 
 
 @DeveloperAPI

@@ -73,6 +73,7 @@ def test_read_files_task_stats_distributions():
                     decoded_rows=10,
                     peak_batch_bytes=60,
                     manifests=1,
+                    trim_wall_s=0.10,
                 ),
                 # A hypothetical second reporting transform in a fused task:
                 # bytes/wall sum, peak_batch maxes.
@@ -83,6 +84,7 @@ def test_read_files_task_stats_distributions():
                     decoded_rows=5,
                     peak_batch_bytes=50,
                     manifests=1,
+                    trim_wall_s=0.05,
                 ),
             ],
         ),
@@ -121,6 +123,11 @@ def test_read_files_task_stats_distributions():
     assert metrics.read_task_decoded_bytes.max == 150
     assert metrics.read_task_decode_wall_s.max == 0.75
     assert metrics.read_task_peak_batch_bytes.max == 60
+    # trim_wall_s sums across entries like the other wall counter; the second
+    # task left it at the 0.0 default (a reader without a finalizer).
+    assert metrics.read_task_trim_wall_s.num_samples == 2
+    assert abs(metrics.read_task_trim_wall_s.max - 0.15) < 1e-9
+    assert metrics.read_task_trim_wall_s.min == 0.0
 
 
 def test_task_completion_time_histogram():
