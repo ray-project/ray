@@ -25,11 +25,26 @@
 
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
-#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace rpc {
+
+namespace internal {
+
+/**
+ * @brief Return the address on which a gRPC server should listen for a Ray node.
+ *
+ * This is an internal helper, not a public networking API.
+ *
+ * @param node_ip_address The IP address advertised by the Ray node.
+ * @return The literal loopback address, or the all-interfaces address for the same
+ * address family.
+ */
+std::string GetGrpcServerBindAddress(const std::string &node_ip_address);
+
+}  // namespace internal
+
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
 #define _RPC_SERVICE_HANDLER(                                                      \
@@ -98,31 +113,19 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
-  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// \param[in] node_ip_address The address advertised by this Ray node. The server binds
+  /// to localhost for a loopback address, or to the all-interfaces address for the same
+  /// address family otherwise.
+  /// \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
   /// \param[in] auth_token Authentication token that clients must present when making
   /// RPCs to the server. If nullptr, no authentication token is required.
   GrpcServer(std::string name,
              const uint32_t port,
-             bool listen_to_localhost_only,
+             std::string node_ip_address,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
-      : name_(std::move(name)),
-        port_(port),
-        listen_to_localhost_only_(listen_to_localhost_only),
-        is_shutdown_(true),
-        num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
-    // Initialize auth token: use provided value or load from AuthenticationTokenLoader
-    if (auth_token) {
-      auth_token_ = auth_token;
-    } else {
-      auth_token_ = AuthenticationTokenLoader::instance().GetToken();
-    }
-    Init();
-  }
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr);
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -178,9 +181,8 @@ class GrpcServer {
   /// Port of this server.
   int port_;
 
-  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
-  /// interfaces (0.0.0.0)
-  const bool listen_to_localhost_only_;
+  /// The IP address on which this server listens.
+  const std::string bind_address_;
 
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;

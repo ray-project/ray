@@ -40,6 +40,7 @@
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/env.h"
 #include "ray/util/network_util.h"

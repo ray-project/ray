@@ -34,6 +34,41 @@
 namespace ray {
 namespace rpc {
 
+namespace internal {
+
+std::string GetGrpcServerBindAddress(const std::string &node_ip_address) {
+  if (node_ip_address == "localhost") {
+    return GetLocalhostIP();
+  }
+  if (IsLocalhost(node_ip_address)) {
+    return node_ip_address;
+  }
+  return GetAllInterfacesIP(node_ip_address);
+}
+
+}  // namespace internal
+
+GrpcServer::GrpcServer(std::string name,
+                       const uint32_t port,
+                       std::string node_ip_address,
+                       int num_threads,
+                       int64_t keepalive_time_ms,
+                       std::shared_ptr<const AuthenticationToken> auth_token)
+    : name_(std::move(name)),
+      port_(port),
+      bind_address_(internal::GetGrpcServerBindAddress(node_ip_address)),
+      is_shutdown_(true),
+      num_threads_(num_threads),
+      keepalive_time_ms_(keepalive_time_ms) {
+  // Initialize auth token: use provided value or load from AuthenticationTokenLoader.
+  if (auth_token) {
+    auth_token_ = std::move(auth_token);
+  } else {
+    auth_token_ = AuthenticationTokenLoader::instance().GetToken();
+  }
+  Init();
+}
+
 void GrpcServer::Init() {
   RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
@@ -64,8 +99,7 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address = BuildAddress(
-      (listen_to_localhost_only_ ? GetLocalhostIP() : GetAllInterfacesIP()), port_);
+  std::string server_address = BuildAddress(bind_address_, port_);
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
@@ -141,7 +175,8 @@ void GrpcServer::Run() {
       << "Try running sudo lsof -i :" << specified_port
       << " to check if there are other processes listening to the port.";
   RAY_CHECK(port_ > 0);
-  RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
+  RAY_LOG(INFO) << name_ << " server started, listening on "
+                << BuildAddress(bind_address_, port_) << ".";
 
   // Create calls for all the server call factories
   //

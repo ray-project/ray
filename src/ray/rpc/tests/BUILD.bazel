@@ -34,6 +34,7 @@ ray_cc_test(
         "//src/ray/protobuf:test_service_cc_grpc",
         "//src/ray/rpc:grpc_client",
         "//src/ray/rpc:grpc_server",
+        "//src/ray/util:network_util",
     ],
 )
 
