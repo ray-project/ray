@@ -1,6 +1,6 @@
 accelerate>=0.20.1
 # `===` (PEP 440 arbitrary equality) rather than `==`: dl-gpu-requirements.txt
-# adds Astral's cu128 index for torch-scatter, and that index also publishes
+# adds Astral's cu128 index for pyg-lib, and that index also publishes
 # deepspeed builds with prebuilt CUDA ops as local versions
 # (0.18.9+cu.12.8.torch.2.9). A bare `==0.18.9` matches those too and
 # unsafe-best-match prefers them, which would silently swap deepspeed's build in

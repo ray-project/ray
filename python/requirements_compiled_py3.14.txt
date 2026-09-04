@@ -1,6 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
---find-links https://data.pyg.org/whl/torch-2.10.0+cpu.html
 
 about-time==4.2.1
     # via alive-progress
@@ -1739,6 +1738,8 @@ pydot==1.4.2
     # via -r python/requirements/py313/test-requirements.txt
 pydub==0.25.1
     # via gradio
+pyg-lib==0.8.0 ; sys_platform == "linux"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
 pygame==2.5.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -2108,8 +2109,6 @@ scikit-learn==1.7.2
     #   torch-geometric
 scipy==1.17.1 ; python_version >= "3.11"
     # via
-    #   -r python/requirements.txt
-    #   -r python/requirements/py313/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
     #   botorch
@@ -2125,6 +2124,7 @@ scipy==1.17.1 ; python_version >= "3.11"
     #   linear-operator
     #   mlflow
     #   open-spiel
+    #   pyg-lib
     #   pymars
     #   pymoo
     #   scikit-learn
@@ -2132,8 +2132,9 @@ scipy==1.17.1 ; python_version >= "3.11"
     #   statsforecast
     #   statsmodels
     #   torch-geometric
-    #   torch-sparse
     #   xgboost
+    #   -r python/requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
 segment-analytics-python==2.2.0
     # via -r python/requirements/py313/test-requirements.txt
 semantic-version==2.10.0
@@ -2381,7 +2382,6 @@ torch==2.10.0
     #   tensordict
     #   timm
     #   torch-optimizer
-    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
@@ -2389,10 +2389,6 @@ torch-geometric==2.5.3
     # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torch-optimizer==0.1.0
     # via mosaicml
-torch-scatter==2.1.2 ; sys_platform == "linux"
-    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
-torch-sparse==0.6.18 ; sys_platform == "linux"
-    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt

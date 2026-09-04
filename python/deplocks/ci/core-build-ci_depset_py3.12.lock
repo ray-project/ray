@@ -1,6 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
---find-links https://data.pyg.org/whl/torch-2.10.0+cpu.html
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
@@ -4616,6 +4615,12 @@ pydub==0.25.1 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
+pyg-lib==0.8.0+cpu.torch.2.10 ; sys_platform == 'linux' \
+    --hash=sha256:886712c8a7f19c54e15ea6c98d6393f15c467a66b81efeeed8784f0b4a59bcf4 \
+    --hash=sha256:d025eca2fe37803fcb668cb593c4a7e251e551cb5548db2c2982032cbffd0ea0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
 pygame==2.5.2 \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
@@ -5621,7 +5626,6 @@ scipy==1.17.1 \
     #   scikit-learn
     #   skops
     #   torch-geometric
-    #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0 \
     --hash=sha256:b511dce9d22fa31c8a3f1b0e69d15af9705aeeed066fb317bd64bec8b786b0b2 \
@@ -6090,33 +6094,14 @@ torch==2.10.0+cpu \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
+    #   pyg-lib
     #   tensordict
-    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-scatter==2.1.2+cpu.torch.2.10 ; sys_platform == 'linux' \
-    --hash=sha256:2d1da950a7ab923bd8d0670b94bb9b06dec4b4f10d845f56d141261b9131cbe1 \
-    --hash=sha256:3e8287cd22dafaa53afaa84a811d0d67989af940aac5a3bc7ac308db53f6b9a2 \
-    --hash=sha256:510ba66f9134ad76473eda54183dbe4714a72b9e9927a978beaa663dbb008b8f \
-    --hash=sha256:69de3f74d418d66bf4f00372026d8371c2d399ec331922a3a11721b3d0904eef \
-    --hash=sha256:6d7b93de758c63a2b9138f4a214211226f795d96d51ccd113d074727a035b1a2 \
-    --hash=sha256:74cf432ac1928230c944630bb1313b6ca7d55a345710f57e64ce562121702bef \
-    --hash=sha256:9aae2897043e2aa01c878683d15e4f573d0045445f8ed66ce6929a4d8742578f \
-    --hash=sha256:c821f8f1ad80f0bca8370824bd8dc0e36a619c02cb8a8f7a66e4354f6308ea77 \
-    --hash=sha256:f005d3ce561808347049410e8b4675e74b14a769c267034bdf26974e8d9a8599 \
-    --hash=sha256:f7d40ae7182fc818e1d0dcc0e3d35e1f21e903a2976d63130841646ede63a29e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt210cpu ; sys_platform == 'linux' \
-    --hash=sha256:615a1d645860380b2809f01dee18f3f8adcb8ac0bd5ffa20624c06f20ad9f289
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
