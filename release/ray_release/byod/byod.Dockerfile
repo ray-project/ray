@@ -26,6 +26,18 @@ ARG UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
+# Make PyPI fetches survive a transient files.pythonhosted.org failure. Declared before
+# the RUN below so the image build itself picks them up, and kept in the image so the
+# byod_*.sh scripts that pip install at cluster startup inherit them too. pip reads PIP_*
+# only when it is not run with --isolated, which is the case for every pip invocation on
+# this path. Note that retrying an HTTP 502 specifically needs pip >= 24.0, which is where
+# 502 was added to urllib3's status_forcelist; on older pip these still cover connection
+# errors and 500/503. uv defaults to only 3 retries and has been seen to exhaust them on a
+# 502, hence UV_HTTP_RETRIES; older uv releases ignore the variable rather than erroring.
+ENV \
+  PIP_RETRIES=9 \
+  UV_HTTP_RETRIES=9
+
 RUN <<EOF
 #!/bin/bash
 
@@ -49,7 +61,8 @@ sudo apt-get autoclean
 sudo rm -rf /etc/apt/sources.list.d/*
 
 sudo mkdir -p /etc/apt/keyrings
-curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+curl -sLS --retry 5 --retry-delay 2 \
+  https://packages.microsoft.com/keys/microsoft.asc |
   gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null
 sudo chmod go+r /etc/apt/keyrings/microsoft.gpg
 

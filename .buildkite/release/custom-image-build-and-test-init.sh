@@ -34,14 +34,21 @@ export PATH="${PWD}/google-cloud-sdk/bin:$PATH"
 
 
 echo "--- Install Bazel"
-curl -sSfLo /tmp/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
+# curl treats HTTP 408/429/500/502/503/504 as transient and retries them under --retry,
+# which is what this needs: github.com serves release and archive downloads at a heavily
+# degraded error rate during an incident, and an unretried failure here kills the step that
+# generates the entire release pipeline, so no release test runs at all. --retry-all-errors
+# is deliberately not used; it requires curl >= 7.71 and would be an unknown-option failure
+# on older agents, and the transient codes above are already covered.
+curl -sSfLo /tmp/bazel --retry 5 --retry-delay 2 \
+  https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64
 chmod +x /tmp/bazel
 
 
 echo "--- Install uv"
 
 UV_PYTHON_VERSION=3.10
-curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf --retry 5 --retry-delay 2 https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install "${UV_PYTHON_VERSION}"
 UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"

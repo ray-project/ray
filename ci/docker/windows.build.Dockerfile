@@ -5,5 +5,9 @@ ENV PYTHON=3.10
 ENV PYTHON_FULL_VERSION=3.10.19
 ENV RAY_BUILD_ENV=win_py$PYTHON_FULL_VERSION
 
+# See ci/docker/base.test.Dockerfile: retry transient files.pythonhosted.org failures.
+ENV PIP_RETRIES=9
+ENV UV_HTTP_RETRIES=9
+
 COPY . .
 RUN bash ci/ray_ci/windows/build_base.sh

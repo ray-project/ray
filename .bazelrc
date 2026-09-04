@@ -101,6 +101,13 @@ build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZE
 # Ignore wchar_t -> char conversion warning on MSVC
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
+# Retry repository rule HTTP downloads (e.g. http_archive) on transient failures such as
+# the 502s files.pythonhosted.org returns and the 429s github.com returns for archive
+# downloads during an incident. This is deliberately unconditional rather than scoped to
+# --config=ci: the release pipeline's init step invokes bazel directly
+# (.buildkite/release/custom-image-build-and-test-init.sh) without --config=ci, so a
+# ci-only setting leaves the step that generates the entire release pipeline unprotected.
+build --experimental_repository_downloader_retries=6
 build --verbose_failures
 build:iwyu --aspects @com_github_storypku_bazel_iwyu//bazel/iwyu:iwyu.bzl%iwyu_aspect
 build:iwyu --output_groups=report
@@ -219,8 +226,6 @@ build:ci --show_timestamps
 # Retry on CacheNotFoundException from raw-S3 remote cache (AC/CAS eviction mismatch).
 # Remove once the cache is fronted by a server that coordinates AC/CAS eviction (bazel-remote, Buildbarn, etc.).
 build:ci --experimental_remote_cache_eviction_retries=3
-# Retry repository rule HTTP downloads (e.g. http_archive) on transient failures (502/504).
-build:ci --experimental_repository_downloader_retries=3
 # Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
 # declared dependencies to determine if a result should be cached. More details at:
 # https://github.com/bazelbuild/bazel/issues/7091, https://github.com/bazelbuild/rules_python/issues/382
