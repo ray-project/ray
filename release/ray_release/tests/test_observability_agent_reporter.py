@@ -316,7 +316,7 @@ def test_analysis_written_to_file(caplog, tmpdir):
             analysis_file=analysis_file,
         )
 
-    with open(analysis_file, "rt") as fp:
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
         written = fp.read()
     assert SUMMARY in written
     assert SLACK_THREAD in written
@@ -394,8 +394,13 @@ def test_write_failures_never_propagate(caplog, tmpdir):
 
     with (
         caplog.at_level("INFO", logger=logger.name),
+        # The module's own open, not every open in the process: a patch on
+        # builtins would also be satisfied by an incidental open somewhere
+        # else, and would survive _write_analysis no longer opening anything.
         patch(
-            "builtins.open", side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom")
+            "ray_release.reporter.observability_agent.open",
+            side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom"),
+            create=True,
         ),
     ):
         _report(

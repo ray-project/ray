@@ -131,8 +131,8 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
 
-    # Reported last, so that the agent's analysis of a failed test run shows up
-    # at the end of the buildkite step output, after the result was recorded.
+    # Reported last so that the analysis is written after the result has been
+    # recorded; where it is printed is decided by run_release_test.sh.
     reporters.append(ObservabilityAgentReporter())
 
     try:
