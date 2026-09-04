@@ -16,7 +16,16 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTake,
+    try_prepare_chunked_tensor_take,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.transform_pyarrow import (
+    _concatenate_extension_column,
+    _is_multi_chunk_extension_column,
+    _is_pa_extension_type,
+)
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -181,6 +190,113 @@ def hash_partition(
     }
 
 
+def _try_normalize_take_indices(
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    row_count: int,
+) -> Optional[np.ndarray]:
+    """Normalize ``take_table`` indices once for the chunked tensor fast path.
+
+    This is the input boundary between Arrow's broad ``take`` API and the
+    internal tensor gather kernel. It performs all index-dependent work:
+
+    * Python lists are first parsed by Arrow so their type inference and errors
+      stay consistent with the standard path.
+    * Arrow arrays (contiguous or chunked) must have a non-null integer logical
+      type before conversion. This prevents non-integer logical types whose
+      NumPy representation happens to be integral from entering the fast path.
+    * The resulting NumPy array must be one-dimensional, native-endian,
+      integral, non-negative, and within ``row_count``.
+
+    On success, the returned array is always a native ``np.int64`` array. Fast
+    path consumers rely on that contract and must not reinterpret or rescan the
+    indices. Unsupported or invalid inputs return ``None`` so ``take_table`` can
+    preserve the standard Arrow fallback and its exception behavior.
+
+    Args:
+        indices: Row indices accepted by ``take_table``.
+        row_count: Number of rows in the source table.
+
+    Returns:
+        Normalized indices when the input satisfies the fast-path contract.
+        Otherwise, ``None`` and the caller must preserve the standard fallback.
+    """
+    if isinstance(indices, np.ma.MaskedArray):
+        return None
+
+    if isinstance(indices, list):
+        try:
+            indices = pyarrow.array(indices)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowTypeError,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ):
+            return None
+
+    if isinstance(indices, (pyarrow.Array, pyarrow.ChunkedArray)):
+        if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
+            return None
+        try:
+            values = indices.to_numpy(zero_copy_only=False)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowNotImplementedError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+    elif isinstance(indices, np.ndarray):
+        values = np.asarray(indices)
+    else:
+        return None
+
+    if not values.dtype.isnative:
+        return None
+    if values.ndim != 1 or values.dtype.kind not in "iu":
+        return None
+    if values.size > 0:
+        if values.dtype.kind == "i" and np.any(values < 0):
+            return None
+        if np.any(values >= row_count):
+            return None
+    return values.astype(np.int64, copy=False)
+
+
+def _prepare_chunked_tensor_takes(
+    table: "pyarrow.Table",
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+) -> Dict[int, PreparedChunkedTensorTake]:
+    """Prepare eligible tensor columns for one table take request.
+
+    The index length is the exact output-size bound required by column
+    preparation. An unsized input produces no plans so the standard Arrow path
+    remains responsible for its existing exception behavior. This helper only
+    coordinates request-level preparation; all column eligibility rules remain
+    in ``try_prepare_chunked_tensor_take``.
+    """
+    try:
+        max_output_rows = len(indices)
+    except TypeError:
+        logger.debug(
+            "Chunked tensor take fast path not used: reason=unsupported_indices"
+        )
+        return {}
+
+    prepared_takes = {}
+    for index, column in enumerate(table.columns):
+        if not _is_multi_chunk_extension_column(column):
+            continue
+        prepared = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=max_output_rows,
+        )
+        if prepared is not None:
+            prepared_takes[index] = prepared
+    return prepared_takes
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
@@ -188,18 +304,38 @@ def take_table(
     """Select rows from the table.
 
     This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. This is exposed as a static method for easier use on
-    intermediate tables, not underlying an ArrowBlockAccessor.
-    """
-    from ray.data._internal.utils.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_pa_extension_type,
-    )
+    extension arrays. Keeping the operation at table level also allows callers
+    to use it on intermediate tables without constructing an ArrowBlockAccessor.
 
+    When the operational fast path is enabled, eligible multi-chunk tensor
+    columns are prepared once before the per-column loop. Indices are normalized
+    only if at least one preparation succeeds, and the normalized representation
+    is shared by all prepared columns. Preparation validates the exact request
+    size, so a prepared take cannot fall back at execution time. If the feature
+    is disabled or preparation or normalization fails, the original ``indices``
+    object is passed unchanged to the standard Arrow fallback.
+    """
     if any(_is_pa_extension_type(col.type) for col in table.columns):
+        prepared_takes = _prepare_chunked_tensor_takes(table, indices)
+
+        if prepared_takes:
+            normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
+            if normalized_indices is None:
+                logger.debug(
+                    "Chunked tensor take fast path not used: "
+                    "reason=unsupported_indices"
+                )
+        else:
+            normalized_indices = None
+
         new_cols = []
-        for col in table.columns:
-            if _is_pa_extension_type(col.type) and col.num_chunks > 1:
+        for index, col in enumerate(table.columns):
+            if _is_multi_chunk_extension_column(col):
+                prepared = prepared_takes.get(index)
+                if normalized_indices is not None and prepared is not None:
+                    new_cols.append(prepared.take(normalized_indices))
+                    continue
+                # Regular path.
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
