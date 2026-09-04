@@ -226,6 +226,16 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
                      req,
                      SchedulingOptions::Spread(false, /*require_node_available=*/true));
   ASSERT_TRUE(to_schedule.IsNil());
+  // Feasible but busy nodes with an available-node requirement are retryable,
+  // so the result is Failed, not Infeasible.
+  auto result = scheduling_policy.Schedule(
+      req, SchedulingOptions::Spread(false, /*require_node_available=*/true));
+  ASSERT_TRUE(result.status.IsFailed());
+
+  // No node could ever fit the request: Infeasible.
+  req = ResourceMapToResourceRequest({{"GPU", 5}}, false);
+  result = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  ASSERT_TRUE(result.status.IsInfeasible());
 }
 
 TEST_F(SchedulingPolicyTest, RandomPolicyTest) {

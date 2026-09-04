@@ -137,11 +137,11 @@ class ISchedulingPolicy {
   /// \return Success with exactly one selected node when a node was picked;
   /// Failed when feasible nodes exist but the policy declines to name one
   /// right now (the caller should keep the lease queued and retry on the next
-  /// resource-view change); Infeasible when no feasible node exists. Only the
-  /// hybrid policy returns Failed (when the caller requires an available node
-  /// and every feasible node is busy); the other policies return Infeasible
-  /// wherever they used to return a nil node id, including when busy feasible
-  /// nodes exist.
+  /// resource-view change); Infeasible when no feasible node exists. The hybrid
+  /// and spread policies return Failed (when the caller requires an available
+  /// node and every feasible node is busy); the other policies return
+  /// Infeasible wherever they used to return a nil node id, including when
+  /// busy feasible nodes exist.
   virtual SchedulingResult Schedule(const ResourceRequest &resource_request,
                                     SchedulingOptions options) = 0;
 };

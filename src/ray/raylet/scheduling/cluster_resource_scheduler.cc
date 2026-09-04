@@ -176,11 +176,17 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   SchedulingResult result;
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    result =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Spread(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback));
+    // Same rule as the hybrid branch below: an actor that acquires resources
+    // for its lifetime is not sent to a busy node and waits in the schedule
+    // queue for the next resource-view change instead. Spread's round robin
+    // over busy nodes stays for everything else.
+    const bool require_node_available =
+        force_spillback || actor_acquires_lifetime_resources;
+    result = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::Spread(
+            /*avoid_local_node*/ force_spillback,
+            /*require_node_available*/ require_node_available));
   } else if (scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
                  kNodeAffinitySchedulingStrategy) {

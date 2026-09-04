@@ -23,7 +23,8 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 /// Round robin among available nodes.
-/// If there are no available nodes, fallback to hybrid policy.
+/// If no node is available and the caller does not require one, round robin
+/// among feasible nodes instead.
 class SpreadSchedulingPolicy : public ISchedulingPolicy {
  public:
   SpreadSchedulingPolicy(scheduling::NodeID local_node_id,

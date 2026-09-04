@@ -36,6 +36,7 @@ SchedulingResult SpreadSchedulingPolicy::Schedule(const ResourceRequest &resourc
 
   // Spread among available nodes first.
   // If there is no available nodes, we spread among feasible nodes.
+  bool saw_feasible_but_unavailable = false;
   for (bool available_nodes_only :
        (options.require_node_available_ ? std::vector<bool>{true}
                                         : std::vector<bool>{true, false})) {
@@ -53,6 +54,7 @@ SchedulingResult SpreadSchedulingPolicy::Schedule(const ResourceRequest &resourc
       if (available_nodes_only &&
           !node.GetLocalView().IsAvailable(resource_request,
                                            /*ignore_pull_manager_at_capacity=*/false)) {
+        saw_feasible_but_unavailable = true;
         continue;
       }
 
@@ -61,6 +63,12 @@ SchedulingResult SpreadSchedulingPolicy::Schedule(const ResourceRequest &resourc
     }
   }
 
+  if (saw_feasible_but_unavailable) {
+    // Feasible nodes exist but none is available and the caller required an
+    // available node: this is retryable on the next resource-view change, so
+    // it is Failed, not Infeasible.
+    return SchedulingResult::Failed();
+  }
   return SchedulingResult::Infeasible();
 }
 

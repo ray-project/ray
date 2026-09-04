@@ -3669,6 +3669,83 @@ TEST_F(ClusterLeaseManagerTest, NonPgActorLeaseParksWhenNodesLookBusy) {
   ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
 }
 
+TEST_F(ClusterLeaseManagerTest, SpreadActorLeaseParksWhenNodesLookBusy) {
+  // The spread strategy used to fall back to round-robin over busy nodes when
+  // no node had room. An actor-creation lease that acquires resources for its
+  // lifetime waits in the schedule queue instead, like the hybrid case above.
+  NodeID carrier = NodeID::FromRandom();
+  absl::flat_hash_map<std::string, double> total{{"CPU", 4.0}, {"accel", 2.0}};
+  absl::flat_hash_map<std::string, double> none{{"CPU", 0.0}, {"accel", 0.0}};
+  AddNodeWithResources(carrier, total, none);
+
+  rpc::SchedulingStrategy spread;
+  spread.mutable_spread_scheduling_strategy();
+  RayLease lease = CreateLease({{"accel", 1.0}},
+                               0,
+                               {},
+                               nullptr,
+                               spread,
+                               LeaseID::FromRandom(),
+                               {},
+                               {},
+                               /*is_actor_creation=*/true);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  auto callback = [&callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+
+  // Parked: no reply yet, waiting in the schedule queue, not infeasible.
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 1);
+  ASSERT_EQ(lease_manager_.GetInfeasibleQueueSize(), 0);
+
+  // Capacity frees up on the carrier: the next scheduling round sends the
+  // lease there.
+  AddNodeWithResources(carrier, total, total);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), carrier.Binary());
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
+}
+
+TEST_F(ClusterLeaseManagerTest, SpreadTaskLeaseStillGoesToBusyNode) {
+  // Tasks keep the previous spread behavior: with no node available, the lease
+  // is spilled round-robin to a feasible but busy node and waits there.
+  NodeID carrier = NodeID::FromRandom();
+  absl::flat_hash_map<std::string, double> total{{"CPU", 4.0}, {"accel", 2.0}};
+  absl::flat_hash_map<std::string, double> none{{"CPU", 0.0}, {"accel", 0.0}};
+  AddNodeWithResources(carrier, total, none);
+
+  rpc::SchedulingStrategy spread;
+  spread.mutable_spread_scheduling_strategy();
+  RayLease lease = CreateLease({{"accel", 1.0}}, 0, {}, nullptr, spread);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  auto callback = [&callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), carrier.Binary());
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
+}
+
 TEST_F(ClusterLeaseManagerTest, ParkedPgLeaseIsCancellable) {
   // A lease waiting in the schedule queue can be cancelled: the raylet-side
   // removal sweep and GCS-side actor destruction both go through
