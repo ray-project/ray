@@ -17,6 +17,7 @@ from ray.data.expressions import (
     BinaryExpr,
     PyArrowComputeUDFExpr,
     UDFExpr,
+    UnnestExpr,
     col,
     udf,
 )
@@ -113,6 +114,42 @@ def test_alias_root_is_ignored_but_child_is_extracted():
     assert len(optimized.get_common_sub_exprs()) == 1
     assert isinstance(_unwrap_alias(optimized.get_common_sub_exprs()[0]), UDFExpr)
     assert [expr.name for expr in optimized.exprs] == ["x", "y"]
+
+
+def test_unnest_root_is_ignored_but_inner_is_extracted():
+    shared = add_one(col("a"))
+    project = Project(
+        exprs=[
+            UnnestExpr(inner=shared),
+            (shared + 1).alias("y"),
+        ],
+        input_dependencies=[_input_op()],
+    )
+
+    optimized = _apply_cse(project)
+
+    assert len(optimized.get_common_sub_exprs()) == 1
+    assert isinstance(_unwrap_alias(optimized.get_common_sub_exprs()[0]), UDFExpr)
+
+    unnest_expr = optimized.exprs[0]
+    assert isinstance(unnest_expr, UnnestExpr)
+    temp_name = _temp_names(optimized)[0]
+    assert temp_name in repr(unnest_expr)
+
+
+def test_two_unnests_of_same_inner_do_not_crash_cse():
+    shared = add_one(col("a"))
+    project = Project(
+        exprs=[
+            UnnestExpr(inner=shared),
+            UnnestExpr(inner=add_one(col("a"))),
+        ],
+        input_dependencies=[_input_op()],
+    )
+
+    optimized = _apply_cse(project)
+
+    assert all(isinstance(expr, UnnestExpr) for expr in optimized.exprs)
 
 
 def test_columns_and_literals_alone_are_not_materialized():

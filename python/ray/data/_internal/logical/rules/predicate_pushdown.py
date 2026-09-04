@@ -112,6 +112,9 @@ class PredicatePushdown(Rule):
         - Columns removed by select: select(['a']).filter(col('b'))
         - Computed columns: with_column('d', 4).filter(col('d'))
         - Old column names after rename: rename({'b': 'B'}).filter(col('b'))
+        - Anything, when the projection contains an UnnestExpr: its output
+          column names are only known at runtime, so we can't tell whether it
+          overwrites a column the filter depends on.
 
         Returns True (allows pushdown) for:
         - Columns present in output: select(['a', 'b']).filter(col('a'))
@@ -122,7 +125,17 @@ class PredicatePushdown(Rule):
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr, is_rename_expr
+        from ray.data.expressions import AliasExpr, UnnestExpr, is_rename_expr
+
+        # Do not push a filter below a projection containing an UnnestExpr.
+        # UnnestExpr's output column names are only known at runtime from the
+        # Arrow struct type, so this function cannot tell whether it overwrites
+        # a column the filter reads (UnnestExpr.name is None, so it never
+        # contributes to `output_columns`/the computed-column check below).
+        # Pushing the filter below would evaluate it against the pre-unnest
+        # value of any such column instead of the unnest's output.
+        if any(isinstance(e, UnnestExpr) for e in projection_op.exprs):
+            return False
 
         # Do not push a filter below a projection that produces a non-idempotent
         # column (random/uuid/monotonically_increasing_id): reordering changes the row
