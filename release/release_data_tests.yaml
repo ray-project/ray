@@ -45,6 +45,8 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
+    byod:
+      type: cpu
     cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
