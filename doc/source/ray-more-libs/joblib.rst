@@ -67,10 +67,10 @@ to Actors, such as GPUs <actor-resource-guide>`.
 Actor capacity
 --------------
 
-The Ray backend manages the number of actors between ``min_size`` and
-``max_size``. Both bounds default to ``n_jobs``, so existing calls need no
-additional configuration. Set a lower ``min_size`` to let the backend release
-idle actors:
+Supplying a capacity option lets the Ray backend manage the number of actors
+between ``min_size`` and ``max_size``. Calls without capacity options retain
+the previous fixed ``n_jobs`` scheduler. Set a lower ``min_size`` to let the
+backend release idle actors:
 
 .. code-block:: python
 

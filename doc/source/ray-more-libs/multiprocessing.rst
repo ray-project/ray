@@ -46,8 +46,9 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 Actor capacity
 --------------
 
-``Pool`` manages its actor count between ``min_size`` and ``max_size``. Without
-additional configuration, both bounds resolve to ``processes``. Set a lower
+Supplying a capacity option lets ``Pool`` manage its actor count between
+``min_size`` and ``max_size``. Without capacity options, ``Pool`` keeps the
+previous fixed scheduler and creates ``processes`` actors. Set a lower
 ``min_size`` to release idle actors:
 
 .. code-block:: python
@@ -66,9 +67,9 @@ after ``idle_timeout_s``. Use ``ray_remote_args`` to specify CPUs, GPUs, or
 custom resources for each actor so pending actors can drive cluster autoscaling.
 
 For compatibility, a pool without capacity options continues to use the
-previous fixed-capacity scheduler when ``ray_remote_args`` contains non-default
-``max_concurrency``, ``max_restarts``, ``max_task_retries``, or
-``get_if_exists``. These options cannot be combined with adjustable capacity.
+previous fixed-capacity scheduler. Non-default ``max_concurrency``,
+``max_restarts``, ``max_task_retries``, and ``get_if_exists`` options cannot be
+combined with adjustable capacity.
 
 Run on a Cluster
 ----------------

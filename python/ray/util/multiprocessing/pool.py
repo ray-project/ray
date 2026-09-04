@@ -1,5 +1,6 @@
 import collections
 import copy
+import functools
 import gc
 import itertools
 import logging
@@ -227,6 +228,20 @@ def _wake_reaper_after_collection(
         condition.notify_all()
 
 
+def _invoke_actor_slot_callback(
+    actor_set_ref: weakref.ReferenceType,
+    callback: Callable,
+    slot_index: int,
+    generation: int,
+    future: Any,
+) -> None:
+    """Run a slot callback without retaining its actor set or actor handle."""
+    actor_set = actor_set_ref()
+    if actor_set is None:
+        return
+    callback(actor_set, actor_set._slots[slot_index], generation, future)
+
+
 class _ActorSlotSet:
     """Own actor capacity without taking ownership of tasks or results.
 
@@ -297,16 +312,6 @@ class _ActorSlotSet:
     def max_size(self) -> int:
         return len(self._slots)
 
-    def wait_until_ready(self) -> None:
-        """Wait for initial capacity, preserving fixed Pool construction."""
-        with self._condition:
-            while any(slot.state is _ActorSlotState.STARTING for slot in self._slots):
-                if self._error is not None:
-                    raise self._error
-                self._condition.wait()
-            if self._error is not None:
-                raise self._error
-
     def submit(self, func: Callable, batch: Iterable) -> ray.ObjectRef:
         """Submit directly to Ray while pending actors only express demand."""
         with self._condition:
@@ -369,10 +374,11 @@ class _ActorSlotSet:
             slot.tasks_submitted += 1
             slot.idle_since = None
             try:
-                object_ref.future().add_done_callback(
-                    lambda future, target=slot, expected=generation: (
-                        self._batch_completed(target, expected, future)
-                    )
+                self._observe_slot_ref_locked(
+                    object_ref,
+                    slot,
+                    generation,
+                    type(self)._batch_completed,
                 )
             except BaseException as error:
                 # The Ray call was accepted, so decrementing would make an
@@ -473,10 +479,11 @@ class _ActorSlotSet:
         try:
             readiness_ref = actor.ping.remote()
             slot.readiness_ref = readiness_ref
-            readiness_ref.future().add_done_callback(
-                lambda future, target=slot, expected=generation: self._actor_ready(
-                    target, expected, future
-                )
+            self._observe_slot_ref_locked(
+                readiness_ref,
+                slot,
+                generation,
+                type(self)._actor_ready,
             )
         except BaseException as error:
             self._error = error
@@ -621,10 +628,11 @@ class _ActorSlotSet:
         slot.exit_ref = exit_ref
         generation = slot.generation
         try:
-            exit_ref.future().add_done_callback(
-                lambda future, target=slot, expected=generation: self._actor_exited(
-                    target, expected, future
-                )
+            self._observe_slot_ref_locked(
+                exit_ref,
+                slot,
+                generation,
+                type(self)._actor_exited,
             )
         except BaseException as error:
             self._error = error
@@ -654,6 +662,26 @@ class _ActorSlotSet:
                 return
             self._release_dead_actor_locked(slot)
             self._condition.notify_all()
+
+    def _observe_slot_ref_locked(
+        self,
+        object_ref: ray.ObjectRef,
+        slot: _ActorSlot,
+        generation: int,
+        callback: Callable,
+    ) -> None:
+        slot_index = next(
+            index for index, candidate in enumerate(self._slots) if candidate is slot
+        )
+        object_ref.future().add_done_callback(
+            functools.partial(
+                _invoke_actor_slot_callback,
+                weakref.ref(self),
+                callback,
+                slot_index,
+                generation,
+            )
+        )
 
     def _release_dead_actor_locked(
         self,
@@ -791,8 +819,8 @@ def _kill_all_actors(actors: Iterable[Any]) -> None:
         raise first_error
 
 
-class _LegacyActorSet:
-    """Compatibility adapter for fixed pools with advanced actor options."""
+class _FixedActorSet:
+    """Preserve the original round-robin scheduler for fixed pools."""
 
     def __init__(
         self,
@@ -1394,13 +1422,13 @@ class Pool:
         capacity_options_provided = any(
             option is not None for option in (min_size, max_size, idle_timeout_s)
         )
-        legacy_actor_options = {
+        fixed_only_actor_options = {
             option: ray_remote_args[option]
             for option, default in _LEGACY_ACTOR_OPTION_DEFAULTS.items()
             if option in ray_remote_args and ray_remote_args[option] != default
         }
-        if capacity_options_provided and legacy_actor_options:
-            option, value = next(iter(legacy_actor_options.items()))
+        if capacity_options_provided and fixed_only_actor_options:
+            option, value = next(iter(fixed_only_actor_options.items()))
             raise ValueError(
                 f"Ray Pool capacity options require "
                 f"{option}={_LEGACY_ACTOR_OPTION_DEFAULTS[option]}; got {value!r}"
@@ -1442,9 +1470,9 @@ class Pool:
         def create_actor():
             return pool_actor.remote(initializer, initargs)
 
-        if legacy_actor_options:
+        if not capacity_options_provided:
             self._pool_size = processes
-            self._actor_set = _LegacyActorSet(
+            self._actor_set = _FixedActorSet(
                 create_actor,
                 processes,
                 maxtasksperchild or -1,
@@ -1458,17 +1486,6 @@ class Pool:
                 idle_timeout_s,
                 maxtasksperchild,
             )
-            if not capacity_options_provided:
-                try:
-                    actor_set.wait_until_ready()
-                except BaseException:
-                    try:
-                        actor_set.terminate()
-                    except BaseException:
-                        logger.exception(
-                            "Failed to clean up a Pool after construction failed"
-                        )
-                    raise
             self._actor_set = actor_set
 
     def _init_ray(self, processes=None, ray_address=None):
@@ -1501,11 +1518,11 @@ class Pool:
         with self._pool_lock:
             self._check_running()
             actor_set = self._actor_set
-            # The compatibility scheduler has no internal admission lock, but
+            # The fixed scheduler has no internal admission lock, but
             # it never waits for capacity. Keep its submission serialized with
             # close while allowing the condition-protected slot scheduler to
             # wait without preventing another thread from terminating the Pool.
-            if isinstance(actor_set, _LegacyActorSet):
+            if isinstance(actor_set, _FixedActorSet):
                 return actor_set.submit(func, batch)
         return actor_set.submit(func, batch)
 

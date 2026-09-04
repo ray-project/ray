@@ -18,7 +18,7 @@ from ray.util.multiprocessing.pool import (
     _ActorSlot,
     _ActorSlotSet,
     _ActorSlotState,
-    _LegacyActorSet,
+    _FixedActorSet,
 )
 
 
@@ -30,6 +30,10 @@ def _state_count(pool, state):
 
 def _current_actor_id():
     return ray.get_runtime_context().get_actor_id()
+
+
+def _set_environment_variable(key, value):
+    os.environ[key] = value
 
 
 def test_pool_can_be_collected_without_explicit_shutdown(shutdown_only):
@@ -49,6 +53,26 @@ def test_pool_can_be_collected_without_explicit_shutdown(shutdown_only):
     reaper.join(timeout=10)
 
     assert pool_ref() is None
+    assert actor_set_ref() is None
+    assert not reaper.is_alive()
+
+
+def test_pending_pool_releases_actor_set_when_abandoned(shutdown_only):
+    ray.init(num_cpus=0)
+    pool = Pool(
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        ray_remote_args={"num_cpus": 1},
+    )
+    object_ref = pool._run_batch(str, [("pending", {})])
+    actor_set_ref = weakref.ref(pool._actor_set)
+    reaper = pool._actor_set._reaper
+
+    del object_ref, pool
+    gc.collect()
+    reaper.join(timeout=10)
+
     assert actor_set_ref() is None
     assert not reaper.is_alive()
 
@@ -379,15 +403,39 @@ def test_pool_preserves_exceptions_returned_as_values(shutdown_only):
     pool.join()
 
 
-def test_default_pool_preserves_advanced_actor_options(shutdown_only):
+def test_default_pool_uses_fixed_scheduler(shutdown_only):
     ray.init(num_cpus=1)
-    pool = Pool(processes=1, ray_remote_args={"max_concurrency": 2})
+    pool = Pool(processes=1)
 
-    assert isinstance(pool._actor_set, _LegacyActorSet)
+    assert isinstance(pool._actor_set, _FixedActorSet)
     assert pool.apply(abs, (-1,)) == 1
 
     pool.close()
     pool.join()
+
+
+def test_default_pool_preserves_advanced_actor_options(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(processes=1, ray_remote_args={"max_concurrency": 2})
+
+    assert isinstance(pool._actor_set, _FixedActorSet)
+    assert pool.apply(abs, (-1,)) == 1
+
+    pool.close()
+    pool.join()
+
+
+def test_joblib_forwards_backend_pool_arguments(shutdown_only):
+    ray.init(num_cpus=2)
+    key = "RAY_JOBLIB_INITIALIZER_TEST"
+    backend = RayBackend(
+        initializer=_set_environment_variable,
+        initargs=(key, "from-backend"),
+    )
+
+    assert backend.configure(n_jobs=2) == 2
+    assert backend._pool.apply(os.getenv, (key,)) == "from-backend"
+    backend.terminate()
 
 
 def test_joblib_respects_capacity_and_maxtasksperchild(shutdown_only):

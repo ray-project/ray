@@ -59,6 +59,7 @@ class RayBackend(MultiprocessingBackend):
         **memmappingpool_args,
     ):
         """Construct a Ray Pool without mutating Joblib's global pool classes."""
+        memmappingpool_args = {**self.backend_kwargs, **memmappingpool_args}
         if self.maxtasksperchild is not None:
             memmappingpool_args.setdefault("maxtasksperchild", self.maxtasksperchild)
 
