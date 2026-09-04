@@ -213,7 +213,8 @@ def test_hung_worker_releases_pinned_lease_args(shutdown_only):
 
     keepalive = []
     for i in range(3):
-        # 15MB > inline threshold → plasma-backed lease arg.
+        # Use a 15MB plasma object so the lease argument is pinned by the
+        # raylet rather than inlined in the task spec.
         payload = ray.put(np.zeros(15 * 1024 * 1024 // 8, dtype=np.int64))
         ref = hanging_task.remote(payload)
         if i == 0:
