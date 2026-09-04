@@ -34,3 +34,7 @@ steps:
       - bazel run //ci/raydepsets:raydepsets -- build --all-configs --check
     job_env: manylinux-x86_64
     depends_on: manylinux-x86_64
+
+# CI routing demonstration for #65941 (throwaway; DO NOT MERGE). This no-op
+# comment makes the pipeline file the only source change, so premerge routes it
+# through the new dependencies.rayci.yml rule in test.rules.txt.
