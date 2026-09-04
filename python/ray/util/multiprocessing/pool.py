@@ -218,6 +218,15 @@ class _ActorSlot:
     exit_ref: Any = None
 
 
+def _wake_reaper_after_collection(
+    owner_collected: threading.Event,
+    condition: threading.Condition,
+) -> None:
+    owner_collected.set()
+    with condition:
+        condition.notify_all()
+
+
 class _ActorSlotSet:
     """Own actor capacity without taking ownership of tasks or results.
 
@@ -268,8 +277,17 @@ class _ActorSlotSet:
 
         self._reaper = None
         if min_size < max_size:
+            reaper_condition = self._condition
+            owner_collected = threading.Event()
+            actor_set_ref = weakref.ref(
+                self,
+                lambda _: _wake_reaper_after_collection(
+                    owner_collected, reaper_condition
+                ),
+            )
             self._reaper = threading.Thread(
-                target=self._reap_idle_actors,
+                target=_ActorSlotSet._reap_idle_actors,
+                args=(actor_set_ref, owner_collected, reaper_condition),
                 name="ray-pool-idle-reaper",
                 daemon=True,
             )
@@ -699,49 +717,65 @@ class _ActorSlotSet:
             for slot in self._slots
         )
 
-    def _reap_idle_actors(self) -> None:
+    @staticmethod
+    def _reap_idle_actors(
+        actor_set_ref: weakref.ReferenceType,
+        owner_collected: threading.Event,
+        condition: threading.Condition,
+    ) -> None:
         while True:
-            with self._condition:
-                if self._closed:
-                    if all(slot.state is _ActorSlotState.EMPTY for slot in self._slots):
+            actor_set = actor_set_ref()
+            if actor_set is None:
+                return
+            with condition:
+                if actor_set._closed:
+                    if all(
+                        slot.state is _ActorSlotState.EMPTY for slot in actor_set._slots
+                    ):
                         return
-                    self._condition.wait()
-                    continue
-                if self._error is not None:
+                    timeout = None
+                elif actor_set._error is not None:
                     return
-
-                idle = [
-                    slot
-                    for slot in self._slots
-                    if slot.state is _ActorSlotState.ACTIVE
-                    and slot.outstanding == 0
-                    and slot.idle_since is not None
-                ]
-                excess = max(
-                    0,
-                    sum(slot.state is _ActorSlotState.ACTIVE for slot in self._slots)
-                    - self._min_size,
-                )
-                idle.sort(key=lambda slot: slot.idle_since)
-                candidates = idle[:excess]
-                now = time.monotonic()
-                expired = [
-                    slot
-                    for slot in candidates
-                    if now - slot.idle_since >= self._idle_timeout_s
-                ]
-                for slot in expired:
-                    self._begin_draining_locked(slot)
-                if expired:
-                    continue
-
-                timeout = None
-                if candidates:
-                    timeout = max(
-                        0.0,
-                        candidates[0].idle_since + self._idle_timeout_s - now,
+                else:
+                    idle = [
+                        slot
+                        for slot in actor_set._slots
+                        if slot.state is _ActorSlotState.ACTIVE
+                        and slot.outstanding == 0
+                        and slot.idle_since is not None
+                    ]
+                    excess = max(
+                        0,
+                        sum(
+                            slot.state is _ActorSlotState.ACTIVE
+                            for slot in actor_set._slots
+                        )
+                        - actor_set._min_size,
                     )
-                self._condition.wait(timeout)
+                    idle.sort(key=lambda slot: slot.idle_since)
+                    candidates = idle[:excess]
+                    now = time.monotonic()
+                    expired = [
+                        slot
+                        for slot in candidates
+                        if now - slot.idle_since >= actor_set._idle_timeout_s
+                    ]
+                    for slot in expired:
+                        actor_set._begin_draining_locked(slot)
+                    timeout = 0.0 if expired else None
+                    if candidates and not expired:
+                        timeout = max(
+                            0.0,
+                            candidates[0].idle_since + actor_set._idle_timeout_s - now,
+                        )
+
+                # The thread must not own the actor set while sleeping. The
+                # weakref callback sets the Event before notifying, so owner
+                # collection cannot be lost if it races with this wait.
+                actor_set = None
+                if owner_collected.is_set():
+                    return
+                condition.wait(timeout)
 
 
 def _kill_all_actors(actors: Iterable[Any]) -> None:
@@ -1349,7 +1383,9 @@ class Pool:
         self._closed = False
         self._pool_lock = threading.Lock()
         if maxtasksperchild is not None and (
-            type(maxtasksperchild) is not int or maxtasksperchild <= 0
+            isinstance(maxtasksperchild, bool)
+            or not isinstance(maxtasksperchild, int)
+            or maxtasksperchild <= 0
         ):
             raise ValueError("maxtasksperchild must be a positive integer or None")
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []

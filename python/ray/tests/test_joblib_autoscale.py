@@ -1,7 +1,9 @@
 import concurrent.futures
+import gc
 import os
 import sys
 import threading
+import weakref
 
 import joblib
 import pytest
@@ -28,6 +30,27 @@ def _state_count(pool, state):
 
 def _current_actor_id():
     return ray.get_runtime_context().get_actor_id()
+
+
+def test_pool_can_be_collected_without_explicit_shutdown(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+    )
+    assert pool.apply(abs, (-1,)) == 1
+    actor_set_ref = weakref.ref(pool._actor_set)
+    pool_ref = weakref.ref(pool)
+    reaper = pool._actor_set._reaper
+
+    del pool
+    gc.collect()
+    reaper.join(timeout=10)
+
+    assert pool_ref() is None
+    assert actor_set_ref() is None
+    assert not reaper.is_alive()
 
 
 @pytest.mark.parametrize(
