@@ -2245,9 +2245,8 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       // unblock RPC by unblocking it immediately (unblock is idempotent).
       HandleNotifyWorkerUnblocked(worker);
     }
-    // Release resources first to match the reuse-path teardown order, then
-    // release pinned lease args now: a worker that hangs in shutdown never
-    // triggers DisconnectClient, so deferred release would leak.
+    // Release pinned lease args now: a worker that hangs in shutdown
+    // never triggers DisconnectClient, so deferred release would leak.
     local_lease_manager_.ReleaseWorkerResources(worker);
     if (!worker->GetGrantedLeaseId().IsNil()) {
       CleanupLease(worker);
