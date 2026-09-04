@@ -205,11 +205,23 @@ def test_ambiguous_termination_does_not_release_slot():
 
 
 def test_concurrent_close_and_terminate_converge(monkeypatch):
-    actor = _FakeActor()
+    actor = _FakeActor(ready=False)
     actor_set = _ActorSlotSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
     errors = []
+    kill_count = 0
+    kill_count_lock = threading.Lock()
+    first_kill_entered = threading.Event()
+    both_kills_entered = threading.Event()
+    release_kills = threading.Event()
 
     def kill_actor(_actor):
+        nonlocal kill_count
+        with kill_count_lock:
+            kill_count += 1
+            first_kill_entered.set()
+            if kill_count == 2:
+                both_kills_entered.set()
+        assert release_kills.wait(1)
         if not actor.exit_ref.completion.done():
             actor.exit_ref.completion.set_exception(ray.exceptions.ActorDiedError())
 
@@ -220,14 +232,19 @@ def test_concurrent_close_and_terminate_converge(monkeypatch):
             errors.append(error)
 
     monkeypatch.setattr(ray, "kill", kill_actor)
-    threads = [
-        threading.Thread(target=run, args=(action,))
-        for action in (actor_set.close, actor_set.terminate)
-    ]
+    close_thread = threading.Thread(target=run, args=(actor_set.close,))
+    terminate_thread = threading.Thread(target=run, args=(actor_set.terminate,))
+
+    close_thread.start()
+    assert first_kill_entered.wait(1)
+    terminate_thread.start()
+    assert both_kills_entered.wait(1)
+    release_kills.set()
+
+    threads = [close_thread, terminate_thread]
     for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
 
     actor_set.join()
     assert errors == []
