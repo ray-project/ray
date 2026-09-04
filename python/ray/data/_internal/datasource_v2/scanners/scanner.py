@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic
+from typing import Generic, Optional
 
 import pyarrow as pa
 
@@ -55,6 +55,23 @@ class Scanner(ABC, Generic[InputSplit]):
         both must agree.
         """
         return False
+
+    def exact_row_count(self) -> Optional[int]:
+        """The number of rows this scan returns, if it is already known exactly.
+
+        Answered on the driver at plan time, so a source that carries a
+        table-level row count in metadata it has already read can let
+        ``Dataset.count()`` return without running a single task -- one step
+        cheaper than :meth:`metadata_row_count_is_exact`, which still lists the
+        files and reads their per-file counts.
+
+        Default ``None`` ("not known"). This is the count *after* every
+        pushdown this scanner holds, so it must be ``None`` whenever any of
+        them can reduce the row count, on the same fail-closed grounds as
+        :meth:`metadata_row_count_is_exact`: the number is returned to the user
+        as the answer, not as an estimate.
+        """
+        return None
 
     @abstractmethod
     def create_reader(self) -> Reader[InputSplit]:

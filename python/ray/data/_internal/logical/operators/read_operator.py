@@ -313,15 +313,26 @@ class ReadFiles(
         return schema
 
     def infer_metadata(self) -> BlockMetadata:
-        """Return empty metadata; downstream callers fall back to materialization.
+        """Metadata the plan can state without executing anything.
 
         Prior ``ReadFiles`` versions reached into a driver-side file cache to
         compute size hints. With listing owned by an upstream
         ``ListFiles`` op, metadata-for-sizing is computed from the
         materialized manifest at execution time — the logical op doesn't
         try to pre-estimate.
+
+        The row count is the exception: a scanner that already knows it
+        exactly (see ``Scanner.exact_row_count``) reports it here, which is
+        what lets ``Dataset.count()`` and ``repr`` answer on the driver with no
+        tasks at all. ``None`` from the scanner keeps the old all-empty
+        behaviour, so callers still fall back to materialization.
         """
-        return BlockMetadata(None, None, None, None)
+        return BlockMetadata(
+            num_rows=self.scanner.exact_row_count(),
+            size_bytes=None,
+            input_files=None,
+            exec_stats=None,
+        )
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (

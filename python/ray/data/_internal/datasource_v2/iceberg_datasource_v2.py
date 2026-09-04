@@ -139,6 +139,64 @@ class IcebergDatasourceV2(DataSourceV2[FileManifest]):
     def _projected_schema(self) -> "Schema":
         return self._data_scan().projection()
 
+    def _snapshot_row_count(self) -> Optional[int]:
+        """Rows in the pinned snapshot per its summary, or ``None`` if unusable.
+
+        The summary is written by whoever committed the snapshot, and every
+        field in it is optional by spec, so this is "absent or trusted": a
+        missing key means decline, never assume. ``total-records`` counts rows
+        as the data files hold them, which is the answer only if no delete file
+        removes any -- hence the two delete totals, which must both be present
+        and zero. When they are, the scan has no merge-on-read work to do and
+        the number is the table's row count.
+
+        Reading this costs nothing: the table metadata is already in memory,
+        loaded for the schema. It is the pinned snapshot's summary, not the
+        current one's, so a concurrent commit cannot make the count disagree
+        with the files the tasks would read.
+
+        Declining only costs a slower ``count()``: the per-file counts in the
+        manifests are the fallback, and reading the data is the fallback to
+        that.
+        """
+        from pyiceberg.table.snapshots import (
+            TOTAL_EQUALITY_DELETES,
+            TOTAL_POSITION_DELETES,
+            TOTAL_RECORDS,
+        )
+
+        if self.snapshot_id is None:
+            # No snapshot means no data files, so the count is exactly zero.
+            return 0
+
+        snapshot = self.table.snapshot_by_id(self.snapshot_id)
+        if snapshot is None or snapshot.summary is None:
+            return None
+
+        summary = snapshot.summary
+        # ``Summary`` is a mapping that answers ``None`` for a key it does not
+        # hold, and its values are strings.
+        try:
+            deletes = [
+                summary[TOTAL_POSITION_DELETES],
+                summary[TOTAL_EQUALITY_DELETES],
+            ]
+            if any(value is None or int(value) != 0 for value in deletes):
+                return None
+            total_records = summary[TOTAL_RECORDS]
+            if total_records is None:
+                return None
+            return int(total_records)
+        except (TypeError, ValueError):
+            # A writer put something non-numeric in a numeric field. Distrust
+            # the whole summary rather than guess which half is wrong.
+            logger.debug(
+                "Ignoring unparseable snapshot summary for %s: %s",
+                self._table_identifier,
+                summary,
+            )
+            return None
+
     # --- ``DataSourceV2`` interface -------------------------------------
 
     @property
@@ -205,4 +263,5 @@ class IcebergDatasourceV2(DataSourceV2[FileManifest]):
             row_filter=self._row_filter,
             case_sensitive=self._case_sensitive,
             limit=self._limit,
+            snapshot_row_count=self._snapshot_row_count(),
         )

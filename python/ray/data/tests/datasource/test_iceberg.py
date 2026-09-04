@@ -4,7 +4,7 @@ import random
 import sys
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, Generator, List, Tuple, Type
+from typing import Any, Dict, Generator, List, Optional, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,7 @@ from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.table import FileScanTask, Table
+from pyiceberg.table.snapshots import TOTAL_RECORDS
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -3634,6 +3635,167 @@ class TestIcebergDatasourceV2:
             **kwargs, row_filter=pyi_expr.LessThan("col_a", 50)
         )
         assert filtered.available_metadata() == {MetadataType.NUM_ROWS}
+
+    def test_count_is_answered_from_the_snapshot_summary(self, restore_data_context):
+        """The cheapest ``count()``: no tasks at all, not even a listing one.
+
+        Iceberg's snapshot summary carries ``total-records`` for the whole
+        snapshot, and the summary is in the table metadata already loaded for
+        the schema. So the answer is a dict lookup on the driver, and
+        ``Dataset.count()`` returns from ``_meta_count`` before it ever builds
+        the plan that ``test_count_is_answered_from_iceberg_metadata`` asserts
+        on. That plan is still the fallback -- it is what answers a *filtered*
+        count, which the summary cannot.
+
+        This also restores parity with V1, which has always answered this
+        ``count()`` from ``Read.infer_metadata``.
+        """
+        table = self._load_table()
+        expected = len(table.scan().to_arrow())
+        # Not a tautology worth skipping: it pins that the fixture's snapshot
+        # really does publish the key, so a summary-less table would fail here
+        # rather than silently fall through to the per-file path.
+        summary = table.current_snapshot().summary
+        assert summary[TOTAL_RECORDS] == str(expected)
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+        assert ds._meta_count() == expected
+        assert ds.count() == expected
+        # Column pruning changes a block's width, not its height.
+        assert ds.select_columns(["col_a"])._meta_count() == expected
+
+    @pytest.mark.parametrize(
+        "make_dataset",
+        [
+            lambda mk: mk().filter(expr="col_c >= 3"),
+            lambda mk: mk(row_filter="col_c >= 3"),
+        ],
+        ids=["pushed_filter", "constructor_filter"],
+    )
+    def test_snapshot_count_declines_under_a_filter(
+        self, restore_data_context, make_dataset
+    ):
+        """``total-records`` counts the snapshot, so any filter disqualifies it.
+
+        Both spellings have to be caught, and they arrive by different routes:
+        ``filter()`` goes through ``push_filters``, while
+        ``read_iceberg(row_filter=...)`` is baked into the scanner before the
+        optimizer sees it. The per-file path picks the count up from here, so
+        declining costs a listing task, not a read.
+        """
+        restore_data_context.use_iceberg_datasource_v2 = True
+
+        def mk(**kwargs):
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                **kwargs,
+            )
+
+        ds = make_dataset(mk)
+        assert ds._meta_count() is None
+
+        expected = len(
+            self._load_table()
+            .scan(row_filter=pyi_expr.GreaterThanOrEqual("col_c", 3))
+            .to_arrow()
+        )
+        assert 0 < expected
+        assert ds.count() == expected
+
+    def test_snapshot_count_declines_under_a_limit(self, restore_data_context):
+        """A limit is applied while reading; the summary says nothing about it.
+
+        The count still comes out right and still comes out free, because the
+        ``Limit`` operator above the read caps the scanner's own number -- so
+        what this pins is that the *scanner* declines, which is what would
+        matter to any consumer that asked it directly.
+        """
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).limit(7)
+
+        (read_files,) = [
+            op for op in _walk(ds._logical_plan.dag) if isinstance(op, ReadFiles)
+        ]
+        limited = read_files.scanner.push_limit(7)
+        assert limited.exact_row_count() is None
+        assert ds.count() == 7
+
+    def test_snapshot_count_declines_when_the_summary_cannot_be_trusted(self):
+        """Every way the summary can fail to answer, at the datasource.
+
+        Each of these is a real writer behaviour rather than a hypothetical:
+        the summary fields are all spec-optional, and ``total-records`` counts
+        rows as the data files hold them, so a table with delete files
+        over-reports. The keys go missing one at a time because a partial
+        summary must decline just as firmly as an absent one.
+        """
+        from pyiceberg.table.snapshots import (
+            TOTAL_EQUALITY_DELETES,
+            TOTAL_POSITION_DELETES,
+        )
+
+        from ray.data._internal.datasource_v2.iceberg_datasource_v2 import (
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        expected = len(self._load_table().scan().to_arrow())
+        assert datasource._snapshot_row_count() == expected
+
+        summary = datasource.table.snapshot_by_id(datasource.snapshot_id).summary
+        original = dict(summary.model_dump())
+
+        def with_summary(**overrides) -> Optional[int]:
+            for key, value in overrides.items():
+                if value is None:
+                    summary._additional_properties.pop(key, None)
+                else:
+                    summary[key] = value
+            try:
+                return datasource._snapshot_row_count()
+            finally:
+                for key in overrides:
+                    if key in original:
+                        summary[key] = original[key]
+                    else:
+                        summary._additional_properties.pop(key, None)
+
+        assert with_summary(**{TOTAL_RECORDS: None}) is None
+        assert with_summary(**{TOTAL_POSITION_DELETES: None}) is None
+        assert with_summary(**{TOTAL_EQUALITY_DELETES: None}) is None
+        assert with_summary(**{TOTAL_POSITION_DELETES: "3"}) is None
+        assert with_summary(**{TOTAL_EQUALITY_DELETES: "3"}) is None
+        assert with_summary(**{TOTAL_RECORDS: "not a number"}) is None
+        # The restore path has to work, or the assertions above prove nothing
+        # about each other.
+        assert datasource._snapshot_row_count() == expected
+
+    def test_snapshot_count_of_a_table_with_no_snapshot(self, empty_iceberg_table):
+        """No snapshot means no data files, which is a count of exactly zero."""
+        from ray.data._internal.datasource_v2.iceberg_datasource_v2 import (
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=empty_iceberg_table,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        assert datasource.snapshot_id is None
+        assert datasource._snapshot_row_count() == 0
 
 
 if __name__ == "__main__":

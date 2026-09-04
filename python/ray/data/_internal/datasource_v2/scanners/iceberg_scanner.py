@@ -96,6 +96,10 @@ class IcebergScanner(
     # The pushed predicate in Ray form, kept only so ``pushed_predicate`` can
     # report it. ``row_filter`` above is what the reader applies.
     predicate: Optional[Expr] = None
+    # Rows in the pinned snapshot, straight off its summary, or ``None`` when
+    # the summary does not say (see ``IcebergDatasourceV2._snapshot_row_count``).
+    # Whole-snapshot, so it is only usable when nothing reduces the row count.
+    snapshot_row_count: Optional[int] = None
 
     def _pruned_schema(self) -> "Schema":
         if self.columns is None:
@@ -134,6 +138,28 @@ class IcebergScanner(
         the scan -- and are likewise handled per file in ``read_metadata``.
         """
         return self.limit is None
+
+    @override
+    def exact_row_count(self) -> Optional[int]:
+        """The snapshot's own row count, when nothing can reduce it.
+
+        ``total-records`` counts every row in every data file of the snapshot,
+        so unlike :meth:`metadata_row_count_is_exact` this cannot survive a row
+        filter: a filter that Iceberg fully satisfies per file still changes
+        *which* files the scan lists, and the summary is blind to that. A limit
+        is out for the same reason it is there.
+
+        ``row_filter`` is the single gate for filtering because it is where
+        every filter ends up: ``read_iceberg(row_filter=...)`` sets it directly,
+        and ``push_filters`` only records a ``predicate`` in the same step that
+        ANDs it into ``row_filter``. Column pruning changes a block's width,
+        not its height.
+        """
+        from pyiceberg.expressions import AlwaysTrue
+
+        if self.limit is not None or not isinstance(self.row_filter, AlwaysTrue):
+            return None
+        return self.snapshot_row_count
 
     def create_reader(self) -> IcebergFileReader:
         pruned = self._pruned_schema()
