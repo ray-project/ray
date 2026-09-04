@@ -933,7 +933,7 @@ joserfc==1.5.0
     # via moto
 json5==0.14.0
     # via jupyterlab-server
-jsonpatch==1.32
+jsonpatch==1.33
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -1349,7 +1349,7 @@ numpy==2.3.3
     #   webdataset
     #   xgboost
     #   zoopt
-nvidia-nccl-cu12==2.26.2 ; platform_system == "Linux" and platform_machine != "aarch64"
+nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   xgboost

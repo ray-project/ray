@@ -927,7 +927,7 @@ joserfc==1.5.0
     # via moto
 json5==0.14.0
     # via jupyterlab-server
-jsonpatch==1.32
+jsonpatch==1.33
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
