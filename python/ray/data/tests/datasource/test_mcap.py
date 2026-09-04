@@ -23,6 +23,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def estimate_size(datasource: MCAPDatasource) -> int:
+    """Return a datasource's in-memory size estimate, asserting it is known.
+
+    ``estimate_inmemory_data_size`` is typed ``Optional[int]``: the base class
+    returns ``None`` when file sizes are unavailable. Every fixture here has
+    known sizes, so narrow once rather than at each comparison.
+    """
+    estimate = datasource.estimate_inmemory_data_size()
+    assert estimate is not None
+    return estimate
+
+
 def create_test_mcap_file(file_path: str, messages: list) -> None:
     """Create a test MCAP file with given messages."""
     from mcap.writer import Writer
@@ -609,7 +621,7 @@ def test_estimate_inmemory_data_size_exceeds_on_disk_size(
     # Establish that on-disk size is not a usable proxy for this format.
     assert actual_size > 10 * on_disk_size
 
-    estimate = MCAPDatasource(paths=[binary_mcap_file]).estimate_inmemory_data_size()
+    estimate = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
     assert 0.5 * actual_size <= estimate <= 2 * actual_size
 
 
@@ -617,12 +629,12 @@ def test_estimate_inmemory_data_size_tracks_include_metadata(
     ray_start_regular_shared, binary_mcap_file
 ):
     """Dropping the metadata columns must shrink the estimate."""
-    with_metadata = MCAPDatasource(
-        paths=[binary_mcap_file], include_metadata=True
-    ).estimate_inmemory_data_size()
-    without_metadata = MCAPDatasource(
-        paths=[binary_mcap_file], include_metadata=False
-    ).estimate_inmemory_data_size()
+    with_metadata = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_metadata=True)
+    )
+    without_metadata = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_metadata=False)
+    )
 
     assert without_metadata < with_metadata
 
@@ -641,10 +653,8 @@ def test_estimate_inmemory_data_size_respects_topic_filter(
     path = os.path.join(tmp_path, "multi_topic_binary.mcap")
     create_binary_mcap_file(path, 300, topics=("/topic_a", "/topic_b", "/topic_c"))
 
-    unfiltered = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
-    filtered = MCAPDatasource(
-        paths=[path], topics={"/topic_a"}
-    ).estimate_inmemory_data_size()
+    unfiltered = estimate_size(MCAPDatasource(paths=[path]))
+    filtered = estimate_size(MCAPDatasource(paths=[path], topics={"/topic_a"}))
 
     # One of three topics is selected, so the estimate should fall roughly
     # threefold rather than staying flat.
@@ -663,7 +673,7 @@ def test_estimate_inmemory_data_size_multiple_files(ray_start_regular_shared, tm
         create_binary_mcap_file(path, 60)
         paths.append(path)
 
-    estimate = MCAPDatasource(paths=paths).estimate_inmemory_data_size()
+    estimate = estimate_size(MCAPDatasource(paths=paths))
     actual = ray.data.read_mcap(paths).materialize().size_bytes()
 
     assert 0.5 * actual <= estimate <= 2 * actual
@@ -680,7 +690,7 @@ def test_estimate_inmemory_data_size_without_statistics(
     path = os.path.join(tmp_path, "no_stats.mcap")
     create_binary_mcap_file(path, 200, use_statistics=False)
 
-    estimate = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
+    estimate = estimate_size(MCAPDatasource(paths=[path]))
 
     assert estimate == os.path.getsize(path) * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
 
@@ -693,9 +703,7 @@ def test_estimate_inmemory_data_size_sampling_disabled(
     original = ctx.decoding_size_estimation
     ctx.decoding_size_estimation = False
     try:
-        estimate = MCAPDatasource(
-            paths=[binary_mcap_file]
-        ).estimate_inmemory_data_size()
+        estimate = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
     finally:
         ctx.decoding_size_estimation = original
 
@@ -711,12 +719,10 @@ def test_estimate_inmemory_data_size_accounts_for_include_paths(
     Sampling builds its block from `_read_stream`'s output, so it has to add
     that column itself or the estimate misses it.
     """
-    without_paths = MCAPDatasource(
-        paths=[binary_mcap_file]
-    ).estimate_inmemory_data_size()
-    with_paths = MCAPDatasource(
-        paths=[binary_mcap_file], include_paths=True
-    ).estimate_inmemory_data_size()
+    without_paths = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    with_paths = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_paths=True)
+    )
 
     assert with_paths > without_paths
 
@@ -741,10 +747,10 @@ def test_estimate_inmemory_data_size_narrow_time_range(
     start = 1000000000
     time_range = (start, start + 10 * 33000000)
 
-    unfiltered = MCAPDatasource(paths=[binary_mcap_file]).estimate_inmemory_data_size()
-    filtered = MCAPDatasource(
-        paths=[binary_mcap_file], time_range=TimeRange(*time_range)
-    ).estimate_inmemory_data_size()
+    unfiltered = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    filtered = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], time_range=TimeRange(*time_range))
+    )
 
     ds = ray.data.read_mcap(binary_mcap_file, time_range=time_range).materialize()
     actual = ds.size_bytes()
@@ -764,9 +770,9 @@ def test_estimate_inmemory_data_size_filter_selecting_nothing(
     treating it as a failure discards every sample and falls back to the
     default ratio, overstating a read that returns no rows at all.
     """
-    estimate = MCAPDatasource(
-        paths=[binary_mcap_file], topics={"/no_such_topic"}
-    ).estimate_inmemory_data_size()
+    estimate = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], topics={"/no_such_topic"})
+    )
 
     # The measured zero is carried through rather than falling back to the
     # default ratio. The ratio lower bound does not apply under a filter, so
@@ -788,7 +794,7 @@ def test_estimate_inmemory_data_size_weights_channels_by_summary_counts(
     path = os.path.join(tmp_path, "skewed.mcap")
     create_skewed_mcap_file(path)
 
-    estimate = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
+    estimate = estimate_size(MCAPDatasource(paths=[path]))
     actual = ray.data.read_mcap(path).materialize().size_bytes()
 
     # Scaling the window's mean row size by the file's message count overstates
@@ -809,9 +815,9 @@ def test_estimate_inmemory_data_size_below_on_disk_size_under_filter(
     is legitimately far below 1.
     """
     on_disk_size = os.path.getsize(episode_mcap_file)
-    estimate = MCAPDatasource(
-        paths=[episode_mcap_file], topics={"/proprio"}
-    ).estimate_inmemory_data_size()
+    estimate = estimate_size(
+        MCAPDatasource(paths=[episode_mcap_file], topics={"/proprio"})
+    )
     actual = (
         ray.data.read_mcap(episode_mcap_file, topics={"/proprio"})
         .materialize()
@@ -836,14 +842,16 @@ def test_estimate_inmemory_data_size_time_window_above_sample_cap(
     """
     time_range = (0, 1_000_000_000)  # 1 s of a 4 s recording
 
-    unfiltered = MCAPDatasource(
-        paths=[episode_mcap_file], topics={"/proprio"}
-    ).estimate_inmemory_data_size()
-    windowed = MCAPDatasource(
-        paths=[episode_mcap_file],
-        topics={"/proprio"},
-        time_range=TimeRange(*time_range),
-    ).estimate_inmemory_data_size()
+    unfiltered = estimate_size(
+        MCAPDatasource(paths=[episode_mcap_file], topics={"/proprio"})
+    )
+    windowed = estimate_size(
+        MCAPDatasource(
+            paths=[episode_mcap_file],
+            topics={"/proprio"},
+            time_range=TimeRange(*time_range),
+        )
+    )
     actual = (
         ray.data.read_mcap(
             episode_mcap_file, topics={"/proprio"}, time_range=time_range

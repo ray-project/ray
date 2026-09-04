@@ -219,7 +219,7 @@ class MCAPDatasource(FileBasedDatasource):
             yield builder.build()
 
     def _should_include_message(
-        self, schema: "Schema", channel: "Channel", message: "Message"
+        self, schema: Optional["Schema"], channel: "Channel", message: "Message"
     ) -> bool:
         """Check if a message should be included based on filters.
 
@@ -228,7 +228,8 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP reader, so only message_types filtering is needed here.
 
         Args:
-            schema: MCAP schema object containing message type information.
+            schema: MCAP schema object containing message type information, or
+                ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and metadata.
             message: MCAP message object containing the actual data.
 
@@ -242,7 +243,11 @@ class MCAPDatasource(FileBasedDatasource):
         return True
 
     def _message_to_dict(
-        self, schema: "Schema", channel: "Channel", message: "Message", path: str
+        self,
+        schema: Optional["Schema"],
+        channel: "Channel",
+        message: "Message",
+        path: str,
     ) -> Dict[str, Any]:
         """Convert MCAP message to dictionary format.
 
@@ -250,7 +255,8 @@ class MCAPDatasource(FileBasedDatasource):
         format suitable for Ray Data processing.
 
         Args:
-            schema: MCAP schema object containing message type and encoding info.
+            schema: MCAP schema object containing message type and encoding
+                info, or ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and channel metadata.
             message: MCAP message object containing the actual message data.
             path: Path to the source file (for include_paths functionality).
@@ -436,6 +442,11 @@ class MCAPDatasource(FileBasedDatasource):
                     if not self._should_include_message(schema, channel, message):
                         continue
                     row = self._message_to_dict(schema, channel, message, path)
+                    if self._include_paths:
+                        # `FileBasedDatasource` appends this column downstream
+                        # of `_read_stream`, so the sample has to carry it too
+                        # or it under-counts.
+                        row["path"] = path
                     combined.add(dict(row))
                     per_channel[channel.id].add(row)
                     if combined.num_rows() >= MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES:
@@ -445,7 +456,7 @@ class MCAPDatasource(FileBasedDatasource):
                 if combined.num_rows() == 0:
                     return 0
 
-                combined_accessor = self._sampled_block_accessor(combined, path)
+                combined_accessor = self._sampled_block_accessor(combined)
                 if read_whole_selection:
                     # Every message a read selects was materialized, so this is
                     # the size itself rather than a sample of it. This is the
@@ -459,7 +470,7 @@ class MCAPDatasource(FileBasedDatasource):
                 )
                 bytes_per_row = {}
                 for channel_id, channel_builder in per_channel.items():
-                    accessor = self._sampled_block_accessor(channel_builder, path)
+                    accessor = self._sampled_block_accessor(channel_builder)
                     bytes_per_row[channel_id] = (
                         accessor.size_bytes() / accessor.num_rows()
                     )
@@ -487,18 +498,10 @@ class MCAPDatasource(FileBasedDatasource):
             )
             return None
 
-    def _sampled_block_accessor(
-        self, builder: DelegatingBlockBuilder, path: str
-    ) -> "BlockAccessor":
-        """Build a sampled block and return an accessor over it.
-
-        ``include_paths`` adds a column downstream of ``_read_stream``, so the
-        sample has to add it too or it under-counts.
-        """
-        block = builder.build()
-        if self._include_paths:
-            block = BlockAccessor.for_block(block).fill_column("path", path)
-        return BlockAccessor.for_block(block)
+    @staticmethod
+    def _sampled_block_accessor(builder: DelegatingBlockBuilder) -> "BlockAccessor":
+        """Build a sampled block and return an accessor over it."""
+        return BlockAccessor.for_block(builder.build())
 
     def _selects_subset(self) -> bool:
         """Whether any filter narrows the read to part of a file."""
@@ -519,6 +522,9 @@ class MCAPDatasource(FileBasedDatasource):
             return 1.0
 
         statistics = summary.statistics
+        if statistics is None:
+            return 1.0
+
         span = statistics.message_end_time - statistics.message_start_time
         if span <= 0:
             return 1.0
@@ -540,6 +546,9 @@ class MCAPDatasource(FileBasedDatasource):
         must handle: the total in ``statistics.message_count`` can be present
         without it.
         """
+        if summary.statistics is None:
+            return {}
+
         counts = summary.statistics.channel_message_counts
         fraction = self._time_range_overlap_fraction(summary)
 
@@ -559,10 +568,12 @@ class MCAPDatasource(FileBasedDatasource):
         Used to decide whether anything is selected at all, and to scale the
         sample when the summary carries no per-channel breakdown.
         """
-        if not self._topics and not summary.statistics.channel_message_counts:
-            return summary.statistics.message_count * self._time_range_overlap_fraction(
-                summary
-            )
+        statistics = summary.statistics
+        if statistics is None:
+            return 0
+
+        if not self._topics and not statistics.channel_message_counts:
+            return statistics.message_count * self._time_range_overlap_fraction(summary)
 
         return sum(self._selected_channel_message_counts(summary).values())
 
@@ -580,8 +591,8 @@ class MCAPDatasource(FileBasedDatasource):
 
 
 def _sample_files(
-    candidates: List[Tuple[str, int]],
-) -> List[Tuple[str, int]]:
+    candidates: List[Tuple[str, float]],
+) -> List[Tuple[str, float]]:
     """Pick evenly spaced files to sample.
 
     Even spacing rather than a prefix avoids a biased estimate when the input
