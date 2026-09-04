@@ -117,9 +117,11 @@ class ObservabilityAgentReporter(Reporter):
         # back the summary; those stay out of the logs to keep them readable.
         logger.debug(f"Observability agent response: {json.dumps(response)}")
 
-        query_result = response.get("result", {})
-        summary = query_result.get("analysis", {}).get("summary")
-        slack_thread = query_result.get("metadata", {}).get("slack_thread")
+        # `or {}` guards against nulls in the response: raising here would
+        # escape the reporter, and glue.py does not guard the reporting loop.
+        query_result = response.get("result") or {}
+        summary = (query_result.get("analysis") or {}).get("summary")
+        slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
 
         message = f"Observability agent analysis of job {job_id}:\n{summary}"
         if slack_thread:
@@ -141,7 +143,9 @@ class ObservabilityAgentReporter(Reporter):
             f"debug_sessions/job/{job_id}",
             timeout=CREATE_DEBUG_SESSION_TIMEOUT,
         )
-        debug_session_id = response.get("result", {}).get("debug_session_id")
+        # `or {}` so that a null result raises the error below rather than an
+        # AttributeError.
+        debug_session_id = (response.get("result") or {}).get("debug_session_id")
         if not debug_session_id:
             raise RuntimeError(
                 f"Debug session response for job {job_id} contains no "
