@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import shlex
 import shutil
+import signal
 import subprocess
 import time
 import uuid
@@ -31,6 +33,45 @@ _RUNSC_ROOT = "/tmp/runsc"
 # Directory to store sandbox states, container images and overlay filesystem.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+# network="public" gives each sandbox a private user+network namespace pair
+# bridged by pasta (passt) user-mode networking, the rootless Podman shape:
+# a holder process (`unshare --user --map-root-user --net`) pins the
+# namespaces; pasta attaches to them from the pod side, so its uplink is the
+# pod's interface, and runs in the foreground inside the sandbox's process
+# group; runsc runs inside via nsenter as mapped root. runsc still gets
+# --network=host, but "host" is now private to the sandbox: binds cannot
+# collide with or be reached by the pod or other sandboxes, while egress
+# leaves through pasta's tap. Mount and pid namespaces stay shared, so the
+# bundle and runsc's control sockets under _RUNSC_ROOT keep working for
+# pod-side state/exec/kill/delete.
+#
+# pasta relays every outbound connection through the pod's own sockets, so
+# the sandbox can reach any address the pod can reach: other Ray nodes
+# (including the head node's GCS and dashboard), other pods, and internal
+# services. pasta has no destination filter; network="none" remains the
+# boundary for untrusted code.
+#
+# These flags are the isolation property; tests pin the exact list:
+#   --config-net  copy the pod interface's addressing/routes onto the tap.
+#   -t/-u none    never republish namespace binds on the pod.
+#   -T/-U none    no loopback splicing: pod-local services stay
+#                 unreachable from the sandbox's 127.0.0.1.
+#   --no-map-gw   don't remap gateway-addressed traffic to the pod loopback.
+#   -4            IPv4 only, matching the generated resolv.conf.
+_PASTA_FLAGS = [
+    "--config-net",
+    "-t",
+    "none",
+    "-u",
+    "none",
+    "-T",
+    "none",
+    "-U",
+    "none",
+    "--no-map-gw",
+    "-4",
+]
+
 
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
@@ -46,6 +87,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        if config.network == "public":
+            missing = [b for b in ("pasta", "nsenter") if not shutil.which(b)]
+            if missing:
+                raise SandboxCreationError(
+                    "network='public' isolates each sandbox in its own network "
+                    "namespace via pasta (passt), but "
+                    f"{', '.join(repr(b) for b in missing)} was not found in "
+                    "PATH. Install the passt package (and util-linux) on the "
+                    "node image."
+                )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -100,28 +151,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             dns=config.dns,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
-        run_args = self._runsc_base_args(config)
-        if config.network:
-            # "public" = host egress + generated resolv.conf (handled in the
-            # OCI bundle); runsc itself just sees host networking.
-            runsc_network = "host" if config.network == "public" else config.network
-            run_args.extend(["--network", runsc_network])
         overlay_dir = os.path.join(root_dir, "overlay")
         os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args.append(f"--overlay2=root:dir={overlay_dir}")
-        run_args.extend(["run", "--bundle", root_dir, sandbox_id])
+        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
+        # start_new_session puts the namespace holder, pasta, and runsc run
+        # in one process group so cleanup can kill the whole tree; they share
+        # the stderr log so startup failures (missing /dev/net/tun, no
+        # uplink) surface through the SandboxCreationError path below.
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
+            start_new_session=True,
         )
         start_time = time.time()
         timeout = config.timeout_seconds
-        state_args = self._runsc_base_args(config) + ["state", sandbox_id]
 
         try:
             while True:
@@ -132,6 +180,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
+                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
                 res = subprocess.run(state_args, capture_output=True, text=True)
                 if res.returncode == 0:
                     try:
@@ -148,24 +197,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             raise
                         pass
 
+                # Check the deadline only after polling state, so a sandbox
+                # that reached 'running' just as the deadline passed is
+                # observed and kept rather than torn down unpolled.
                 if time.time() - start_time > timeout:
-                    proc.kill()
-                    proc.communicate()
                     raise SandboxTimeoutError(
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
                 time.sleep(0.1)
         except Exception:
-            if proc and proc.poll() is None:
-                proc.kill()
-                try:
-                    proc.communicate(timeout=2)
-                except subprocess.TimeoutExpired:
-                    pass
+            # Delete runsc's container state, then kill the whole group:
+            # under pasta, a bare proc.kill() would orphan the namespace
+            # holder and pasta.
+            self._delete_container_state(config, sandbox_id)
+            self._terminate_tree(proc)
             stderr_file.close()
-            del_args = self._runsc_base_args(config) + ["delete", sandbox_id]
-            subprocess.run(del_args, capture_output=True)
             shutil.rmtree(root_dir, ignore_errors=True)
             raise
 
@@ -174,6 +221,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
+            # The process group leader whose tree holds the sandbox and,
+            # for network="public", the namespace holder and pasta.
             "proc": proc,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
@@ -196,22 +245,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             except subprocess.TimeoutExpired:
                 pass
 
-            if proc and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.communicate(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+            self._delete_container_state(config, sandbox_id)
+
+            # Always take the whole group: after `runsc run` exits, the
+            # namespace holder and pasta (network="public") are still alive
+            # in it.
+            if proc:
+                self._terminate_tree(proc)
 
             if stderr_file:
                 try:
                     stderr_file.close()
                 except Exception:
                     pass
-
-            del_args = self._runsc_base_args(config)
-            del_args.extend(["delete", sandbox_id])
-            subprocess.run(del_args, capture_output=True)
 
             shutil.rmtree(root_dir, ignore_errors=True)
 
@@ -356,6 +402,94 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             args.append("--ignore-cgroups")
         args.extend(["--root", _RUNSC_ROOT])
         return args
+
+    def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
+        """Best-effort ``runsc delete -force`` for teardown paths.
+
+        Bounded by a timeout: a wedged gVisor (the usual reason a create
+        timed out) must not block the process-group kill and pasta reap
+        that follow, which is what actually frees the sandbox.
+        """
+        del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
+        try:
+            subprocess.run(del_args, capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+    def _build_run_command(
+        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+    ) -> List[str]:
+        """Build the full `runsc run` argv, pasta-wrapped for network="public".
+
+        Pure argv construction (no filesystem side effects) so tests can
+        assert the exact command without runsc or pasta installed.
+        """
+        args = self._runsc_base_args(config)
+        use_pasta = config.network == "public"
+        if use_pasta and "--rootless" in args:
+            # runsc runs as mapped root inside the holder's user namespace;
+            # --rootless would nest a second user namespace whose
+            # /proc/<pid>/root magic links the gofer cannot dereference.
+            # Rootless mode also tolerates cgroup permission failures, so
+            # keep that behavior explicitly.
+            args = [a for a in args if a != "--rootless"]
+            if "--ignore-cgroups" not in args:
+                args.insert(1, "--ignore-cgroups")
+        if config.network:
+            # "public" = host egress + generated resolv.conf (handled in the
+            # OCI bundle); runsc itself just sees host networking — of the
+            # per-sandbox namespace when wrapped, of the worker otherwise.
+            runsc_network = "host" if config.network == "public" else config.network
+            args.extend(["--network", runsc_network])
+        args.append(f"--overlay2=root:dir={overlay_dir}")
+        args.extend(["run", "--bundle", root_dir, sandbox_id])
+        if use_pasta:
+            netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+            pasta_pidfile = shlex.quote(os.path.join(root_dir, "pasta.pid"))
+            runsc = " ".join(shlex.quote(a) for a in args)
+            pasta = " ".join(["pasta", *_PASTA_FLAGS])
+            script = (
+                # The holder pins the namespaces for the sandbox's lifetime;
+                # --kill-child ties it to this script's process group.
+                "unshare --user --map-root-user --net --fork --kill-child "
+                f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
+                "HOLDER=$!; "
+                # Stop waiting as soon as the holder dies, and refuse an
+                # empty NSPID (which would resolve to /proc//ns/net).
+                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
+                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
+                # pasta attaches from the pod side and stays in the
+                # foreground, so it lives and dies with this process group.
+                # It writes --pid once initialised: that is the go signal.
+                f"{pasta} --foreground --pid {pasta_pidfile} "
+                "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user & "
+                "PASTA=$!; "
+                f"for i in $(seq 1 100); do [ -s {pasta_pidfile} ] && break; "
+                "kill -0 $PASTA 2>/dev/null || break; sleep 0.1; done; "
+                f'[ -s {pasta_pidfile} ] || {{ echo "pasta failed to start" >&2; exit 1; }}; '
+                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+            )
+            return ["bash", "-c", script]
+        return args
+
+    def _terminate_tree(self, proc: subprocess.Popen) -> None:
+        """SIGKILL the sandbox process group and reap the Popen.
+
+        The run Popen is started with ``start_new_session=True``, so its pid
+        is the group id for the namespace holder, pasta, runsc run, and the
+        sandbox process.
+        """
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            if proc.poll() is None:
+                proc.kill()
+        try:
+            proc.communicate(timeout=2)
+        except (subprocess.TimeoutExpired, ValueError):
+            pass
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")

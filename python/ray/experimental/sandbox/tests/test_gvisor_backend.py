@@ -1,5 +1,7 @@
 import os
+import socket
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -303,6 +305,204 @@ def test_image_workdir_sets_cwd_without_becoming_writable():
         assert runtime.exec(instance_id, "touch /go/probe").exit_code == 0
     finally:
         runtime.delete(instance_id)
+
+
+def _public_config() -> GVisorSandboxConfig:
+    return GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", network="public"
+    )
+
+
+def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
+    """`_build_run_command` over fixed paths — pure argv, no side effects."""
+    backend = GVisorSandboxBackend(**backend_kwargs)
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest", network=network, rootless=rootless
+    )
+    return backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
+
+
+def _host_ip() -> str:
+    """The worker's primary IPv4, which pasta copies onto each sandbox's tap."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+
+
+def _pasta_pids() -> set:
+    """PIDs of running pasta processes."""
+    pids = set()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv0 = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        if os.path.basename(argv0) == b"pasta":
+            pids.add(entry.name)
+    return pids
+
+
+def test_build_run_command_public_wraps_with_pasta():
+    """The pasta flags are the isolation property and the chain's shape is the
+    topology, so pin both: holder namespaces first, pasta attached from the pod
+    side in the foreground, runsc entered as mapped root (never --rootless)."""
+    cmd = _run_argv("public")
+    assert cmd[:2] == ["bash", "-c"]
+    script = cmd[2]
+
+    assert script.startswith(
+        "unshare --user --map-root-user --net --fork --kill-child "
+    )
+    assert script.endswith("run --bundle /tmp/rd sb-1")
+    for fragment in (
+        "/tmp/rd/netns.pid",
+        # pasta stays in the sandbox's process group (--foreground) and its
+        # pidfile, written once initialised, gates the runsc start.
+        "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
+        "--foreground --pid /tmp/rd/pasta.pid "
+        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user &",
+        "kill -0 $PASTA",
+        "[ -s /tmp/rd/pasta.pid ] ||",
+        # The holder wait fast-fails if the holder dies and refuses an
+        # empty NSPID (which would resolve to /proc//ns/net).
+        "kill -0 $HOLDER",
+        '[ -n "$NSPID" ]',
+        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
+        "--network host",
+        "--overlay2=root:dir=/tmp/rd/overlay",
+    ):
+        assert fragment in script, fragment
+    assert "--rootless" not in script
+
+
+def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
+    """Dropping --rootless must not make runsc start configuring cgroups: the
+    wrapper forces --ignore-cgroups for rootless configs, and only for them."""
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+
+    script = _run_argv("public")[2]
+    assert "--ignore-cgroups" in script
+    assert "--rootless" not in script
+
+    privileged = _run_argv("public", rootless=False)[2]
+    assert "--ignore-cgroups" not in privileged
+
+    assert "--ignore-cgroups" not in _run_argv("none")
+
+
+@pytest.mark.parametrize(
+    "network,rootless", [("none", True), ("host", True), ("sandbox", False)]
+)
+def test_build_run_command_other_modes_unwrapped(network, rootless):
+    """Every mode but "public" keeps today's bare runsc invocation."""
+    cmd = _run_argv(network, rootless=rootless)
+    assert cmd[0] == "runsc"
+    assert "pasta" not in cmd
+    assert cmd[cmd.index("--network") + 1] == network
+    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+
+
+def test_create_sandbox_requires_pasta(monkeypatch):
+    """A missing pasta fails fast — before the image pull — with remediation."""
+
+    class _NoPullImageManager:
+        def pull_image(self, *args, **kwargs):
+            raise AssertionError("image pull must not run when pasta is missing")
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: None if name == "pasta" else f"/usr/bin/{name}",
+    )
+    backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
+    with pytest.raises(SandboxCreationError) as err:
+        backend.create_sandbox(_public_config())
+    assert all(hint in str(err.value) for hint in ("pasta", "passt"))
+
+
+def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
+    """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
+    hostfwd contract): each reaches its own listener, the bind never surfaces in
+    the worker's namespace, and neither sandbox can reach the other's."""
+    backend = GVisorSandboxBackend()
+    sb1, sb2 = (backend.create_sandbox(_public_config()) for _ in range(2))
+    tokens = {sb1: "SB1-TOKEN", sb2: "SB2-TOKEN"}
+    try:
+        for sb, token in tokens.items():
+            # /tmp stays a writable tmpfs on the readonly rootfs.
+            backend.write_file(sb, "/tmp/www/token", token)
+            # busybox httpd daemonizes; sharing one netns, the second bind
+            # would fail with EADDRINUSE.
+            res = backend.exec_command(sb, "httpd -p 2222 -h /tmp/www", timeout=30)
+            assert res.exit_code == 0, res.stderr
+
+        for sb, token in tokens.items():
+            res = backend.exec_command(
+                sb, "wget -q -T 5 -O - http://127.0.0.1:2222/token", timeout=30
+            )
+            assert res.exit_code == 0, res.stderr
+            assert token in res.stdout
+
+        # The worker's own namespace must see nothing on 2222.
+        host_ip = _host_ip()
+        for target in ("127.0.0.1", host_ip):
+            with pytest.raises(OSError):
+                socket.create_connection((target, 2222), timeout=3).close()
+
+        # No address names one sandbox from another: pasta --config-net gives
+        # every sandbox the worker's own IP, so from sb2 that IP is sb2 itself.
+        res = backend.exec_command(
+            sb2, f"wget -q -T 3 -O - http://{host_ip}:2222/token", timeout=30
+        )
+        assert tokens[sb1] not in res.stdout
+        assert res.exit_code != 0 or tokens[sb2] in res.stdout
+    finally:
+        for sb in (sb1, sb2):
+            backend.delete_sandbox(sb)
+
+
+def test_netns_egress_and_dns(ensure_pasta):
+    """Egress and the generated resolv.conf work from inside the netns."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(_public_config())
+    try:
+        res = backend.exec_command(
+            sb, "wget -q -T 15 -O - http://example.com", timeout=60
+        )
+        assert res.exit_code == 0, res.stderr
+        assert "Example" in res.stdout
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_netns_teardown_reaps_pasta(ensure_pasta):
+    """delete_sandbox ends the pasta process tree and removes all state."""
+    before = _pasta_pids()
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(_public_config())
+    meta = backend._sandbox_metadata[sb]
+    assert meta["proc"].poll() is None
+    assert _pasta_pids() > before
+
+    backend.delete_sandbox(sb)
+    assert meta["proc"].poll() is not None
+    assert _pasta_pids() == before
+    assert not os.path.exists(meta["root_dir"])
+    assert sb not in backend._sandbox_metadata
+
+
+def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
+    """A failed create (bad image) leaves no pasta process behind."""
+    before = _pasta_pids()
+    backend = GVisorSandboxBackend()
+    with pytest.raises(SandboxCreationError):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="nonexistent_invalid_image_12345:latest", network="public"
+            )
+        )
+    assert _pasta_pids() == before
 
 
 if __name__ == "__main__":

@@ -37,8 +37,9 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
+* **pasta (`network="public"` only)**: The [passt](https://passt.top) package's `pasta` binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. pasta bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/).
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `pasta` ships as the `passt` package on Debian 12+/Ubuntu 23.04+ and Fedora, or as a [static build](https://passt.top/builds/latest/) (x86_64 only; on arm64 use the distro package or build from source — passt has no build dependencies).
 
 ## Usage patterns and examples
 
@@ -268,9 +269,13 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 | Mode | Network access | `/etc/resolv.conf` | Security property |
 | --- | --- | --- | --- |
 | `none` *(default)* | None | untouched | No egress. This is the recommended setting for untrusted code. |
-| `public` | Host egress | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Egress works, but the sandbox inherits nothing from the host's resolver configuration. No internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. |
-| `host` | Full host network identity | Host's own file, mounted read-only (`dns` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
+| `public` | Internet egress from a network namespace private to the sandbox, bridged by [pasta](https://passt.top) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox inherits nothing from the host's resolver configuration. The sandbox can still reach any network address the node can reach, including other Ray nodes and internal services. Requires `pasta` on the node. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
+
+:::{warning}
+`public` isolates sandboxes from each other and from the node's own services, not from the network the node sits on. pasta relays every outbound connection through the node, so a `public` sandbox can reach other Ray nodes, including the head node's GCS and dashboard ports, other Kubernetes Pods, and any internal service the node can reach. Use `network="none"` for untrusted code.
+:::
 
 To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
 
@@ -356,6 +361,8 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
+* **`pasta` not found for `network="public"`**: Install the passt package (or a [static build](https://passt.top/builds/latest/)) on worker nodes.
+* **`public` sandboxes fail to start with a tap or namespace error**: pasta needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The pasta error appears in the sandbox's `runsc.stderr.log` and in the creation error message.
 
 ## Next steps
 
