@@ -7673,7 +7673,10 @@ class Dataset:
             block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
-    @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+        warning=True,
+    )
     def to_random_access_dataset(
         self,
         key: str,
