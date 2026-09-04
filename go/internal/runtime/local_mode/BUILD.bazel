@@ -1,0 +1,48 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# local_mode 包 - Local mode runtime implementation
+go_library(
+    name = "local_mode",
+    srcs = [
+        "actor_concurrency_group.go",
+        "function_wrapper.go",
+        "local_mode_runtime.go",
+        "task_executor.go",
+        "task_submitter.go",
+        "worker_context.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/local_mode",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/errors",
+        "//go/internal/runtime/base",
+        "//go/internal/runtime/objectstore",
+        "//go/internal/runtime/serializer",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
+)
+
+go_test(
+    name = "local_mode_test",
+    srcs = [
+        "actor_concurrency_group_test.go",
+        "local_mode_runtime_test.go",
+        "task_executor_test.go",
+        "task_submitter_test.go",
+        "worker_context_test.go",
+    ],
+    embed = [":local_mode"],
+    deps = [
+        "//go/internal/runtime/base",
+        "//go/internal/runtime/objectstore",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/submitter",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

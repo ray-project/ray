@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# The worker package implements the Plugin mode of the Ray worker process:
+# worker.go loads the go_runtime.so shared library via the Go plugin API.
+# This mirrors the Java runtime, where System.load() loads
+# libcore_worker_library_java.so.
+go_library(
+    name = "worker",
+    srcs = [
+        "ray_config.go",
+        "ray_constants.go",
+        "worker.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/worker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/errors",
+        "//go/internal/gcs/native",
+        "//go/internal/runtime/base",
+        "//go/internal/runtime/native",
+        "//go/internal/runtime/serializer",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/proto",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)

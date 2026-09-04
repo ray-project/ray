@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "ids",
+    srcs = [
+        "actor_id.go",
+        "hash.go",
+        "id.go",
+        "id_def.go",
+        "job_id.go",
+        "lease_id.go",
+        "object_id.go",
+        "placement_group_id.go",
+        "task_id.go",
+        "unique_id.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/ids",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "ids_test",
+    srcs = ["id_test.go"],
+    embed = [":ids"],
+)

@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "raygo_lib",
+    srcs = ["raygo.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/raygo",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/cmd/raygo/default_worker",
+        "//go/cmd/raygo/setup_worker",
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+go_binary(
+    name = "raygo",
+    embed = [":raygo_lib"],
+    visibility = ["//visibility:public"],
+)

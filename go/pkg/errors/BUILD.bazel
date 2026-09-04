@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "errors",
+    srcs = ["errors.go"],
+    importpath = "github.com/ray-project/ray/go/pkg/errors",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "errors_test",
+    srcs = ["errors_test.go"],
+    embed = [":errors"],
+    importpath = "github.com/ray-project/ray/go/pkg/errors",
+)

@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# function package provides function registration and management for Go Ray tasks
+
+go_library(
+    name = "function",
+    srcs = [
+        "descriptor.go",
+        "manager.go",
+        "registry.go",
+        "types.go",
+        "util.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/function",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/log",
+    ],
+)
+
+# Tests for function package
+go_test(
+    name = "function_test",
+    srcs = ["manager_test.go"],
+    embed = [":function"],
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/function",
+    deps = ["@com_github_stretchr_testify//assert"],
+)

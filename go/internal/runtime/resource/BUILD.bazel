@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+package(default_visibility = ["//visibility:public"])
+
+go_library(
+    name = "resource",
+    srcs = ["manager.go"],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/resource",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+    ],
+)
+
+# Deferred: manager_test.go not migrated (Task 1 excluded test files).
+# go_test(
+#    name = "resource_test",
+#    srcs = ["manager_test.go"],
+#    embed = [":resource"],
+#    deps = [
+#        "//go/pkg/ids",
+#        "@com_github_stretchr_testify//assert",
+#    ],
+# )

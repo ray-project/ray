@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "contract",
+    srcs = [
+        "runtime.go",
+        "types.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/contract",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
+)

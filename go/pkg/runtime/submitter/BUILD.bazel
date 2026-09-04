@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "submitter",
+    srcs = [
+        "executor.go",
+        "options.go",
+        "submitter.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/submitter",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/function",
+    ],
+)
+
+go_test(
+    name = "submitter_test",
+    srcs = ["options_test.go"],
+    embed = [":submitter"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+    ],
+)

@@ -1,0 +1,60 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "common",
+    srcs = [
+        "file_lock.go",
+        "log_utils.go",
+        "network_util.go",
+        "path_utils.go",
+        "ray_constants.go",
+        "services.go",
+        "state.go",
+        "utils.go",
+        "validation.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/common",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/log/lumberjack",
+        "//go/pkg/log/zap",
+        "//go/proto",
+        "@com_github_gofrs_flock//:flock",
+        "@org_uber_go_zap//zapcore",
+    ],
+)
+
+go_test(
+    name = "common_test",
+    srcs = [
+        "file_lock_test.go",
+        "log_utils_test.go",
+        "network_util_test.go",
+        "path_utils_test.go",
+        "ray_constants_test.go",
+        "services_test.go",
+        "state_test.go",
+        "utils_test.go",
+        "validation_test.go",
+    ],
+    embed = [":common"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+go_test(
+    name = "state_test",
+    srcs = ["state_test.go"],
+    embed = [":common"],
+    deps = [
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)

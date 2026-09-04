@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "runtime_env",
+    srcs = ["context.go"],
+    importpath = "github.com/ray-project/ray/go/internal/runtime_env",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/pkg/log",
+        "//go/proto",
+        "@dev_al_essio_pkg_shellescape//:shellescape",
+    ],
+)

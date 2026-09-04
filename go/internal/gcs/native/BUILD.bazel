@@ -1,0 +1,90 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# 主 native 库（包含 benchmark）
+go_library(
+    name = "native",
+    srcs = [
+        "async.go",
+        "autoscaler_cgo.go",
+        "client_cgo.go",
+        "client_cgo_benchmark.go",
+        "config.go",
+        "nodes_cgo.go",
+        "publisher_cgo.go",
+        "subscriber_cgo.go",
+    ],
+    cdeps = ["//src/ray/core_worker/lib/go:gcs_client_bridge"],
+    cgo = True,
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+# Deferred: *_test.go not migrated (Task 1 excluded test files).
+# 纯单元测试 - 不依赖 CGO 或 GCS
+# go_test(
+#    name = "native_unit_test",
+#    srcs = ["native_unit_test.go"],
+#    embed = [":native"],
+#    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+# )
+#
+# CGO 测试 - 包含所有需要 CGO 的测试（需要 GCS）
+# go_test(
+#    name = "cgo_test",
+#    srcs = [
+#        "cgo_integration_test.go",
+#        "cgo_smoke_test.go",
+#        "client_cgo_test.go",
+#        "subscriber_cgo_test.go",
+#    ],
+#    embed = [":native"],
+#    tags = [
+#        "integration",
+#        "local",
+#        "requires-gcs",
+#    ],
+#    deps = [
+#        "//go/pkg/gcs",
+#        "//go/pkg/ids",
+#        "//go/pkg/log/zap",
+#        "@org_uber_go_zap//zapcore",
+#    ],
+# )
+#
+# go_test(
+#    name = "native_test",
+#    srcs = [
+#        "cgo_integration_test.go",
+#        "cgo_smoke_test.go",
+#        "native_unit_test.go",
+#        "subscriber_cgo_test.go",
+#    ],
+#    embed = [":native"],
+#    deps = [
+#        "//go/pkg/gcs",
+#        "//go/pkg/ids",
+#        "//go/pkg/log/zap",
+#        "@org_uber_go_zap//zapcore",
+#    ],
+# )
+
+# Benchmark 测试 - 使用 go test -bench=. -run=^$ 运行
+# 注意：benchmark 文件属于 package native，不是 package main，因此必须是 go_test 而不是 go_binary
+go_test(
+    name = "benchmarks",
+    srcs = ["client_cgo_benchmark.go"],
+    cgo = True,
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    tags = ["benchmark"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+    ],
+)

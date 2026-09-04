@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "lumberjack",
+    srcs = [
+        "lumberjack.go",
+        "options.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/pkg/log/lumberjack",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@in_gopkg_natefinch_lumberjack_v2//:lumberjack_v2",
+        "@org_uber_go_zap//zapcore",
+    ],
+)
+
+go_test(
+    name = "lumberjack_test",
+    srcs = ["lumberjack_test.go"],
+    embed = [":lumberjack"],
+    deps = [
+        "@in_gopkg_natefinch_lumberjack_v2//:lumberjack_v2",
+        "@org_uber_go_zap//zapcore",
+    ],
+)

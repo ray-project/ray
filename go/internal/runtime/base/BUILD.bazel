@@ -1,0 +1,40 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# base package provides the foundation types and interfaces for Ray Go Runtime
+# This includes:
+# - Runtime interface
+# - RuntimeFactory interface
+# - InitializeOptions and WorkerType types
+# - WorkerContext interface
+#
+# 注意：base 包不依赖任何其他 runtime 子包，避免循环依赖
+go_library(
+    name = "base",
+    srcs = [
+        "context.go",  # WorkerContext interface and TaskType constants
+        "factory.go",  # RuntimeFactory interface
+        "handle.go",  # RuntimeHandle interface and implementation
+        "options.go",  # InitializeOptions and conversion functions
+        "runtime.go",  # Runtime interface (re-export from contract)
+        "runtime_manager.go",  # Runtime singleton management and Initialize/Shutdown functions
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/base",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/errors",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",  # Added dependency on contract package
+        "//go/pkg/runtime/object",
+    ],
+)
+
+# base 包的单元测试
+go_test(
+    name = "base_test",
+    srcs = ["options_test.go"],
+    embed = [":base"],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/base",
+    deps = ["//go/pkg/options"],
+)
