@@ -146,6 +146,9 @@ def test_uri_to_http_and_back():
     with pytest.raises(ValueError, match="does not end in a supported format"):
         assert uri_to_http_components("gcs://hello")
 
+    with pytest.raises(ValueError, match="does not end in a supported format"):
+        assert uri_to_http_components("gcs://hello.tar")
+
     assert http_uri_components_to_uri("gcs", "hello.zip") == "gcs://hello.zip"
     assert http_uri_components_to_uri("blah", "halb.zip") == "blah://halb.zip"
     assert http_uri_components_to_uri("blah", "halb.whl") == "blah://halb.whl"

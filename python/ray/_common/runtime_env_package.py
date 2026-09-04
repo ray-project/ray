@@ -6,14 +6,14 @@ PY_MODULES = "py_modules"
 ZIP_EXTENSION = ".zip"
 WHEEL_EXTENSION = ".whl"
 JAR_EXTENSION = ".jar"
+TAR_EXTENSION = ".tar"
 TAR_GZ_EXTENSION = ".tar.gz"
 TGZ_EXTENSION = ".tgz"
 TAR_BZ2_EXTENSION = ".tar.bz2"
 TAR_XZ_EXTENSION = ".tar.xz"
 
-# These are the user-facing formats accepted for RuntimeEnv package fields.
-# Keep field-specific validation, local uploads, and Job package uploads derived
-# from this mapping so they cannot silently diverge.
+# Base user-facing formats shared by RuntimeEnv package uploads and remote URI
+# validation. Field-specific remote-only formats are added separately below.
 RUNTIME_ENV_PACKAGE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
     WORKING_DIR: (
         ZIP_EXTENSION,
@@ -30,6 +30,20 @@ RUNTIME_ENV_PACKAGE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
     ),
 }
 
+# Remote working_dir URIs may refer to existing uncompressed tar archives. Keep
+# .tar out of the general mapping above so local package uploads and py_modules
+# do not accept it.
+REMOTE_RUNTIME_ENV_PACKAGE_EXTENSIONS: Dict[str, Tuple[str, ...]] = {
+    WORKING_DIR: (
+        ZIP_EXTENSION,
+        TAR_EXTENSION,
+        TAR_GZ_EXTENSION,
+        TGZ_EXTENSION,
+        TAR_XZ_EXTENSION,
+    ),
+    PY_MODULES: RUNTIME_ENV_PACKAGE_EXTENSIONS[PY_MODULES],
+}
+
 PACKAGE_UPLOAD_EXTENSIONS = tuple(
     dict.fromkeys(
         extension
@@ -41,6 +55,7 @@ PACKAGE_UPLOAD_EXTENSIONS = tuple(
 # .tar.bz2 is retained as a low-level download format for compatibility, but it
 # is not part of the public working_dir or py_modules contract above.
 TAR_EXTENSIONS = (
+    TAR_EXTENSION,
     TAR_GZ_EXTENSION,
     TGZ_EXTENSION,
     TAR_BZ2_EXTENSION,
@@ -91,7 +106,7 @@ def validate_package_extension(
     Raises:
         ValueError: If the path does not have an extension supported by the field.
     """
-    supported_extensions = RUNTIME_ENV_PACKAGE_EXTENSIONS[field]
+    supported_extensions = REMOTE_RUNTIME_ENV_PACKAGE_EXTENSIONS[field]
     if has_package_extension(path, supported_extensions):
         return
 
