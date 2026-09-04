@@ -37,11 +37,12 @@ logger = logging.getLogger(__name__)
 
 
 def _build_grpc_address(node_ip_address: str, grpc_port: int) -> str:
-    grpc_ip = (
-        get_localhost_ip()
-        if is_localhost(node_ip_address)
-        else get_all_interfaces_ip(node_ip_address)
-    )
+    if node_ip_address == "localhost":
+        grpc_ip = get_localhost_ip()
+    elif is_localhost(node_ip_address):
+        grpc_ip = node_ip_address
+    else:
+        grpc_ip = get_all_interfaces_ip(node_ip_address)
     return build_address(grpc_ip, grpc_port)
 
 

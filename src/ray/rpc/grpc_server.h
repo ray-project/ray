@@ -32,8 +32,15 @@ namespace rpc {
 
 namespace internal {
 
-/// Internal helper that returns the address on which a gRPC server should listen for a
-/// Ray node address. This is not a public networking API.
+/**
+ * @brief Return the address on which a gRPC server should listen for a Ray node.
+ *
+ * This is an internal helper, not a public networking API.
+ *
+ * @param node_ip_address The IP address advertised by the Ray node.
+ * @return The literal loopback address, or the all-interfaces address for the same
+ * address family.
+ */
 std::string GetGrpcServerBindAddress(const std::string &node_ip_address);
 
 }  // namespace internal
