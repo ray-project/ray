@@ -191,7 +191,9 @@ def test_hung_worker_releases_pinned_lease_args(shutdown_only):
         total = 0
         for path in glob.glob(os.path.join(session_dir, "logs", "debug_state*.txt")):
             with open(path) as f:
-                m = re.search(r"Total size of pinned lease arguments:\s*(\d+)", f.read())
+                m = re.search(
+                    r"Total size of pinned lease arguments:\s*(\d+)", f.read()
+                )
             if m:
                 total += int(m.group(1))
         return total
@@ -218,14 +220,14 @@ def test_hung_worker_releases_pinned_lease_args(shutdown_only):
         payload = ray.put(np.zeros(15 * 1024 * 1024 // 8, dtype=np.int64))
         ref = hanging_task.remote(payload)
         if i == 0:
-            assert wait_until(lambda v: v >= 10 * 1024 * 1024) > 0, (
-                "raylet did not pin the lease arg; test precondition broken"
-            )
+            assert (
+                wait_until(lambda v: v >= 10 * 1024 * 1024) > 0
+            ), "raylet did not pin the lease arg; test precondition broken"
         keepalive.append(ray.get(ref, timeout=30))
         del payload
-        assert wait_until(lambda v: v == 0) == 0, (
-            f"pinned bytes did not return to 0 after iteration {i}"
-        )
+        assert (
+            wait_until(lambda v: v == 0) == 0
+        ), f"pinned bytes did not return to 0 after iteration {i}"
     keepalive.clear()
 
 

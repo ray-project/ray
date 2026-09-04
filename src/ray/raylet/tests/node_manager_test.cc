@@ -477,8 +477,7 @@ class NodeManagerTest : public ::testing::Test {
       size_t arg_bytes) {
     auto lease_spec = BuildLeaseSpec({});
     ObjectID object_dep = ObjectID::FromRandom();
-    lease_spec.GetMutableMessage().add_dependencies()->set_object_id(
-        object_dep.Binary());
+    lease_spec.GetMutableMessage().add_dependencies()->set_object_id(object_dep.Binary());
 
     rpc::Address owner_addr;
     RAY_UNUSED(mock_store_client_->TryCreateImmediately(
@@ -1727,8 +1726,7 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
 
 // Regression: HandleReturnWorkerLease with worker_exiting=true must release
 // pinned lease args without waiting on DisconnectClient.
-TEST_F(NodeManagerTest,
-       ReturnWorkerLeaseWithWorkerExitingReleasesPinnedArgs) {
+TEST_F(NodeManagerTest, ReturnWorkerLeaseWithWorkerExitingReleasesPinnedArgs) {
   auto [lease_id, worker] = GrantLeaseWithPinnedArg(/*arg_bytes=*/1024);
   ASSERT_GT(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
   ASSERT_EQ(leased_workers_.size(), 1u);
