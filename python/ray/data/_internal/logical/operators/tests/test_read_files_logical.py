@@ -214,3 +214,9 @@ def test_apply_predicate_mixed_and_with_unsplittable_residual(tmp_path):
     # The residual carried by the new Filter is exactly the mixed-OR
     # conjunct that couldn't be pushed.
     _assert_pred_equals(result.predicate_expr, mixed_or)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

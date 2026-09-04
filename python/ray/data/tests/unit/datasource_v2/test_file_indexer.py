@@ -6,13 +6,14 @@ from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     LineDelimitedFileChunker,
-    ParquetFileChunker,
     WholeFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
+    _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -33,6 +34,18 @@ def _list_all_file_infos(indexer, paths, **kwargs):
         pa.array(paths), filesystem=LocalFileSystem(), **kwargs
     )
     return sorted((fi.path, fi.size) for fi in file_infos)
+
+
+def _list_paths_in_order(indexer, paths, **kwargs):
+    """Run list_files and flatten paths in yield order (not sorted)."""
+    pa_paths = pa.array(paths)
+    fs = LocalFileSystem()
+    manifests = list(indexer.list_files(pa_paths, filesystem=fs, **kwargs))
+    results = []
+    for m in manifests:
+        for p in m.paths:
+            results.append(str(p))
+    return results
 
 
 @pytest.fixture(params=[1, 2], ids=["sequential", "threaded"])
@@ -327,7 +340,7 @@ class TestFileChunkerIntegration:
         assert isinstance(indexer.file_chunker, WholeFileChunker)
 
     def test_explicit_chunker_is_exposed(self):
-        chunker = ParquetFileChunker(target_chunk_size=1024)
+        chunker = LineDelimitedFileChunker()
         indexer = NonSamplingFileIndexer(
             ignore_missing_paths=False, file_chunker=chunker
         )
@@ -344,29 +357,6 @@ class TestFileChunkerIntegration:
         # ``WholeFileChunker`` emits one ``None`` chunk per file.
         assert list(manifest.file_chunk_metadatas) == [None]
         assert list(manifest.file_sizes) == [100]
-
-    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
-        # Write a "Parquet" file by name only — the chunker doesn't open it.
-        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
-        chunker = ParquetFileChunker(target_chunk_size=1024)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=1,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        rows = []
-        for m in manifests:
-            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                rows.append((str(path), int(size), md))
-
-        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
-        assert len(rows) == 10
-        for i, (_, _, md) in enumerate(rows):
-            assert md is not None
-            assert md["chunk_idx"] == i
-            assert md["total_num_chunks"] == 10
 
     def test_line_delimited_chunker_byte_ranges(self, tmp_path):
         (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
@@ -389,6 +379,206 @@ class TestFileChunkerIntegration:
         # Byte ranges must tile the file exactly.
         assert rows[0][2]["chunk_byte_start_idx"] == 0
         assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
+
+
+class TestAsWholeFileIndexer:
+    """``as_whole_file_indexer`` must downgrade to a plain per-file lister.
+
+    ``PushdownCountFiles`` relies on this to count each file exactly once
+    without triggering a metadata-aware subclass's listing strategy.
+    """
+
+    def test_returns_base_type_from_metadata_aware_subclass(self):
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        downgraded = FooterFileIndexer(
+            ignore_missing_paths=False
+        ).as_whole_file_indexer()
+
+        # Exact type, not isinstance: FooterFileIndexer subclasses
+        # NonSamplingFileIndexer but overrides list_files, so an isinstance
+        # check here would not catch a regression.
+        assert type(downgraded) is NonSamplingFileIndexer
+
+    @pytest.mark.parametrize(
+        "ignore_missing_paths,num_workers,max_paths_per_output",
+        [(False, 1, 10), (True, 4, 1000)],
+    )
+    def test_carries_over_traversal_config(
+        self, ignore_missing_paths, num_workers, max_paths_per_output
+    ):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=ignore_missing_paths,
+            num_workers=num_workers,
+            max_paths_per_output=max_paths_per_output,
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert downgraded._ignore_missing_paths == ignore_missing_paths
+        assert downgraded._num_workers == num_workers
+        assert downgraded._max_paths_per_output == max_paths_per_output
+        # Derived in __init__, so rebuilding must recompute it rather than
+        # copying a stale value.
+        assert downgraded._queue_size_per_thread == max_paths_per_output * 4
+
+    def test_always_uses_whole_file_chunker(self):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
+        )
+
+        assert isinstance(source.as_whole_file_indexer().file_chunker, WholeFileChunker)
+
+    def test_source_indexer_is_not_mutated(self):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
+        )
+
+        source.as_whole_file_indexer()
+
+        # Guards against regressing to in-place mutation of the caller's indexer.
+        assert isinstance(source.file_chunker, LineDelimitedFileChunker)
+
+    def test_carries_over_skip_paths(self, tmp_path):
+        """A dropped ``skip_paths`` would let excluded files back into the
+        listing, inflating a pushed-down ``count()``."""
+        kept = tmp_path / "kept.csv"
+        skipped = tmp_path / "skipped.csv"
+        kept.write_bytes(b"x" * 10)
+        skipped.write_bytes(b"x" * 20)
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(skipped)}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert downgraded._skip_paths == frozenset({str(skipped)})
+        assert _list_all(downgraded, [str(tmp_path)]) == [(str(kept), 10)]
+
+    def test_carried_skip_paths_still_tolerate_missing_path(self, tmp_path):
+        """``skip_paths`` drops a named path whether or not it exists, so a
+        skip-only missing path must not raise once carried over."""
+        kept = tmp_path / "kept.csv"
+        kept.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert _list_all(downgraded, [str(kept), missing]) == [(str(kept), 10)]
+
+
+class TestFileShuffle:
+    """File shuffle runs after path discovery and before chunking/metadata."""
+
+    def _write_files(self, tmp_path, n=10):
+        paths = []
+        for i in range(n):
+            path = tmp_path / f"f{i:02d}.txt"
+            path.write_bytes(b"x" * (i + 1))
+            paths.append(str(path))
+        return paths
+
+    def test_seeded_shuffle_is_deterministic_and_permutes(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        listed = list(
+            indexer.list_file_infos(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+            )
+        )
+        expected_paths = [fi.path for fi in _shuffle_file_infos(listed, seed=42)]
+
+        first = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        second = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        unshuffled = _list_paths_in_order(indexer, paths, preserve_order=True)
+
+        assert first == second == expected_paths
+        assert first != unshuffled
+        assert sorted(first) == sorted(unshuffled)
+
+    def test_list_file_infos_is_not_shuffled(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        shuffled = _list_paths_in_order(
+            indexer, paths, shuffle_config=shuffle_config, preserve_order=True
+        )
+        infos = [
+            fi.path
+            for fi in indexer.list_file_infos(
+                pa.array(paths), filesystem=LocalFileSystem(), preserve_order=True
+            )
+        ]
+        unshuffled = _list_paths_in_order(indexer, paths, preserve_order=True)
+
+        assert infos == unshuffled
+        assert infos != shuffled
+
+    def test_unshuffled_listing_matches_file_info_order(self, tmp_path, indexer):
+        paths = self._write_files(tmp_path)
+        infos = [
+            fi.path
+            for fi in indexer.list_file_infos(
+                pa.array(paths), filesystem=LocalFileSystem(), preserve_order=True
+            )
+        ]
+        assert _list_paths_in_order(indexer, paths, preserve_order=True) == infos
+
+
+class TestFooterIndexerFileShuffle:
+    """Footer indexer shuffles files before footer-read batches."""
+
+    def test_shuffled_file_infos_drive_footer_batches(self, tmp_path):
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        paths = []
+        for i in range(8):
+            path = tmp_path / f"f{i:02d}.parquet"
+            path.write_bytes(b"x")
+            paths.append(str(path))
+
+        indexer = FooterFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            footer_batch_size=3,
+        )
+        shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        shuffled = list(
+            indexer._iter_file_infos_for_list(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+                shuffle_config=shuffle_config,
+            )
+        )
+        unshuffled = list(
+            indexer.list_file_infos(
+                pa.array(paths),
+                filesystem=LocalFileSystem(),
+                preserve_order=True,
+            )
+        )
+        assert [fi.path for fi in shuffled] != [fi.path for fi in unshuffled]
+        assert [fi.path for fi in shuffled] == [
+            fi.path for fi in _shuffle_file_infos(unshuffled, seed=42)
+        ]
+
+        batches = list(indexer._batches(iter(shuffled)))
+        flattened = [p for batch in batches for p, _ in batch]
+        assert flattened == [fi.path for fi in shuffled]
+        assert len(batches) > 1
 
 
 if __name__ == "__main__":

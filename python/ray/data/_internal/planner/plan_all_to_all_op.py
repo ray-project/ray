@@ -15,6 +15,12 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _make_hash_partition_fn,
     _sort_reduce,
 )
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+    ExternalHashShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
+    ExternalHashShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
@@ -78,22 +84,19 @@ def _plan_hash_shuffle_repartition_v2(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for V2 hash shuffle.
+    """Build the two-op Map → Reduce DAG for SHUFFLE_V2 hash-shuffle repartition.
 
-    Returns the reduce op; the executor crawls upstream via its
-    input_dependencies to find the map op.
+    Picks the external (file-transport) or object-store op pair based on
+    ``data_context.use_external_hash_shuffle``. Returns the reduce op; the
+    executor crawls upstream via its input_dependencies to find the map op.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
     key_list = list(normalized_key_columns)
 
-    input_logical_op = input_physical_op._logical_operators[0]
-    estimated_input_blocks = input_logical_op.estimated_num_outputs()
     target_num_partitions = (
-        logical_op.num_outputs
-        or estimated_input_blocks
-        or data_context.default_hash_shuffle_parallelism
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
     )
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
@@ -104,29 +107,41 @@ def _plan_hash_shuffle_repartition_v2(
         else SHUFFLE_PEAK_MEMORY_MULTIPLIER
     )
 
-    map_op = ShuffleMapOp(
+    if data_context.use_external_hash_shuffle:
+        map_cls, reduce_cls, prefix = (
+            ExternalHashShuffleMapOp,
+            ExternalHashShuffleReduceOp,
+            "ExternalHashShuffle",
+        )
+    else:
+        map_cls, reduce_cls, prefix = (
+            ShuffleMapOp,
+            ShuffleReduceOp,
+            "HashShuffle",
+        )
+
+    map_op = map_cls(
         input_physical_op,
         data_context,
         num_partitions=target_num_partitions,
         partition_fn=partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"HashShuffleMap(keys={tuple(key_list)}, "
+            f"{prefix}Map(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    reduce_op = ShuffleReduceOp(
-        map_op,
-        data_context,
+    reduce_kwargs = dict(
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
         peak_memory_multiplier=peak_memory_multiplier,
         name=(
-            f"HashShuffleReduce(keys={tuple(key_list)}, "
+            f"{prefix}Reduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
+    reduce_op = reduce_cls(map_op, data_context, **reduce_kwargs)
     return reduce_op
 
 
@@ -164,12 +179,8 @@ def _plan_hash_shuffle_aggregate_v2(
     aggs = tuple(logical_op.aggs)
 
     if key_list:
-        input_logical_op = input_physical_op._logical_operators[0]
-        estimated_input_blocks = input_logical_op.estimated_num_outputs()
         num_partitions = (
-            logical_op.num_partitions
-            or estimated_input_blocks
-            or data_context.default_hash_shuffle_parallelism
+            logical_op.num_partitions or data_context.default_hash_shuffle_parallelism
         )
     else:
         # Global aggregation reduces the whole dataset to a single row.
@@ -316,7 +327,7 @@ def plan_all_to_all_op(
                 return _plan_gpu_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
-            elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+            elif data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
                 return _plan_hash_shuffle_repartition_v2(
                     data_context, op, input_physical_dag
                 )
@@ -328,7 +339,7 @@ def plan_all_to_all_op(
                 raise ValueError(
                     "Key-based repartitioning only supported for "
                     f"`DataContext.shuffle_strategy=HASH_SHUFFLE`, "
-                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE_V2` or "
+                    f"`DataContext.shuffle_strategy=SHUFFLE_V2` or "
                     f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
@@ -360,7 +371,7 @@ def plan_all_to_all_op(
     elif isinstance(op, Aggregate):
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
-        elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+        elif data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
             return _plan_hash_shuffle_aggregate_v2(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)

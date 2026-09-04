@@ -13,6 +13,17 @@ class FilePartitioner(ABC):
     retries.
     """
 
+    @property
+    def requires_global_input(self) -> bool:
+        """Whether every input row must reach a single instance.
+
+        ``False`` (the default) means each listing task may partition its own shard
+        independently, so listing can be parallelized. An implementation that packs
+        globally -- keeping one pool of open partitions across all files -- returns
+        ``True``, and ``plan_list_files_op`` then runs listing as a single task.
+        """
+        return False
+
     @abstractmethod
     def add_input(self, input_manifest: FileManifest):
         """Add a file manifest to be partitioned.

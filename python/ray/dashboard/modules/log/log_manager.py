@@ -12,6 +12,7 @@ from ray.util.state.common import (
     GetLogOptions,
     protobuf_to_task_state_dict,
 )
+from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
 if BaseModel is None:
@@ -223,31 +224,76 @@ class LogsManager:
         actor_data = await get_actor_fn(actor_id)
         if actor_data is None:
             raise ValueError(f"Actor ID {actor_id} not found.")
-        # TODO(sang): Only the latest worker id can be obtained from
-        # actor information now. That means, if actors are restarted,
-        # there's no way for us to get the past worker ids.
+
+        # Build the (node_id, worker_id) candidate list: try the current
+        # incarnation first, then previous_incarnations newest-to-oldest.
+        # Each previous incarnation carries its own node_id because after a
+        # restart the actor may run on a different node, and log files stay
+        # on the node where they were written.
+        #
+        # NOTE: during a RESTARTING window GCS clears `address` but has
+        # already appended the departing incarnation to
+        # `previous_incarnations`. So we only error out when *both* the
+        # current address and previous_incarnations are empty; otherwise
+        # we can still surface pre-restart logs.
+        candidates: List[Tuple[bytes, bytes]] = []
         worker_id_binary = actor_data.address.worker_id
-        if not worker_id_binary:
+        node_id_binary = actor_data.address.node_id
+        if worker_id_binary and node_id_binary:
+            candidates.append((node_id_binary, worker_id_binary))
+        previous = list(actor_data.previous_incarnations)
+        for entry in reversed(previous):
+            if entry.worker_id and entry.node_id:
+                candidates.append((entry.node_id, entry.worker_id))
+
+        if not candidates:
             raise ValueError(
                 f"Worker ID for Actor ID {actor_id} not found. "
                 "Actor is not scheduled yet."
             )
-        worker_id = WorkerID(worker_id_binary)
-        node_id_binary = actor_data.address.node_id
-        if not node_id_binary:
-            raise ValueError(
-                f"Node ID for Actor ID {actor_id} not found. "
-                "Actor is not scheduled yet."
-            )
-        node_id = NodeID(node_id_binary)
-        log_filename = await self._resolve_worker_file(
-            node_id_hex=node_id.hex(),
-            worker_id_hex=worker_id.hex(),
-            pid=None,
-            suffix=suffix,
-            timeout=timeout,
-        )
-        return node_id.hex(), log_filename
+
+        # A candidate's node may be gone by the time we look — the common
+        # case after a node-death restart, where the previous incarnation's
+        # node no longer has a log agent. Those lookups raise rather than
+        # returning an empty result, so swallow them per-candidate and keep
+        # walking instead of aborting the whole fallback chain.
+        first_lookup_error = None
+        reached_any_node = False
+        for candidate_node_binary, candidate_worker_binary in candidates:
+            candidate_node_id_hex = NodeID(candidate_node_binary).hex()
+            try:
+                log_filename = await self._resolve_worker_file(
+                    node_id_hex=candidate_node_id_hex,
+                    worker_id_hex=WorkerID(candidate_worker_binary).hex(),
+                    pid=None,
+                    suffix=suffix,
+                    timeout=timeout,
+                )
+            except (ValueError, DataSourceUnavailable) as e:
+                # Node is unreachable (dead, drained, or agent down).
+                logger.debug(
+                    f"Skipping node {candidate_node_id_hex} while resolving logs "
+                    f"for actor {actor_id}: {e}"
+                )
+                if first_lookup_error is None:
+                    first_lookup_error = e
+                continue
+
+            reached_any_node = True
+            if log_filename is not None:
+                return candidate_node_id_hex, log_filename
+
+        if not reached_any_node:
+            # Every candidate node was unreachable — surface why rather than
+            # reporting a misleading "no such log file". A reachable node that
+            # simply has no matching file is a clean miss and falls through to
+            # the FileNotFoundError raised by `resolve_filename`.
+            raise first_lookup_error
+
+        # Nothing matched. Report the first candidate's node (current if
+        # present, otherwise the newest previous) so the error message from
+        # `resolve_filename` points at the right node.
+        return NodeID(candidates[0][0]).hex(), None
 
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int

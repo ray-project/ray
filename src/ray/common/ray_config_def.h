@@ -82,6 +82,16 @@ RAY_CONFIG(float, memory_usage_threshold, 0.95)
 /// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
+/// When true, swap space is folded into the memory monitor's total/used
+/// accounting, the auto-computed Ray `memory` resource on each node, and the
+/// dashboard "Node Memory" graph. This lets tasks consume swap as overflow
+/// capacity before the OOM killer kicks in. Off by default because relying on
+/// swap can cause silent latency degradation (thrashing) rather than a loud
+/// failure, and most production deployments prefer the loud-failure mode.
+/// The Python `ray start` / `ray.init` paths also honor the
+/// `RAY_count_swap_in_memory_monitor` environment variable to set this.
+RAY_CONFIG(bool, count_swap_in_memory_monitor, false)
+
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold and free space is below min_memory_free_bytes then it
 /// will start killing processes to free up the space. Disabled if it is -1.
@@ -135,6 +145,17 @@ RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
+/// The TTL for CancelWorkerLease tombstones on the raylet. Note that a tombstone only has
+/// to cover the message-reordering window between a CancelWorkerLease and its
+/// matching RequestWorkerLease, not the lifetime of the lease itself.
+RAY_CONFIG(uint64_t, cancelled_lease_tombstone_ttl_ms, 10 * 60 * 1000)
+
+/// Maximum number of CancelWorkerLease tombstones retained by a raylet. Each
+/// tombstone is a 32-byte LeaseID plus an 8-byte timestamp, so 100,000 entries
+/// is roughly 10MB including flat_hash_set / deque overhead. Oldest entries
+/// are dropped when the cap is hit.
+RAY_CONFIG(uint32_t, max_cancelled_lease_tombstones, 100000)
+
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
 /// The process killing is done by memory monitor, which is enabled via
@@ -185,6 +206,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
+
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
+RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
+
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
+/// then again every 1024 objects.
+RAY_CONFIG(int64_t, free_local_objects_backlog_warn_objects_per_node, 500000)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -362,6 +391,17 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
+/// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
+/// DEL reclaims memory synchronously; Redis operators can configure DEL itself
+/// to reclaim memory lazily.
+/// UNLINK (Redis >= 4.0) removes the key from the keyspace immediately and frees
+/// the value in a background thread, so deleting a multi-GB GCS table hash does
+/// not stall the Redis main thread and does not add latency to other clients.
+/// When enabled, the Redis server must support UNLINK and the configured user must
+/// have permission to run it. Ray does not probe for support or fall back to DEL.
+RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -432,13 +472,27 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
-/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
-/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
+/// ActorTableData entry ≈ 200-400B serialized (~600B-1.5KB deserialized),
+/// plus `previous_incarnations` for actors that have restarted: up to ~600B
+/// serialized (~2KB deserialized) at the default
+/// `maximum_actor_previous_incarnations` of 10. An actor sitting at that cap
+/// is therefore ≈ 800B-1KB serialized (~2.4-4KB deserialized).
+/// Worst-case footprint: 100,000 x ~2.4-4KB =~ 240-400MB, which assumes every
+/// cached actor exhausted its restart history; actors that never restarted
+/// are unchanged at ~600B-1.5KB.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead workers in GCS server memory cache.
 /// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
 /// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
+/// Maximum number of previous incarnations retained on `ActorTableData` for
+/// looking up logs from prior actor incarnations. When exceeded, the
+/// oldest entry is evicted FIFO. Set to 0 to disable history tracking.
+/// PreviousActorIncarnation entry ≈ ~60B serialized. Worst-case added
+/// footprint per actor: 10 x ~60B =~ 600B, which also multiplies against
+/// `maximum_gcs_destroyed_actor_cached_count` in the GCS destroyed-actor
+/// cache — see the footprint note there before raising this.
+RAY_CONFIG(uint32_t, maximum_actor_previous_incarnations, 10)
 /// Maximum number of dead nodes in GCS server memory cache.
 /// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
 /// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
@@ -893,7 +947,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
-           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU")
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -1117,6 +1171,12 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
 // migrated to the event aggregator.
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+
+// Whether to enable GCS active-passive leader election.
+// Uppercased so the overriding env var (RAY_ENABLE_GCS_LEADER_ELECTION) matches the name
+// Python reads (ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION), keeping the C++ and Python
+// views of leader election in sync.
+RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
 
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.

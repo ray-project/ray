@@ -1,3 +1,6 @@
+.. meta::
+   :description: Diagnose Ray application failures: the kinds of failures that occur, print and debugger workflows, file-descriptor exhaustion, and memory-related crashes.
+
 .. _observability-debug-failures:
 
 Debugging Failures
@@ -109,6 +112,136 @@ If it is too small, you can increase the hard limit as follows (these instructio
     sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
 
 * Logout and log back in.
+
+
+.. _troubleshoot-pyarrow-hdfs-jvm-crashes:
+
+JVM crashes when using PyArrow with HDFS
+-----------------------------------------
+
+When Ray and PyArrow HDFS run in the same Python process on Linux, the process might
+terminate with ``SIGSEGV`` or ``SIGABRT`` and create an ``hs_err_pid*.log`` file.
+The crash can occur after :func:`ray.init`, even when the same
+``pyarrow.fs.HadoopFileSystem`` operation succeeds before Ray initializes. A newer JDK
+might make the failure less frequent, but upgrading alone doesn't guarantee that you
+avoid the underlying signal-handler conflict.
+
+PyArrow HDFS loads ``libhdfs``, which creates a HotSpot JVM inside the Python process.
+A ``SIGSEGV`` in a JVM process doesn't always represent a fatal memory error. HotSpot
+deliberately uses hardware faults and operating-system signals for VM operations such
+as implicit null checks. Its signal handler inspects the signal context and either
+handles an expected, recoverable JVM fault or starts crash reporting for a genuine
+fatal error. These recoverable signals are normally invisible to the application.
+
+Ray's CoreWorker also installs an Abseil failure-signal handler for signals including
+``SIGSEGV``. Linux maintains one current signal disposition for each signal; it doesn't
+automatically invoke multiple handlers in registration order. Unless the libraries
+explicitly implement chaining, a later registration can replace an earlier handler.
+Abseil doesn't understand HotSpot's JIT-generated code or VM-specific signal contexts,
+so it can't determine whether a particular signal is recoverable by the JVM.
+
+Installing both handlers doesn't necessarily cause an immediate crash. Installation
+establishes the conflict, but the crash comes later, when HotSpot produces a
+recoverable internal fault and no longer gets the first opportunity to classify and
+handle it. JVM execution paths, JIT compilation, thread scheduling, and memory layout
+can therefore make the failure appear intermittent.
+
+Use HotSpot signal chaining
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On Linux with a HotSpot or OpenJDK distribution that includes ``libjsig.so``, use
+HotSpot's signal chaining. Locate the library in the same JDK that ``JAVA_HOME``
+selects, then preload it before you start Python:
+
+.. code-block:: bash
+
+    LIBJSIG=""
+    if [ -n "${JAVA_HOME:-}" ]; then
+      LIBJSIG="$(find -L "$JAVA_HOME" -type f -name libjsig.so 2>/dev/null | sed -n '1p')"
+    fi
+    test -n "$LIBJSIG" || {
+      echo "libjsig.so not found under JAVA_HOME=${JAVA_HOME:-<unset>}" >&2
+      exit 1
+    }
+
+    export LD_PRELOAD="$LIBJSIG${LD_PRELOAD:+:$LD_PRELOAD}"
+    python your_program.py
+
+``LD_PRELOAD`` makes the dynamic loader load ``libjsig.so`` before the other native
+libraries; the environment variable itself doesn't change signal semantics.
+``libjsig.so`` then intercepts subsequent ``signal()``, ``sigset()``, and
+``sigaction()`` calls and turns what would otherwise be handler replacement into an
+explicit chain behind the HotSpot handler. The ordering is important because only
+HotSpot can classify a JVM-generated ``SIGSEGV`` as recoverable. HotSpot consumes and
+recovers from its internal faults without forwarding them. Signals it doesn't
+recognize continue to Ray's handler. This mechanism lets Ray's failure-signal handler
+remain enabled.
+
+.. note::
+
+    JDK 16 and later might warn that using ``signal()`` and ``sigset()`` for signal
+    chaining is deprecated. This warning applies to those two registration functions,
+    not to ``libjsig.so`` or ``LD_PRELOAD``. Ray's Abseil failure-signal handler uses
+    the supported ``sigaction()`` function on Linux. The warning alone therefore
+    doesn't indicate that ``sigaction()`` chaining failed. For details, see the
+    `JDK 21 signal-chaining documentation
+    <https://docs.oracle.com/en/java/javase/21/vm/signal-chaining.html>`_.
+
+You must configure ``LD_PRELOAD`` before the Python process starts. Setting it through
+``os.environ`` in a running Python process is too late. The library path varies by JDK.
+Common locations include ``$JAVA_HOME/lib/libjsig.so`` and
+``$JAVA_HOME/lib/server/libjsig.so``. Other JVM implementations and minimized runtime
+images might not include it.
+
+In a KubeRay deployment, use an image that contains ``libjsig.so`` at a stable path and
+set ``LD_PRELOAD`` on every head or worker container that can access HDFS. For example:
+
+.. code-block:: yaml
+
+    spec:
+      headGroupSpec:
+        template:
+          spec:
+            containers:
+              - name: ray-head
+                env:
+                  - name: LD_PRELOAD
+                    value: /usr/local/lib/libjsig.so
+      workerGroupSpecs:
+        - groupName: workers
+          template:
+            spec:
+              containers:
+                - name: ray-worker
+                  env:
+                    - name: LD_PRELOAD
+                      value: /usr/local/lib/libjsig.so
+
+Verify the path in the image you build. The path above is an example, not a standard
+location. If the library is missing, signal chaining isn't enabled and the dynamic
+loader might report an error. Preserve any other libraries that your environment
+already lists in ``LD_PRELOAD``.
+
+Last resort: disable Ray's failure-signal handler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If ``libjsig.so`` isn't available, the environment doesn't permit ``LD_PRELOAD``, and
+the conflict persists, you can disable Ray's failure-signal handler as a last resort.
+Set the variable before you import Ray:
+
+.. code-block:: bash
+
+    RAY_DISABLE_FAILURE_SIGNAL_HANDLER=1 python your_program.py
+
+This removes one side of the conflict, but it has a diagnostic cost. If the CoreWorker
+later experiences a genuine ``SIGSEGV``, ``SIGABRT``, or similar native failure, Ray
+might no longer print the C++ failure stack normally produced by Abseil. Ray's Python
+fault handler can still provide Python-level diagnostics, but it doesn't restore the
+disabled C++ failure stack.
+
+Don't disable Ray's handler during normal operation. For more background and
+discussion, see
+`GitHub issue #36415 <https://github.com/ray-project/ray/issues/36415>`_.
 
 
 Failures due to memory issues

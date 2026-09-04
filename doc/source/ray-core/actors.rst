@@ -1,3 +1,6 @@
+.. meta::
+   :description: Turn Python classes into stateful Ray actors: declare resources, call methods, pass handles around, use generators, and cancel actor tasks.
+
 .. _ray-remote-classes:
 .. _actor-guide:
 
@@ -533,9 +536,9 @@ Task Events
 -----------
 
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
-that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+that Ray dashboard and :ref:`State API <state-api-overview-ref>` use.
 
-You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`. This setting reduces the overhead of task execution by reducing the amount of data Ray sends to the Ray Dashboard.
+You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`. This setting reduces the overhead of task execution by reducing the amount of data Ray sends to the Ray dashboard.
 
 You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
 Method settings override the actor setting:
