@@ -36,6 +36,204 @@ def _set_environment_variable(key, value):
     os.environ[key] = value
 
 
+class _FakeObjectRef:
+    def __init__(self):
+        self.completion = concurrent.futures.Future()
+
+    def future(self):
+        return self.completion
+
+
+class _FakeRemoteMethod:
+    def __init__(self, function):
+        self._function = function
+
+    def remote(self, *args):
+        return self._function(*args)
+
+
+class _BrokenCallbackObjectRef:
+    def future(self):
+        return self
+
+    def add_done_callback(self, _callback):
+        raise RuntimeError("callback registration failed")
+
+
+class _FakeActor:
+    def __init__(self, ready=True):
+        self.batch_refs = []
+        self.readiness_ref = _FakeObjectRef()
+        if ready:
+            self.readiness_ref.completion.set_result(None)
+        self.exit_ref = _FakeObjectRef()
+        self.ping = _FakeRemoteMethod(lambda: self.readiness_ref)
+        self.run_batch = _FakeRemoteMethod(self._run_batch)
+        self.__ray_terminate__ = _FakeRemoteMethod(lambda: self.exit_ref)
+
+    def _run_batch(self, _func, _batch):
+        object_ref = _FakeObjectRef()
+        self.batch_refs.append(object_ref)
+        return object_ref
+
+
+def _assert_actor_set_invariants(actor_set):
+    with actor_set._condition:
+        assert len(actor_set._slots) == actor_set.max_size
+        for slot in actor_set._slots:
+            assert slot.outstanding >= 0
+            assert slot.tasks_submitted >= 0
+            if slot.state is _ActorSlotState.EMPTY:
+                assert slot.actor is None
+                assert slot.outstanding == 0
+                assert slot.tasks_submitted == 0
+                assert slot.idle_since is None
+                assert slot.readiness_ref is None
+                assert slot.exit_ref is None
+            else:
+                assert slot.actor is not None
+
+            if slot.state is _ActorSlotState.STARTING:
+                assert slot.idle_since is None
+                assert slot.exit_ref is None
+            elif slot.state is _ActorSlotState.ACTIVE:
+                assert slot.readiness_ref is None
+                assert slot.exit_ref is None
+                assert (slot.idle_since is not None) == (slot.outstanding == 0)
+            elif slot.state is _ActorSlotState.DRAINING:
+                assert slot.idle_since is None
+                assert (
+                    slot.outstanding > 0
+                    or slot.exit_ref is not None
+                    or actor_set._error is not None
+                )
+
+
+def test_slot_invariants_hold_across_lifecycle():
+    actor = _FakeActor(ready=False)
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
+
+    batch_ref = actor_set.submit(None, [])
+    _assert_actor_set_invariants(actor_set)
+    actor.readiness_ref.completion.set_result(None)
+    _assert_actor_set_invariants(actor_set)
+    batch_ref.completion.set_result([])
+    _assert_actor_set_invariants(actor_set)
+
+    actor_set.close()
+    assert actor_set._slots[0].actor is actor
+    _assert_actor_set_invariants(actor_set)
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+    _assert_actor_set_invariants(actor_set)
+
+
+def test_draining_slot_is_reused_only_after_exit_confirmation():
+    actors = []
+
+    def create_actor():
+        actor = _FakeActor()
+        actors.append(actor)
+        return actor
+
+    actor_set = _ActorSlotSet(
+        create_actor,
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=1,
+    )
+    first_ref = actor_set.submit(None, [])
+    submitted = threading.Event()
+    replacement_refs = []
+
+    def submit_replacement():
+        replacement_refs.append(actor_set.submit(None, []))
+        submitted.set()
+
+    submitter = threading.Thread(target=submit_replacement, daemon=True)
+    submitter.start()
+    first_ref.completion.set_result([])
+    assert not submitted.wait(0.05)
+
+    actors[0].exit_ref.completion.set_result(None)
+    assert submitted.wait(1)
+    assert len(actors) == 2
+
+    actor_set.close()
+    replacement_refs[0].completion.set_result([])
+    actors[1].exit_ref.completion.set_result(None)
+    actor_set.join()
+    submitter.join()
+
+
+def test_batch_callback_registration_failure_fails_closed():
+    actor = _FakeActor()
+    actor.run_batch = _FakeRemoteMethod(lambda *_: _BrokenCallbackObjectRef())
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
+
+    actor_set.submit(None, [])
+    assert actor_set.snapshot() == [(_ActorSlotState.ACTIVE, 1)]
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+
+    actor_set.close()
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_ambiguous_termination_does_not_release_slot():
+    actor = _FakeActor()
+    actor_set = _ActorSlotSet(lambda: actor, min_size=0, max_size=1, idle_timeout_s=60)
+    batch_ref = actor_set.submit(None, [])
+    batch_ref.completion.set_result([])
+    actor_set.close()
+
+    actor.exit_ref.completion.set_exception(
+        ray.exceptions.ActorUnavailableError("temporarily unavailable", None)
+    )
+    assert actor_set.snapshot() == [(_ActorSlotState.DRAINING, 0)]
+    assert actor_set._slots[0].actor is actor
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        actor_set.join()
+
+    confirmed_exit = concurrent.futures.Future()
+    confirmed_exit.set_exception(ray.exceptions.ActorDiedError())
+    slot = actor_set._slots[0]
+    actor_set._actor_exited(slot, slot.generation, confirmed_exit)
+    actor_set.join()
+
+
+def test_concurrent_close_and_terminate_converge(monkeypatch):
+    actor = _FakeActor()
+    actor_set = _ActorSlotSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
+    errors = []
+
+    def kill_actor(_actor):
+        if not actor.exit_ref.completion.done():
+            actor.exit_ref.completion.set_exception(ray.exceptions.ActorDiedError())
+
+    def run(action):
+        try:
+            action()
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(ray, "kill", kill_actor)
+    threads = [
+        threading.Thread(target=run, args=(action,))
+        for action in (actor_set.close, actor_set.terminate)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    actor_set.join()
+    assert errors == []
+    assert actor_set.snapshot() == [(_ActorSlotState.EMPTY, 0)]
+
+
 def test_pool_can_be_collected_without_explicit_shutdown(shutdown_only):
     ray.init(num_cpus=1)
     pool = Pool(

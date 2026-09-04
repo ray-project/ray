@@ -43,8 +43,11 @@ class RayBackend(MultiprocessingBackend):
         super().__init__(
             nesting_level=nesting_level,
             inner_max_num_threads=inner_max_num_threads,
-            **kwargs,
         )
+        # Joblib 1.5+ stores these arguments on ParallelBackendBase, while
+        # older supported versions forward them to object.__init__ and fail.
+        # Own them here so Pool arguments have the same behavior across both.
+        self.backend_kwargs = dict(kwargs)
 
     # ray_remote_args is used both in __init__ and configure to allow for it to be
     # set in both `parallel_backend` and `Parallel` respectively
