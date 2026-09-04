@@ -626,6 +626,82 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest,
+       PlacementGroupCancelledAfterPartialPrepareReleasesPreparedBundle) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = GenCreatePlacementGroupRequest();
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  RemoveNode(node1);
+
+  scheduler_->MarkScheduleCancelled(placement_group_id);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[0]->num_bundles_removed, 1);
+  ASSERT_EQ(raylet_clients_[0]->commit_callbacks.size(), 0);
+  ASSERT_EQ(raylet_clients_[1]->commit_callbacks.size(), 0);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest,
+       PlacementGroupCancelledAfterLatePrepareSuccessReleasesNewBundle) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  auto node2 = GenNodeInfo(2);
+  AddNode(node0);
+  AddNode(node1);
+  AddNode(node2);
+  ASSERT_EQ(3, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 3);
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      create_placement_group_request, "", counter_, clock_);
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+
+  // node0's prepare succeeds; node1's reply is withheld (queued but never granted) and
+  // node2's reply never arrives.
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+
+  scheduler_->MarkScheduleCancelled(placement_group_id);
+
+  // node1's prepare reply arrives after cancellation, so node1's bundle is newly
+  // prepared. Since not all prepare replies returned yet, the just-prepared bundle must
+  // be released immediately rather than waiting for the remaining callbacks.
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[1]->num_bundles_removed, 1);
+}
+
 TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   auto node0 = GenNodeInfo(0);
   auto node1 = GenNodeInfo(1);
