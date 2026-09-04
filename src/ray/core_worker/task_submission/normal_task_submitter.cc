@@ -822,6 +822,12 @@ bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spe
   return true;
 }
 
+std::vector<TaskID> NormalTaskSubmitter::GetQueuedGeneratorResubmitTaskIds() const {
+  absl::MutexLock lock(&mu_);
+  return std::vector<TaskID>(generators_to_resubmit_.begin(),
+                             generators_to_resubmit_.end());
+}
+
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
     size_t min_concurrent_lease_limit)
     : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}

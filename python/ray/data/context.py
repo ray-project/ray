@@ -392,6 +392,16 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
 )
 
 
+# Max blocks per operator per scheduling round that a lineage-reconstruction
+# generator may read past output backpressure. Larger values drain the
+# reconstruction-critical generator faster (shorter recovery) at the cost of a
+# higher transient object-store footprint. Set to 0 to disable the bypass
+# (accepts backpressure-induced stalls but avoids extra object-store footprint).
+DEFAULT_LINEAGE_RECONSTRUCTION_BACKPRESSURE_BYPASS_BLOCKS: int = env_integer(
+    "RAY_DATA_LINEAGE_RECONSTRUCTION_BACKPRESSURE_BYPASS_BLOCKS", 1
+)
+
+
 @DeveloperAPI
 @dataclass
 class IcebergConfig:
@@ -809,6 +819,12 @@ class DataContext:
             later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
+        lineage_reconstruction_backpressure_bypass_blocks: Max blocks per operator
+            per scheduling round that a streaming generator queued for
+            lineage-reconstruction resubmit may read past output backpressure, so
+            replay keeps pace instead of stalling. Larger values shorten
+            recovery at the cost of a higher transient object-store footprint.
+            Set to 0 to disable the bypass.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -1022,6 +1038,10 @@ class DataContext:
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
+    lineage_reconstruction_backpressure_bypass_blocks: int = (
+        DEFAULT_LINEAGE_RECONSTRUCTION_BACKPRESSURE_BYPASS_BLOCKS
     )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS

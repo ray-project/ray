@@ -1098,5 +1098,11 @@ bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec
   return true;
 }
 
+std::vector<TaskID> ActorTaskSubmitter::GetQueuedGeneratorResubmitTaskIds() const {
+  absl::MutexLock lock(&mu_);
+  return std::vector<TaskID>(generators_to_resubmit_.begin(),
+                             generators_to_resubmit_.end());
+}
+
 }  // namespace core
 }  // namespace ray

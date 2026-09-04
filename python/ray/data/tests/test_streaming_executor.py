@@ -76,7 +76,11 @@ from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorke
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
-from ray.data.tests.util import fetcher_has_pending_work
+from ray.data.tests.util import (
+    FakeDataOpTask,
+    fetcher_has_pending_work,
+    make_backpressured_op,
+)
 from ray.exceptions import GetTimeoutError
 
 
@@ -168,10 +172,15 @@ def test_disallow_non_unique_operators(ray_start_regular_shared):
         )
 
 
-def _make_disabled_guard() -> MagicMock:
-    """Return a stub guard whose escape hatch never fires."""
-    guard = MagicMock(spec=OutputBackpressureGuard)
-    guard.should_unblock.return_value = False
+def _make_disabled_guard() -> OutputBackpressureGuard:
+    """Return a real guard whose operator-level escape hatch never fires.
+
+    Only ``should_unblock`` is stubbed out; task ordering and the
+    lineage-reconstruction bypass lane stay real, so callers exercise the
+    actual policy instead of a mock's return values.
+    """
+    guard = OutputBackpressureGuard({}, MagicMock())
+    guard.should_unblock = MagicMock(return_value=False)
     return guard
 
 
@@ -351,6 +360,90 @@ def test_process_completed_tasks_inline(sleep_task_ref, ray_start_regular_shared
     _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
+
+
+class _ZeroOutputBudgetPolicy:
+    """Simulate output backpressure preventing ordinary task-output reads."""
+
+    @property
+    def name(self):
+        return "ZeroOutputBudget"
+
+    def max_task_output_bytes_to_read(self, op):
+        return 0
+
+
+def test_process_completed_tasks_skips_core_worker_query_when_nothing_is_output_limited(
+    ray_start_regular_shared,
+):
+    # The lookup is local but takes Ray Core's task submitter lock, so it is
+    # only issued when some operator has a finite output read budget. With no
+    # limiting policy there is no budget, so even with a ready task the query
+    # must be skipped.
+    task = FakeDataOpTask(0, "normal", bytes_read=0, waitable=ray.put("normal"))
+    op = MagicMock()
+    op.get_active_tasks.return_value = [task]
+    op.has_next.return_value = False
+    state = MagicMock()
+    state.op = op
+    topology = {op: state}
+
+    with patch(
+        "ray.data._internal.execution.streaming_executor_state."
+        "_get_local_queued_generator_resubmit_task_ids",
+    ) as mock_query:
+        _process_completed_tasks_sync(
+            topology,
+            [],
+            max_errored_blocks=0,
+            output_backpressure_guard=_make_disabled_guard(),
+        )
+    mock_query.assert_not_called()
+    # The task is still read, with no byte budget applied.
+    assert task.calls == [("normal", None)]
+
+
+@pytest.mark.parametrize("bypass_blocks", [1, 3])
+def test_process_completed_tasks_drains_queued_generator_resubmit_tasks_under_backpressure(
+    ray_start_regular_shared, bypass_blocks
+):
+    calls = []
+    normal_task = FakeDataOpTask(
+        0, "normal", bytes_read=0, waitable=ray.put("normal"), calls=calls
+    )
+    queued_resubmit_task = FakeDataOpTask(
+        1,
+        "queued_resubmit",
+        bytes_read=10,
+        waitable=ray.put("queued_resubmit"),
+        calls=calls,
+    )
+
+    op = make_backpressured_op(bypass_blocks)
+    op.get_active_tasks.return_value = [normal_task, queued_resubmit_task]
+    op.has_next.return_value = False
+
+    state = MagicMock()
+    state.op = op
+    topology = {op: state}
+
+    with patch(
+        "ray.data._internal.execution.streaming_executor_state."
+        "_get_local_queued_generator_resubmit_task_ids",
+        return_value=["queued_resubmit"],
+    ) as mock_get_queued_generator_resubmit_task_ids:
+        _process_completed_tasks_sync(
+            topology,
+            [_ZeroOutputBudgetPolicy()],
+            max_errored_blocks=0,
+            output_backpressure_guard=_make_disabled_guard(),
+        )
+
+    # The queued-for-resubmit generator is ordered first and drains through the
+    # guard's bypass lane; the ordinary task is still visited but stays
+    # backpressured on the operator's untouched byte budget of 0.
+    mock_get_queued_generator_resubmit_task_ids.assert_called_once()
+    assert calls == [("queued_resubmit", 1)] * bypass_blocks + [("normal", 0)]
 
 
 def test_update_operator_states_drains_upstream(ray_start_regular_shared):
