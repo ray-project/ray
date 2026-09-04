@@ -15,9 +15,10 @@ import timeit
 import traceback
 import uuid
 from collections.abc import Hashable
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from unittest.mock import patch
 from urllib.parse import quote, urlparse
 
 import requests
@@ -78,6 +79,42 @@ def get_gpu_visible_devices_env_var() -> Optional[str]:
     return ray._private.accelerators.get_accelerator_manager_for_resource(
         "GPU"
     ).get_visible_accelerator_ids_env_var()
+
+
+@contextmanager
+def mock_accelerator_detection(manager, num_accelerators: Optional[int] = None):
+    resource_name = manager.get_resource_name()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_all_accelerator_resource_names",
+                return_value=[resource_name],
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_accelerator_manager_for_resource",
+                side_effect=lambda name: manager if name == resource_name else None,
+            )
+        )
+        if num_accelerators is not None:
+            stack.enter_context(
+                patch.object(
+                    manager,
+                    "get_current_node_num_accelerators",
+                    return_value=num_accelerators,
+                )
+            )
+        yield
+
+
+@contextmanager
+def mock_no_accelerators():
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        yield
 
 
 def make_global_state_accessor(ray_context):

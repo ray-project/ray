@@ -959,19 +959,19 @@ class TestRuntimeEnv:
             {"entrypoint_resources": {"Custom": 1}},
         ],
     )
-    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
+    async def test_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check the visible devices env var behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
 
-        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
-        logic. Instead, the behavior should match that of the user specifying
-        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
-        driver and tasks.
+        If the user specifies a resource, we should not use the NOSET logic.
+        Instead, the behavior should match that of the user specifying
+        resources for any other actor. So the visible devices env var should be
+        set in the driver and tasks.
         """
-        run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
+        run_cmd = f"python {_driver_script_path('check_visible_devices.py')}"
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd

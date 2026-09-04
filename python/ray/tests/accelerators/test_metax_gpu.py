@@ -6,26 +6,17 @@ import pytest
 
 import ray
 from ray._private.accelerators import MetaxGPUAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 
 
 def test_visible_metax_gpu_ids(monkeypatch, shutdown_only):
-    # Without pinning, this only passes on a machine where every family probed
-    # ahead of MetaX detects nothing.
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
-    with patch.object(
-        MetaxGPUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=4,
+    with mock_accelerator_detection(
+        MetaxGPUAcceleratorManager, num_accelerators=4
     ), patch.object(
         MetaxGPUAcceleratorManager,
         "get_current_node_accelerator_type",
         return_value=None,
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ), patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=MetaxGPUAcceleratorManager,
     ):
         ray.init()
         assert ray.available_resources()["GPU"] == 3

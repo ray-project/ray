@@ -8,6 +8,7 @@ import ray._private.ray_constants as ray_constants
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.accelerators import AcceleratorManager
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
+from ray._private.test_utils import mock_accelerator_detection, mock_no_accelerators
 
 
 class FakeAcceleratorManager(AcceleratorManager):
@@ -68,10 +69,7 @@ def test_resource_and_label_spec_resolves_with_params():
         labels={"ray.io/market-type": "spot"},
     )
 
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("TPU", "TPU-V4", 42)):
         spec.resolve(is_head=False)
 
     # Verify that explicit Ray Params values are preserved.
@@ -101,10 +99,7 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     )  # 4GB
 
     spec = ResourceAndLabelSpec()
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec.resolve(is_head=True)
 
     assert spec.resolved()
@@ -153,10 +148,7 @@ def test_env_resource_overrides_with_conflict(monkeypatch):
         labels={},
     )
 
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("TPU", "TPU-V4", 4)):
         spec.resolve(is_head=True)
 
     # Environment overrides values take precedence after resolve
@@ -176,10 +168,7 @@ def test_to_resource_dict_with_invalid_types():
         resources={"INVALID": -5},  # Invalid
         labels={},
     )
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec.resolve(is_head=True, node_ip_address="127.0.0.1")
     with pytest.raises(ValueError):
         spec.to_resource_dict()
@@ -216,10 +205,7 @@ def test_resolve_memory_resources(monkeypatch):
     )  # 512 MB
 
     spec1 = ResourceAndLabelSpec()
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec1.resolve(is_head=False)
 
     max_shm = 512 * 1024**2 * 0.95
@@ -379,10 +365,7 @@ def test_resolve_handles_no_accelerators():
     """Check resolve() is able to handle the no accelerators detected case."""
     spec = ResourceAndLabelSpec()
     # No accelerators are returned.
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec.resolve(is_head=False, node_ip_address="test")
 
     # With no accelerators detected or num_gpus, GPU count should default to 0
@@ -399,10 +382,7 @@ def test_label_spec_resolve_merged_env_labels(monkeypatch):
         ray_constants.LABELS_ENVIRONMENT_VARIABLE, json.dumps(override_labels)
     )
     spec = ResourceAndLabelSpec()
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec.resolve(is_head=True)
 
     assert any(key == "autoscaler-override-label" for key in spec.labels)
@@ -420,13 +400,7 @@ def test_merge_labels_populates_defaults(monkeypatch):
     spec = ResourceAndLabelSpec()
 
     # AcceleratorManager for node with 1 GPU
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 1),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 1)):
         spec.resolve(is_head=False)
 
     # Verify all default labels are present
@@ -443,14 +417,8 @@ def test_resolve_raises_if_exceeds_visible_devices():
     spec = ResourceAndLabelSpec()
     spec.num_gpus = 3  # request 3 GPUs
 
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager(
-            "GPU", "A100", num_accelerators=5, visible_ids=2
-        ),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
+    with mock_accelerator_detection(
+        FakeAcceleratorManager("GPU", "A100", num_accelerators=5, visible_ids=2)
     ):
         with pytest.raises(ValueError, match="Attempting to start raylet"):
             spec.resolve(is_head=False)
@@ -461,13 +429,7 @@ def test_resolve_sets_accelerator_resources():
     spec = ResourceAndLabelSpec()
 
     # Mock a node with GPUs with 4 visible IDs
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 4),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 4)):
         spec.resolve(is_head=False)
 
     assert spec.num_gpus == 4
@@ -479,13 +441,7 @@ def test_respect_configured_num_gpus():
     # Create a ResourceAndLabelSpec with num_gpus=2 from Ray Params.
     spec = ResourceAndLabelSpec(num_gpus=2)
     # Mock a node with GPUs with 4 visible IDs
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 4),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 4)):
         spec.resolve(is_head=False)
 
     assert spec.num_gpus == 2, (

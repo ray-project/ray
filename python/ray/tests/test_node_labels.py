@@ -2,13 +2,13 @@ import os
 import subprocess
 import sys
 import tempfile
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.accelerators.tpu import TPUAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 from ray.cluster_utils import AutoscalingCluster
 
 
@@ -206,13 +206,7 @@ def test_get_default_tpu_labels(shutdown_only, monkeypatch):
     monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-32")
     monkeypatch.setenv("TPU_TOPOLOGY", "4x8")
 
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["TPU"],
-    ), patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=TPUAcceleratorManager(),
-    ):
+    with mock_accelerator_detection(TPUAcceleratorManager):
         ray.init(resources={"TPU": 4})
         node_info = ray.nodes()[0]
         labels = node_info["Labels"]

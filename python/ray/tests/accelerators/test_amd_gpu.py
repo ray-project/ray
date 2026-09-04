@@ -6,21 +6,12 @@ import pytest
 
 import ray
 from ray._private.accelerators import AMDGPUAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 
 
 def test_visible_amd_gpu_ids(monkeypatch, shutdown_only):
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
-    with patch.object(
-        AMDGPUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=4,
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ), patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=AMDGPUAcceleratorManager,
-    ):
+    with mock_accelerator_detection(AMDGPUAcceleratorManager, num_accelerators=4):
         ray.init()
         assert ray.available_resources()["GPU"] == 3
 

@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray._private.accelerators import NPUAcceleratorManager as Accelerator
+from ray._private.test_utils import mock_accelerator_detection
 
 
 @patch("glob.glob")
@@ -54,13 +55,7 @@ def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
         sys.modules["acl"] = __import__("mock_acl")
 
         monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "0,1,2")
-        with patch.object(
-            Accelerator, "get_current_node_num_accelerators", return_value=4
-        ), patch(
-            "ray._private.accelerators.get_all_accelerator_resource_names",
-            return_value=["NPU"],
-        ):
-
+        with mock_accelerator_detection(Accelerator, num_accelerators=4):
             ray.init()
             manager = ray._private.accelerators.get_accelerator_manager_for_resource(
                 "NPU"
@@ -120,12 +115,7 @@ def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     with patch.dict(sys.modules):
         sys.modules["acl"] = __import__("mock_acl")
 
-        with patch.object(
-            Accelerator, "get_current_node_num_accelerators", return_value=4
-        ), patch(
-            "ray._private.accelerators.get_all_accelerator_resource_names",
-            return_value=["NPU"],
-        ):
+        with mock_accelerator_detection(Accelerator, num_accelerators=4):
             # If more NPUs are detected than visible.
             monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "0,1,2")
 

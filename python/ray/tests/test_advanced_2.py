@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 import time
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -12,7 +11,11 @@ import ray
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.test_utils import get_gpu_visible_devices_env_var
+from ray._private.accelerators import NeuronAcceleratorManager
+from ray._private.test_utils import (
+    get_gpu_visible_devices_env_var,
+    mock_accelerator_detection,
+)
 from ray.util.accelerators import AWS_NEURON_CORE
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -518,10 +521,7 @@ def test_many_custom_resources(shutdown_only):
 def test_neuron_core_ids(shutdown_only):
     num_nc = 3
     accelerator_type = AWS_NEURON_CORE
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["neuron_cores"],
-    ):
+    with mock_accelerator_detection(NeuronAcceleratorManager):
         ray.init(num_cpus=num_nc, resources={"neuron_cores": num_nc})
 
     def get_neuron_core_ids(neuron_cores_per_worker):
