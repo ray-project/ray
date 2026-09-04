@@ -493,7 +493,7 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive (``.zip``, ``.tar``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
   The specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory.
 
   - Examples
@@ -815,8 +815,8 @@ Remote URIs
 
 The ``working_dir`` and ``py_modules`` arguments in the ``runtime_env`` dictionary can specify either local path(s) or remote URI(s).
 
-A local path must be a directory path. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
-A remote URI must be a link directly to a zip file or a wheel file (only for ``py_module``). **The zip file must contain only a single top-level directory.**
+A local path can specify a directory. ``working_dir`` can also specify a local ``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz`` archive, while ``py_modules`` can specify a local ``.py`` or ``.whl`` file. Uncompressed ``.tar`` files are supported only through remote ``working_dir`` URIs.
+A remote URI must link directly to a supported archive, or to a wheel file for ``py_modules``. ``working_dir`` supports ``.zip``, ``.tar``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archives. ``py_modules`` supports ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archives, as well as ``.whl`` files. **The archive must contain only a single top-level directory.**
 The contents of this directory will be directly accessed as the ``working_dir`` or a ``py_module``.
 
 For example, suppose you want to use the contents in your local ``/some_path/example_dir`` directory as your ``working_dir``.
@@ -883,6 +883,13 @@ For example, an XZ-compressed archive can be specified in the same way:
 
   runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.xz", ...}
 
+If an artifact already exists remotely as an uncompressed ``.tar`` archive, you can reference it directly without repackaging it:
+
+.. testcode::
+  :skipif: True
+
+  runtime_env = {..., "working_dir": "s3://example_bucket/existing.tar", ...}
+
 .. warning::
 
   Check for hidden files and metadata directories in archived dependencies.
@@ -891,7 +898,7 @@ For example, an XZ-compressed archive can be specified in the same way:
   To avoid this, use ``zip -r`` or ``tar -czf`` directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the command from the directory ``a``.
   If Ray detects more than a single directory at the top level, it uses the entire archive instead of the top-level directory, which may lead to unexpected behavior.
 
-Remote URIs support ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive formats. Supported schemes are ``http``, ``https``, ``s3``, ``gs``, ``azure``, ``abfss``, and ``file``. The most common remote storage types are described below:
+For remote URIs, ``working_dir`` supports ``.zip``, ``.tar``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive formats, while ``py_modules`` supports the same formats except ``.tar``, plus ``.whl`` files. Supported schemes are ``http``, ``https``, ``s3``, ``gs``, ``azure``, ``abfss``, and ``file``. The most common remote storage types are described below:
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.
