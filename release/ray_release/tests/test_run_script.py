@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from typing import Dict
 
 import pytest
 
@@ -50,7 +51,9 @@ def _run_script(test_script, state_file, *exits):
         return e.returncode
 
 
-def _run_script_capturing(test_script, extra_env, *args):
+def _run_script_capturing(
+    test_script: str, extra_env: Dict[str, str], *args: str
+) -> str:
     """Run the real release test script and return its output.
 
     stderr is merged into stdout so that the returned text preserves the order

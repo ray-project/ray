@@ -136,8 +136,8 @@ def main(
     # debug session and a minute or two per failure. Compared against "1" rather
     # than tested for truthiness, so that setting it to 0 turns the agent off,
     # which is the whole point of having a flag for it.
-    # Reported last, so that the agent's analysis of a failed test run shows up
-    # at the end of the buildkite step output, after the result was recorded.
+    # Reported last so that the analysis is written after the result has been
+    # recorded; where it is printed is decided by run_release_test.sh.
     if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
         reporters.append(ObservabilityAgentReporter())
 
