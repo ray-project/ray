@@ -538,12 +538,16 @@ class _ActorSlotSet:
                 elif slot.state is _ActorSlotState.ACTIVE:
                     slot.idle_since = time.monotonic()
                     self._yield_to_pending_work_locked(slot)
+                excess = self._capacity_locked() - self._min_size
                 for pending_slot in self._slots:
+                    if excess <= 0:
+                        break
                     if (
                         pending_slot.state is _ActorSlotState.STARTING
                         and pending_slot.outstanding == 0
                     ):
                         self._begin_draining_locked(pending_slot)
+                        excess -= 1
             self._condition.notify_all()
 
     def _yield_to_pending_work_locked(self, slot: _ActorSlot) -> None:
@@ -555,6 +559,8 @@ class _ActorSlotSet:
         work until the idle timeout even though it has no outstanding calls.
         """
         if slot.state is not _ActorSlotState.ACTIVE or slot.outstanding != 0:
+            return
+        if self._capacity_locked() <= self._min_size:
             return
         if any(
             candidate.state is _ActorSlotState.STARTING and candidate.outstanding > 0
@@ -636,7 +642,7 @@ class _ActorSlotSet:
     def _release_dead_actor_locked(
         self,
         slot: _ActorSlot,
-        startup_error: Optional[BaseException] = None,
+        startup_error: Optional[ray.exceptions.ActorDiedError] = None,
     ) -> None:
         """Release one actor whose exit Ray has unambiguously confirmed."""
         previous_state = slot.state
@@ -648,12 +654,15 @@ class _ActorSlotSet:
         self._clear_slot_locked(slot)
         if self._closed:
             return
-        if previous_state is _ActorSlotState.STARTING:
+        if (
+            previous_state is _ActorSlotState.STARTING
+            and startup_error is not None
+            and startup_error.actor_init_failed
+        ):
             if self._capacity_locked() < self._min_size:
                 # Automatically recreating a permanently failing initializer
                 # would create an unbounded actor-start loop. Converge
                 # explicitly instead of silently violating the capacity floor.
-                assert startup_error is not None
                 self._error = startup_error
             return
         self._restore_min_size_locked()
@@ -1454,13 +1463,17 @@ class Pool:
         return int(ray._private.state.cluster_resources().get("CPU", 0))
 
     # Batch should be a list of tuples: (args, kwargs).
-    def _run_batch_locked(self, func, batch):
-        self._check_running()
-        return self._actor_set.submit(func, batch)
-
     def _run_batch(self, func, batch):
         with self._pool_lock:
-            return self._run_batch_locked(func, batch)
+            self._check_running()
+            actor_set = self._actor_set
+            # The compatibility scheduler has no internal admission lock, but
+            # it never waits for capacity. Keep its submission serialized with
+            # close while allowing the condition-protected slot scheduler to
+            # wait without preventing another thread from terminating the Pool.
+            if isinstance(actor_set, _LegacyActorSet):
+                return actor_set.submit(func, batch)
+        return actor_set.submit(func, batch)
 
     def apply(
         self,
@@ -1510,7 +1523,7 @@ class Pool:
         with self._pool_lock:
             self._check_running()
             func = self._convert_to_ray_batched_calls_if_needed(func)
-            object_ref = self._run_batch_locked(func, [(args, kwargs)])
+        object_ref = self._run_batch(func, [(args, kwargs)])
         return AsyncResult([object_ref], callback, error_callback, single_result=True)
 
     def _convert_to_ray_batched_calls_if_needed(self, func: Callable) -> Callable:

@@ -1,5 +1,7 @@
+import concurrent.futures
 import os
 import sys
+import threading
 
 import joblib
 import pytest
@@ -11,6 +13,8 @@ from ray.util.joblib.ray_backend import RayBackend, _configure_pool_args
 from ray.util.multiprocessing import Pool
 from ray.util.multiprocessing.pool import (
     PoolTaskError,
+    _ActorSlot,
+    _ActorSlotSet,
     _ActorSlotState,
     _LegacyActorSet,
 )
@@ -129,6 +133,42 @@ def test_pending_actor_runs_after_active_actor_releases_resource(shutdown_only):
     pool.join()
 
 
+def test_pending_floor_actor_is_not_retired_when_active_work_finishes(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        min_size=2,
+        max_size=2,
+        idle_timeout_s=60,
+        ray_remote_args={"num_cpus": 1},
+    )
+
+    wait_for_condition(
+        lambda: _state_count(pool, _ActorSlotState.ACTIVE) == 1
+        and _state_count(pool, _ActorSlotState.STARTING) == 1
+    )
+    with pool._actor_set._condition:
+        pending_slot = next(
+            slot
+            for slot in pool._actor_set._slots
+            if slot.state is _ActorSlotState.STARTING
+        )
+        pending_generation = pending_slot.generation
+
+    assert pool.apply(abs, (-1,)) == 1
+    wait_for_condition(
+        lambda: any(
+            state is _ActorSlotState.ACTIVE and outstanding == 0
+            for state, outstanding in pool._actor_set.snapshot()
+        )
+    )
+    with pool._actor_set._condition:
+        assert pending_slot.state is _ActorSlotState.STARTING
+        assert pending_slot.generation == pending_generation
+
+    pool.terminate()
+    pool.join()
+
+
 def test_close_waits_for_work_assigned_to_pending_actors(shutdown_only):
     ray.init(num_cpus=1)
     pool = Pool(
@@ -162,6 +202,46 @@ def test_unschedulable_actor_remains_pending_until_terminated(shutdown_only):
     pool.join()
 
 
+def test_terminate_wakes_submission_waiting_for_draining_slot(shutdown_only):
+    ray.init(num_cpus=1)
+    signal = SignalActor.remote()
+    pool = Pool(
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        maxtasksperchild=1,
+        ray_remote_args={"num_cpus": 1},
+    )
+
+    def wait_for_signal(signal):
+        ray.get(signal.wait.remote())
+
+    pool.apply_async(wait_for_signal, (signal,))
+    wait_for_condition(lambda: _state_count(pool, _ActorSlotState.DRAINING) == 1)
+
+    submission_done = threading.Event()
+    submission_errors = []
+
+    def submit_again():
+        try:
+            pool.apply_async(abs, (-1,))
+        except Exception as error:
+            submission_errors.append(error)
+        finally:
+            submission_done.set()
+
+    submitter = threading.Thread(target=submit_again, daemon=True)
+    submitter.start()
+    assert not submission_done.wait(0.1)
+
+    pool.terminate()
+    assert submission_done.wait(10)
+    submitter.join()
+    assert len(submission_errors) == 1
+    assert isinstance(submission_errors[0], ValueError)
+    pool.join()
+
+
 def test_pool_recycles_actor_after_maxtasksperchild(shutdown_only):
     ray.init(num_cpus=1)
     pool = Pool(
@@ -191,6 +271,69 @@ def test_pool_recovers_capacity_after_actor_death(shutdown_only):
 
     pool.close()
     pool.join()
+
+
+@pytest.mark.parametrize(
+    ("actor_init_failed", "fails_pool"),
+    [(False, False), (True, True)],
+)
+def test_starting_actor_death_uses_reported_failure_cause(
+    monkeypatch, actor_init_failed, fails_pool
+):
+    actor_set = object.__new__(_ActorSlotSet)
+    actor_set._closed = False
+    actor_set._error = None
+    actor_set._min_size = 1
+    slot = _ActorSlot(
+        state=_ActorSlotState.STARTING,
+        actor=object(),
+        outstanding=1,
+    )
+    actor_set._slots = [slot]
+    restored = []
+    monkeypatch.setattr(
+        actor_set,
+        "_restore_min_size_locked",
+        lambda: restored.append(True),
+    )
+    actor_error = ray.exceptions.ActorDiedError()
+    actor_error._actor_init_failed = actor_init_failed
+
+    actor_set._release_dead_actor_locked(slot, actor_error)
+
+    if fails_pool:
+        assert actor_set._error is actor_error
+        assert restored == []
+    else:
+        assert actor_set._error is None
+        assert restored == [True]
+
+
+def test_actor_unavailability_fails_closed_without_releasing_slot():
+    actor_set = object.__new__(_ActorSlotSet)
+    actor_set._condition = threading.Condition()
+    actor_set._closed = False
+    actor_set._error = None
+    actor_set._min_size = 0
+    actor = object()
+    slot = _ActorSlot(
+        state=_ActorSlotState.ACTIVE,
+        actor=actor,
+        outstanding=1,
+    )
+    actor_set._slots = [slot]
+    unavailable = ray.exceptions.ActorUnavailableError("temporarily unavailable", None)
+    future = concurrent.futures.Future()
+    future.set_exception(unavailable)
+
+    actor_set._batch_completed(slot, slot.generation, future)
+
+    assert actor_set._error is unavailable
+    assert slot.actor is actor
+    assert slot.state is _ActorSlotState.ACTIVE
+    assert slot.outstanding == 0
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
 
 
 def test_pool_preserves_exceptions_returned_as_values(shutdown_only):
