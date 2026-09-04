@@ -47,6 +47,14 @@ SKIP_COMMAND_FAILURES = False
 # which metrics and logs of the job to look at.
 DEBUG_SESSION_QUERY = "Why did this job fail?"
 
+# TEMPORARY -- DO NOT MERGE. When set to a file holding a query response, the
+# reporter serves that instead of calling the agent. Iterating on what happens
+# *after* the response -- the log group, the annotation -- otherwise creates a
+# real debug session and a real slack thread on every run, which is noise for
+# the people watching that channel.
+FAKE_RESPONSE_ENV = "RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE"
+FAKE_DEBUG_SESSION_ID = "oasess_fake000000000000000000000000000"
+
 # run_release_test.sh names a file here and prints it under its own buildkite
 # group once the test is over. Writing the analysis there instead of logging it
 # inline keeps it out of the middle of the reporting output, where it competes
@@ -114,8 +122,13 @@ class ObservabilityAgentReporter(Reporter):
             f"with result {result.status}, job {job_id}"
         )
         try:
-            debug_session_id = self._create_debug_session(job_id)
-            response = self._query_debug_session(debug_session_id)
+            # TEMPORARY -- DO NOT MERGE, see FAKE_RESPONSE_ENV.
+            fake_response = self._fake_response()
+            if fake_response is not None:
+                debug_session_id, response = FAKE_DEBUG_SESSION_ID, fake_response
+            else:
+                debug_session_id = self._create_debug_session(job_id)
+                response = self._query_debug_session(debug_session_id)
         except Exception:
             # The analysis is supplementary information; failing to obtain it
             # should never change the outcome of the test run.
@@ -175,6 +188,25 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+    def _fake_response(self) -> Optional[Dict[str, Any]]:
+        """TEMPORARY -- DO NOT MERGE. Serve a canned response, if one is set.
+
+        Returns the parsed contents of the file named by FAKE_RESPONSE_ENV, or
+        None when the variable is unset, in which case the agent is called for
+        real.
+        """
+        fake_response_file = os.environ.get(FAKE_RESPONSE_ENV)
+        if not fake_response_file:
+            return None
+
+        logger.warning(
+            f"Serving a canned observability agent response from "
+            f"{fake_response_file}; no debug session is created and no slack "
+            "thread is posted"
+        )
+        with open(fake_response_file, "rt", encoding="utf-8") as fp:
+            return json.load(fp)
 
     def _write_analysis(self, message: str) -> Optional[str]:
         """Write the message to the file the test harness prints, if configured.
