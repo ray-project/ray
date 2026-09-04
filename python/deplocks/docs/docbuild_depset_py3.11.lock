@@ -264,7 +264,6 @@ docutils==0.21.2 \
     #   pydata-sphinx-theme
     #   sphinx
     #   sphinx-click
-    #   sphinx-jsonschema
     #   sphinx-mdinclude
 executing==2.2.1 \
     --hash=sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4 \
@@ -533,10 +532,6 @@ jmespath==1.1.0 \
     # via
     #   boto3
     #   botocore
-jsonpointer==3.1.1 \
-    --hash=sha256:0b801c7db33a904024f6004d526dcc53bbb8a4a0f4e32bfd10beadf60adf1900 \
-    --hash=sha256:8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca
-    # via sphinx-jsonschema
 jsonschema==4.26.0 \
     --hash=sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
@@ -1420,7 +1415,6 @@ pyyaml==6.0.3 \
     #   jupytext
     #   myst-nb
     #   myst-parser
-    #   sphinx-jsonschema
     #   sphinxcontrib-openapi
 pyzmq==27.1.0 \
     --hash=sha256:01c0e07d558b06a60773744ea6251f769cd79a41a97d11b8bf4ab8f034b0424d \
@@ -1530,7 +1524,6 @@ requests==2.32.5 \
     # via
     #   -r doc/requirements-doc.txt
     #   sphinx
-    #   sphinx-jsonschema
     #   tensorflow
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
@@ -1754,9 +1747,6 @@ sphinx-design==0.7.0 \
 sphinx-docsearch==0.3.0 \
     --hash=sha256:24e131a6cd1c7f3bb28080576a31f767c7bb8d84a9dc947de1fa1ed7aaf69e70 \
     --hash=sha256:fa7abbdfcf5f65c529bb49be0e663fb4687982fa0f32d614e2ad1687f6a65d23
-    # via -r doc/requirements-doc.txt
-sphinx-jsonschema==1.19.2 \
-    --hash=sha256:1a48954217c2b3c6759c89b9ddd2c8e5b668b8730564e0283b009f23932be150
     # via -r doc/requirements-doc.txt
 sphinx-last-updated-by-git==0.3.8 \
     --hash=sha256:6382c8285ac1f222483a58569b78c0371af5e55f7fbf9c01e5e8a72d6fdfa499 \
