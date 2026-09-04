@@ -309,7 +309,7 @@ def test_starting_actor_death_uses_reported_failure_cause(
         assert restored == [True]
 
 
-def test_actor_unavailability_fails_closed_without_releasing_slot():
+def test_actor_unavailability_is_batch_local_and_retains_slot():
     actor_set = object.__new__(_ActorSlotSet)
     actor_set._condition = threading.Condition()
     actor_set._closed = False
@@ -328,12 +328,11 @@ def test_actor_unavailability_fails_closed_without_releasing_slot():
 
     actor_set._batch_completed(slot, slot.generation, future)
 
-    assert actor_set._error is unavailable
+    assert actor_set._error is None
     assert slot.actor is actor
     assert slot.state is _ActorSlotState.ACTIVE
     assert slot.outstanding == 0
-    with pytest.raises(RuntimeError, match="actor management failed"):
-        actor_set.submit(None, [])
+    actor_set._raise_if_unavailable_locked()
 
 
 def test_pool_preserves_exceptions_returned_as_values(shutdown_only):

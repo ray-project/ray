@@ -521,12 +521,10 @@ class _ActorSlotSet:
                 self._release_dead_actor_locked(slot, error)
                 self._condition.notify_all()
                 return
-            if isinstance(error, ray.exceptions.RayActorError):
-                # ActorUnavailableError is terminal for this ObjectRef but not
-                # proof that the actor has exited. Retain the owned slot and
-                # reject later submissions instead of creating duplicate
-                # capacity while the actor may recover.
-                self._error = error
+            # Other errors are local to this ObjectRef. In particular, an
+            # ActorUnavailableError does not prove that the actor exited: the
+            # failed batch is reported to its caller, while this slot retains
+            # the actor handle and remains available for later calls.
 
             slot.outstanding -= 1
             if slot.outstanding < 0:
