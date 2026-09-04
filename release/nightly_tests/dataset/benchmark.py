@@ -263,6 +263,8 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         # malloc_trim under RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS); inside
         # decode_wall_s. 0 for pyarrow and for arrow-rs with the knob off.
         ("trim_wall_s_per_task_dist", "read_task_trim_wall_s"),
+        ("yield_wall_s_per_task_dist", "read_task_yield_wall_s"),
+        ("first_table_wall_s_per_task_dist", "read_task_first_table_wall_s"),
     ]
 
     out: Dict[str, Any] = {"operators_detail": []}
@@ -332,6 +334,14 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                 "peak_batch_bytes_max": _q(e, "peak_batch_bytes_per_task_dist", "max"),
                 "trim_wall_s_p50": _q(e, "trim_wall_s_per_task_dist", "p50"),
                 "trim_wall_s_max": _q(e, "trim_wall_s_per_task_dist", "max"),
+                "yield_wall_s_p50": _q(e, "yield_wall_s_per_task_dist", "p50"),
+                "yield_wall_s_max": _q(e, "yield_wall_s_per_task_dist", "max"),
+                "first_table_wall_s_p50": _q(
+                    e, "first_table_wall_s_per_task_dist", "p50"
+                ),
+                "first_table_wall_s_max": _q(
+                    e, "first_table_wall_s_per_task_dist", "max"
+                ),
             }
             for e in read_entries
         ]

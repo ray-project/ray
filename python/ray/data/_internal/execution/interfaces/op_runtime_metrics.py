@@ -584,6 +584,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._read_task_decode_wall_s = DistributionTracker()
         self._read_task_peak_batch_bytes = DistributionTracker()
         self._read_task_trim_wall_s = DistributionTracker()
+        self._read_task_yield_wall_s = DistributionTracker()
+        self._read_task_first_table_wall_s = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -955,6 +957,30 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._read_task_trim_wall_s
 
     @metric_property(
+        description=(
+            "Distribution across read tasks of wall seconds spent inside the "
+            "read task's yield: output-buffer shaping, block build, object-store "
+            "put and streaming-generator backpressure. Disjoint from "
+            "read_task_decode_wall_s."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def read_task_yield_wall_s(self) -> DistributionTracker:
+        return self._read_task_yield_wall_s
+
+    @metric_property(
+        description=(
+            "Distribution across read tasks of wall seconds from task start to "
+            "the first decoded table (reader construction + first next())."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def read_task_first_table_wall_s(self) -> DistributionTracker:
+        return self._read_task_first_table_wall_s
+
+    @metric_property(
         description="Average bytes decoded by the reader per read task.",
         metrics_group=MetricsGroup.TASKS,
     )
@@ -1286,6 +1312,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 )
                 self._read_task_peak_batch_bytes.add_sample(
                     max(s.peak_batch_bytes for s in read_stats)
+                )
+                self._read_task_yield_wall_s.add_sample(
+                    sum(s.yield_wall_s for s in read_stats)
+                )
+                self._read_task_first_table_wall_s.add_sample(
+                    sum(s.first_table_wall_s for s in read_stats)
                 )
                 self._read_task_trim_wall_s.add_sample(
                     sum(s.trim_wall_s for s in read_stats)

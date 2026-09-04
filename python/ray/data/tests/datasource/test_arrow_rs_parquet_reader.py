@@ -3325,6 +3325,12 @@ def test_arrow_rs_eos_trim_wall_reaches_driver_without_flush_block(
         # Linux: real malloc_trim(0); elsewhere the timed no-op trampoline.
         # Either way strictly positive iff the drain reached the block.
         assert trim["max"] > 0.0
+        em = mds._raw_stats().extra_metrics
+        # The same last-block snapshot carries the downstream and first-table
+        # walls; the single yield of the single table is timed.
+        assert em["read_task_yield_wall_s"]["num_samples"] == 1
+        assert em["read_task_yield_wall_s"]["max"] > 0.0
+        assert em["read_task_first_table_wall_s"]["max"] > 0.0
     finally:
         ctx.target_max_block_size = old_target
         ctx.arrow_rs_malloc_trim_eos = old_knob

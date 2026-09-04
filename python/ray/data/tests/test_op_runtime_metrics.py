@@ -74,6 +74,8 @@ def test_read_files_task_stats_distributions():
                     peak_batch_bytes=60,
                     manifests=1,
                     trim_wall_s=0.10,
+                    yield_wall_s=1.5,
+                    first_table_wall_s=0.7,
                 ),
                 # A hypothetical second reporting transform in a fused task:
                 # bytes/wall sum, peak_batch maxes.
@@ -85,6 +87,7 @@ def test_read_files_task_stats_distributions():
                     peak_batch_bytes=50,
                     manifests=1,
                     trim_wall_s=0.05,
+                    yield_wall_s=0.5,
                 ),
             ],
         ),
@@ -128,6 +131,9 @@ def test_read_files_task_stats_distributions():
     assert metrics.read_task_trim_wall_s.num_samples == 2
     assert abs(metrics.read_task_trim_wall_s.max - 0.15) < 1e-9
     assert metrics.read_task_trim_wall_s.min == 0.0
+    assert metrics.read_task_yield_wall_s.num_samples == 2
+    assert abs(metrics.read_task_yield_wall_s.max - 2.0) < 1e-9
+    assert abs(metrics.read_task_first_table_wall_s.max - 0.7) < 1e-9
 
 
 def test_task_completion_time_histogram():

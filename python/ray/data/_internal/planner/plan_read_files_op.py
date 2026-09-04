@@ -64,6 +64,7 @@ def plan_read_files_op(
         _: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn,
     ) -> Iterable[Block]:
+        task_start_s = time.perf_counter()
         reader = scanner.create_reader()
         # Reader-level per-task aggregates (bytes/batches the decoder actually
         # produced, time spent inside its iterator, largest single table),
@@ -83,6 +84,8 @@ def plan_read_files_op(
         decoded_bytes = decoded_batches = decoded_rows = peak_batch_bytes = 0
         manifests = 0
         trim_wall_s = 0.0
+        yield_wall_s = 0.0
+        first_table_wall_s = 0.0
         # File-level predicate pruning (partition predicates pushed down
         # onto the scanner) runs per incoming manifest block. Only
         # ``FileScanner`` subclasses expose ``prune_manifest``; the base
@@ -116,10 +119,14 @@ def plan_read_files_op(
                     decode_wall_s += time.perf_counter() - start_s
                     trim_wall_s += reader.pop_task_stats().get("trim_wall_s", 0.0)
                     task_stats._update(
-                        decode_wall_s=decode_wall_s, trim_wall_s=trim_wall_s
+                        decode_wall_s=decode_wall_s,
+                        trim_wall_s=trim_wall_s,
+                        yield_wall_s=yield_wall_s,
                     )
                     break
                 decode_wall_s += time.perf_counter() - start_s
+                if decoded_batches == 0:
+                    first_table_wall_s = time.perf_counter() - task_start_s
                 nbytes = table.nbytes
                 decoded_bytes += nbytes
                 decoded_batches += 1
@@ -133,12 +140,19 @@ def plan_read_files_op(
                     decoded_rows=decoded_rows,
                     peak_batch_bytes=peak_batch_bytes,
                     manifests=manifests,
+                    yield_wall_s=yield_wall_s,
+                    first_table_wall_s=first_table_wall_s,
                 )
                 if pending is not None:
+                    y0 = time.perf_counter()
                     yield pending
+                    yield_wall_s += time.perf_counter() - y0
                 pending = block_udf(table) if block_udf is not None else table
             if pending is not None:
+                y0 = time.perf_counter()
                 yield pending
+                yield_wall_s += time.perf_counter() - y0
+                task_stats._update(yield_wall_s=yield_wall_s)
 
     return MapOperator.create(
         MapTransformer(

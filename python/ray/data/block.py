@@ -252,6 +252,14 @@ class ReadFilesTaskStats(CustomOpStats):
     # finalizer runs inside the iterator's final ``next()``. Readers hand it
     # over through ``Reader.pop_task_stats``.
     trim_wall_s: float = 0.0
+    # Wall seconds the read task spent handing tables DOWNSTREAM — inside the
+    # planner's ``yield``: output-buffer shaping, block build, the object-store
+    # put and any streaming-generator backpressure wait. Disjoint from
+    # ``decode_wall_s``; task duration minus the two is start-up/teardown.
+    yield_wall_s: float = 0.0
+    # Wall seconds from task start to the first decoded table (reader
+    # construction + the first ``next()``): the per-task fixed cost.
+    first_table_wall_s: float = 0.0
 
 
 @DeveloperAPI
