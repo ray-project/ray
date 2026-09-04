@@ -387,6 +387,33 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   ASSERT_TRUE(to_schedule.IsNil());
 }
 
+TEST_F(SchedulingPolicyTest, RequireAvailableAllBusyIsFailedNotInfeasible) {
+  // With require_node_available (what the caller sets for actor-creation
+  // leases that acquire resources for their lifetime), an all-busy request
+  // gets FAILED rather than Infeasible:
+  // feasible nodes exist, so it is retryable on the next view change. The
+  // verdict applies whether or not the lease carries a label selector.
+  const std::string pg_cpu = "CPU_group_" + PlacementGroupID::Of(JobID::FromInt(1)).Hex();
+  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
+  NodeResources bundle = CreateNodeResources(0, 0, 0, 0, 0, 0);
+  bundle.total.Set(scheduling::ResourceID(pg_cpu), 2);
+  bundle.SetAvailableResource(scheduling::ResourceID(pg_cpu), 0);
+  bundle.labels = {{"zone", "us-east"}};
+  nodes.emplace(remote_node, bundle);
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  raylet_scheduling_policy::CompositeSchedulingPolicy policy(
+      local_node, *cluster_resource_manager, [](auto) { return true; });
+  // The caller requires an available node for placement group actor leases.
+  auto options = HybridOptions(0.50, false, /*require_node_available=*/true);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{pg_cpu, 1}}, false);
+  ASSERT_TRUE(policy.Schedule(req, options).status.IsFailed());
+
+  req.SetLabelSelector(
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
+  ASSERT_TRUE(policy.Schedule(req, options).status.IsFailed());
+}
+
 TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
   // Test the edge case where a task requires all of a node's resources, and the node is
   // fully utilized.

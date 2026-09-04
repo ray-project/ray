@@ -112,8 +112,9 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// scheduler guarantees k is at least equal to this fraction * the number of
   /// nodes in the cluster.
   ///
-  /// \return Success with the selected node, otherwise Infeasible (also when
-  /// feasible nodes exist but none is available and require_available is set).
+  /// \return Success with the selected node; Failed when feasible nodes exist
+  /// but none is available and require_available is set; Infeasible when no
+  /// feasible node exists.
   SchedulingResult ScheduleImpl(const ResourceRequest &resource_request,
                                 float spread_threshold,
                                 bool force_spillback,

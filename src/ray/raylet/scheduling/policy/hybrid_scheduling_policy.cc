@@ -176,6 +176,12 @@ SchedulingResult HybridSchedulingPolicy::ScheduleImpl(
                                   : std::optional<scheduling::NodeID>(),
         ComputeNodeScore(preferred_node_id, spread_threshold))});
   }
+  if (!feasible_and_unavailable_nodes.empty()) {
+    // Feasible nodes exist but none is available and the caller required an
+    // available node: this is retryable on the next resource-view change, so
+    // it is Failed, not Infeasible.
+    return SchedulingResult::Failed();
+  }
   return SchedulingResult::Infeasible();
 }
 

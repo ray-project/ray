@@ -744,6 +744,10 @@ void GcsServer::InitGcsActorManager(
       clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
+  // The actor manager now exists, so the placement group removals that
+  // Initialize deferred (their cleanup destroys the groups' pending actors)
+  // can run.
+  gcs_placement_group_manager_->RemoveStartupLeftoverPlacementGroups();
   // Service registration is centralized in RegisterRpcServices().
 }
 
@@ -769,6 +773,12 @@ void GcsServer::InitGcsPlacementGroupManager(
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      },
+      // Dereferences the actor manager at call time; the earliest invocation
+      // is RemoveStartupLeftoverPlacementGroups below, after both managers
+      // exist.
+      [this](const PlacementGroupID &placement_group_id) {
+        gcs_actor_manager_->DestroyActorsBoundToPlacementGroup(placement_group_id);
       },
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,
