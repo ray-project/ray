@@ -4295,6 +4295,18 @@ def test_resource_requirements_none():
     replica.resource_requirements()
 
 
+def test_record_multiplexed_model_ids_updates_actor_details():
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
+
+    assert replica.actor_details.multiplexed_model_ids == []
+
+    replica.record_multiplexed_model_ids(["model-1", "model-2"])
+
+    assert replica.multiplexed_model_ids == ["model-1", "model-2"]
+    assert replica.actor_details.multiplexed_model_ids == ["model-1", "model-2"]
+
+
 class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(

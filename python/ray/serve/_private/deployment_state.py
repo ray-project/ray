@@ -1915,6 +1915,7 @@ class DeploymentReplica:
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
         """Record the multiplexed model ids for this replica."""
         self._multiplexed_model_ids = multiplexed_model_ids
+        self.update_actor_details(multiplexed_model_ids=multiplexed_model_ids)
 
     def record_routing_stats(self, routing_stats: Optional[Dict[str, Any]]):
         """Record the routing stats for this replica.
