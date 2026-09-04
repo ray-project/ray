@@ -113,6 +113,13 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a runtime node-label update. Forwards the update to the target raylet
+  /// (the owner of its labels) and, on success, refreshes the stored GcsNodeInfo
+  /// labels and republishes the node info.
+  void HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request,
+                              rpc::UpdateNodeLabelsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a node failure. This will mark the failed node as dead in gcs
   /// node table.
   ///
@@ -310,6 +317,13 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   void PublishNodeInfoToPubsub(const NodeID &node_id,
                                const rpc::GcsNodeInfo &node_info) const;
+
+  /// Replace the stored GcsNodeInfo labels for an alive node with \p labels and
+  /// republish the node info. No-op if the node is no longer alive. Uses a
+  /// read/modify/write on alive_nodes_ since stored values are const.
+  void UpdateNodeLabelsInCache(
+      const NodeID &node_id,
+      const ::google::protobuf::Map<std::string, std::string> &labels);
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
