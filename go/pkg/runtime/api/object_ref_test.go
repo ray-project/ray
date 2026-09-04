@@ -15,10 +15,14 @@
 package api
 
 import (
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/contract"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 // TestObjectRef_String tests the String() method.
@@ -201,5 +205,120 @@ func TestObjectRef_GenericTypes(t *testing.T) {
 	mapRef := NewObjectRef[map[string]int](objectID, "map[string]int", true)
 	if mapRef.ObjectType() != "map[string]int" {
 		t.Errorf("map ObjectType() = %q, want %q", mapRef.ObjectType(), "map[string]int")
+	}
+}
+
+// getErrorObjectStore is a minimal ObjectStore stub whose GetRaw returns a single object with the
+// configured metadata and data. Unused interface methods embed the nil ObjectStore and are never
+// called by the Get path under test.
+type getErrorObjectStore struct {
+	object.ObjectStore
+	metadata []byte
+	data     []byte
+}
+
+func (s *getErrorObjectStore) GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
+	return []*object.NativeRayObject{{Data: s.data, Metadata: s.metadata}}, nil
+}
+
+// getErrorObjectRuntime is a minimal Runtime stub exposing the object store.
+type getErrorObjectRuntime struct {
+	contract.Runtime
+	store object.ObjectStore
+}
+
+func (r *getErrorObjectRuntime) GetObjectStore() object.ObjectStore {
+	return r.store
+}
+
+// getErrorObjectHandle is a minimal RuntimeHandle stub exposing the runtime.
+type getErrorObjectHandle struct {
+	contract.RuntimeHandle
+	rt contract.Runtime
+}
+
+func (h *getErrorObjectHandle) Runtime() contract.Runtime {
+	return h.rt
+}
+
+// TestObjectRefGet_ReturnsErrorObjectException verifies that Get and GetWithTimeout surface a
+// readable exception when the object's metadata encodes a Ray error type (e.g.
+// WORKER_STARTUP_FAILED) instead of returning a generic "failed to get object" error.
+func TestObjectRefGet_ReturnsErrorObjectException(t *testing.T) {
+	objectID, err := ids.ObjectIDFromHex("0123456789abcdef0123456789abcdef0123456789abcdef01234567")
+	if err != nil {
+		t.Fatalf("Failed to create ObjectID: %v", err)
+	}
+
+	// Note: setHandle panics if called twice (initialized is a package-level flag), so both
+	// scenarios share a single handle set up here.
+	store := &getErrorObjectStore{metadata: []byte("33")}
+	setHandle(&getErrorObjectHandle{rt: &getErrorObjectRuntime{store: store}})
+	// Restore the un-initialized state so the other tests in this package that expect
+	// ErrRuntimeNotInitialized are unaffected by this test's handle.
+	t.Cleanup(func() {
+		currentHandle = atomic.Value{}
+		initialized.Store(false)
+	})
+
+	// Get path.
+	ref := NewObjectRef[string](objectID, "string", true)
+	_, getErr := ref.Get()
+	if getErr == nil {
+		t.Fatal("Get should return an error for a WORKER_STARTUP_FAILED error object")
+	}
+	if !strings.Contains(getErr.Error(), "WORKER_STARTUP_FAILED") {
+		t.Errorf("Get error should mention WORKER_STARTUP_FAILED, got: %v", getErr)
+	}
+	if strings.Contains(getErr.Error(), "failed to deserialize object") {
+		t.Errorf("Get error should not be the generic deserialization error, got: %v", getErr)
+	}
+
+	// GetWithTimeout path against a WORKER_DIED error object.
+	store.metadata = []byte("0")
+	ref = NewObjectRef[string](objectID, "string", true)
+	_, getErr = ref.GetWithTimeout(1000)
+	if getErr == nil {
+		t.Fatal("GetWithTimeout should return an error for a WORKER_DIED error object")
+	}
+	if !strings.Contains(getErr.Error(), "Worker has died") {
+		t.Errorf("GetWithTimeout error should surface the worker death cause, got: %v", getErr)
+	}
+}
+
+// TestObjectRefGet_GoWorkerTaskExecutionError verifies Get surfaces the Go worker's task
+// execution error object (metadata {"type":"error"} with a JSON error payload) as a readable
+// RayTaskExecutionException carrying the panic message, not a deserialization failure.
+func TestObjectRefGet_GoWorkerTaskExecutionError(t *testing.T) {
+	objectID, err := ids.ObjectIDFromHex("0123456789abcdef0123456789abcdef0123456789abcdef01234567")
+	if err != nil {
+		t.Fatalf("Failed to create ObjectID: %v", err)
+	}
+
+	store := &getErrorObjectStore{
+		metadata: []byte(`{"type":"error"}`),
+		data:     []byte(`{"error_type":"RayTaskException","error_message":"Task execution panicked: PanicDiv: divide by zero"}`),
+	}
+	setHandle(&getErrorObjectHandle{rt: &getErrorObjectRuntime{store: store}})
+	// Restore the un-initialized state so the other tests in this package that expect
+	// ErrRuntimeNotInitialized are unaffected by this test's handle.
+	t.Cleanup(func() {
+		currentHandle = atomic.Value{}
+		initialized.Store(false)
+	})
+
+	ref := NewObjectRef[string](objectID, "string", true)
+	_, getErr := ref.Get()
+	if getErr == nil {
+		t.Fatal("Get should return an error for a Go worker task execution error object")
+	}
+	if !strings.Contains(getErr.Error(), "RayTaskExecutionException") {
+		t.Errorf("Get error should mention RayTaskExecutionException, got: %v", getErr)
+	}
+	if !strings.Contains(getErr.Error(), "PanicDiv") {
+		t.Errorf("Get error should carry the panic message, got: %v", getErr)
+	}
+	if strings.Contains(getErr.Error(), "failed to deserialize object") {
+		t.Errorf("Get error should not be the generic deserialization error, got: %v", getErr)
 	}
 }

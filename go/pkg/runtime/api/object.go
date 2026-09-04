@@ -94,8 +94,11 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 		released:           atomic.Bool{},
 	}
 
-	// Register local reference and set finalizer
-	_ = objectStore.AddLocalReference(objectID)
+	// The single local reference for this ObjectRef is registered by PutRawWithID
+	// (the C++ PutWithID bridge registers ownership with add_local_ref=true) and
+	// removed by the finalizer below when the ObjectRef is GCed. Adding another
+	// reference here would pin the object in plasma forever, because the finalizer
+	// only removes one.
 
 	// Capture objectID in the finalizer closure to avoid accessing the ObjectRef
 	// after it has been garbage collected. This is critical because the finalizer

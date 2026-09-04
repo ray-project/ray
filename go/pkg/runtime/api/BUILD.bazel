@@ -63,5 +63,7 @@ go_test(
     deps = [
         "//go/pkg/errors",
         "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/object",
     ],
 )

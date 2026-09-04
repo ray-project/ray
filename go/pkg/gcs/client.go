@@ -47,7 +47,6 @@ type Client interface {
 	JobInfoInterface
 	WorkerInfoInterface
 	PlacementGroupInterface
-	PublisherInterface
 	AutoscalerInterface
 
 	// Address returns the GCS server address (host:port).

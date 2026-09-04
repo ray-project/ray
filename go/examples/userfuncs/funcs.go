@@ -19,6 +19,7 @@
 package userfuncs
 
 import (
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 )
 
@@ -38,5 +39,7 @@ func RegisterFunctions() error {
 // init registers the functions when the package is imported (driver side) or
 // when the .so plugin is loaded (worker side).
 func init() {
-	_ = RegisterFunctions()
+	if err := RegisterFunctions(); err != nil {
+		log.Log.Error(err, "register user functions failed")
+	}
 }

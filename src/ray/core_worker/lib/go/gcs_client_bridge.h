@@ -120,10 +120,6 @@ int ray_gcs_client_workers_add_worker_info(CGcsClient* client,
 
 
 // Publisher
-int ray_gcs_client_publisher_publish_errors(CGcsClient* client,
-                                            char** error_out);
-int ray_gcs_client_publisher_publish_logs(CGcsClient* client,
-                                          char** error_out);
 int ray_gcs_client_publisher_publish_log_batch(CGcsClient* client,
                                                const char* key_id,
                                                const char* ip,
@@ -146,32 +142,6 @@ int ray_gcs_client_autoscaler_get_status(CGcsClient* client,
                                          char** serialized_out,
                                          int* size_out,
                                          char** error_out);
-
-// === Error Subscriber ===
-typedef struct CGcsErrorSubscriber CGcsErrorSubscriber;
-
-CGcsErrorSubscriber* ray_gcs_error_subscriber_create(const char* address,
-                                                      const char* worker_id_hex,
-                                                      char** error_out);
-void ray_gcs_error_subscriber_destroy(CGcsErrorSubscriber* sub);
-int ray_gcs_error_subscriber_subscribe(CGcsErrorSubscriber* sub, char** error_out);
-int ray_gcs_error_subscriber_poll(CGcsErrorSubscriber* sub, int timeout_ms,
-                                   char** error_id_out, void** error_data_out,
-                                   size_t* error_data_size_out, char** error_out);
-void ray_gcs_error_subscriber_close(CGcsErrorSubscriber* sub);
-
-// === Log Subscriber ===
-typedef struct CGcsLogSubscriber CGcsLogSubscriber;
-
-CGcsLogSubscriber* ray_gcs_log_subscriber_create(const char* address,
-                                                  const char* worker_id_hex,
-                                                  char** error_out);
-void ray_gcs_log_subscriber_destroy(CGcsLogSubscriber* sub);
-int ray_gcs_log_subscriber_subscribe(CGcsLogSubscriber* sub, char** error_out);
-int ray_gcs_log_subscriber_poll(CGcsLogSubscriber* sub, int timeout_ms,
-                                 void** log_data_out, size_t* log_data_size_out,
-                                 char** error_out);
-void ray_gcs_log_subscriber_close(CGcsLogSubscriber* sub);
 
 // PlacementGroups
 int ray_gcs_client_placement_groups_get_all(CGcsClient* client,

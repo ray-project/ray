@@ -185,16 +185,9 @@ func (nr *NativeRuntime) executeTask(
 	numReturns int,
 	actorID ids.ActorID,
 ) ([]function.SerializedObject, error) {
-	// Add panic recovery handling to prevent task execution panics from crashing the process
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Error(fmt.Errorf("panic recovered: %v", r),
-				"Task execution panicked",
-				"taskType", taskType,
-				"function", functionDescriptor.ToList(),
-				"actorID", actorID)
-		}
-	}()
+	// A panic from a user function propagates to the caller GoExecuteTask (see
+	// go/internal/runtime/cgo/task_executor.go), which recovers it and serializes a task
+	// execution exception error object; no recovery is needed at this layer.
 
 	// Delegate to NativeTaskExecutor based on task type
 	if actorID.IsNil() {

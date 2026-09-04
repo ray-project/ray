@@ -8,7 +8,6 @@ go_library(
         "interfaces.go",
         "options.go",
         "state.go",
-        "subscriber.go",
         "types.go",
     ],
     importpath = "github.com/ray-project/ray/go/pkg/gcs",

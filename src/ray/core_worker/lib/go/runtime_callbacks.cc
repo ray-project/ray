@@ -226,11 +226,17 @@ std::function<ray::Status(
               static_cast<size_t>(c_obj.data_size));
         }
 
+        // Copy the metadata into an owned buffer: the C array returned by GoExecuteTask is
+        // freed (CNativeCommon_FreeCSerializedObjectArray) as soon as this callback returns,
+        // while the return object stored by AllocateReturnObject must outlive it. Data is
+        // explicitly copied below, but metadata was not, leaving the stored return object
+        // referencing freed C memory (surfaced as garbage metadata on the driver side).
         std::shared_ptr<ray::LocalMemoryBuffer> metadata_buffer;
         if (c_obj.metadata_size > 0 && c_obj.metadata != nullptr) {
           metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(
               reinterpret_cast<uint8_t*>(const_cast<char*>(c_obj.metadata)),
-              static_cast<size_t>(c_obj.metadata_size));
+              static_cast<size_t>(c_obj.metadata_size),
+              /*copy_data=*/true);
         }
 
         std::vector<ray::rpc::ObjectReference> contained_object_refs;

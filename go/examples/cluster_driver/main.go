@@ -93,6 +93,7 @@ func main() {
 	rref, err := api.Instance().Remote(userfuncs.Add).Call(1, 2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "REMOTE CALL FAILED: %v\n", err)
+		os.Exit(1)
 	} else {
 		fmt.Printf("REMOTE SUBMIT OK: %v\n", rref.ObjectID())
 	}

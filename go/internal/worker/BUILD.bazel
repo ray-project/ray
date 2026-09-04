@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 # The worker package implements the Plugin mode of the Ray worker process:
 # worker.go loads the go_runtime.so shared library via the Go plugin API.
@@ -30,6 +30,22 @@ go_library(
         "//go/pkg/runtime/object",
         "//go/proto",
         "@com_github_google_uuid//:uuid",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+# worker package unit tests (pure unit, no live cluster required)
+go_test(
+    name = "worker_test",
+    srcs = [
+        "ray_config_test.go",
+        "worker_test.go",
+    ],
+    embed = [":worker"],
+    importpath = "github.com/ray-project/ray/go/internal/worker",
+    deps = [
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

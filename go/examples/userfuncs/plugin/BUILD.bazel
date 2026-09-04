@@ -17,5 +17,8 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/ray-project/ray/go/examples/userfuncs/plugin",
     visibility = ["//visibility:private"],
-    deps = ["//go/examples/userfuncs"],
+    deps = [
+        "//go/examples/userfuncs",
+        "//go/pkg/log",
+    ],
 )

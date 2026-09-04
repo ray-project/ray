@@ -8,10 +8,8 @@ go_library(
         "autoscaler_cgo.go",
         "client_cgo.go",
         "client_cgo_benchmark.go",
-        "config.go",
         "nodes_cgo.go",
         "publisher_cgo.go",
-        "subscriber_cgo.go",
     ],
     cdeps = ["//src/ray/core_worker/lib/go:gcs_client_bridge"],
     cgo = True,
@@ -26,54 +24,18 @@ go_library(
     ],
 )
 
-# Deferred: *_test.go not migrated (Task 1 excluded test files).
-# 纯单元测试 - 不依赖 CGO 或 GCS
-# go_test(
-#    name = "native_unit_test",
-#    srcs = ["native_unit_test.go"],
-#    embed = [":native"],
-#    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
-# )
-#
-# CGO 测试 - 包含所有需要 CGO 的测试（需要 GCS）
-# go_test(
-#    name = "cgo_test",
-#    srcs = [
-#        "cgo_integration_test.go",
-#        "cgo_smoke_test.go",
-#        "client_cgo_test.go",
-#        "subscriber_cgo_test.go",
-#    ],
-#    embed = [":native"],
-#    tags = [
-#        "integration",
-#        "local",
-#        "requires-gcs",
-#    ],
-#    deps = [
-#        "//go/pkg/gcs",
-#        "//go/pkg/ids",
-#        "//go/pkg/log/zap",
-#        "@org_uber_go_zap//zapcore",
-#    ],
-# )
-#
-# go_test(
-#    name = "native_test",
-#    srcs = [
-#        "cgo_integration_test.go",
-#        "cgo_smoke_test.go",
-#        "native_unit_test.go",
-#        "subscriber_cgo_test.go",
-#    ],
-#    embed = [":native"],
-#    deps = [
-#        "//go/pkg/gcs",
-#        "//go/pkg/ids",
-#        "//go/pkg/log/zap",
-#        "@org_uber_go_zap//zapcore",
-#    ],
-# )
+# Publisher CGO unit test: exercises the compile-time boundaries of the
+# retained log-batch publish path (NewLogBatchPublisher type assertion and
+# PublishLogBatch error handling) without requiring a live GCS cluster.
+go_test(
+    name = "publisher_cgo_test",
+    srcs = ["publisher_cgo_test.go"],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    deps = [
+        "//go/pkg/gcs",
+    ],
+)
 
 # Benchmark 测试 - 使用 go test -bench=. -run=^$ 运行
 # 注意：benchmark 文件属于 package native，不是 package main，因此必须是 go_test 而不是 go_binary

@@ -73,6 +73,13 @@ type FunctionArg struct {
 type ObjectRefData struct {
 	// ObjectID is the unique identifier of the object.
 	ObjectID ids.ObjectID
+
+	// ReleaseAfterSubmit indicates the local reference backing this argument is
+	// held only for task submission (added by PutWithID) and must be released
+	// once the task has been submitted. It is set only for the internal
+	// pass-by-reference arguments created by convertArgToFunctionArg; user
+	// supplied ObjectRefs manage their own reference lifecycle.
+	ReleaseAfterSubmit bool
 }
 
 // SerializedData contains serialized object data.
@@ -124,9 +131,9 @@ func (f FunctionArg) IsPassByValue() bool {
 // This interface abstracts function registration and lookup operations.
 //
 // Design notes:
-// 1. The interface is kept minimal, containing only essential methods.
-// 2. It allows the Runtime interface to depend on this abstraction rather than
-//    concrete implementations, following the Dependency Inversion Principle.
+//  1. The interface is kept minimal, containing only essential methods.
+//  2. It allows the Runtime interface to depend on this abstraction rather than
+//     concrete implementations, following the Dependency Inversion Principle.
 type Manager interface {
 	// RegisterFunction registers a function with the given descriptor.
 	// Returns an error if the descriptor is invalid or registration fails.

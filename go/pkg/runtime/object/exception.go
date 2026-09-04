@@ -15,8 +15,13 @@
 package object
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ray-project/ray/go/internal/errors"
+	"github.com/vmihailenco/msgpack/v5"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // exceptionFactory is a function type for creating exceptions from raw data.
@@ -29,12 +34,12 @@ var exceptionRegistry = map[int]exceptionFactory{
 	ErrorCodeWorkerDied: simpleExceptionFactory(NewRayWorkerException),
 
 	// ID-based exceptions - all use the same unified RayIDException type
-	ErrorCodeActorDied:             idExceptionFactory(NewRayIDExceptionActorDied),
-	ErrorCodeActorUnavailable:      idExceptionFactory(NewRayIDExceptionActorUnavailable),
+	ErrorCodeActorDied:               idExceptionFactory(NewRayIDExceptionActorDied),
+	ErrorCodeActorUnavailable:        idExceptionFactory(NewRayIDExceptionActorUnavailable),
 	ErrorCodeObjectUnreconstructable: idExceptionFactory(NewRayIDExceptionUnreconstructable),
-	ErrorCodeObjectLost:            idExceptionFactory(NewRayIDExceptionLost),
-	ErrorCodeOwnerDied:             idExceptionFactory(NewRayIDExceptionOwnerDied),
-	ErrorCodeObjectDeleted:         idExceptionFactory(NewRayIDExceptionDeleted),
+	ErrorCodeObjectLost:              idExceptionFactory(NewRayIDExceptionLost),
+	ErrorCodeOwnerDied:               idExceptionFactory(NewRayIDExceptionOwnerDied),
+	ErrorCodeObjectDeleted:           idExceptionFactory(NewRayIDExceptionDeleted),
 
 	// Complex exceptions with multiple fields
 	ErrorCodeTaskExecutionException: func(data map[string]interface{}) RayException {
@@ -347,4 +352,250 @@ func ExceptionFromBytes(data []byte) (RayException, error) {
 		code:    code,
 		message: message,
 	}, nil
+}
+
+// errorTypeNames mirrors the C++ rpc::ErrorType enum (src/ray/protobuf/common.proto).
+// An object whose metadata is the decimal string of one of these numbers is an error object
+// (see C++ RayObject::IsException in src/ray/common/ray_object.cc). Number 2 is intentionally
+// absent because no rpc::ErrorType value uses it.
+var errorTypeNames = map[int]string{
+	0:  "WORKER_DIED",
+	1:  "ACTOR_DIED",
+	3:  "TASK_EXECUTION_EXCEPTION",
+	4:  "OBJECT_IN_PLASMA",
+	5:  "TASK_CANCELLED",
+	6:  "ACTOR_CREATION_FAILED",
+	7:  "RUNTIME_ENV_SETUP_FAILED",
+	8:  "OBJECT_LOST",
+	9:  "OWNER_DIED",
+	10: "OBJECT_DELETED",
+	11: "DEPENDENCY_RESOLUTION_FAILED",
+	12: "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED",
+	13: "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED",
+	14: "OBJECT_FETCH_TIMED_OUT",
+	15: "LOCAL_RAYLET_DIED",
+	16: "TASK_PLACEMENT_GROUP_REMOVED",
+	17: "ACTOR_PLACEMENT_GROUP_REMOVED",
+	18: "TASK_UNSCHEDULABLE_ERROR",
+	19: "ACTOR_UNSCHEDULABLE_ERROR",
+	20: "OUT_OF_DISK_ERROR",
+	21: "OBJECT_FREED",
+	22: "OUT_OF_MEMORY",
+	23: "NODE_DIED",
+	24: "END_OF_STREAMING_GENERATOR",
+	25: "ACTOR_UNAVAILABLE",
+	26: "GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION",
+	27: "OBJECT_UNRECONSTRUCTABLE_PUT",
+	28: "OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED",
+	29: "OBJECT_UNRECONSTRUCTABLE_BORROWED",
+	30: "OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND",
+	31: "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
+	32: "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
+	33: "WORKER_STARTUP_FAILED",
+	34: "STREAMING_GENERATOR_REPLAY_INCONSISTENT",
+}
+
+// errorTypeName returns the readable name for a C++ error type number, falling back to a
+// generated name for unknown numbers.
+func errorTypeName(errorType int) string {
+	if name, ok := errorTypeNames[errorType]; ok {
+		return name
+	}
+	return fmt.Sprintf("UNKNOWN_%d", errorType)
+}
+
+// ParseErrorType parses the object metadata as a Ray error type, following the C++
+// RayObject::IsException convention (src/ray/common/ray_object.cc): a metadata of at most 2 bytes
+// whose content is the canonical decimal string of an rpc::ErrorType number. Metadata longer than
+// 2 bytes (e.g. "PYTHON") is never an error. It returns the parsed error type number and whether
+// the metadata encodes one.
+func ParseErrorType(metadata []byte) (int, bool) {
+	// For performance, assume metadata of >2 chars (e.g. "PYTHON") is not an error.
+	if len(metadata) == 0 || len(metadata) > 2 {
+		return 0, false
+	}
+	// Parse the decimal value directly from the bytes to avoid a []byte->string
+	// conversion (and allocation) on the hot path, which runs on every Get.
+	errorType := 0
+	for _, b := range metadata {
+		if b < '0' || b > '9' {
+			return 0, false
+		}
+		errorType = errorType*10 + int(b-'0')
+	}
+	// C++ compares the metadata string with std::to_string(error_type_number), so only the
+	// canonical decimal representation without leading zeros matches ("03" != "3").
+	if len(metadata) == 2 && metadata[0] == '0' {
+		return 0, false
+	}
+	// Any canonical 1-2 digit decimal is treated as an error type. This keeps the check
+	// forward-compatible with C++ ErrorType enum additions even when errorTypeNames has not
+	// been updated; errorTypeName falls back to a generated name for unmapped numbers.
+	return errorType, true
+}
+
+// goWorkerErrorMetadata is the metadata value the Go worker attaches to task execution error
+// objects (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go). Its data payload
+// is a JSON object serialized from go/internal/errors.SerializedRayError.
+const goWorkerErrorMetadata = `{"type":"error"}`
+
+// Precomputed byte forms of the metadata values compared in ErrorObjectFromNative. Comparing
+// bytes avoids a []byte->string conversion (and allocation) on every Get.
+var goWorkerErrorMetadataBytes = []byte(goWorkerErrorMetadata)
+var metadataTypeTaskExecutionExceptionBytes = []byte(MetadataTypeTaskExecutionException)
+
+// taskExceptionFromGoWorkerError builds a readable task execution exception from a Go worker
+// error object. The worker serializes the error payload via go/internal/errors.SerializedRayError
+// (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go), so the same type is reused
+// here to avoid maintaining a second copy of the wire format. When the JSON payload cannot be
+// parsed it still returns a readable exception carrying the raw data, so the driver never sees a
+// silent/generic deserialization failure.
+func taskExceptionFromGoWorkerError(data []byte) RayException {
+	var payload errors.SerializedRayError
+	message := ""
+	stackTrace := ""
+	if err := json.Unmarshal(data, &payload); err == nil {
+		message = payload.ErrorMessage
+		if message == "" {
+			message = payload.CauseMessage
+		}
+		stackTrace = payload.StackTrace
+	} else {
+		message = string(data)
+	}
+	if message == "" {
+		message = "task execution failed"
+	}
+	return NewRayTaskExecutionException("", fmt.Errorf("%s", message), stackTrace)
+}
+
+// errorTypeFactories maps the C++ rpc::ErrorType numbers (used as error-object metadata) to
+// exception factories for the error types that have a dedicated Go exception class.
+var errorTypeFactories = map[int]func(*NativeRayObject) RayException{
+	RpcErrorTypeWorkerDied: func(*NativeRayObject) RayException {
+		return NewRayWorkerException()
+	},
+	RpcErrorTypeActorDied: func(nativeObj *NativeRayObject) RayException {
+		if message := extractErrorInfoMessage(nativeObj.Data); message != "" {
+			// Both branches report the same ErrorCode(): keep the Go ErrorCodeActorDied constant
+			// (2), not the raw rpc::ErrorType number (1), so callers switching on ErrorCode() see
+			// a single value for ACTOR_DIED.
+			exc := NewRayIDExceptionActorDied("")
+			exc.message = message
+			return exc
+		}
+		return NewRayIDExceptionActorDied("")
+	},
+	RpcErrorTypeTaskExecutionException: func(nativeObj *NativeRayObject) RayException {
+		message := extractErrorInfoMessage(nativeObj.Data)
+		if message == "" {
+			message = "task execution failed"
+		}
+		return NewRayTaskExecutionException("", fmt.Errorf("%s", message), "")
+	},
+}
+
+// ErrorObjectFromNative converts a NativeRayObject whose metadata encodes a Ray error type into a
+// readable RayException. It returns (nil, false) when the object is not an error object.
+//
+// Note on ErrorCode() semantics: exceptions produced for error types with a dedicated Go exception
+// class (WORKER_DIED, ACTOR_DIED, TASK_EXECUTION_EXCEPTION) return the Go ErrorCode* constant;
+// all other error types (e.g. WORKER_STARTUP_FAILED) fall back to newRayErrorTypeException and
+// return the raw C++ rpc::ErrorType number as ErrorCode(). Callers that switch on ErrorCode()
+// should treat both as identifiers of the error kind, not as values from a single numbering scheme.
+//
+// Two metadata conventions are recognized:
+//   - the C++ error-object convention: metadata is the decimal string of an rpc::ErrorType number
+//     (e.g. "33" for WORKER_STARTUP_FAILED), following RayObject::IsException;
+//   - the Go local-mode convention: metadata is MetadataTypeTaskExecutionException and Data holds
+//     msgpack-encoded ExceptionData produced by RayExceptionSerializer.
+func ErrorObjectFromNative(nativeObj *NativeRayObject) (RayException, bool) {
+	if nativeObj == nil {
+		return nil, false
+	}
+	// The Go worker encodes task execution errors with a {"type":"error"} metadata and a JSON
+	// error payload (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go).
+	if bytes.Equal(nativeObj.Metadata, goWorkerErrorMetadataBytes) {
+		return taskExceptionFromGoWorkerError(nativeObj.Data), true
+	}
+	// Go local mode encodes task execution exceptions with a string metadata and msgpack data.
+	if bytes.Equal(nativeObj.Metadata, metadataTypeTaskExecutionExceptionBytes) {
+		exc, err := (&RayExceptionSerializer{}).FromBytes(nativeObj.Data)
+		if err == nil && exc != nil {
+			return exc, true
+		}
+	}
+	errorType, ok := ParseErrorType(nativeObj.Metadata)
+	if !ok {
+		return nil, false
+	}
+	if factory, exists := errorTypeFactories[errorType]; exists {
+		return factory(nativeObj), true
+	}
+	return newRayErrorTypeException(errorType, errorTypeName(errorType), extractErrorInfoMessage(nativeObj.Data)), true
+}
+
+// newRayErrorTypeException builds a readable exception for an error type that has no dedicated Go
+// exception class. The message includes the error type name and, when available, the error message
+// carried by the object.
+func newRayErrorTypeException(errorType int, name, message string) RayException {
+	if message == "" {
+		return &rayException{
+			code:    errorType,
+			message: fmt.Sprintf("RayException[%s]: object is a Ray error object (error_type=%d)", name, errorType),
+		}
+	}
+	return &rayException{
+		code:    errorType,
+		message: fmt.Sprintf("RayException[%s]: %s", name, message),
+	}
+}
+
+// extractErrorInfoMessage extracts the human-readable error message from a C++ error object's
+// data. C++ RayObject error objects carry their rpc::RayErrorInfo serialized as a msgpack-wrapped
+// protobuf (see MakeSerializedErrorBuffer in src/ray/common/ray_object.cc):
+//
+//	[msgpack int: wrapped size] [msgpack bin: serialized rpc::RayErrorInfo protobuf]
+//
+// rpc::RayErrorInfo.error_message is field 5 (string). Returns "" when the data cannot be parsed.
+func extractErrorInfoMessage(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	dec := msgpack.NewDecoder(bytes.NewReader(data))
+	if _, err := dec.DecodeInt64(); err != nil {
+		return ""
+	}
+	var serialized []byte
+	if err := dec.Decode(&serialized); err != nil {
+		return ""
+	}
+	return extractProtoStringField(serialized, 5)
+}
+
+// extractProtoStringField scans a protobuf wire-format message for the given field number and
+// returns its value when the field is a length-delimited string. It is a best-effort parser used
+// only to surface readable error messages from a serialized rpc::RayErrorInfo. It uses
+// google.golang.org/protobuf/encoding/protowire for bounds-checked wire-format decoding.
+func extractProtoStringField(data []byte, fieldNum int) string {
+	for len(data) > 0 {
+		num, typ, n := protowire.ConsumeTag(data)
+		if n < 0 {
+			return ""
+		}
+		data = data[n:]
+		if int(num) == fieldNum && typ == protowire.BytesType {
+			value, m := protowire.ConsumeBytes(data)
+			if m < 0 {
+				return ""
+			}
+			return string(value)
+		}
+		if n := protowire.ConsumeFieldValue(num, typ, data); n < 0 {
+			return ""
+		} else {
+			data = data[n:]
+		}
+	}
+	return ""
 }
