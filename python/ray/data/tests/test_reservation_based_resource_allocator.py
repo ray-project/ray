@@ -360,6 +360,58 @@ class TestReservationOpResourceAllocator:
             cpu=1, object_store_memory=1
         )
 
+    def test_task_pool_allocation_capped_by_runnable_inputs(self, restore_data_context):
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        input_op = InputDataBuffer(DataContext.get_current(), [])
+        task_op = mock_map_op(input_op, ray_remote_args={"num_cpus": 1})
+        downstream_op = mock_map_op(task_op, ray_remote_args={"num_cpus": 1})
+
+        topo = build_streaming_topology(
+            downstream_op, ExecutionOptions(), noop_counter()
+        )
+        task_op_input_queue = MagicMock()
+        task_op_input_queue.__len__.return_value = 1
+        topo[task_op].input_queues = [task_op_input_queue]
+        downstream_input_queue = MagicMock()
+        downstream_input_queue.__len__.return_value = 8
+        topo[downstream_op].input_queues = [downstream_input_queue]
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        resource_manager.get_global_limits = MagicMock(
+            return_value=ExecutionResources(cpu=8)
+        )
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+
+        assert allocator.get_allocation(task_op).cpu == 1
+        assert allocator.get_allocation(downstream_op).cpu == 7
+
+        task_op_input_queue.__len__.return_value = 0
+        task_op.num_active_tasks = MagicMock(return_value=1)
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+
+        assert allocator.get_allocation(task_op).cpu == 1
+        assert allocator.get_allocation(downstream_op).cpu == 7
+
+        task_op.num_active_tasks = MagicMock(return_value=0)
+        task_op_input_queue.__len__.return_value = 4
+        allocator.update_budgets(limits=resource_manager.get_global_limits())
+
+        assert allocator.get_allocation(task_op).cpu == 4
+        assert allocator.get_allocation(downstream_op).cpu == 4
+
     def test_budget_capped_by_max_resource_usage(self, restore_data_context):
         """Test that the total allocation is capped by max_resource_usage.
 

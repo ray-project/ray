@@ -1210,7 +1210,7 @@ def test_min_max_resource_requirements(restore_data_context):
     (
         min_resource_usage_bound,
         max_resource_usage_bound,
-    ) = op.min_max_resource_requirements()
+    ) = op.min_max_resource_requirements(num_pending_input_bundles=0)
 
     # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
     # max_resource_usage: 2 actors * (1 gpu)

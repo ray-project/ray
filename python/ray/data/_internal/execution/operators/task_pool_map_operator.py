@@ -234,6 +234,7 @@ class TaskPoolMapOperator(MapOperator):
 
     def min_max_resource_requirements(
         self,
+        num_pending_input_bundles: Optional[int] = None,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Returns min/max resource requirements for this operator.
 
@@ -252,6 +253,11 @@ class TaskPoolMapOperator(MapOperator):
         max_concurrency = (
             self._max_concurrency if self._max_concurrency is not None else float("inf")
         )
+        if num_pending_input_bundles is not None:
+            max_concurrency = min(
+                max_concurrency,
+                self.num_active_tasks() + num_pending_input_bundles,
+            )
         max_resource_usage = ExecutionResources(
             cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
             gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,

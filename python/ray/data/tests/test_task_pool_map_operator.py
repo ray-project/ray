@@ -33,6 +33,13 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
     # For CPU-only operators, max GPU/memory is 0 (not inf) to prevent hoarding.
     assert max_resource_usage_bound == ExecutionResources.for_limits(gpu=0, memory=0)
 
+    _, max_resource_usage_bound = op.min_max_resource_requirements(
+        num_pending_input_bundles=2
+    )
+    assert max_resource_usage_bound == ExecutionResources(
+        cpu=2, object_store_memory=float("inf")
+    )
+
 
 def test_dynamic_remote_args_inject_context_label_selector(
     ray_start_regular_shared, restore_data_context
