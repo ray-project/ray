@@ -467,6 +467,62 @@
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+# External (on-disk, file-transport) hash shuffle. map_groups is keyed
+# repartition under the hood, which is the one code path that honors
+# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE, so these mirror the shuffle_v2
+# map_groups variants above with the flag on. Separate entries (rather
+# than a matrix axis on the blocks above) keep the existing tests'
+# perf-history names intact.
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: [shuffle_v2]
+      columns:
+        - "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+
+- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: [shuffle_v2]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
 ###############
 # Join tests
 ###############
