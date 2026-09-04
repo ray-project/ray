@@ -46,7 +46,7 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="The kwargs to pass to the vLLM engine. See "
-        "https://docs.vllm.ai/en/latest/serving/engine_args.html "
+        "https://docs.vllm.ai/en/latest/configuration/engine_args/ "
         "for more details.",
     )
     task_type: TypeVLLMTaskType = Field(

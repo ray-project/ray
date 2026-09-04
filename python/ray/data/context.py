@@ -111,10 +111,6 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
-# Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
-# uses its built-in default (currently 1 GiB).
-DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
-
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -144,6 +140,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
 DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
+
+DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -766,15 +764,22 @@ class DataContext:
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
-            shuffle input blocks before partitioning. Currently only applies
-            to the ``SHUFFLE_V2`` shuffle strategy; other shuffle
-            strategies ignore it. Input blocks are buffered per node and
+            shuffle input blocks before partitioning. Applies to the
+            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            Other shuffle strategies ignore it. Input blocks are buffered per
+            node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
             increase shuffle parallelism (useful for CPU-intensive shuffles)
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
+        use_external_hash_shuffle: Whether keyed ``repartition()`` under the
+            ``SHUFFLE_V2`` strategy uses the external (on-disk, file-transport)
+            shuffle instead of the object store. Other operations (aggregate,
+            join) currently ignore this flag. Defaults to the
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable
+            (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -912,6 +917,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the on-disk (file-transport) path for hash-shuffle
+    # repartition. When False, use the object-store path.
+    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -943,11 +952,6 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
-    # chunker uses its built-in default (currently 1 GiB).
-    parquet_chunker_target_chunk_size: Optional[
-        int
-    ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

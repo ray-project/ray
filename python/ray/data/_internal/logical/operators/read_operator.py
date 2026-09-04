@@ -428,8 +428,9 @@ class ReadFiles(
 class ListFiles(LogicalOperator, SourceOperator):
     """Logical source op that lists files and yields ``FileManifest`` blocks.
 
-    Extracted from the prior monolithic ``ReadFiles`` so listing, shuffling,
-    and size-balanced bucketing live in one place (see
+    Extracted from the prior monolithic ``ReadFiles`` so listing, file shuffle
+    (applied by the ``FileIndexer`` after path discovery and before metadata
+    fetch), and size-balanced bucketing live in one place (see
     :func:`ray.data._internal.planner.plan_list_files_op.plan_list_files_op`).
     Downstream, ``ReadFiles`` consumes the manifest blocks produced here.
     """
