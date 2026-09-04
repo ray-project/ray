@@ -2,6 +2,7 @@ exclude: |
   (?x)^(
     python/ray/core/generated/|
     python/ray/serve/generated/|
+    python/ray/experimental/sandbox/http/_proto/.*_(pb2|grpc)\.py|
     python/ray/cloudpickle/|
     python/ray/dashboard/client/public/|
     python/ray/tests/test_cli_patterns|
