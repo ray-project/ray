@@ -311,4 +311,3 @@ func TestRayError_ErrorFormat(t *testing.T) {
 		})
 	}
 }
-

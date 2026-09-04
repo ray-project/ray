@@ -39,9 +39,9 @@ type SetupWorkerConfig struct {
 var setupWorkerCfg SetupWorkerConfig
 
 var setupWorkerCmd = &cobra.Command{
-	Use:            "setup_worker",
-	Short:          "Set up the environment for a Ray worker and launch the worker",
-	Long:           "Set up the environment for a Ray worker by deserializing the runtime environment context and executing the appropriate worker process based on the specified language (PYTHON, JAVA, CPP, or GO).",
+	Use:                "setup_worker",
+	Short:              "Set up the environment for a Ray worker and launch the worker",
+	Long:               "Set up the environment for a Ray worker by deserializing the runtime environment context and executing the appropriate worker process based on the specified language (PYTHON, JAVA, CPP, or GO).",
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSetupWorker(cmd.Context(), args, &setupWorkerCfg)

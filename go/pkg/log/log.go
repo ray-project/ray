@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Package log provides structured logging interface and global Logger.
 // Design inspired by controller-runtime logging.
 package log

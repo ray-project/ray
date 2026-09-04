@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Package gcs provides the Go client for Ray Global Control Store (GCS).
 //
 // The GCS client enables Go applications to access Ray cluster metadata,

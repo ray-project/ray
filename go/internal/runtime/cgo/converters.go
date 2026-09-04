@@ -117,6 +117,24 @@ func CStringSlice(strs []string) ([]*C.char, func()) {
 	}
 }
 
+// argPtr returns a pointer to the first element of s, or nil when s is empty.
+// Passing nil with length 0 to a C function is valid; &s[0] on an empty slice
+// would panic with index out of range.
+func argPtr[T any](s []T) *T {
+	if len(s) == 0 {
+		return nil
+	}
+	return &s[0]
+}
+
+// byteSlicePtr returns a pointer to the first byte of b, or nil when b is empty.
+func byteSlicePtr(b []byte) *C.char {
+	if len(b) == 0 {
+		return nil
+	}
+	return (*C.char)(unsafe.Pointer(&b[0]))
+}
+
 // ToCString converts a Go string to a C string and returns a cleanup function.
 // This is a shared utility function used throughout the cgo package.
 // Usage: cStr, free := ToCString(goStr); defer free()

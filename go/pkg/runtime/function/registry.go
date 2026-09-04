@@ -33,12 +33,12 @@ var Registry = &FunctionRegistry{
 // FunctionRegistry manages the mapping from function descriptors to function implementations.
 //
 // Design notes:
-//   1. Thread-safe using sync.RWMutex for concurrent access.
-//   2. Maps string descriptor ("main.goAdd") to FunctionEntry (containing descriptor and function).
-//   3. Each process (driver/worker) maintains its own independent registry.
-//   4. Functions must be registered before they can be looked up.
-//   5. Storing FunctionEntry instead of just interface{} avoids the need for string parsing
-//      in ListEntries(), which would otherwise need to reconstruct descriptors from keys.
+//  1. Thread-safe using sync.RWMutex for concurrent access.
+//  2. Maps string descriptor ("main.goAdd") to FunctionEntry (containing descriptor and function).
+//  3. Each process (driver/worker) maintains its own independent registry.
+//  4. Functions must be registered before they can be looked up.
+//  5. Storing FunctionEntry instead of just interface{} avoids the need for string parsing
+//     in ListEntries(), which would otherwise need to reconstruct descriptors from keys.
 type FunctionRegistry struct {
 	mu        sync.RWMutex
 	functions map[string]FunctionEntry
@@ -289,4 +289,3 @@ func parseFunctionName(fullName string) (moduleName, pkgPath, funcNameOnly strin
 func splitModuleAndPackage(s string) (moduleName, pkgPath string) {
 	return SplitModuleAndPackage(s)
 }
-

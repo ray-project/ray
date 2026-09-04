@@ -75,9 +75,9 @@ func (s *NativeTaskSubmitter) SubmitTask(
 
 	// Call CGO function
 	cResult := C.CNativeTaskSubmitter_SubmitTask(
-		(**C.char)(unsafe.Pointer(&cFuncDescArray[0])),
+		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
-		(*C.CFunctionArg)(unsafe.Pointer(&cArgs[0])),
+		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
 		C.int(len(args)),
 		C.int(numReturns),
 		cOptions,
@@ -115,9 +115,9 @@ func (s *NativeTaskSubmitter) CreateActor(
 
 	// Call CGO function
 	cResult := C.CNativeTaskSubmitter_CreateActor(
-		(**C.char)(unsafe.Pointer(&cFuncDescArray[0])),
+		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
-		(*C.CFunctionArg)(unsafe.Pointer(&cArgs[0])),
+		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
 		C.int(len(args)),
 		cOptions,
 	)
@@ -169,11 +169,11 @@ func (s *NativeTaskSubmitter) SubmitActorTask(
 
 	// Call CGO function
 	cResult := C.CNativeTaskSubmitter_SubmitActorTask(
-		(*C.char)(unsafe.Pointer(&actorIDBinary[0])),
+		byteSlicePtr(actorIDBinary),
 		C.int(len(actorIDBinary)),
-		(**C.char)(unsafe.Pointer(&cFuncDescArray[0])),
+		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
-		(*C.CFunctionArg)(unsafe.Pointer(&cArgs[0])),
+		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
 		C.int(len(args)),
 		C.int(numReturns),
 		cOptions,

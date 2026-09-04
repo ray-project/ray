@@ -269,3 +269,6 @@ python/ray/go/
 .codex/
 .claude/outputs/
 *.patch
+
+# Fork-only GitHub Actions CI for the Go runtime (not for upstream PR)
+.github/workflows/go-runtime.yml

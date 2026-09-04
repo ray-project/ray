@@ -28,10 +28,25 @@ func Add(x, y int) int {
 	return x + y
 }
 
+// Counter is a stateful actor whose method is invoked remotely. It lives in
+// this module package (not in a driver main package) so the method descriptor
+// resolves the same module/import path on both the driver and the worker.
+type Counter struct {
+	value int
+}
+
+// Inc increments the counter and returns the new value.
+func (c *Counter) Inc() int {
+	c.value++
+	return c.value
+}
+
 // RegisterFunctions registers all user-defined functions with the runtime.
 func RegisterFunctions() error {
-	if err := api.RegisterFunction(Add); err != nil {
-		return err
+	for _, fn := range []interface{}{Add, (*Counter).Inc} {
+		if err := api.RegisterFunction(fn); err != nil {
+			return err
+		}
 	}
 	return nil
 }

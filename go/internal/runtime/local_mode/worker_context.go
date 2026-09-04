@@ -77,7 +77,7 @@ func (c *LocalModeWorkerContext) getGoroutineContext() *goroutineContext {
 	if ctx, ok := c.goroutineLocalData.Load(goroutineID); ok {
 		return ctx.(*goroutineContext)
 	}
-	
+
 	// Create new context for this goroutine
 	newCtx := &goroutineContext{
 		currentWorker: c.defaultWorkerID,

@@ -70,9 +70,19 @@ func (e *MethodExtractor) ExtractActorMethodDescriptor(method interface{}) (*fun
 	fullName := funcObj.Name()
 	methodName := extractMethodName(fullName)
 
+	// Split the receiver's package path into module + package using the same
+	// heuristic as the function registry (first 3 components = module, rest =
+	// package), so the actor-method descriptor key matches how functions are
+	// registered. A hard-coded "unknown" would fail NewGoActorMethodDescriptor's
+	// validation, which requires a module path containing '/'.
+	modulePath, packagePath := function.SplitModuleAndPackage(receiverType.PkgPath())
+	if modulePath == "" {
+		modulePath = "unknown"
+	}
+
 	desc, err := function.NewGoActorMethodDescriptor(
-		"unknown",
-		receiverType.PkgPath(),
+		modulePath,
+		packagePath,
 		receiverType.Name(),
 		methodName,
 	)

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package zap
 
 import (
@@ -37,18 +36,18 @@ func newEncoder(opts *Options) zapcore.Encoder {
 // Format matches Python: "2026-04-07 11:40:40,880\tINFO agent.py:170 -- message"
 func rayDevEncoderConfig() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder, // INFO/WARN/ERROR (no color)
-		EncodeTime:     rayTimeEncoder,              // 2026-04-07 11:40:40,880
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder, // filename:line
-		ConsoleSeparator: "\t",                     // tab separator after time
+		TimeKey:          "ts",
+		LevelKey:         "level",
+		NameKey:          "logger",
+		CallerKey:        "caller",
+		MessageKey:       "msg",
+		StacktraceKey:    "stacktrace",
+		LineEnding:       zapcore.DefaultLineEnding,
+		EncodeLevel:      zapcore.CapitalLevelEncoder, // INFO/WARN/ERROR (no color)
+		EncodeTime:       rayTimeEncoder,              // 2026-04-07 11:40:40,880
+		EncodeDuration:   zapcore.SecondsDurationEncoder,
+		EncodeCaller:     zapcore.ShortCallerEncoder, // filename:line
+		ConsoleSeparator: "\t",                       // tab separator after time
 	}
 }
 

@@ -131,9 +131,10 @@ type RetryPolicy struct {
 //   - func(*TaskOptions): Option function to configure TaskOptions
 //
 // Example:
-//   ray.Remote(func() {...}, submitter.WithGPUs(1.0))           // 1 GPU
-//   ray.Remote(func() {...}, submitter.WithGPUs(0.5))           // 0.5 GPU
-//   ray.Remote(func() {...}, submitter.WithGPUs(1.0, "0", "2")) // GPUs 0 and 2
+//
+//	ray.Remote(func() {...}, submitter.WithGPUs(1.0))           // 1 GPU
+//	ray.Remote(func() {...}, submitter.WithGPUs(0.5))           // 0.5 GPU
+//	ray.Remote(func() {...}, submitter.WithGPUs(1.0, "0", "2")) // GPUs 0 and 2
 func WithGPUs(numGPUs float64, gpuIDs ...string) func(*TaskOptions) {
 	return func(opts *TaskOptions) {
 		opts.NumGPUs = numGPUs
@@ -160,10 +161,11 @@ func WithGPUs(numGPUs float64, gpuIDs ...string) func(*TaskOptions) {
 //   - func(*TaskOptions): Option function to configure TaskOptions
 //
 // Example:
-//   ray.Remote(func() {...}, submitter.WithResources(map[string]float64{
-//       "TPU": 2.0,
-//       "memory": 1024.0,
-//   }))
+//
+//	ray.Remote(func() {...}, submitter.WithResources(map[string]float64{
+//	    "TPU": 2.0,
+//	    "memory": 1024.0,
+//	}))
 func WithResources(resources map[string]float64) func(*TaskOptions) {
 	return func(opts *TaskOptions) {
 		opts.Resources = resources

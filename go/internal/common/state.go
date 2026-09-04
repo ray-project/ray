@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package common
 
 import (
@@ -37,12 +36,12 @@ type GlobalState struct {
 // NewGlobalState creates a new *GlobalState.
 //
 // Initialization logic:
-// 1. Create an empty GlobalState struct.
-// 2. gcsOptions starts as nil and is set later by InitializeGlobalState
-//    (corresponds to Python's _initialize_global_state).
-// 3. globalStateAccessor starts as nil and is created on first use via
-//    ConnectAndGetAccessor.
-// 4. initLock guards concurrent access for thread safety.
+//  1. Create an empty GlobalState struct.
+//  2. gcsOptions starts as nil and is set later by InitializeGlobalState
+//     (corresponds to Python's _initialize_global_state).
+//  3. globalStateAccessor starts as nil and is created on first use via
+//     ConnectAndGetAccessor.
+//  4. initLock guards concurrent access for thread safety.
 func NewGlobalState() *GlobalState {
 	return &GlobalState{
 		gcsOptions:          nil,
@@ -61,15 +60,15 @@ func (s *GlobalState) InitializeGlobalState(opts *gcs.ClientOptions) {
 // ConnectAndGetAccessor lazily connects and returns the GCS state accessor.
 //
 // Core logic:
-// 1. Thread safety: initLock guarantees atomic operations in a multi-threaded
-//    environment.
-// 2. Cache check: return the existing accessor if present, avoiding a redundant
-//    connection.
-// 3. Precondition check: verify gcsOptions is set (i.e. InitializeGlobalState
-//    was called).
-// 4. Get the accessor from the global singleton.
-// 5. Connection check: attempt to connect to the GCS server, clearing state and
-//    returning an error on failure.
+//  1. Thread safety: initLock guarantees atomic operations in a multi-threaded
+//     environment.
+//  2. Cache check: return the existing accessor if present, avoiding a redundant
+//     connection.
+//  3. Precondition check: verify gcsOptions is set (i.e. InitializeGlobalState
+//     was called).
+//  4. Get the accessor from the global singleton.
+//  5. Connection check: attempt to connect to the GCS server, clearing state and
+//     returning an error on failure.
 func (s *GlobalState) ConnectAndGetAccessor() (gcs.GlobalStateAccessor, error) {
 	s.initLock.Lock()
 	defer s.initLock.Unlock()

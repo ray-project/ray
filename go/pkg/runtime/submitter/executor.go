@@ -15,8 +15,8 @@
 package submitter
 
 import (
-	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/function"
 )
 
 // TaskExecutor defines the interface for executing tasks.

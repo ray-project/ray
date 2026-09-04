@@ -32,6 +32,7 @@ go_library(
         "//go/internal/errors",
         "//go/internal/gcs/native",
         "//go/internal/runtime/base",
+        "//go/internal/runtime/cgo",
         "//go/internal/runtime/native",
         "//go/internal/runtime/serializer",
         "//go/pkg/gcs",

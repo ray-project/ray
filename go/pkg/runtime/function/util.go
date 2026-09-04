@@ -101,6 +101,7 @@ func ParseFunctionName(fullName string) (moduleName, pkgPath, funcNameOnly strin
 // For "github.com/example/app/pkg/tasks":
 //   - moduleName = "github.com/example/app"
 //   - pkgPath = "pkg/tasks"
+//
 // For "main":
 //   - moduleName = "main"
 //   - pkgPath = ""
