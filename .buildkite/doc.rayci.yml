@@ -178,14 +178,15 @@ steps:
   # only one that holds an RtD token. It replaces the manual post-merge
   # `rtd-redirects apply` a maintainer runs today (see doc/redirects/README.md).
   #
-  # DISABLED until the credential lands. The `disabled` tag makes rayci skip this
-  # step in both premerge and postmerge, so it's safe to land now and turn on
+  # DISABLED pending the manual-apply phase. The `disabled` tag makes rayci skip
+  # this step in both premerge and postmerge, so it's safe to land now and turn on
   # later, the same way doc: linkcheck landed before its Slack webhook secret.
-  # To enable, do both atomically in one PR: (1) remove the `disabled` tag below,
-  # (2) replace RTD_TOKEN_SECRET_ARN with the real Secrets Manager ARN. The bot
-  # user and token are provisioned by REEF as a dependency of this work; until
-  # that ARN exists the fetch would fail every master build, which is why the
-  # step stays disabled rather than fetch-and-skip.
+  # The bot token is already wired: REEF provisioned it at Secrets Manager
+  # secret-id `oss-ci/rtd-api-token`, read inline below. Enabling is then a
+  # one-line flip: remove the `disabled` tag below. The step stays disabled until
+  # the local-first manual-apply phase finishes reconciling the live project, so
+  # the first automated run doesn't hard-reconcile a drifted project (see the
+  # "Drift and deletion" note below).
   #
   # Postmerge-only by construction. `skip-on-premerge` removes it from every PR
   # build (premerge skips that tag), so no PR event, fork or not, ever runs the
@@ -215,13 +216,18 @@ steps:
       - disabled
     commands:
       # Exit early unless this master commit changed doc/redirects/. Ray squash-
-      # merges, so HEAD~1..HEAD is exactly the merged change set. Fall through to
-      # apply if HEAD~1 doesn't resolve, so a shallow checkout never skips a real
-      # redirect change.
-      - >
+      # merges, so HEAD~1..HEAD is exactly the merged change set. `git diff
+      # --quiet` exits 0 for no change (skip), 1 for a change (apply), and a
+      # different non-zero on git error, so a shallow checkout or a git failure
+      # falls through to apply rather than silently skip a real redirect change.
+      # (A `git diff | grep -q .` pipe would mask the diff's exit status and skip
+      # on error, the opposite of what we want here.)
+      - |
         if git rev-parse -q --verify HEAD~1 >/dev/null; then
-          git diff --name-only HEAD~1 HEAD -- doc/redirects/ | grep -q . ||
-          { echo "no doc/redirects/ change in this merge; nothing to apply"; exit 0; }
+          if git diff --quiet HEAD~1 HEAD -- doc/redirects/; then
+            echo "no doc/redirects/ change in this merge; nothing to apply"
+            exit 0
+          fi
         fi
       # Same fail-closed guard as the validate step: current.yaml is the only file
       # the compose order below names. To add another, name it here and in the
@@ -230,9 +236,15 @@ steps:
         test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
         { echo "doc/redirects/ holds a .yaml file this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
       - uv tool install anyscale-rtd-redirects==0.2.0
-      # Dedicated, least-privilege secret: this ARN holds only the anyscale-ray
-      # RtD bot token, is read by no other step, and grants no access beyond that
-      # one project. Do not fold the token into ci/env/setup_credentials.py's
+      # Dedicated, least-privilege secret: `oss-ci/rtd-api-token` holds only the
+      # anyscale-ray RtD bot token, is read by no other step, and grants no access
+      # beyond that one project. Do not fold the token into ci/env/setup_credentials.py's
       # shared ray-air-test-secrets bucket, which ml/data test steps read.
-      - export RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id RTD_TOKEN_SECRET_ARN --query SecretString --output text)"
+      #
+      # Fetch with shell tracing off so an xtrace-enabled agent can't echo the
+      # expanded token into the Buildkite log. `set +x` persists to `apply` below,
+      # which carries no secret, so leaving tracing off there is harmless.
+      - |
+        set +x
+        export RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/rtd-api-token --query SecretString --output text)"
       - rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --yes --strict
