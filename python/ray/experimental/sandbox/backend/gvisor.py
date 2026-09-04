@@ -33,6 +33,19 @@ _RUNSC_ROOT = "/tmp/runsc"
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
 
+def _lookup_db_entry(path: str, name: str) -> Optional[List[str]]:
+    """Return the fields of the ``name`` entry in a passwd- or group-style file."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        fields = line.split(":")
+        if len(fields) >= 3 and fields[0] == name:
+            return fields
+    return None
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -217,40 +230,45 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             shutil.rmtree(root_dir, ignore_errors=True)
 
     def _resolve_exec_user(self, user: str, image: str) -> str:
-        """Turn a user name or uid[:gid] into runsc exec's numeric form.
+        """Turn ``user`` into the numeric ``uid[:gid]`` form runsc exec accepts.
 
-        runsc only accepts numeric ids; names are resolved against the
-        image's own /etc/passwd (and the login group via /etc/group).
+        Names resolve against the image's own ``/etc/passwd`` and
+        ``/etc/group``; a named user with no explicit group gets its login
+        group.
 
         Args:
-            user: Numeric uid, "uid:gid", or a user name from the image.
+            user: ``uid``, ``uid:gid``, or ``name[:group]`` from the image.
             image: The sandbox's image, locating the extracted rootfs.
 
         Returns:
-            A "uid" or "uid:gid" string runsc accepts.
+            A ``uid`` or ``uid:gid`` string runsc accepts.
 
         Raises:
-            SandboxExecError: When a named user is not in the image's
-                /etc/passwd.
+            SandboxExecError: When a named user or group is not in the image.
         """
-        head = user.split(":", 1)[0]
-        if head.isdigit():
+        name, _, group = user.partition(":")
+        if name.isdigit() and (not group or group.isdigit()):
             return user
         rootfs = os.path.join(self._image_manager.get_image_dir(image), "rootfs")
-        try:
-            passwd = Path(os.path.join(rootfs, "etc", "passwd")).read_text(
-                encoding="utf-8", errors="replace"
-            )
-        except OSError:
-            passwd = ""
-        for line in passwd.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 4 and parts[0] == user:
-                return f"{parts[2]}:{parts[3]}"
-        raise SandboxExecError(
-            f"user {user!r} not found in the image's /etc/passwd; "
-            "pass a numeric uid or uid:gid instead"
-        )
+        uid, login_gid = name, None
+        if not name.isdigit():
+            entry = _lookup_db_entry(os.path.join(rootfs, "etc", "passwd"), name)
+            if entry is None:
+                raise SandboxExecError(
+                    f"user {name!r} not found in the image's /etc/passwd; "
+                    "pass a numeric uid instead"
+                )
+            uid, login_gid = entry[2], entry[3]
+        if group and not group.isdigit():
+            entry = _lookup_db_entry(os.path.join(rootfs, "etc", "group"), group)
+            if entry is None:
+                raise SandboxExecError(
+                    f"group {group!r} not found in the image's /etc/group; "
+                    "pass a numeric gid instead"
+                )
+            group = entry[2]
+        gid = group or login_gid
+        return uid if gid is None else f"{uid}:{gid}"
 
     def exec_command(
         self,

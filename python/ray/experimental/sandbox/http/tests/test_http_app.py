@@ -531,6 +531,18 @@ def test_exec_on_scheduling_actor_is_409(fake_resolver: FakeResolver) -> None:
     assert "scheduled" in response.json()["error"]["message"]
 
 
+def test_delete_on_scheduling_actor_still_kills_it(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver, _fast_settings())
+    fake_resolver.handles["sb-stalled0001"] = _StalledHandle()
+
+    response = client.delete(f"{BASE}/sandboxes/sb-stalled0001")
+
+    assert response.status_code == 200, response.text
+    assert fake_resolver.killed == ["sb-stalled0001"]
+
+
 def test_list_includes_scheduling_sandboxes_as_pending(
     fake_resolver: FakeResolver,
 ) -> None:

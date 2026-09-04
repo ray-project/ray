@@ -91,9 +91,16 @@ def _ensure_runsc_installed() -> None:
         )
         logger.info("runsc not found on this node; downloading from %s", url)
         tmp_path = f"{runsc_path}.tmp.{os.getpid()}"
-        urllib.request.urlretrieve(url, tmp_path)
-        os.chmod(tmp_path, 0o755)
-        os.replace(tmp_path, runsc_path)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                with open(tmp_path, "wb") as out:
+                    shutil.copyfileobj(response, out)
+            os.chmod(tmp_path, 0o755)
+            os.replace(tmp_path, runsc_path)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
     if shared_bin not in os.environ.get("PATH", "").split(os.pathsep):
         os.environ["PATH"] = f"{shared_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 

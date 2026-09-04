@@ -315,6 +315,7 @@ def test_resolve_exec_user(tmp_path, monkeypatch):
         "root:x:0:0:root:/root:/bin/bash\n"
         "postfix:x:102:104::/var/spool/postfix:/usr/sbin/nologin\n"
     )
+    (img_dir / "rootfs" / "etc" / "group").write_text("mail:x:8:\n")
     monkeypatch.setattr(
         backend._image_manager, "get_image_dir", lambda image: str(img_dir)
     )
@@ -322,8 +323,13 @@ def test_resolve_exec_user(tmp_path, monkeypatch):
     assert backend._resolve_exec_user("1000", "img") == "1000"
     assert backend._resolve_exec_user("1000:1000", "img") == "1000:1000"
     assert backend._resolve_exec_user("postfix", "img") == "102:104"
+    assert backend._resolve_exec_user("postfix:8", "img") == "102:8"
+    assert backend._resolve_exec_user("postfix:mail", "img") == "102:8"
+    assert backend._resolve_exec_user("1000:mail", "img") == "1000:8"
     with pytest.raises(SandboxExecError):
         backend._resolve_exec_user("nosuch", "img")
+    with pytest.raises(SandboxExecError):
+        backend._resolve_exec_user("postfix:nosuch", "img")
 
 
 if __name__ == "__main__":

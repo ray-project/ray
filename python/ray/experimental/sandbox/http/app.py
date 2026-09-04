@@ -458,10 +458,10 @@ def create_app(
         handle = resolver.get(sandbox_id)
         if handle is not None:
             try:
-                await handle.terminate.remote()
-            except Exception as exc:
-                if not _is_actor_gone(exc):
-                    raise
+                await _bounded_call(sandbox_id, handle.terminate.remote())
+            except _ApiError:
+                # Unscheduled, unavailable, or dead actors are killed below.
+                pass
             resolver.kill(handle)
         # Idempotent: deleting an unknown or already-gone sandbox succeeds.
         return {"sandbox_id": sandbox_id, "status": "terminated"}
