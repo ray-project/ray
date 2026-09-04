@@ -102,6 +102,7 @@ DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(dashboard_agent_command, "", "Dashboard agent command.");
 DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
+DEFINE_string(go_worker_command, "", "Go worker command.");
 DEFINE_string(native_library_path,
               "",
               "The native library path which includes the core libraries.");
@@ -256,6 +257,7 @@ int main(int argc, char *argv[]) {
   const std::string dashboard_agent_command = FLAGS_dashboard_agent_command;
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
+  const std::string go_worker_command = FLAGS_go_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -637,10 +639,14 @@ int main(int argc, char *argv[]) {
       node_manager_config.worker_commands.emplace(
           make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
     }
+    if (!go_worker_command.empty()) {
+      node_manager_config.worker_commands.emplace(
+          make_pair(ray::Language::GO, ParseCommandLine(go_worker_command)));
+    }
     node_manager_config.native_library_path = native_library_path;
     if (python_worker_command.empty() && java_worker_command.empty() &&
-        cpp_worker_command.empty()) {
-      RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+        cpp_worker_command.empty() && go_worker_command.empty()) {
+      RAY_LOG(FATAL) << "At least one of Python/Java/CPP/Go worker command "
                      << "should be provided";
     }
     if (dashboard_agent_command.empty()) {

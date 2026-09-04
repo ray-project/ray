@@ -1329,6 +1329,18 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
         });
   };
 
+  // A (re-)registering worker is alive again: drop it from the failed-workers
+  // cache so a reused worker_id (e.g. a driver rerun on a persistent cluster)
+  // is not rejected as "caller is dead" on its next lease request.
+  if (worker_type == rpc::WorkerType::DRIVER ||
+      worker_type == rpc::WorkerType::WORKER) {
+    if (failed_workers_cache_.contains(worker_id)) {
+      failed_workers_cache_.erase(worker_id);
+      RAY_LOG(INFO).WithField(worker_id)
+          << "Removed worker from failed-workers cache because it re-registered.";
+    }
+  }
+
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {

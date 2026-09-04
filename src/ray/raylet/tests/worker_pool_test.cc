@@ -1877,6 +1877,50 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   mock_rpc_client->ExitReplySucceed();
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestJobRestartClearsFinishedMarker) {
+  // A job id that finishes and then starts again (e.g. a driver reusing the
+  // same RAY_JOB_ID across runs on a persistent cluster) must not retain its
+  // finished marker. Otherwise the freshly spawned workers for the restarted
+  // job would be rejected at PopWorker time (JobFinished) and force-exited
+  // before they can be assigned tasks.
+  JobID job_id = JOB_ID;
+
+  // Add a worker to the pool for the job.
+  PopWorkerStatus status;
+  auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+  pid_t pid = proc.GetId();
+  auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON, job_id);
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  // The first run finishes, which marks the job as finished in the pool.
+  worker_pool_->HandleJobFinished(job_id);
+
+  LeaseSpecification lease_spec =
+      ExampleLeaseSpec(/*actor_creation_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  PopWorkerStatus pop_worker_status;
+
+  // A worker for the finished job is rejected as JobFinished.
+  worker = worker_pool_->PopWorkerSync(lease_spec, false, &pop_worker_status);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
+  ASSERT_FALSE(worker);
+
+  // The job id is reused for a new run. It must clear the finished marker so
+  // the new run's workers are not rejected and force-exited.
+  rpc::JobConfig job_config;
+  worker_pool_->HandleJobStarted(job_id, job_config);
+
+  // A worker can now be popped for the restarted job.
+  worker = worker_pool_->PopWorkerSync(lease_spec, false, &pop_worker_status);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::OK);
+  ASSERT_TRUE(worker != nullptr);
+
+  worker_pool_->ClearProcesses();
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   JobID job_id = JOB_ID;
 

@@ -276,7 +276,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Append Ray-defined per-job options here
   std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
+  if (language == Language::JAVA || language == Language::CPP ||
+      language == Language::GO) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -292,6 +293,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         } else if (language == Language::CPP) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
+        } else if (language == Language::GO) {
+          // Go uses --code-search-path flag (defined in go/cmd/raygo/default_worker/default_worker.go)
+          code_search_path_str = "--code-search-path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
         }
@@ -371,6 +375,15 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--ray_worker_id=" + worker_id.Hex());
     worker_command_args.push_back("--ray_runtime_env_hash=" +
                                   std::to_string(runtime_env_hash));
+  } else if (language == Language::GO) {
+    // Pass the worker ID the raylet assigned so the Go worker registers back
+    // under the same ID; otherwise the raylet rejects the registration.
+    worker_command_args.push_back("--worker-id=" + worker_id.Hex());
+    // Note: the startup-token argument is added together with the Go worker
+    // entrypoint migration; the startup token counter does not exist in this
+    // codebase's worker pool.
+    worker_command_args.push_back("--runtime-env-hash=" +
+                                  std::to_string(runtime_env_hash));
   }
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
@@ -447,6 +460,12 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   // Refer this issue for more details: https://github.com/ray-project/ray/issues/15061
   if (language == Language::PYTHON) {
     env.insert({"SPT_NOENV", "1"});
+  }
+
+  // Set RAY_CODE_SEARCH_PATH environment variable for Go worker.
+  // Go worker reads JobConfig from environment variables via buildJobConfigFromEnv().
+  if (language == Language::GO && !code_search_path.empty()) {
+    env.emplace("RAY_CODE_SEARCH_PATH", code_search_path);
   }
 
   if (RayConfig::instance().support_fork()) {
@@ -776,6 +795,14 @@ static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   if (all_jobs_.find(job_id) != all_jobs_.end()) {
+    // A reused job id (e.g. a driver rerun with the same RAY_JOB_ID) was marked
+    // finished; clear the marker so newly spawned workers are not force-exited.
+    if (finished_jobs_.contains(job_id)) {
+      RAY_LOG(INFO) << "Job " << job_id
+                    << " was previously finished but is starting again; removing it "
+                       "from finished jobs.";
+      finished_jobs_.erase(job_id);
+    }
     RAY_LOG(INFO) << "Job " << job_id << " already started in worker pool.";
     return;
   }
