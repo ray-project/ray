@@ -5,6 +5,12 @@ import os
 import pytest
 
 import ray
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT,
+    MCAPDatasource,
+    TimeRange,
+)
+from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -260,7 +266,7 @@ def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
     """Test validation of time range parameters."""
     # Start time >= end time
-    with pytest.raises(ValueError, match="start_time must be less than end_time"):
+    with pytest.raises(ValueError, match="must be less than"):
         ray.data.read_mcap(simple_mcap_file, time_range=(2000, 1000))
 
     # Negative times
@@ -386,6 +392,274 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+# A schema definition of the size real ROS 2 / Foxglove schemas reach. It is
+# registered once per file but, with `include_metadata`, materialized on every
+# row, which is what makes the in-memory size dwarf the on-disk size.
+LARGE_SCHEMA_DEFINITION = b"# msgdef\n" + b"uint8[] data\nstring format\n" * 100
+
+
+def create_binary_mcap_file(
+    file_path: str,
+    num_messages: int,
+    *,
+    topics: tuple = ("/camera/image",),
+    payload_size: int = 512,
+    use_statistics: bool = True,
+    descending: bool = False,
+) -> None:
+    """Create an MCAP file with compressible binary payloads.
+
+    Unlike `create_test_mcap_file`, this writes opaque binary messages against a
+    large schema, which is the shape of a real robotics recording: the chunks
+    compress well on disk while every row carries the schema in memory.
+
+    Args:
+        file_path: Where to write the file.
+        num_messages: Number of messages to write.
+        topics: Topics to round-robin the messages across.
+        payload_size: Size in bytes of each message payload.
+        use_statistics: Whether to write the summary Statistics record. When
+            False, the file carries no message count to estimate from.
+        descending: Write messages in descending log time, so that ascending
+            read order has to come from the reader rather than the file layout.
+    """
+    from mcap.writer import Writer
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream, use_statistics=use_statistics)
+        writer.start(profile="", library="ray-test")
+
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=LARGE_SCHEMA_DEFINITION,
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="cdr"
+            )
+            for topic in topics
+        }
+
+        indices = range(num_messages)
+        if descending:
+            indices = reversed(indices)
+        for i in indices:
+            log_time = 1000000000 + i * 33000000
+            writer.add_message(
+                channel_id=channels[topics[i % len(topics)]],
+                log_time=log_time,
+                publish_time=log_time,
+                data=bytes([i % 256]) * payload_size,
+                sequence=i,
+            )
+
+        writer.finish()
+
+
+@pytest.fixture
+def binary_mcap_file(tmp_path):
+    """Fixture providing an MCAP file with 360 binary messages."""
+    path = os.path.join(tmp_path, "binary.mcap")
+    create_binary_mcap_file(path, 360)
+    return path
+
+
+def test_estimate_inmemory_data_size_exceeds_on_disk_size(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """In-memory size estimates must not report the on-disk size.
+
+    `FileBasedDatasource` estimates in-memory size as the sum of the on-disk
+    file sizes. MCAP chunks are compressed and every row additionally carries
+    metadata that has no per-message on-disk equivalent, so that default
+    understates the materialized size by more than an order of magnitude. Ray
+    Data sizes both read parallelism and memory provisioning from this number.
+    """
+    on_disk_size = os.path.getsize(binary_mcap_file)
+    actual_size = ray.data.read_mcap(binary_mcap_file).materialize().size_bytes()
+
+    # Establish that on-disk size is not a usable proxy for this format.
+    assert actual_size > 10 * on_disk_size
+
+    estimate = MCAPDatasource(paths=[binary_mcap_file]).estimate_inmemory_data_size()
+    assert 0.5 * actual_size <= estimate <= 2 * actual_size
+
+
+def test_estimate_inmemory_data_size_tracks_include_metadata(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """Dropping the metadata columns must shrink the estimate."""
+    with_metadata = MCAPDatasource(
+        paths=[binary_mcap_file], include_metadata=True
+    ).estimate_inmemory_data_size()
+    without_metadata = MCAPDatasource(
+        paths=[binary_mcap_file], include_metadata=False
+    ).estimate_inmemory_data_size()
+
+    assert without_metadata < with_metadata
+
+    actual = (
+        ray.data.read_mcap(binary_mcap_file, include_metadata=False)
+        .materialize()
+        .size_bytes()
+    )
+    assert 0.5 * actual <= without_metadata <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_respects_topic_filter(
+    ray_start_regular_shared, tmp_path
+):
+    """A topic filter must be reflected in the estimate."""
+    path = os.path.join(tmp_path, "multi_topic_binary.mcap")
+    create_binary_mcap_file(path, 300, topics=("/topic_a", "/topic_b", "/topic_c"))
+
+    unfiltered = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
+    filtered = MCAPDatasource(
+        paths=[path], topics={"/topic_a"}
+    ).estimate_inmemory_data_size()
+
+    # One of three topics is selected, so the estimate should fall roughly
+    # threefold rather than staying flat.
+    assert filtered < unfiltered
+    assert 0.2 * unfiltered <= filtered <= 0.5 * unfiltered
+
+    actual = ray.data.read_mcap(path, topics={"/topic_a"}).materialize().size_bytes()
+    assert 0.5 * actual <= filtered <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_multiple_files(ray_start_regular_shared, tmp_path):
+    """The estimate must aggregate across files, including unsampled ones."""
+    paths = []
+    for i in range(12):
+        path = os.path.join(tmp_path, f"part_{i:02d}.mcap")
+        create_binary_mcap_file(path, 60)
+        paths.append(path)
+
+    estimate = MCAPDatasource(paths=paths).estimate_inmemory_data_size()
+    actual = ray.data.read_mcap(paths).materialize().size_bytes()
+
+    assert 0.5 * actual <= estimate <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_without_statistics(
+    ray_start_regular_shared, tmp_path
+):
+    """A file with no summary statistics falls back instead of failing.
+
+    Message counts come from the MCAP summary, which is optional. Without it
+    the datasource must still return a usable overestimate.
+    """
+    path = os.path.join(tmp_path, "no_stats.mcap")
+    create_binary_mcap_file(path, 200, use_statistics=False)
+
+    estimate = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
+
+    assert estimate == os.path.getsize(path) * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+
+def test_estimate_inmemory_data_size_sampling_disabled(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """`decoding_size_estimation=False` must skip sampling entirely."""
+    ctx = DataContext.get_current()
+    original = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = False
+    try:
+        estimate = MCAPDatasource(
+            paths=[binary_mcap_file]
+        ).estimate_inmemory_data_size()
+    finally:
+        ctx.decoding_size_estimation = original
+
+    on_disk_size = os.path.getsize(binary_mcap_file)
+    assert estimate == on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+
+def test_estimate_inmemory_data_size_accounts_for_include_paths(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """`include_paths` adds a column downstream of `_read_stream`.
+
+    Sampling builds its block from `_read_stream`'s output, so it has to add
+    that column itself or the estimate misses it.
+    """
+    without_paths = MCAPDatasource(
+        paths=[binary_mcap_file]
+    ).estimate_inmemory_data_size()
+    with_paths = MCAPDatasource(
+        paths=[binary_mcap_file], include_paths=True
+    ).estimate_inmemory_data_size()
+
+    assert with_paths > without_paths
+
+    actual = (
+        ray.data.read_mcap(binary_mcap_file, include_paths=True)
+        .materialize()
+        .size_bytes()
+    )
+    assert 0.5 * actual <= with_paths <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_narrow_time_range(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """A `time_range` selecting a small slice must not estimate the whole file.
+
+    Message counts come from the MCAP summary, which cannot express a time
+    range. When sampling covers the whole selection the measured size is exact,
+    so the estimate has to track the filter rather than the file.
+    """
+    # `create_binary_mcap_file` writes log times at 1e9 + i * 33e6.
+    start = 1000000000
+    time_range = (start, start + 10 * 33000000)
+
+    unfiltered = MCAPDatasource(paths=[binary_mcap_file]).estimate_inmemory_data_size()
+    filtered = MCAPDatasource(
+        paths=[binary_mcap_file], time_range=TimeRange(*time_range)
+    ).estimate_inmemory_data_size()
+
+    ds = ray.data.read_mcap(binary_mcap_file, time_range=time_range).materialize()
+    actual = ds.size_bytes()
+
+    # 10 of 360 messages: the estimate must fall, not stay flat.
+    assert filtered < unfiltered / 10
+    assert 0.5 * actual <= filtered <= 2 * actual
+
+
+def test_read_mcap_orders_messages_by_log_time(ray_start_regular_shared, tmp_path):
+    """Messages must be returned in ascending log time order.
+
+    The file is written in descending order, so passing this requires the
+    reader's ordering rather than the file's layout.
+    """
+    path = os.path.join(tmp_path, "descending.mcap")
+    create_binary_mcap_file(path, 200, descending=True)
+
+    rows = ray.data.read_mcap(path).take_all()
+
+    assert len(rows) == 200
+    log_times = [row["log_time"] for row in rows]
+    assert log_times == sorted(log_times)
+    assert [row["sequence"] for row in rows] == list(range(200))
+
+
+def test_read_mcap_preserves_binary_payloads(ray_start_regular_shared, tmp_path):
+    """Non-JSON payloads must round-trip byte for byte.
+
+    A `cdr`-encoded message is opaque bytes; the JSON decoding path must not
+    alter it.
+    """
+    path = os.path.join(tmp_path, "payloads.mcap")
+    create_binary_mcap_file(path, 128, payload_size=256)
+
+    rows = ray.data.read_mcap(path).take_all()
+
+    assert len(rows) == 128
+    for i, row in enumerate(rows):
+        assert bytes(row["data"]) == bytes([i % 256]) * 256
 
 
 if __name__ == "__main__":

@@ -7,20 +7,53 @@ time-series data.
 
 import json
 import logging
+import math
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
-    from mcap.reader import Channel, Message, Schema
+    from mcap.reader import Channel, Message, Schema, Summary
 
 logger = logging.getLogger(__name__)
+
+# The default multiplier applied to on-disk size when sampling is disabled or
+# unavailable. MCAP chunks are typically compressed (zstd or lz4), and this
+# datasource additionally materializes per-message columns -- topic, timestamps
+# and, when ``include_metadata`` is set, the schema -- that have no per-message
+# on-disk equivalent. The in-memory representation is therefore substantially
+# larger than the file. Matches the Parquet datasource's default.
+MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
+
+# The lower bound for the estimated MCAP encoding ratio.
+MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 1
+
+# The fraction of files sampled to estimate the encoding ratio, clamped to
+# [MIN_NUM_SAMPLES, MAX_NUM_SAMPLES] so that sampling cost stays bounded.
+MCAP_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
+MCAP_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 2
+MCAP_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
+
+# The number of messages read from each sampled file to measure the in-memory
+# size of a row. Kept low to avoid reading much data during planning.
+MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES = 100
 
 
 @dataclass
@@ -121,6 +154,9 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
+        # Computed lazily by `estimate_inmemory_data_size` and cached, so that
+        # files are sampled at most once per datasource.
+        self._encoding_ratio: Optional[float] = None
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Read MCAP file and yield blocks of message data.
@@ -245,6 +281,182 @@ class MCAPDatasource(FileBasedDatasource):
 
         return message_data
 
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Return an estimate of the in-memory size of this datasource's output.
+
+        ``FileBasedDatasource`` estimates in-memory size as the sum of the
+        on-disk file sizes. For MCAP that is a large underestimate: chunks are
+        usually compressed, and this datasource materializes per-message
+        columns -- topic, timestamps and, when ``include_metadata`` is set, the
+        schema -- that have no per-message on-disk equivalent.
+
+        Ray Data derives both the read parallelism and the memory it provisions
+        for the read from this number, so an underestimate produces too few,
+        oversized blocks. To correct it, sample a bounded number of files,
+        measure the in-memory size of a real block built from each, and scale
+        the total on-disk size by the resulting ratio.
+        """
+        on_disk_size = super().estimate_inmemory_data_size()
+        if not on_disk_size:
+            return on_disk_size
+
+        return int(on_disk_size * self._get_encoding_ratio())
+
+    def _get_encoding_ratio(self) -> float:
+        """Return the in-memory to on-disk size ratio, computing it once."""
+        if self._encoding_ratio is None:
+            self._encoding_ratio = self._estimate_files_encoding_ratio()
+        return self._encoding_ratio
+
+    def _estimate_files_encoding_ratio(self) -> float:
+        """Estimate the in-memory to on-disk size ratio by sampling files.
+
+        Overestimating is safer than underestimating here, so every failure
+        path falls back to ``MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT`` rather than
+        to the uncorrected on-disk size.
+        """
+        if not self._data_context.decoding_size_estimation:
+            return MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+        start_time = time.perf_counter()
+
+        # Skip empty files and files of unknown size: they carry no usable
+        # signal and would only add noise to the ratio.
+        candidates = [
+            (path, file_size)
+            for path, file_size in zip(self._paths(), self._file_sizes())
+            if file_size
+        ]
+        if not candidates:
+            return MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+        ratios = []
+        for path, file_size in _sample_files(candidates):
+            in_memory_size = self._estimate_file_inmemory_size(path)
+            if in_memory_size:
+                ratios.append(in_memory_size / file_size)
+
+        sampling_duration = time.perf_counter() - start_time
+        if sampling_duration > 5:
+            logger.warning(
+                "MCAP input size estimation took "
+                f"{round(sampling_duration, 2)} seconds."
+            )
+
+        if not ratios:
+            return MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+        ratio = sum(ratios) / len(ratios)
+        logger.debug(f"Estimated MCAP encoding ratio from sampling is {ratio}.")
+        return max(ratio, MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+    def _estimate_file_inmemory_size(self, path: str) -> Optional[int]:
+        """Estimate the in-memory size of the rows one MCAP file produces.
+
+        Reads at most ``MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES`` messages,
+        builds a block from them through the same conversion the read path
+        uses, and scales the measured bytes per row by the file's message
+        count. If the iteration finishes before reaching that cap it has seen
+        the whole selection, and the measured size is returned unscaled.
+
+        The sampled messages are the first ones the reader yields rather than a
+        spread across the file, so a recording whose message size changes
+        markedly from start to end is estimated from its opening. Bounding the
+        read this way keeps planning cheap; the sample across *files* is spread
+        instead (see ``_sample_files``).
+
+        Returns ``None`` if the file carries no summary to read the message
+        count from, or if it can't be sampled.
+        """
+        from mcap.reader import make_reader
+
+        try:
+            # Open for random access so that `make_reader` returns a
+            # `SeekingReader`, which reads the summary from the file's index
+            # rather than scanning the whole file to reconstruct it.
+            with self._filesystem.open_input_file(path) as f:
+                reader = make_reader(f)
+                summary = reader.get_summary()
+                if summary is None or summary.statistics is None:
+                    return None
+
+                num_messages = self._count_selected_messages(summary)
+                if not num_messages:
+                    return 0
+
+                builder = DelegatingBlockBuilder()
+                # Whether the iteration saw every message a read would select
+                # rather than stopping at the sample cap.
+                read_whole_selection = True
+                for schema, channel, message in reader.iter_messages(
+                    topics=list(self._topics) if self._topics else None,
+                    start_time=(
+                        self._time_range.start_time if self._time_range else None
+                    ),
+                    end_time=self._time_range.end_time if self._time_range else None,
+                ):
+                    if not self._should_include_message(schema, channel, message):
+                        continue
+                    builder.add(self._message_to_dict(schema, channel, message, path))
+                    if builder.num_rows() >= MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES:
+                        read_whole_selection = False
+                        break
+
+                if builder.num_rows() == 0:
+                    return 0
+
+                block = builder.build()
+                if self._include_paths:
+                    # `FileBasedDatasource` appends this column downstream of
+                    # `_read_stream`, so add it to keep the sample faithful.
+                    block = BlockAccessor.for_block(block).fill_column("path", path)
+
+                accessor = BlockAccessor.for_block(block)
+                if read_whole_selection:
+                    # Every message a read selects was materialized, so this is
+                    # the size itself rather than a sample of it. This is the
+                    # usual case for a narrow ``time_range`` or
+                    # ``message_types`` filter, neither of which
+                    # ``_count_selected_messages`` can resolve from the summary.
+                    return accessor.size_bytes()
+
+                bytes_per_row = accessor.size_bytes() / accessor.num_rows()
+                return int(bytes_per_row * num_messages)
+        except Exception:
+            # Warn rather than log at debug: falling back silently restores the
+            # fixed-ratio behaviour this method exists to replace, and a
+            # debug-level message would not be seen.
+            logger.warning(
+                f"Failed to sample MCAP file '{path}' while estimating its "
+                "in-memory size. Falling back to a default encoding ratio of "
+                f"{MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT}.",
+                exc_info=True,
+            )
+            return None
+
+    def _count_selected_messages(self, summary: "Summary") -> int:
+        """Return an upper bound on how many messages of a file a read selects.
+
+        Only the topic filter is resolvable from the summary. ``time_range``
+        and ``message_types`` are not represented there, so a read using them
+        selects at most this many messages.
+
+        This bound is consulted only when sampling stopped at the message cap.
+        A filter narrow enough to select fewer messages than the cap lets the
+        caller measure the whole selection directly, so the bound is unused
+        exactly where it would be loosest.
+        """
+        statistics = summary.statistics
+        if not self._topics:
+            return statistics.message_count
+
+        return sum(
+            count
+            for channel_id, count in statistics.channel_message_counts.items()
+            if channel_id in summary.channels
+            and summary.channels[channel_id].topic in self._topics
+        )
+
     def get_name(self) -> str:
         """Return a human-readable name for this datasource."""
         return "MCAP"
@@ -256,3 +468,27 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP files can be read in parallel across multiple files.
         """
         return True
+
+
+def _sample_files(
+    candidates: List[Tuple[str, int]],
+) -> List[Tuple[str, int]]:
+    """Pick evenly spaced files to sample.
+
+    Even spacing rather than a prefix avoids a biased estimate when the input
+    is ordered by size or by recording session.
+    """
+    num_samples = math.ceil(
+        len(candidates) * MCAP_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO
+    )
+    num_samples = max(
+        min(num_samples, MCAP_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES),
+        MCAP_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES,
+    )
+    num_samples = min(num_samples, len(candidates))
+
+    if num_samples <= 1:
+        return candidates[:1]
+
+    step = (len(candidates) - 1) / (num_samples - 1)
+    return [candidates[round(i * step)] for i in range(num_samples)]
