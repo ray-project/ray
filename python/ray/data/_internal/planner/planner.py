@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
+    from ray.data.checkpoint import CheckpointConfig
+
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -286,7 +288,7 @@ class Planner:
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
+                checkpoint_config, data_file_dir, data_file_fs
             )
 
         elif checkpoint_config is not None:
@@ -389,9 +391,17 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
+        checkpoint_config: "CheckpointConfig",
         data_file_dir: Optional[str] = None,
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        if getattr(checkpoint_config, "has_generated_id_column", False):
+            # Generated struct IDs can't go through the numpy-based
+            # checkpoint filter, so only the write side is planned: a rerun
+            # re-reads every row (at-least-once) instead of restoring.
+            # Restore routing for generated IDs is planned via ListFiles once
+            # the row-group skip machinery exists.
+            return {Write: plan_write_op_with_checkpoint_writer}
         plan_fns = {
             Read: partial(
                 plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem

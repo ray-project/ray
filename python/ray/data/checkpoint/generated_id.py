@@ -5,7 +5,6 @@ from typing import Optional
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.compute as pc
 
 from ray.data.context import DataContext
 
@@ -79,8 +78,11 @@ def get_generated_id_column(
         base_type = (
             pa.string() if name in (PATH_PREFIX_FIELD, FILE_NAME_FIELD) else pa.int32()
         )
-        return pc.dictionary_encode(
-            pc.fill_null(pa.nulls(current_num_rows, type=base_type), fill)
+        # Constant column: a one-element dictionary with repeated index 0 is
+        # cheaper than materializing and encoding N copies of the value.
+        return pa.DictionaryArray.from_arrays(
+            indices=np.zeros(current_num_rows, dtype=np.int32),
+            dictionary=pa.array([fill], type=base_type),
         )
 
     fields = [

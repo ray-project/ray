@@ -362,6 +362,60 @@ class TestCheckpointConfig:
                 CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
 
 
+def _collect_physical_op_names(physical_plan) -> List[str]:
+    names = []
+    to_visit = [physical_plan.dag]
+    while to_visit:
+        op = to_visit.pop()
+        names.append(op.name)
+        to_visit.extend(op.input_dependencies)
+    return names
+
+
+def test_generated_id_rerun_rereads_all_rows(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Generated struct IDs can't go through the numpy-based restore path, so
+    only the write side is planned: a rerun that finds committed checkpoint
+    files must re-read every row (at-least-once) instead of crashing during
+    checkpoint load."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        # Keep the committed checkpoint so the second run sees it.
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(os.path.join(tmp_path, "out1"))
+
+    committed = [
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    ]
+    assert committed, "first run should have committed checkpoint files"
+
+    # No filter op is planned for generated IDs; the checkpoint is only written.
+    ds = ray.data.read_parquet(f_dir)
+    write_op = Write(
+        ParquetDatasink(os.path.join(tmp_path, "unused")),
+        input_dependencies=[ds._logical_plan.dag],
+    )
+    physical_plan, _ = get_execution_plan(LogicalPlan(write_op, ctx))
+    assert not any(
+        "CheckpointFilter" in name for name in _collect_physical_op_names(physical_plan)
+    )
+
+    # The rerun must complete and rewrite every input row.
+    out2 = os.path.join(tmp_path, "out2")
+    ray.data.read_parquet(f_dir).write_parquet(out2)
+    result = pq.read_table(out2)
+    assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [
