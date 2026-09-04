@@ -55,7 +55,10 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -5750,29 +5753,21 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
+        tar archives.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row is written as a WebDataset sample.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
@@ -5781,14 +5776,19 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.range(100)
+                ds = ray.data.from_items(
+                    [
+                        {"__key__": f"{i:06d}", "txt": str(i)}
+                        for i in range(100)
+                    ]
+                )
                 ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset tar
+                archives are written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
@@ -5806,11 +5806,12 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
-                If ``True`` (default), uses the default encoder that automatically
-                handles common data types. If ``False``, disables encoding and requires
-                all values to already be bytes or strings. A string specifies a format
-                hint for the default encoder, a callable provides a custom encoding
-                function, and a list applies multiple encoders in sequence.
+                A boolean or string selects the built-in encoder, which automatically
+                handles common data types based on column-name extensions. A callable
+                receives and returns a sample dictionary, and a list applies multiple
+                encoder specifications in sequence. Set this to ``None`` to skip
+                encoding; in that case, each non-special value that isn't ``None``
+                must already be bytes or a string.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
