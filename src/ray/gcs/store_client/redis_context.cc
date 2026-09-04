@@ -14,7 +14,14 @@
 
 #include "ray/gcs/store_client/redis_context.h"
 
+#ifndef _WIN32
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#endif
+
 #include <cerrno>
+#include <cstring>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -324,6 +331,137 @@ Status RestoreRedisTimeout(redisContext *context) {
   return Status::OK();
 }
 
+namespace {
+
+// hiredis' async context embeds the sync context; the socket lives in c.fd.
+redisContext *AsRedisContext(redisContext *context) { return context; }
+redisContext *AsRedisContext(redisAsyncContext *context) { return &context->c; }
+
+// Linux caps both TCP_KEEPIDLE and TCP_KEEPINTVL at 32767 seconds.
+constexpr int64_t kMaxRedisTcpKeepaliveIntervalSeconds = 32767;
+// Linux caps TCP_KEEPCNT at 127.
+constexpr int64_t kMaxRedisTcpKeepaliveProbes = 127;
+
+// Validates the keepalive configuration on its own, so a bad value fails before
+// any connection attempt instead of surfacing as a Redis connectivity error
+// after the connect-retry budget is spent.
+Status ValidateRedisTcpKeepaliveConfig() {
+  const int64_t interval = RayConfig::instance().redis_tcp_keepalive_interval_seconds();
+  if (interval < 0 || interval > kMaxRedisTcpKeepaliveIntervalSeconds) {
+    return Status::InvalidArgument(
+        absl::StrCat("redis_tcp_keepalive_interval_seconds must be in [0, ",
+                     kMaxRedisTcpKeepaliveIntervalSeconds,
+                     "], got ",
+                     interval,
+                     ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable "
+                     "TCP keepalive."));
+  }
+  const int64_t probes = RayConfig::instance().redis_tcp_keepalive_probes();
+  if (interval > 0 && (probes < 1 || probes > kMaxRedisTcpKeepaliveProbes)) {
+    return Status::InvalidArgument(
+        absl::StrCat("redis_tcp_keepalive_probes must be in [1, ",
+                     kMaxRedisTcpKeepaliveProbes,
+                     "] when TCP keepalive is enabled, got ",
+                     probes,
+                     "."));
+  }
+  return Status::OK();
+}
+
+std::string DescribeRedisTcpKeepalivePolicy(int64_t interval, int64_t probes) {
+  if (interval == 0) {
+    return "disabled by configuration";
+  }
+  static_cast<void>(probes);
+#if defined(__linux__) && defined(__GLIBC__)
+  return absl::StrCat("idle=",
+                      interval,
+                      "s, probe interval=",
+                      interval,
+                      "s, probes=",
+                      probes,
+                      " (dead connection detected after ~",
+                      interval * (1 + probes),
+                      "s)");
+#elif defined(__APPLE__) && defined(__MACH__)
+  return absl::StrCat(
+      "idle=", interval, "s; probe interval and count are controlled by the OS");
+#elif defined(_WIN32)
+  return absl::StrCat("idle=",
+                      interval,
+                      "s, probe interval=",
+                      interval,
+                      "s; probe count is controlled by the OS");
+#else
+  return "SO_KEEPALIVE enabled; idle time, probe interval, and probe count are "
+         "controlled by the OS";
+#endif
+}
+
+// Applies the configured TCP keepalive policy to a freshly created hiredis
+// context. Called from exactly one place (ConnectWithoutRetries) so that every
+// external Redis socket - sync, async, Sentinel, Cluster-redirect, and cleanup
+// connections - receives the same policy before TLS, AUTH, or any command.
+//
+// Validation and socket-option failures are not RedisError statuses because
+// retrying the same policy cannot fix them. ConnectWithRetries surfaces them
+// immediately.
+Status ConfigureRedisTcpKeepalive(redisContext *context,
+                                  const std::string &address,
+                                  int port) {
+  RAY_RETURN_NOT_OK(ValidateRedisTcpKeepaliveConfig());
+  const int64_t interval = RayConfig::instance().redis_tcp_keepalive_interval_seconds();
+  if (interval == 0) {
+    RAY_LOG(INFO) << "TCP keepalive is disabled by configuration for the Redis "
+                     "connection to "
+                  << BuildAddress(address, port) << ".";
+    return Status::OK();
+  }
+  if (::redisEnableKeepAliveWithInterval(context, static_cast<int>(interval)) !=
+      REDIS_OK) {
+    return Status::IOError(
+        absl::StrCat("Failed to enable TCP keepalive on the Redis connection to ",
+                     BuildAddress(address, port),
+                     ": ",
+                     context->errstr,
+                     ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable TCP "
+                     "keepalive if this platform cannot support it."));
+  }
+
+  // hiredis derives TCP_KEEPINTVL=interval/3 and TCP_KEEPCNT=3, which ties how
+  // fast a dead flow is detected (2*interval) to how often probes are sent.
+  // Those need opposite tuning: probes must be frequent enough to keep an idle
+  // flow alive, while declaring the connection dead must be slow enough to ride
+  // out transient congestion - which, until in-place reconnect lands, escalates
+  // to a GCS crash. Override both where the platform lets us.
+#if defined(__linux__) && defined(__GLIBC__)
+  const int probe_interval = static_cast<int>(interval);
+  const int probes = static_cast<int>(RayConfig::instance().redis_tcp_keepalive_probes());
+  const std::pair<int, int> options[] = {{TCP_KEEPINTVL, probe_interval},
+                                         {TCP_KEEPCNT, probes}};
+  for (const auto &[option, value] : options) {
+    if (::setsockopt(context->fd, IPPROTO_TCP, option, &value, sizeof(value)) != 0) {
+      const int saved_errno = errno;
+      return Status::IOError(absl::StrCat(
+          "Failed to configure TCP keepalive timing on the Redis connection to ",
+          BuildAddress(address, port),
+          ": ",
+          std::strerror(saved_errno),
+          ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable TCP "
+          "keepalive."));
+    }
+  }
+#endif
+  RAY_LOG(INFO) << "Enabled TCP keepalive on the Redis connection to "
+                << BuildAddress(address, port) << ": "
+                << DescribeRedisTcpKeepalivePolicy(
+                       interval, RayConfig::instance().redis_tcp_keepalive_probes())
+                << ".";
+  return Status::OK();
+}
+
+}  // namespace
+
 Status AuthenticateRedis(redisContext *context,
                          const std::string &username,
                          const std::string &password,
@@ -376,7 +514,26 @@ Status AuthenticateRedis(redisAsyncContext *context,
 }
 
 void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int status) {
-  RAY_LOG(DEBUG) << "Redis async context disconnected. Status: " << status;
+  if (status == REDIS_OK) {
+    // Deliberate disconnect (Disconnect()/teardown); keep quiet on shutdown.
+    RAY_LOG(DEBUG) << "Redis async context disconnected. Status: " << status;
+  } else {
+    // This is the first signal when an idle connection was silently removed by
+    // the network path. Copy the error fields before hiredis frees the context
+    // below. errno is not meaningful at this point (the failure happened
+    // earlier, inside hiredis); errstr already carries the strerror(errno)
+    // captured at the failure point.
+    const int err = context->c.err;
+    const std::string errstr =
+        context->c.errstr[0] != '\0' ? context->c.errstr : "unknown error";
+    RAY_LOG(WARNING) << "Redis async connection was closed unexpectedly (err = " << err
+                     << ", " << errstr << "). TCP keepalive policy: "
+                     << DescribeRedisTcpKeepalivePolicy(
+                            RayConfig::instance().redis_tcp_keepalive_interval_seconds(),
+                            RayConfig::instance().redis_tcp_keepalive_probes())
+                     << ". If this connection was idle, the network path may have "
+                        "removed the flow.";
+  }
   // Reset raw 'redisAsyncContext' to nullptr because hiredis will release this context.
   reinterpret_cast<RedisAsyncContext *>(context->data)->ResetRawRedisAsyncContext();
 }
@@ -398,6 +555,9 @@ ConnectWithoutRetries(const std::string &address,
   // as an output parameter and in the Status::RedisError,
   // because we're not sure whether we'll want to change what this returns.
   RedisContextType *newContext = connect_function(address.c_str(), port);
+  // Own the context right away so every failure path below frees it.
+  std::unique_ptr<RedisContextType, RedisContextDeleter> context_holder(
+      newContext, RedisContextDeleter());
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss;
     if (newContext == nullptr) {
@@ -408,9 +568,15 @@ ConnectWithoutRetries(const std::string &address,
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
   }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisContextDeleter>(
-                            newContext, RedisContextDeleter()));
+  // Apply the TCP keepalive policy before the context is used for anything
+  // (TLS, AUTH, or the first command). For the async context the TCP handshake
+  // may not have completed yet; that is fine - the options apply to the
+  // socket, not the connection.
+  Status status = ConfigureRedisTcpKeepalive(AsRedisContext(newContext), address, port);
+  if (!status.ok()) {
+    return std::make_pair(status, nullptr);
+  }
+  return std::make_pair(Status::OK(), std::move(context_holder));
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
@@ -424,6 +590,14 @@ ConnectWithRetries(const std::string &address,
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
   auto status = resp.first;
   while (!status.ok()) {
+    if (!status.IsRedisError()) {
+      // Policy/configuration failures (e.g. TCP keepalive setup) are not
+      // transient; retrying cannot fix them. Surface them immediately instead
+      // of retrying for ~60s and then reporting Redis as unreachable.
+      RAY_LOG(ERROR) << "Giving up connecting to Redis due to a non-retryable error: "
+                     << status.ToString();
+      break;
+    }
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       // Do not crash here. Return the failed status so callers (e.g. an
       // in-place reconnect) can decide how to recover. Existing callers still
@@ -709,6 +883,10 @@ Status RedisContext::Connect(const std::string &address,
 
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
+  // Reject a bad keepalive configuration before touching the network, so it
+  // surfaces as itself rather than as a Redis connectivity error after DNS
+  // resolution and the connect-retry budget.
+  RAY_RETURN_NOT_OK(ValidateRedisTcpKeepaliveConfig());
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   // ResolveDNS may throw (boost resolver) when the name cannot be resolved

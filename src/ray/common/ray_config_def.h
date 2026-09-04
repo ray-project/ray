@@ -402,6 +402,33 @@ RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 /// have permission to run it. Ray does not probe for support or fall back to DEL.
 RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
 
+/// TCP keepalive probe interval for external Redis connections, in seconds.
+/// Idle GCS<->Redis flows can be silently removed by NAT, proxies, or managed
+/// service gateways; keepalive probes keep the flow entry alive and surface a
+/// dead peer instead of hanging on the next command. Keep this smaller than the
+/// shortest idle timeout on the network path. Set to 0 to disable TCP keepalive
+/// entirely. Valid values are 0 through 32767.
+RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
+
+/// Number of unanswered TCP keepalive probes before an external Redis
+/// connection is declared dead, so detection takes roughly
+/// redis_tcp_keepalive_interval_seconds * (1 + this value).
+///
+/// This is deliberately decoupled from the probe interval: the interval must be
+/// short enough to keep an idle flow alive, while declaring a connection dead
+/// must be slow enough to ride out transient congestion. Until in-place
+/// reconnect lands (https://github.com/ray-project/ray/pull/65298), a connection
+/// declared dead escalates to a GCS crash once the request retry budget is
+/// exhausted, so the default is conservative (~2 minutes with the default
+/// interval).
+///
+/// Only glibc Linux honors this: hiredis sets TCP_KEEPIDLE/TCP_KEEPINTVL/
+/// TCP_KEEPCNT only under __GLIBC__, so on musl only SO_KEEPALIVE is applied
+/// (kernel defaults govern the timing), macOS applies the interval alone, and
+/// Windows uses a system-fixed probe count. Valid values are 1 through 127 when
+/// TCP keepalive is enabled.
+RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
