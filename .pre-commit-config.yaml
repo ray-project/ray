@@ -22,7 +22,7 @@ exclude: |
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         # Narrowing the top-level `exclude` above (so the `vale` hook can see
@@ -57,7 +57,7 @@ repos:
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: "0.8.3"
+    rev: "0.9.1"
     hooks:
       - id: pydoclint
         args: [
@@ -115,8 +115,8 @@ repos:
           )
         types_or: [python]
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.3
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.6
     hooks:
       - id: prettier
         files: 'doc/'
@@ -327,7 +327,7 @@ repos:
       - id: python-check-mock-methods
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
@@ -342,7 +342,7 @@ repos:
       - id: clang-format
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.11.0
+    rev: v2.16.0
     hooks:
       - id: pretty-format-java
         args: [--autofix, --google-java-formatter-version=1.7]
@@ -363,7 +363,7 @@ repos:
         types: [python]
 
   - repo: https://github.com/semgrep/pre-commit
-    rev: v1.32.0
+    rev: v1.175.0
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
@@ -377,7 +377,7 @@ repos:
         exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
-    rev: v3.17.1
+    rev: v3.19.0
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
@@ -419,7 +419,7 @@ repos:
       args: ["--patch_dir", "ray/train/v2"]
 
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.26.0
+    rev: v10.9.1
     hooks:
       - id: eslint
         files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
