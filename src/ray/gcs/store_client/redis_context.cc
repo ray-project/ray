@@ -34,7 +34,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
-#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -44,6 +44,24 @@ extern "C" {
 namespace ray {
 
 namespace gcs {
+
+namespace {
+
+constexpr std::string_view kKnownRedisCommands[] = {"HSET",
+                                                    "HSETNX",
+                                                    "HGET",
+                                                    "HMGET",
+                                                    "HDEL",
+                                                    "HEXISTS",
+                                                    "HSCAN",
+                                                    "SCAN",
+                                                    "INCRBY",
+                                                    "DEL",
+                                                    "UNLINK",
+                                                    "PING",
+                                                    "INFO"};
+
+}  // namespace
 
 size_t ResponsePayloadBytes(const redisReply &reply) {
   switch (reply.type) {
@@ -89,9 +107,12 @@ size_t ResponsePayloadBytes(const redisReply &reply) {
 }
 
 std::string NormalizeRedisCommandLabel(std::string_view verb) {
-  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
-  absl::AsciiStrToUpper(&label);
-  return label;
+  for (const auto known_command : kKnownRedisCommands) {
+    if (absl::EqualsIgnoreCase(verb, known_command)) {
+      return std::string(known_command);
+    }
+  }
+  return std::string(kOtherRedisCommandLabel);
 }
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
@@ -230,31 +251,22 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       start_time_(clock.Now()),
       redis_cmds_(std::move(args)),
       clock_(clock),
-      metrics_(metrics),
-      table_label_(table_label) {
+      metrics_(metrics) {
   RAY_CHECK(!redis_cmds_.empty());
-  command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
-  // This context owns the argument buffers now, so their sizes are safe to read
-  // here no matter what the caller moved into them on the way in (AsyncPut, for
-  // one, moves the caller's value into the RedisCommand). Summing in the loop
-  // that already computes argc_ also means the request side costs nothing
-  // beyond the additions.
-  size_t request_payload_bytes = 0;
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
     argv_.push_back(redis_cmds_[i].data());
     argc_.push_back(redis_cmds_[i].size());
-    request_payload_bytes += redis_cmds_[i].size();
   }
   if (metrics_ != nullptr) {
-    // Once per logical command. Run() is what retries, so a retransmission is
-    // not counted again -- see the metric description.
-    metrics_->request_payload_bytes_sum.Record(
-        static_cast<double>(request_payload_bytes),
-        {{"Command", command_label_}, {"TableName", table_label_}});
-    metrics_->command_count_counter.Record(
-        1, {{"Command", command_label_}, {"TableName", table_label_}});
+    command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
+    table_label_ = std::string(table_label);
+    // This context owns the argument buffers, so their sizes remain valid even
+    // when a caller moved a value into the command on the way here.
+    for (const auto &command_arg : redis_cmds_) {
+      request_payload_bytes_ += command_arg.size();
+    }
   }
 }
 
@@ -305,6 +317,11 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
 }
 
 void RedisRequestContext::Run() {
+  io_service_.dispatch([this]() { RunOnRedisIoService(); }, "RedisRequestContext.Run");
+}
+
+void RedisRequestContext::RunOnRedisIoService() {
+  RAY_CHECK(io_service_.get_executor().running_in_this_thread());
   if (pending_retries_ == 0) {
     RAY_LOG(FATAL) << "Failed to run redis cmds: [" << absl::StrJoin(redis_cmds_, " ")
                    << "] for " << RayConfig::instance().num_redis_request_retries()
@@ -315,6 +332,18 @@ void RedisRequestContext::Run() {
 
   Status status = redis_context_->RedisAsyncCommandArgv(
       RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
+
+  if (status.ok() && metrics_ != nullptr && !request_metrics_recorded_) {
+    // Record once when hiredis first accepts this logical command for sending.
+    // A reply error can retry the command, but retransmissions do not change
+    // either metric.
+    metrics_->request_payload_bytes_sum.Record(
+        static_cast<double>(request_payload_bytes_),
+        {{"Command", command_label_}, {"TableName", table_label_}});
+    metrics_->command_count_counter.Record(
+        1, {{"Command", command_label_}, {"TableName", table_label_}});
+    request_metrics_recorded_ = true;
+  }
 
   if (!status.ok()) {
     RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);

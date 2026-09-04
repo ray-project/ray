@@ -428,8 +428,8 @@ void RedisStoreClient::RedisScanner::Scan() {
       [this, self_ref = self_ref_](const std::shared_ptr<CallbackReply> &reply) {
         OnScanCallback(reply);
       },
-      // One round of a multi-round scan: the counters aggregate every round, so
-      // gcs_redis_command_count on HSCAN is round trips, not AsyncGetAll calls.
+      // One logical command in a multi-round scan: the counters aggregate every
+      // HSCAN command, not every AsyncGetAll call. Retries are not counted again.
       redis_key_.table_name);
 }
 

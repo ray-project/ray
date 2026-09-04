@@ -19,8 +19,10 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -29,8 +31,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "gtest/gtest.h"
+#include "hiredis/hiredis.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
@@ -40,6 +44,65 @@ using namespace std::chrono_literals;  // NOLINT
 namespace ray {
 
 namespace gcs {
+
+namespace {
+
+class BlockingCounter : public observability::FakeCounter {
+ public:
+  BlockingCounter()
+      : record_started_future_(record_started_promise_.get_future()),
+        release_future_(release_promise_.get_future().share()) {}
+
+  void Record(double value, stats::TagsType tags) override {
+    std::call_once(record_started_once_,
+                   [this]() { record_started_promise_.set_value(); });
+    release_future_.wait();
+    observability::FakeCounter::Record(value, std::move(tags));
+  }
+
+  bool WaitUntilRecordStarts(std::chrono::milliseconds timeout) {
+    return record_started_future_.wait_for(timeout) == std::future_status::ready;
+  }
+
+  void Release() {
+    std::call_once(release_once_, [this]() { release_promise_.set_value(); });
+  }
+
+ private:
+  std::promise<void> record_started_promise_;
+  std::future<void> record_started_future_;
+  std::once_flag record_started_once_;
+  std::promise<void> release_promise_;
+  std::shared_future<void> release_future_;
+  std::once_flag release_once_;
+};
+
+int64_t RedisCommandStat(int port, std::string_view command, std::string_view statistic) {
+  std::unique_ptr<redisContext, RedisContextDeleter> context(
+      redisConnect("127.0.0.1", port), RedisContextDeleter());
+  RAY_CHECK(context != nullptr && context->err == 0);
+  std::unique_ptr<redisReply, decltype(&freeReplyObject)> reply(
+      reinterpret_cast<redisReply *>(redisCommand(context.get(), "INFO commandstats")),
+      freeReplyObject);
+  RAY_CHECK(reply != nullptr && reply->type == REDIS_REPLY_STRING);
+
+  const std::string info(reply->str, reply->len);
+  const std::string command_prefix = absl::StrCat("cmdstat_", command, ":");
+  const auto command_pos = info.find(command_prefix);
+  if (command_pos == std::string::npos) {
+    return 0;
+  }
+  const auto line_end = info.find('\n', command_pos);
+  const std::string statistic_prefix = absl::StrCat(statistic, "=");
+  const auto statistic_pos = info.find(statistic_prefix, command_pos);
+  if (statistic_pos == std::string::npos ||
+      (line_end != std::string::npos && statistic_pos >= line_end)) {
+    return 0;
+  }
+  return std::stoll(info.substr(statistic_pos + statistic_prefix.size()));
+}
+
+}  // namespace
 
 class RedisStoreClientTest : public StoreClientTestBase {
  public:
@@ -435,13 +498,14 @@ class RedisStoreClientMetricsTest : public ::testing::Test {
   // Overridden by RedisStoreClientMetricsDisabledTest below.
   virtual bool PayloadMetricsEnabled() const { return true; }
 
+  virtual RedisMetrics MetricsForClient() {
+    return RedisMetrics{request_bytes_, response_bytes_, command_count_};
+  }
+
   void MakeStoreClient() {
     RedisClientOptions options{"127.0.0.1", port_};
     store_client_ = std::make_unique<RedisStoreClient>(
-        *io_service_,
-        options,
-        clock_,
-        RedisMetrics{request_bytes_, response_bytes_, command_count_});
+        *io_service_, options, clock_, MetricsForClient());
   }
 
   static double ValueFor(const observability::FakeCounter &metric,
@@ -643,9 +707,9 @@ TEST_F(RedisStoreClientMetricsTest, GetAllReportsScanResponseBytes) {
   EXPECT_GT(RequestBytes("HSCAN", table), 0.0);
 }
 
-// Batched operations are counted per chunk, so the count is Redis round trips
-// rather than StoreClient calls. Pin that, and pin that the byte totals
-// aggregate across chunks.
+// Batched operations create one logical Redis command per chunk rather than one
+// per StoreClient call. Pin that, and pin that the byte totals aggregate across
+// chunks.
 TEST_F(RedisStoreClientMetricsTest, BatchedCommandsCountPerChunk) {
   const std::string table = "JOB";
   const size_t batch = 4;
@@ -677,6 +741,16 @@ TEST_F(RedisStoreClientMetricsTest, BatchedCommandsCountPerChunk) {
 TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
   const std::string table = "ACTOR_TASK_SPEC";
   PutSync(table, "k1", "v1");
+  {
+    std::promise<bool> promise;
+    store_client_->AsyncPut(
+        table,
+        "k2",
+        "v2",
+        /*overwrite=*/false,
+        {[&promise](bool added) { promise.set_value(added); }, *io_service_});
+    EXPECT_TRUE(promise.get_future().get());
+  }
   GetSync(table, "k1");
   MultiGetSync(table, {"k1", "k2"});
   GetAllSync(table);
@@ -718,6 +792,7 @@ TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
       const std::string &command = tags.at("Command");
       const std::string &table_name = tags.at("TableName");
       EXPECT_TRUE(allowed_commands.contains(command)) << "unexpected Command " << command;
+      EXPECT_NE(command, kOtherRedisCommandLabel);
       EXPECT_TRUE(allowed_tables.contains(table_name))
           << "unexpected TableName " << table_name;
       // The rendered Redis key carries the storage namespace, which is a
@@ -729,6 +804,90 @@ TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
     }
   }
   EXPECT_GT(observed, 0u);
+  EXPECT_EQ(CommandCount("HSETNX", table), 1.0);
+}
+
+class RedisStoreClientBlockingMetricsTest : public RedisStoreClientMetricsTest {
+ protected:
+  RedisMetrics MetricsForClient() override {
+    return RedisMetrics{blocking_request_bytes_, response_bytes_, command_count_};
+  }
+
+  BlockingCounter blocking_request_bytes_;
+};
+
+TEST_F(RedisStoreClientBlockingMetricsTest, RequestMetricsCompleteBeforeReply) {
+  auto reply_promise = std::make_shared<std::promise<bool>>();
+  auto reply_future = reply_promise->get_future();
+  std::thread submitter([this, reply_promise]() {
+    store_client_->AsyncPut(
+        "NODE",
+        "key",
+        "value",
+        /*overwrite=*/true,
+        {[reply_promise](bool added) { reply_promise->set_value(added); }, *io_service_});
+  });
+  auto cleanup = absl::MakeCleanup([&]() {
+    blocking_request_bytes_.Release();
+    if (submitter.joinable()) {
+      submitter.join();
+    }
+  });
+
+  ASSERT_TRUE(blocking_request_bytes_.WaitUntilRecordStarts(5s));
+  EXPECT_EQ(reply_future.wait_for(100ms), std::future_status::timeout);
+
+  blocking_request_bytes_.Release();
+  submitter.join();
+  std::move(cleanup).Cancel();
+  ASSERT_EQ(reply_future.wait_for(5s), std::future_status::ready);
+  EXPECT_TRUE(reply_future.get());
+  EXPECT_EQ(CommandCount("HSET", "NODE"), 1.0);
+}
+
+TEST_F(RedisStoreClientMetricsTest, RetryDoesNotRecountAcceptedCommand) {
+  const auto original_retry_base_ms = RayConfig::instance().redis_retry_base_ms();
+  const auto original_retry_multiplier = RayConfig::instance().redis_retry_multiplier();
+  const auto original_retry_max_ms = RayConfig::instance().redis_retry_max_ms();
+  auto restore_retry_config = absl::MakeCleanup([=]() {
+    RayConfig::instance().redis_retry_base_ms() = original_retry_base_ms;
+    RayConfig::instance().redis_retry_multiplier() = original_retry_multiplier;
+    RayConfig::instance().redis_retry_max_ms() = original_retry_max_ms;
+  });
+  RayConfig::instance().redis_retry_base_ms() = 500;
+  RayConfig::instance().redis_retry_multiplier() = 1;
+  RayConfig::instance().redis_retry_max_ms() = 500;
+
+  TestSetupUtil::ExecuteRedisCmd(port_, {"CONFIG", "RESETSTAT"});
+  TestSetupUtil::ExecuteRedisCmd(port_, {"REPLICAOF", "localhost", "1"});
+  auto restore_primary = absl::MakeCleanup([port = port_]() {
+    TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "NO", "ONE"});
+  });
+
+  const std::string table = "NODE";
+  const std::string key = "retry-key";
+  const std::string value = "retry-value";
+  auto reply_promise = std::make_shared<std::promise<bool>>();
+  auto reply_future = reply_promise->get_future();
+  store_client_->AsyncPut(
+      table,
+      key,
+      value,
+      /*overwrite=*/true,
+      {[reply_promise](bool added) { reply_promise->set_value(added); }, *io_service_});
+
+  ASSERT_TRUE(WaitForCondition(
+      [this]() { return RedisCommandStat(port_, "hset", "rejected_calls") >= 1; }, 5000));
+  EXPECT_EQ(CommandCount("HSET", table), 1.0);
+  TestSetupUtil::ExecuteRedisCmd(port_, {"REPLICAOF", "NO", "ONE"});
+
+  ASSERT_EQ(reply_future.wait_for(5s), std::future_status::ready);
+  EXPECT_TRUE(reply_future.get());
+  const double expected_request_bytes =
+      std::string("HSET").size() + RedisKeyFor(table).size() + key.size() + value.size();
+  EXPECT_EQ(RequestBytes("HSET", table), expected_request_bytes);
+  EXPECT_EQ(CommandCount("HSET", table), 1.0);
+  EXPECT_EQ(ResponseBytes("HSET", table), 1.0);
 }
 
 // Same fixture, but the client is constructed with the kill switch already off,

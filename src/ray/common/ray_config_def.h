@@ -393,10 +393,10 @@ RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
 /// Whether the GCS records per-command Redis payload byte metrics
 /// (gcs_redis_request_payload_bytes, gcs_redis_response_payload_bytes,
-/// gcs_redis_command_count). Recording costs three additional
-/// ray::stats::Metric::Record calls per Redis command, each of which takes a
-/// process-global registration mutex. Set to false to restore the pre-change
-/// behavior if that contention is measurable in a high-throughput GCS.
+/// gcs_redis_command_count). Recording costs two ray::stats::Metric::Record
+/// calls when a command is first accepted and one when its successful reply is
+/// received. Set to false to restore the pre-change behavior if that overhead
+/// is measurable in a high-throughput GCS.
 RAY_CONFIG(bool, gcs_redis_payload_metrics_enabled, true)
 
 /// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
