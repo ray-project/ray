@@ -2993,6 +2993,7 @@
 # --- read_large_parquet_fixed_size  [memory] ---
 - name: read_large_parquet_fixed_size_2x2_pa_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -3012,6 +3013,7 @@
 
 - name: read_large_parquet_fixed_size_2x2_rs_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -3031,6 +3033,7 @@
 
 - name: read_large_parquet_fixed_size_2x2_rstrim_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -3051,6 +3054,7 @@
 
 - name: read_large_parquet_fixed_size_2x2_rseos_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:

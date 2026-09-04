@@ -164,6 +164,16 @@ ALLOC_SINGLE_TOO = (
     "map_groups_autoscaling_hash_shuffle_column02+column14",
 )
 
+# alloc matrix: gate cells that must replicate inside ONE build (TODO 34f: the
+# col02 rseos fleet cell ran 2.37 once; one run cannot separate a slowed task
+# from an autoscaler that packed 44 workers/node) -- emitted with
+# ``repeated_run`` so the release runner schedules N steps per cell (the form
+# has no repeat field; release/ray_release/buildkite/step.py reads this key).
+ALLOC_REPEATED = {
+    "map_groups_autoscaling_hash_shuffle_column02+column14": 3,
+    "read_large_parquet_fixed_size": 3,
+}
+
 MATRICES = ("2x2", "alloc")
 DEFAULT_MATRIX = "alloc"
 
@@ -281,7 +291,7 @@ def _strip_defaults(entry, defaults):
     return entry
 
 
-def make_cell(resolved, defaults, arm, topology):
+def make_cell(resolved, defaults, arm, topology, matrix=DEFAULT_MATRIX):
     """One generated entry: parent test x arm (env prefix) x topology."""
     base = _strip_defaults(resolved, defaults)
     base_name = base["name"].replace(" ", "+")
@@ -292,6 +302,8 @@ def make_cell(resolved, defaults, arm, topology):
     cell = copy.deepcopy(base)
     cell["name"] = f"{base_name}_2x2_{arm}_{topology}"
     cell["frequency"] = "manual"
+    if matrix == "alloc" and base["name"] in ALLOC_REPEATED:
+        cell["repeated_run"] = ALLOC_REPEATED[base["name"]]
     # Parent scripts come from ">" folded scalars and carry a trailing
     # newline; strip so the emitted string is single-line.
     script = cell["run"]["script"].strip()
@@ -311,7 +323,7 @@ def make_cell(resolved, defaults, arm, topology):
     # Reorder for readable yaml; dicts keep insertion order.
     return {
         key: cell[key]
-        for key in ("name", "frequency", "python", "cluster", "run")
+        for key in ("name", "frequency", "repeated_run", "python", "cluster", "run")
         if key in cell
     }
 
@@ -352,7 +364,7 @@ def render_block(defaults, resolved_tests, matrix):
         if target != current:
             current = target
             lines.append(f"# --- {target}  [{TARGETS[target]}] ---")
-        cell = make_cell(by_name[target], defaults, arm, topology)
+        cell = make_cell(by_name[target], defaults, arm, topology, matrix)
         lines.append(
             yaml.safe_dump(
                 [cell], sort_keys=False, default_flow_style=False, width=88
