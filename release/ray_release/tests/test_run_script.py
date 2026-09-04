@@ -126,7 +126,7 @@ def test_no_group_when_there_is_no_analysis(tmpdir):
     assert "Observability agent analysis" not in output
 
 
-def test_stale_analysis_is_not_reported_against_a_later_attempt(tmpdir):
+def test_leftover_analysis_from_a_previous_run_is_not_reported(tmpdir):
     analysis_file = os.path.join(tmpdir, "analysis.txt")
     with open(analysis_file, "wt") as fp:
         fp.write("stale analysis from a previous attempt\n")
@@ -267,56 +267,44 @@ def test_parameters(setup):
     assert "--smoke-test" in data
 
 
-def test_buildkite_max_retries_is_inherited(tmpdir):
-    """The step publishes the retry budget; the script must not clobber it."""
-    recorder = os.path.join(tmpdir, "recorder.sh")
-    recorded = os.path.join(tmpdir, "recorded.txt")
-    with open(recorder, "wt") as fp:
-        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
+def test_analysis_from_an_earlier_attempt_is_not_reported_against_a_later_one(
+    tmpdir,
+):
+    """The second iteration of the in-script loop must not inherit the first's.
+
+    Only exit codes 30-33 continue that loop, and those become INFRA_TIMEOUT,
+    which never triggers the agent -- so this cannot happen today. It is the
+    reason the cleanup exists, and pinning it here is what keeps the guard
+    honest if a triggering status is ever added to that list.
+    """
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    state_file = os.path.join(tmpdir, "state.txt")
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        fp.write(
+            f'if [[ -f "{state_file}" ]]; then exit 40; fi\n'
+            f'touch "{state_file}"\n'
+            f'echo "analysis from the first attempt" > "{analysis_file}"\n'
+            # 30 is an infra timeout, the only kind of exit the loop retries.
+            "exit 30\n"
+        )
 
     test_script = os.path.join(
         os.path.dirname(__file__), "..", "..", "run_release_test.sh"
     )
-    env = {
-        **os.environ,
-        "NO_INSTALL": "1",
-        "NO_CLONE": "1",
-        "NO_ARTIFACTS": "1",
-        "OVERRIDE_SLEEP_TIME": "0",
-        "MAX_RETRIES": "1",
-        "RAY_TEST_SCRIPT": f"bash {recorder}",
-        "BUILDKITE_MAX_RETRIES": "3",
-    }
-    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
-
-    with open(recorded, "rt") as fp:
-        assert fp.read().strip() == "3"
-
-
-def test_buildkite_max_retries_defaults_to_one(tmpdir):
-    """Without a published budget the job keeps the historical default."""
-    recorder = os.path.join(tmpdir, "recorder.sh")
-    recorded = os.path.join(tmpdir, "recorded.txt")
-    with open(recorder, "wt") as fp:
-        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
-
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
+            "MAX_RETRIES": "2",
+        },
+        "test_name",
     )
-    env = {
-        **os.environ,
-        "NO_INSTALL": "1",
-        "NO_CLONE": "1",
-        "NO_ARTIFACTS": "1",
-        "OVERRIDE_SLEEP_TIME": "0",
-        "MAX_RETRIES": "1",
-        "RAY_TEST_SCRIPT": f"bash {recorder}",
-    }
-    env.pop("BUILDKITE_MAX_RETRIES", None)
-    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
 
-    with open(recorded, "rt") as fp:
-        assert fp.read().strip() == "1"
+    # Both attempts ran, and the second one produced no analysis of its own.
+    assert "Release test finished with final exit code 40 after 2/2 tries" in output
+    assert "analysis from the first attempt" not in output
 
 
 if __name__ == "__main__":
