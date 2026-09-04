@@ -475,6 +475,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                           void (*callback)(const ObjectID &, void *),
                                           void *callback_context);
 
+  /// Register a callback to fire when the producer of this (owned) object
+  /// physically frees its copy after a plasma move-semantics handoff. Like
+  /// AddObjectOutOfScopeOrFreedCallback, the callback is posted to the
+  /// object_freed_callback_service_ thread and must be O(1) / non-blocking.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Invoked with the object_id when the producer frees.
+  /// \return true if registered; false if the object is unknown or the
+  ///         producer-free already fired (callback will never fire).
+  bool AddObjectFreedOnProducerCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload of AddObjectFreedOnProducerCallback for use
+  /// from Cython. Can only be called for objects owned by this worker.
+  bool AddObjectFreedOnProducerCallback(const ObjectID &object_id,
+                                        void (*callback)(const ObjectID &, void *),
+                                        void *callback_context);
+
   /// Validate that the given object is owned by this worker. Used to gate
   /// owner-only operations (e.g. registering an out-of-scope/freed callback)
   /// so the error is constructed in C++ and propagated through the standard

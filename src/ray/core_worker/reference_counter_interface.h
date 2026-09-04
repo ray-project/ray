@@ -329,6 +329,20 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
+  /// Adds a callback run when the producer of this object physically frees its
+  /// copy after a plasma move-semantics handoff (owner receives
+  /// freed_on_producer_node_id). Fires at most once, then the callbacks clear.
+  /// Returns true if the object was tracked and the callback was added; false
+  /// if the object is unknown or the producer-free already fired.
+  virtual bool AddObjectFreedOnProducerCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) = 0;
+
+  /// Fire (once) the producer-freed callbacks for object_id. Called by the
+  /// owner when it processes an ObjectLocationUpdate carrying
+  /// freed_on_producer_node_id. No-op if the object is unknown.
+  virtual void OnObjectFreedOnProducer(const ObjectID &object_id) = 0;
+
   /// Stores the callback that will be run when the object reference is deleted
   /// from the reference table (all refs including lineage ref count go to 0).
   /// There could be multiple callbacks for the same object due to retries and we store
