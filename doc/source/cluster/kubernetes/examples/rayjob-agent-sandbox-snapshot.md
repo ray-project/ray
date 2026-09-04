@@ -1,17 +1,17 @@
 ---
 myst:
   html_meta:
-    description: "Suspend and resume Agent Sandbox pods between agent turns from Ray, using operatingMode pause/resume or GKE Pod Snapshots for full memory restore."
+    description: "Suspend and resume Agent Sandbox pods between agent turns from Ray, using operatingMode pause/resume or memory snapshots for full memory restore."
 ---
 
 (kuberay-agent-sandbox-snapshot)=
 
-# Suspend and Resume Agent Sandboxes with Ray and GKE Pod Snapshots
+# Suspend and resume Agent Sandboxes with Ray
 
-This example extends {ref}`Sandboxed Code Execution with Ray and Agent Sandbox <kuberay-agent-sandbox>` with sandbox **suspend and resume**. It shows two mechanisms:
+This example extends {ref}`Sandboxed Code Execution with Ray and Agent Sandbox <kuberay-agent-sandbox>` with sandbox suspend and resume. It shows two mechanisms:
 
-1. **Pause/resume with `spec.operatingMode`** — built into Agent Sandbox, works on any Kubernetes cluster. Suspending terminates the sandbox pod (freeing its CPU/memory reservation) while keeping the `Sandbox` resource and its volumes; resuming recreates the pod and remounts storage. Process state and memory are **not** preserved.
-2. **Memory snapshots with GKE Pod Snapshots** — the Agent Sandbox Python SDK's snapshot extension checkpoints the entire gVisor guest (process tree, memory, open file descriptors, `tmpfs`) to Cloud Storage before suspending, and restores it intact on resume.
+1. **Pause/resume with `spec.operatingMode`** — built into Agent Sandbox, works on any Kubernetes cluster. Suspending terminates the sandbox pod (freeing its CPU/memory reservation) while keeping the `Sandbox` resource and its volumes; resuming recreates the pod and remounts storage. Process state and memory are not preserved.
+2. **Memory snapshots** — Agent Sandbox supports snapshotting a sandbox's full memory state through the Python SDK's snapshot extension, which checkpoints the entire guest (process tree, memory, open file descriptors, `tmpfs`) to object storage before suspending, and restores it intact on resume. This guide uses [GKE Pod Snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/pod-snapshots) as the reference snapshot backend.
 
 ## Why suspend sandboxes between agent turns?
 
@@ -54,15 +54,15 @@ While suspended, the sandbox reports `Ready=False` with reason `SandboxSuspended
 
 Semantics to plan around:
 
-- The pod is deleted and recreated: **process state and memory are lost**; anything that must survive belongs on the sandbox's persistent volumes.
-- The **pod IP and pod name change** across the cycle. Re-resolve them from the Sandbox status after resume; don't cache connections across a suspend.
+- The pod is deleted and recreated: process state and memory are lost; anything that must survive belongs on the sandbox's persistent volumes.
+- The pod IP and pod name change across the cycle. Re-resolve them from the Sandbox status after resume; don't cache connections across a suspend.
 - The pod's CPU/memory reservation is returned to the scheduler while suspended — this is where the density win comes from.
 
 You can try this against the sandboxes from the base example with nothing but `kubectl`. The rest of this page covers option 2, which preserves memory.
 
-## Option 2: Memory snapshots with GKE Pod Snapshots
+## Option 2: Memory snapshots
 
-The demo runs a RayJob in which each Ray actor claims a sandbox from a warm pool and drives a simulated multi-turn rollout: at the turn boundary it calls `sandbox.suspend()` (snapshot + pod termination) while the "model is thinking", and `sandbox.resume()` before the next turn. The first turn writes state to `/tmp` inside the sandbox and the second turn reads it back after the suspend/resume cycle — `/tmp` is wiped by a plain pod restart, so the read succeeding (together with the SDK's `restored_from_snapshot` check) is what distinguishes a memory snapshot from a plain pause.
+The example runs a RayJob in which each Ray actor claims a sandbox from a warm pool and drives a simulated multi-turn rollout: at the turn boundary it calls `sandbox.suspend()` (snapshot + pod termination) while the "model is thinking", and `sandbox.resume()` before the next turn. The first turn writes state to `/tmp` inside the sandbox and the second turn reads it back after the suspend/resume cycle — `/tmp` is wiped by a plain pod restart, so the read succeeding (together with the SDK's `restored_from_snapshot` check) is what distinguishes a memory snapshot from a plain pause.
 
 The suspend/resume calls come from the Agent Sandbox Python SDK's snapshot extension ([`k8s_agent_sandbox.gke_extensions.snapshots`](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client/k8s_agent_sandbox/gke_extensions/snapshots)), which layers [GKE Pod Snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/pod-snapshots) on top of the `operatingMode` mechanism from option 1.
 
@@ -149,17 +149,17 @@ gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
 Beyond claiming sandboxes, the SDK snapshot extension patches `Sandbox` resources (`spec.operatingMode`), reads Pods across the suspend/resume cycle, and manages `podsnapshot.gke.io` triggers and snapshots:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox-snapshots/rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/rbac.yaml
 ```
 
 ### Step 6: Deploy the sandbox and snapshot infrastructure
 
-Download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox-snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
+Download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
 
-- **`ServiceAccount`** (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it.
-- **`PodSnapshotStorageConfig`** — points Pod Snapshots at your bucket.
-- **`PodSnapshotPolicy`** — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The grouping rule is required by the SDK: it guarantees a sandbox restores only from its own snapshots.
-- **`SandboxTemplate`** and **`SandboxWarmPool`** (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, as in the base example. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while this demo's Ray actors connect to the sandbox pod IP directly; on a NetworkPolicy-enforcing cluster the managed policy would block them. For containment, layer on an egress NetworkPolicy like the one in the base example.
+- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it.
+- `PodSnapshotStorageConfig` — points Pod Snapshots at your bucket.
+- `PodSnapshotPolicy` — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The grouping rule is required by the SDK: it guarantees a sandbox restores only from its own snapshots.
+- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, as in the base example. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while this demo's Ray actors connect to the sandbox pod IP directly; on a NetworkPolicy-enforcing cluster the managed policy would block them. For containment, layer on an egress NetworkPolicy like the one in the base example.
 
 ```bash
 kubectl apply -f sandbox-snapshot.yaml
@@ -169,7 +169,7 @@ kubectl get pods -l app=python-snapshot-pool
 ### Step 7: Run the RayJob
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox-snapshots/ray-job.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/ray-job.yaml
 kubectl logs -f -l job-name=agent-sandbox-snapshot-demo
 ```
 
