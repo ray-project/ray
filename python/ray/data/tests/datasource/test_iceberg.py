@@ -9,6 +9,7 @@ from typing import Any, Dict, Generator, List, Tuple, Type
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pkg_resources import parse_version
 from pyiceberg import (
@@ -2669,6 +2670,46 @@ class TestIcebergDatasourceV2:
             f"{_DB_NAME}.{_TABLE_NAME}"
         )
 
+    @staticmethod
+    def _indexer():
+        from ray.data._internal.datasource_v2.listing.iceberg_file_indexer import (
+            IcebergFileIndexer,
+        )
+
+        catalog_kwargs = _CATALOG_KWARGS.copy()
+        return IcebergFileIndexer(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_name=catalog_kwargs.pop("name"),
+            catalog_kwargs=catalog_kwargs,
+            scan_kwargs={},
+            snapshot_id=None,
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
+    @classmethod
+    def _read_units(cls, max_bin_bytes: int, **list_kwargs: Any) -> List[Any]:
+        """Listing rows grouped into read units, the way ``ListFiles`` does it.
+
+        The indexer emits one row per file and the partitioner groups them, so a
+        test of task granularity has to drive both -- and it drives them in the
+        same order ``partition_files`` does, feeding each listed block in and
+        draining whatever bins that filled.
+        """
+        from ray.data._internal.datasource_v2.partitioners.iceberg_file_partitioner import (  # noqa: E501
+            IcebergFilePartitioner,
+        )
+
+        partitioner = IcebergFilePartitioner(max_bin_bytes=max_bin_bytes)
+        units = []
+        for manifest in cls._indexer().list_files(None, filesystem=None, **list_kwargs):
+            partitioner.add_input(manifest)
+            while partitioner.has_partition():
+                units.append(partitioner.next_partition())
+        partitioner.finalize()
+        while partitioner.has_partition():
+            units.append(partitioner.next_partition())
+        return units
+
     def test_manifest_preserves_every_field_the_reader_uses(self):
         """A manifest round trip must rebuild each scan task field-for-field."""
         from ray.data._internal.datasource_v2.listing.iceberg_manifest import (
@@ -2748,6 +2789,77 @@ class TestIcebergDatasourceV2:
         assert all(
             f.content == DataFileContent.POSITION_DELETES for f in rebuilt.delete_files
         )
+
+    def test_position_deletes_are_applied_by_the_reader(self, tmp_path):
+        """A merge-on-read table's deleted rows must not come back.
+
+        The carrier test above proves the delete file survives the manifest;
+        this one proves it is then acted on. Both build the delete file by hand
+        for the same reason: PyIceberg 0.11.1 can only delete copy-on-write, so
+        no table it writes has one, and the whole merge-on-read path -- which
+        every other engine's deletes take -- would otherwise ship with no test
+        at all.
+        """
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.listing.iceberg_manifest import (
+            manifest_from_scan_tasks,
+        )
+        from ray.data._internal.datasource_v2.readers.iceberg_file_reader import (
+            IcebergFileReader,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+
+        def read(scan_task) -> List[int]:
+            reader = IcebergFileReader(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=table.scan().projection(),
+                row_filter=pyi_expr.AlwaysTrue(),
+            )
+            manifest = manifest_from_scan_tasks([scan_task], table.metadata)
+            return [
+                value
+                for block in reader.read(manifest)
+                for value in block.column("col_a").to_pylist()
+            ]
+
+        before = read(task)
+        assert len(before) > 3, "need a file with rows to delete from"
+
+        # Position deletes name (data file, row offset) pairs. Offsets are
+        # absolute within the file, which is why a reader may not split one.
+        deleted_positions = [0, 2]
+        delete_path = tmp_path / "pos-deletes.parquet"
+        pq.write_table(
+            pa.table(
+                {
+                    "file_path": pa.array(
+                        [task.file.file_path] * len(deleted_positions), pa.string()
+                    ),
+                    "pos": pa.array(deleted_positions, pa.int64()),
+                }
+            ),
+            delete_path,
+        )
+        delete_file = DataFile.from_args(
+            content=DataFileContent.POSITION_DELETES,
+            file_path=f"file://{delete_path}",
+            file_format=FileFormat.PARQUET,
+            partition=task.file.partition,
+            record_count=len(deleted_positions),
+            file_size_in_bytes=delete_path.stat().st_size,
+        )
+
+        after = read(FileScanTask(task.file, delete_files={delete_file}))
+        expected = [
+            value
+            for position, value in enumerate(before)
+            if position not in deleted_positions
+        ]
+        assert after == expected
 
     def test_rebuilt_scan_tasks_decode_identically(self):
         """The rebuilt tasks must read byte-for-byte what the originals do."""
@@ -2948,6 +3060,92 @@ class TestIcebergDatasourceV2:
             manifest_from_scan_tasks(tasks, metadata), metadata
         )
         assert rebuilt.file.partition == Record()
+
+    def test_bin_packing_sets_the_number_of_read_units(self):
+        """Read units are whole files packed up to the byte budget.
+
+        The budget counts *estimated decoded* bytes, not the compressed bytes
+        Iceberg records -- decoded is the quantity that matters downstream, and
+        the estimate is the one thing in the path expected to be replaced
+        (:func:`estimate_decoded_size`), so the test goes through it rather
+        than around it.
+        """
+        from ray.data._internal.datasource_v2.partitioners.iceberg_file_partitioner import (  # noqa: E501
+            estimate_decoded_size,
+        )
+
+        tasks = list(self._load_table().scan().plan_files())
+        compressed_bytes = sum(task.file.file_size_in_bytes for task in tasks)
+        estimated_bytes = sum(
+            estimate_decoded_size(task.file.file_size_in_bytes) for task in tasks
+        )
+
+        # A budget below any single file gives one file per read unit.
+        per_file = self._read_units(max_bin_bytes=1)
+        assert len(per_file) == len(tasks)
+        assert all(len(unit) == 1 for unit in per_file)
+
+        # A budget above the whole table's estimate gives one read unit.
+        packed = self._read_units(max_bin_bytes=estimated_bytes * 2)
+        assert len(packed) == 1
+        assert len(packed[0]) == len(tasks)
+
+        # ... and the estimate is what is being counted: a budget equal to the
+        # table's compressed size is not enough to hold it in one unit.
+        assert estimated_bytes > compressed_bytes
+        assert len(self._read_units(max_bin_bytes=compressed_bytes)) > 1
+
+    def test_packing_read_units_keeps_every_manifest_column(self):
+        """Grouping rows must not lose the Iceberg state they carry.
+
+        This is the reason Iceberg has its own partitioner rather than reusing
+        ``OnlineBinPacker``: that one rebuilds a bin from paths, sizes and chunk
+        metadata alone, which for an Iceberg manifest would silently drop the
+        delete files, spec id, record count and partition values the reader
+        needs. Asserting on the decoded scan tasks rather than on column names
+        checks the part that matters -- that a read unit still round-trips.
+        """
+        from ray.data._internal.datasource_v2.listing.iceberg_manifest import (
+            scan_tasks_from_manifest,
+        )
+
+        metadata = self._load_table().metadata
+        planned = {
+            task.file.file_path: task for task in self._load_table().scan().plan_files()
+        }
+
+        # One unit holding every file, so a dropped column cannot hide in a
+        # unit that happens to have one row.
+        (unit,) = self._read_units(max_bin_bytes=sys.maxsize)
+        assert len(unit) == len(planned)
+
+        for rebuilt in scan_tasks_from_manifest(unit, metadata):
+            original = planned[rebuilt.file.file_path]
+            assert rebuilt.file.file_size_in_bytes == original.file.file_size_in_bytes
+            assert rebuilt.file.record_count == original.file.record_count
+            assert rebuilt.file.spec_id == original.file.spec_id
+            assert rebuilt.file.file_format == original.file.file_format
+            assert rebuilt.file.partition == original.file.partition
+            assert {f.file_path for f in rebuilt.delete_files} == {
+                f.file_path for f in original.delete_files
+            }
+
+    def test_listing_prunes_files_with_the_pushed_predicate(self):
+        """A pushed predicate must reach ``plan_files``, not just the reader.
+
+        Pruning during listing is the whole point of pushing the predicate onto
+        ``ListFiles``: the fixture is partitioned by ``col_c``, so a predicate
+        on it should leave whole files unlisted.
+        """
+        indexer = self._indexer()
+        unfiltered = sum(len(m) for m in indexer.list_files(None, filesystem=None))
+        filtered = sum(
+            len(m)
+            for m in indexer.list_files(
+                None, filesystem=None, predicate=col("col_c") == 3
+            )
+        )
+        assert 0 < filtered < unfiltered
 
 
 if __name__ == "__main__":
