@@ -48,9 +48,8 @@ requests==2.34.2
 tensorflow==2.20.0
 tf-keras==2.20.1
 xmltodict==0.13.0
-# Kept aligned with the pyarrow version Ray Data tests against
-# (python/requirements/data/pyarrow-latest.txt), not the newest release. Ray Data
-# supports pyarrow >= 17 but only tests up to this version, so the docs build
-# shouldn't run ahead of what the examples it renders are exercised on. 23.0.1
-# also clears the version scanners flag for CVE-2026-25087; bump deliberately.
-pyarrow==23.0.1
+# pyarrow is needed because rendered Ray Data docstrings import it. The version is
+# constrained to Ray Data's tested pyarrow (python/requirements/data/pyarrow-latest.txt)
+# by the docbuild depset in ci/raydepsets/configs/docs.depsets.yaml, so leave this
+# unversioned and let that constraint track Ray Data rather than pinning it here.
+pyarrow

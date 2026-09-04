@@ -14,6 +14,13 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
       - doc/requirements-doc.txt
+    # Pin pyarrow to the version Ray Data tests against instead of hand-maintaining
+    # a separate pin in requirements-doc.txt. pyarrow is in the docs build only
+    # because rendered Ray Data docstrings import it, so it should track Ray Data's
+    # tested version. This file's other entries (pandas, modin, ...) are inert here
+    # because the docs build doesn't resolve them.
+    constraints:
+      - python/requirements/data/pyarrow-latest.txt
     output: python/deplocks/docs/docbuild_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
