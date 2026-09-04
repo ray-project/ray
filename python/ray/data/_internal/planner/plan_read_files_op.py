@@ -124,6 +124,17 @@ def plan_read_files_op(
                         yield_wall_s=yield_wall_s,
                     )
                     break
+                except BaseException:
+                    # A table already decoded when a LATER next() fails must
+                    # still reach the output (same as before the lookahead,
+                    # when it had been yielded before that next() ran) so a
+                    # task tolerated via ``max_errored_blocks`` keeps it.
+                    if pending is not None:
+                        y0 = time.perf_counter()
+                        yield pending
+                        yield_wall_s += time.perf_counter() - y0
+                        pending = None
+                    raise
                 decode_wall_s += time.perf_counter() - start_s
                 if decoded_batches == 0:
                     first_table_wall_s = time.perf_counter() - task_start_s

@@ -3334,3 +3334,71 @@ def test_arrow_rs_eos_trim_wall_reaches_driver_without_flush_block(
     finally:
         ctx.target_max_block_size = old_target
         ctx.arrow_rs_malloc_trim_eos = old_knob
+
+
+def test_lookahead_yields_decoded_table_before_later_decode_error(
+    tmp_path, restore_ctx
+):
+    """The planner's one-table lookahead holds a decoded table until the NEXT
+    ``next()`` resolves. When that next call raises (IO error, corrupt page)
+    instead of returning or ending the stream, the held table must still be
+    yielded before the error propagates -- exactly what happened before the
+    lookahead, when it had already left the task. Observable under
+    ``max_errored_blocks``: the tolerated task keeps its good blocks.
+
+    Shape, chosen so EXACTLY ONE table precedes the error and that table
+    completes a block on its own (otherwise the old planner still emits the
+    earlier tables, or the shaping buffer eats the table on either planner):
+    one file, two row groups; row group 0 is 32 rows (arrow-rs's batch floor)
+    of a 200-byte constant string (dictionary-encoded, so pyarrow's
+    encoded-bytes batch sizing also covers the whole group in one batch);
+    row group 1 has its first data page overwritten with zeros behind an
+    intact footer, so planning (footer reads) succeeds and the failure
+    happens mid-stream. Block target = 0.9x row group 0's decoded bytes.
+    (Two files would not do either: a bin lists files in footer-arrival
+    order, so the corrupt one may come first.)
+
+    arrow-rs only: the planner loop is reader-agnostic, but pyarrow's scanner
+    reads a fragment's row groups concurrently and surfaces the row-group-1
+    error before row group 0's batch, so on that arm no table ever precedes
+    the error and the shape cannot be built.
+    """
+    from ray.data.block import BlockAccessor
+
+    good_rows = 32
+    n = 1000
+    path = tmp_path / "two_groups.parquet"
+    table = pa.table(
+        {
+            "id": pa.array(np.arange(n, dtype=np.int64)),
+            "s": pa.array(["v" * 200] * n),
+        }
+    )
+    # Row groups: [0, 32) and [32, 1000) -- write_table splits at the given
+    # size, so a 32-row cap yields many groups; write the two explicitly.
+    with pq.ParquetWriter(str(path), table.schema, compression="snappy") as w:
+        w.write_table(table.slice(0, good_rows))
+        w.write_table(table.slice(good_rows))
+    md = pq.ParquetFile(str(path)).metadata
+    assert md.num_row_groups == 2 and md.row_group(0).num_rows == good_rows
+    col = md.row_group(1).column(0)
+    first_page = col.dictionary_page_offset or col.data_page_offset
+    raw = bytearray(path.read_bytes())
+    raw[first_page : first_page + 256] = bytes(256)
+    path.write_bytes(bytes(raw))
+
+    ctx = restore_ctx
+    ctx.use_arrow_rs_parquet_reader = True
+    old_errored = ctx.max_errored_blocks
+    old_target = ctx.target_max_block_size
+    try:
+        ctx.max_errored_blocks = 1
+        rg0_bytes = BlockAccessor.for_block(table.slice(0, good_rows)).size_bytes()
+        ctx.target_max_block_size = int(rg0_bytes * 0.9)
+        mds = ray.data.read_parquet(str(path)).materialize()
+        assert mds._raw_stats().extra_metrics["num_tasks_submitted"] == 1
+        # Old planner: the held table dies with the exception -> 0 rows.
+        assert mds.to_pandas()["id"].tolist() == list(range(good_rows))
+    finally:
+        ctx.max_errored_blocks = old_errored
+        ctx.target_max_block_size = old_target
