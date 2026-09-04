@@ -10,7 +10,8 @@ import shutil
 import sys
 import time
 import traceback
-from typing import Callable, List, Optional, Set
+from collections import deque
+from typing import Callable, Deque, List, Optional, Set
 
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
@@ -35,6 +36,12 @@ LOG_NAME_UPDATE_INTERVAL_S = float(os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
 # log monitor start giving backpressure to lower cpu usages.
 RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
     os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000)
+)
+RAY_LOG_MONITOR_ZERO_FILE_MIN_AGE_S = float(
+    os.getenv("RAY_LOG_MONITOR_ZERO_FILE_MIN_AGE_S", 60)
+)
+RAY_LOG_MONITOR_MAX_ZERO_FILES_TO_ARCHIVE = int(
+    os.getenv("RAY_LOG_MONITOR_MAX_ZERO_FILES_TO_ARCHIVE", 1000)
 )
 RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
     os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 0)
@@ -151,7 +158,7 @@ class LogMonitor:
         log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
         open_file_infos (list[LogFileInfo]): Info for all of the open files.
-        closed_file_infos (list[LogFileInfo]): Info for all of the closed
+        closed_file_infos (deque[LogFileInfo]): Info for all of the closed
             files.
         can_open_more_files: True if we can still open more files and
             false otherwise.
@@ -173,7 +180,7 @@ class LogMonitor:
         self.gcs_client = gcs_client
         self.log_filenames: Set[str] = set()
         self.open_file_infos: List[LogFileInfo] = []
-        self.closed_file_infos: List[LogFileInfo] = []
+        self.closed_file_infos: Deque[LogFileInfo] = deque()
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
@@ -314,17 +321,20 @@ class LogMonitor:
             self._close_all_files()
 
         files_with_no_updates = []
+        zero_files_archived = 0
+        now = time.time()
         while len(self.closed_file_infos) > 0:
             if len(self.open_file_infos) >= self.max_files_open:
                 self.can_open_more_files = False
                 break
 
-            file_info = self.closed_file_infos.pop(0)
+            file_info = self.closed_file_infos.popleft()
             assert file_info.file_handle is None
             # Get the file size to see if it has gotten bigger since we last
             # opened it.
             try:
-                file_size = os.path.getsize(file_info.filename)
+                stat_result = os.stat(file_info.filename)
+                file_size = stat_result.st_size
             except (IOError, OSError) as e:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
@@ -354,13 +364,66 @@ class LogMonitor:
                 file_info.size_when_last_opened = file_size
                 file_info.file_handle = f
                 self.open_file_infos.append(file_info)
+            elif (
+                file_size == 0
+                and zero_files_archived < RAY_LOG_MONITOR_MAX_ZERO_FILES_TO_ARCHIVE
+                and self._try_archive_dead_zero_worker_log(file_info, stat_result, now)
+            ):
+                zero_files_archived += 1
             else:
                 files_with_no_updates.append(file_info)
 
         if len(self.open_file_infos) >= self.max_files_open:
             self.can_open_more_files = False
         # Add the files with no changes back to the list of closed files.
-        self.closed_file_infos += files_with_no_updates
+        self.closed_file_infos.extend(files_with_no_updates)
+
+        if zero_files_archived:
+            logger.info(
+                "Archived %s zero-byte log files from dead workers.",
+                zero_files_archived,
+            )
+
+    def _try_archive_dead_zero_worker_log(
+        self,
+        file_info: LogFileInfo,
+        stat_result: os.stat_result,
+        now: float,
+    ) -> bool:
+        """Archive an old zero-byte worker log after its worker has exited."""
+        if not isinstance(file_info.worker_pid, int):
+            return False
+        if now - stat_result.st_mtime < RAY_LOG_MONITOR_ZERO_FILE_MIN_AGE_S:
+            return False
+        if self.is_proc_alive_fn(file_info.worker_pid):
+            return False
+
+        try:
+            final_stat_result = os.stat(file_info.filename)
+            if (
+                final_stat_result.st_ino != stat_result.st_ino
+                or final_stat_result.st_size != 0
+                or final_stat_result.st_mtime_ns != stat_result.st_mtime_ns
+            ):
+                return False
+
+            target = os.path.join(
+                self.logs_dir, "old", os.path.basename(file_info.filename)
+            )
+            shutil.move(file_info.filename, target)
+        except (IOError, OSError) as e:
+            if e.errno == errno.ENOENT and not os.path.exists(file_info.filename):
+                self.log_filenames.discard(file_info.filename)
+                return True
+            logger.warning(
+                "Failed to archive zero-byte log file %s: %s",
+                file_info.filename,
+                e,
+            )
+            return False
+
+        self.log_filenames.discard(file_info.filename)
+        return True
 
     def check_log_files_and_publish_updates(self):
         """Gets updates to the log files and publishes them.
