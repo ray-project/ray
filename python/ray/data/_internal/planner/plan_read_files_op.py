@@ -96,12 +96,28 @@ def plan_read_files_op(
                 continue
             manifests += 1
             table_iter = iter(reader.read(manifest))
+            # One-table lookahead: a block's stats snapshot is pickled when
+            # the block leaves the task, and a table that completes a block
+            # (buffer >= target, below the 1.5x slice limit -> emitted whole,
+            # no remainder) is followed by NO flush block. Anything learned
+            # only when the stream ends -- the reader's end-of-stream drain
+            # (arrow-rs malloc_trim wall) -- therefore has to be folded in
+            # BEFORE the last table is yielded, which means pulling the next
+            # table first. Memory-neutral: the previous table stayed bound in
+            # this frame during the next decode anyway.
+            pending = None
             while True:
                 start_s = time.perf_counter()
                 try:
                     table = next(table_iter)
                 except StopIteration:
+                    # The reader's finalizer (incl. the eos trim) ran inside
+                    # this next(); its wall is inside decode_wall_s.
                     decode_wall_s += time.perf_counter() - start_s
+                    trim_wall_s += reader.pop_task_stats().get("trim_wall_s", 0.0)
+                    task_stats._update(
+                        decode_wall_s=decode_wall_s, trim_wall_s=trim_wall_s
+                    )
                     break
                 decode_wall_s += time.perf_counter() - start_s
                 nbytes = table.nbytes
@@ -118,14 +134,11 @@ def plan_read_files_op(
                     peak_batch_bytes=peak_batch_bytes,
                     manifests=manifests,
                 )
-                if block_udf is not None:
-                    table = block_udf(table)
-                yield table
-            # Reader-specific per-stream counters (the arrow-rs end-of-stream
-            # trim's wall time), drained now that this stream has ended, plus
-            # the drain wall time — in case a flush block follows.
-            trim_wall_s += reader.pop_task_stats().get("trim_wall_s", 0.0)
-            task_stats._update(decode_wall_s=decode_wall_s, trim_wall_s=trim_wall_s)
+                if pending is not None:
+                    yield pending
+                pending = block_udf(table) if block_udf is not None else table
+            if pending is not None:
+                yield pending
 
     return MapOperator.create(
         MapTransformer(

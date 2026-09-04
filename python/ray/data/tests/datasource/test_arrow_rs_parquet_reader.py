@@ -3278,3 +3278,53 @@ def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
         assert calls["n"] == 2
     finally:
         ctx.arrow_rs_malloc_trim_eos = old
+
+
+def test_arrow_rs_eos_trim_wall_reaches_driver_without_flush_block(
+    tmp_path, restore_ctx
+):
+    """``ReadFilesTaskStats.trim_wall_s`` is only known when the reader's stream
+    ENDS (the eos trim runs in its finalizer, after the last table came out),
+    and a block's stats snapshot is pickled when the block leaves the task. So
+    when the last table itself completes a block (buffer >= target but below the
+    1.5x slice limit -> emitted whole, no remainder, no flush block) the planner
+    must fold the drain in BEFORE yielding that table, or the driver-side
+    ``read_task_trim_wall_s`` reads 0 while the trim actually ran.
+
+    Shape: one numeric file below the 2048-row batch floor -> one table -> one
+    task -> exactly one block (asserted), target = 0.8x the table's bytes.
+    """
+    from ray.data.block import BlockAccessor
+
+    path = tmp_path / "one.parquet"
+    n = 2000
+    table = pa.table(
+        {
+            "id": pa.array(np.arange(n, dtype=np.int64)),
+            "x": pa.array(np.random.default_rng(0).random(n)),
+            "label": pa.array((np.arange(n) % 5).astype(np.int32)),
+        }
+    )
+    pq.write_table(table, str(path))
+    nbytes = BlockAccessor.for_block(table).size_bytes()
+
+    ctx = restore_ctx
+    ctx.use_arrow_rs_parquet_reader = True
+    old_target = ctx.target_max_block_size
+    old_knob = ctx.arrow_rs_malloc_trim_eos
+    try:
+        ctx.target_max_block_size = int(nbytes * 0.8)
+        ctx.arrow_rs_malloc_trim_eos = True
+        mds = ray.data.read_parquet(str(path)).materialize()
+        assert mds.count() == n
+        # The regression only shows on this shape: no flush block after the
+        # table that completed the block.
+        assert mds.num_blocks() == 1
+        trim = mds._raw_stats().extra_metrics["read_task_trim_wall_s"]
+        assert trim["num_samples"] == 1
+        # Linux: real malloc_trim(0); elsewhere the timed no-op trampoline.
+        # Either way strictly positive iff the drain reached the block.
+        assert trim["max"] > 0.0
+    finally:
+        ctx.target_max_block_size = old_target
+        ctx.arrow_rs_malloc_trim_eos = old_knob
