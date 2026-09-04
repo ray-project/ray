@@ -2679,6 +2679,7 @@
 # --- map_groups_autoscaling_hash_shuffle_column02+column14  [wall] ---
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_pa_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2698,6 +2699,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_pa_single
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2717,6 +2719,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rs_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2736,6 +2739,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rs_single
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2755,6 +2759,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rstrim_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2775,6 +2780,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rstrim_single
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2795,6 +2801,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rseos_multi
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:
@@ -2815,6 +2822,7 @@
 
 - name: map_groups_autoscaling_hash_shuffle_column02+column14_2x2_rseos_single
   frequency: manual
+  repeated_run: 3
   python: '3.10'
   cluster:
     byod:

@@ -302,8 +302,9 @@ def make_cell(resolved, defaults, arm, topology, matrix=DEFAULT_MATRIX):
     cell = copy.deepcopy(base)
     cell["name"] = f"{base_name}_2x2_{arm}_{topology}"
     cell["frequency"] = "manual"
-    if matrix == "alloc" and base["name"] in ALLOC_REPEATED:
-        cell["repeated_run"] = ALLOC_REPEATED[base["name"]]
+    # Keys use the '+' form (parent names carry spaces), like TARGETS.
+    if matrix == "alloc" and base_name in ALLOC_REPEATED:
+        cell["repeated_run"] = ALLOC_REPEATED[base_name]
     # Parent scripts come from ">" folded scalars and carry a trailing
     # newline; strip so the emitted string is single-line.
     script = cell["run"]["script"].strip()
