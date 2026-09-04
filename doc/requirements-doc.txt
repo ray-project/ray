@@ -45,7 +45,10 @@ urllib3 < 1.27
 click==8.1.7
 boto3==1.34.69
 requests==2.32.5
-tensorflow==2.20.0
-tf-keras==2.20.1
 xmltodict==0.13.0
+# numpy is imported at module load by documented modules (e.g. ray.data) and is
+# not mocked in conf.py, so it must be installed. It was previously pulled in
+# transitively by tensorflow; pin it directly so the docs build no longer depends
+# on an ML library being present to satisfy it.
+numpy==2.4.6
 pyarrow==19.0.1
