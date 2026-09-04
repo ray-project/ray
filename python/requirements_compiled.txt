@@ -1000,7 +1000,7 @@ jupytext==1.19.3
     #   -r python/requirements/test-requirements.txt
 jwcrypto==1.5.7
     # via delta-sharing
-keras==3.14.0 ; python_version >= "3.11"
+keras==3.15.0 ; python_version >= "3.11"
     # via
     #   -r python/requirements/ml/ml-requirements.txt
     #   tensorflow

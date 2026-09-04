@@ -1325,9 +1325,9 @@ jsonschema-specifications==2025.9.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jsonschema
-keras==3.14.0 \
-    --hash=sha256:19ce94b798caaba4d404ab6ef4753b44219170e5c2868156de8bb0494a260114 \
-    --hash=sha256:86fcf8249a25264a566ac393c287c7ad657000e5e62615dcaad4b3472a17aeda
+keras==3.15.0 \
+    --hash=sha256:0123749ac2a704d63f691994b18e432e006cb8ae910cc0ea7035d777aed9c00d \
+    --hash=sha256:9bbd7df12b7b53500d00dc24d97b7e066c771260482cb7118de0b7687a7a2781
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
