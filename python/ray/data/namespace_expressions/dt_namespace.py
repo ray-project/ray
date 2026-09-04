@@ -58,6 +58,48 @@ class _DatetimeNamespace:
         """Extract second component."""
         return _create_pyarrow_compute_udf(pc.second, DataType.int32())(self._expr)
 
+    def millisecond(self) -> "PyArrowComputeUDFExpr":
+        """Extract millisecond component (the fractional second in [0, 999])."""
+        return _create_pyarrow_compute_udf(pc.millisecond, DataType.int32())(self._expr)
+
+    def microsecond(self) -> "PyArrowComputeUDFExpr":
+        """Extract microsecond component (the fractional millisecond in [0, 999])."""
+        return _create_pyarrow_compute_udf(pc.microsecond, DataType.int32())(self._expr)
+
+    def nanosecond(self) -> "PyArrowComputeUDFExpr":
+        """Extract nanosecond component (the fractional microsecond in [0, 999])."""
+        return _create_pyarrow_compute_udf(pc.nanosecond, DataType.int32())(self._expr)
+
+    # calendar
+
+    def quarter(self) -> "PyArrowComputeUDFExpr":
+        """Extract the quarter of the year (1-4)."""
+        return _create_pyarrow_compute_udf(pc.quarter, DataType.int32())(self._expr)
+
+    def day_of_week(self) -> "PyArrowComputeUDFExpr":
+        """Extract the day of the week, where Monday is 0 and Sunday is 6."""
+        return _create_pyarrow_compute_udf(pc.day_of_week, DataType.int32())(self._expr)
+
+    def day_of_year(self) -> "PyArrowComputeUDFExpr":
+        """Extract the ordinal day of the year (1-366)."""
+        return _create_pyarrow_compute_udf(pc.day_of_year, DataType.int32())(self._expr)
+
+    def iso_week(self) -> "PyArrowComputeUDFExpr":
+        """Extract the ISO 8601 week of the year (1-53)."""
+        return _create_pyarrow_compute_udf(pc.iso_week, DataType.int32())(self._expr)
+
+    def iso_year(self) -> "PyArrowComputeUDFExpr":
+        """Extract the ISO 8601 year.
+
+        The ISO year can differ from the calendar year for days near the
+        year boundary that the ISO 8601 calendar assigns to the adjacent year.
+        """
+        return _create_pyarrow_compute_udf(pc.iso_year, DataType.int32())(self._expr)
+
+    def is_leap_year(self) -> "PyArrowComputeUDFExpr":
+        """Return whether each timestamp falls in a leap year."""
+        return _create_pyarrow_compute_udf(pc.is_leap_year, DataType.bool())(self._expr)
+
     # formatting
 
     def strftime(self, fmt: str) -> "PyArrowComputeUDFExpr":
