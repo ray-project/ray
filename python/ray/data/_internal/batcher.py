@@ -45,6 +45,10 @@ class BatcherInterface:
         """Whether this Batcher has any data."""
         raise NotImplementedError()
 
+    def buffered_nbytes(self) -> int:
+        """Bytes of block data buffered here (see ``ConsumerHeldMemory``)."""
+        raise NotImplementedError()
+
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
 
@@ -104,6 +108,10 @@ class Batcher(BatcherInterface):
     def has_any(self) -> bool:
         """Whether this Batcher has any data."""
         return self._buffer_size > 0
+
+    def buffered_nbytes(self) -> int:
+        """The number of bytes of block data buffered here (see ``ConsumerHeldMemory``)."""
+        return sum(BlockAccessor.for_block(b).size_bytes() for b in self._buffer)
 
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
@@ -298,6 +306,11 @@ class ShufflingBatcher(BatcherInterface):
     def has_any(self) -> bool:
         """Whether this batcher has any data."""
         return self._num_rows() > 0
+
+    def buffered_nbytes(self) -> int:
+        # Only the uncompacted blocks. Compaction copies into the heap, which is
+        # a different resource and is not reported through this path.
+        return self._builder.get_estimated_memory_usage()
 
     def has_batch(self) -> bool:
         """Whether this batcher has any batches."""

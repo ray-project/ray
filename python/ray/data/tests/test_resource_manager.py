@@ -368,6 +368,33 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 100
         assert resource_manager.get_external_consumer_bytes() == 50
 
+    def test_consumer_held_bytes_charged_to_output_op(self, restore_data_context):
+        """Zero-copy bytes the consumer still holds are invisible to
+        BlockRefCounter, so they are added to the output operator's usage and
+        thereby reach backpressure."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o3, ExecutionOptions(), counter)
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+            counter,
+        )
+
+        counter.on_block_produced(None, 100, o3.id)
+        resource_manager.set_consumer_held_bytes(50)
+        resource_manager.update_usages()
+
+        assert resource_manager.get_consumer_held_bytes() == 50
+        # Charged to the output op only; upstream ops are untouched.
+        assert resource_manager.get_op_usage(o3).object_store_memory == 150
+        assert resource_manager.get_op_usage(o2).object_store_memory == 0
+
     def test_union_no_double_counting(self, restore_data_context):
         """UnionOperator passthrough does not inflate global memory usage."""
 
