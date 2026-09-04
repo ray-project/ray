@@ -47,6 +47,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorInfo,
     ErrorResponse,
+    ResponsesRequest,
+    ResponsesResponse,
     ScoreRequest,
     ScoreResponse,
     TokenizeRequest,
@@ -87,6 +89,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
+    from vllm.entrypoints.openai.responses.serving import OpenAIServingResponses
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
     from vllm.entrypoints.pooling.scoring.serving import ServingScores
     from vllm.entrypoints.serve.tokenize.serving import ServingTokenization
@@ -349,6 +352,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
         self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
+        self._oai_serving_responses: Optional["OpenAIServingResponses"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
@@ -461,6 +465,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_transcription = getattr(
             state, "openai_serving_transcription", None
         )
+        self._oai_serving_responses = getattr(state, "openai_serving_responses", None)
         self._oai_serving_scores = getattr(state, "serving_scores", None)
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
@@ -537,6 +542,13 @@ class VLLMEngine(LLMEngine):
             return self._make_error(
                 "This model does not support the 'transcription' task. "
                 "The transcription endpoint is not available for this model."
+            )
+
+    def _validate_openai_serving_responses(self) -> Optional[ErrorResponse]:
+        if self._oai_serving_responses is None:
+            return self._make_error(
+                "This model does not support the 'responses' task. "
+                "The responses endpoint is not available for this model."
             )
 
     def _validate_openai_serving_scores(self) -> Optional[ErrorResponse]:
@@ -828,6 +840,45 @@ class VLLMEngine(LLMEngine):
                 )
             else:
                 yield TranscriptionResponse(**transcription_response.model_dump())
+
+    async def responses(
+        self,
+        request: ResponsesRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, ResponsesResponse, ErrorResponse], None]:
+        if error := self._validate_openai_serving_responses():
+            yield error
+            return
+
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
+        try:
+            responses_response = await self._oai_serving_responses.create_responses(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
+            yield self._make_error_response(self._oai_serving_responses, e)
+            return
+
+        if isinstance(responses_response, AsyncGenerator):
+            # vLLM yields typed events; the SSE encoding lives in the HTTP layer
+            # we bypass (api_router._convert_stream_to_sse_events), so encode here.
+            async for event in responses_response:
+                event_type = getattr(event, "type", "unknown")
+                yield (
+                    f"event: {event_type}\ndata: "
+                    f"{event.model_dump_json(indent=None, by_alias=True)}\n\n"
+                )
+        else:
+            if isinstance(responses_response, VLLMErrorResponse):
+                yield ErrorResponse(
+                    error=ErrorInfo(**responses_response.error.model_dump())
+                )
+            else:
+                yield ResponsesResponse(**responses_response.model_dump())
 
     async def score(
         self,

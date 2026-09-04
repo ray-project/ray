@@ -27,6 +27,10 @@ try:
         ErrorInfo as _ErrorInfo,
         ErrorResponse as _ErrorResponse,
     )
+    from vllm.entrypoints.openai.responses.protocol import (
+        ResponsesRequest as _ResponsesRequest,
+        ResponsesResponse as _ResponsesResponse,
+    )
     from vllm.entrypoints.pooling.embed.protocol import (
         EmbeddingChatRequest as _EmbeddingChatRequest,
         EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
@@ -92,6 +96,10 @@ except ImportError as _vllm_import_error:
     _TranscriptionStreamResponse = _unsupported_model(
         "TranscriptionStreamResponse", _vllm_hint
     )
+    # SGLang does not provide Responses protocol models either.
+    _responses_hint = "Install vLLM to use the responses endpoint."
+    _ResponsesRequest = _unsupported_model("ResponsesRequest", _responses_hint)
+    _ResponsesResponse = _unsupported_model("ResponsesResponse", _responses_hint)
 
     # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
     # pattern, so we define our own.
@@ -182,6 +190,39 @@ class TranscriptionStreamResponse(_TranscriptionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class ResponsesRequest(_ResponsesRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    request_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description=(
+            "The request_id related to this request. If the caller does "
+            "not set it, a random_uuid will be generated. This id is used "
+            "through out the inference process and return in response."
+        ),
+    )
+
+
+class ResponsesResponse(_ResponsesResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        """Dump the way vLLM's own router does, so clients see aliased names.
+
+        The schema nests OpenAI SDK types that alias fields (``schema_`` is sent
+        as ``schema``), and the generic ingress dump would emit the Python names.
+
+        Args:
+            **kwargs: Forwarded to ``BaseModel.model_dump``.
+
+        Returns:
+            The serialized response.
+        """
+        kwargs.setdefault("mode", "json")
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump(**kwargs)
+
+
 class ScoreRequest(_ScoreTextRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -248,6 +289,10 @@ LLMTranscriptionResponse = Union[
         Union[str, TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse],
         None,
     ],
+]
+
+LLMResponsesResponse = Union[
+    AsyncGenerator[Union[str, ResponsesResponse, ErrorResponse], None],
 ]
 
 
