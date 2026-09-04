@@ -62,6 +62,15 @@ struct SchedulingResult {
     return result;
   }
 
+  /// The selected node of a single-node scheduling result: the only entry of
+  /// selected_nodes on Success, Nil otherwise.
+  scheduling::NodeID SelectedNodeOrNil() const {
+    if (!status.IsSuccess() || selected_nodes.empty()) {
+      return scheduling::NodeID::Nil();
+    }
+    return selected_nodes[0];
+  }
+
   static SchedulingResult Success(std::vector<scheduling::NodeID> &&nodes) {
     SchedulingResult result;
     result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::SUCCESS;
@@ -125,10 +134,14 @@ class ISchedulingPolicy {
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param options: scheduling options.
   ///
-  /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
-  /// to schedule on.
-  virtual scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                                      SchedulingOptions options) = 0;
+  /// \return Success with exactly one selected node when a node was picked;
+  /// Failed when feasible nodes exist but the policy declines to name one
+  /// right now (the caller should keep the lease queued and retry on the next
+  /// resource-view change); Infeasible when no feasible node exists. No policy
+  /// returns Failed yet: each one returns Infeasible wherever it used to return
+  /// a nil node id, including when busy feasible nodes exist.
+  virtual SchedulingResult Schedule(const ResourceRequest &resource_request,
+                                    SchedulingOptions options) = 0;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

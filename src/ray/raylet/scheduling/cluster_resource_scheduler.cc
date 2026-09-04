@@ -144,7 +144,7 @@ bool IsHardNodeAffinitySchedulingStrategy(
 }
 }  // namespace
 
-bool ClusterResourceScheduler::IsAffinityWithBundleSchedule(
+bool ClusterResourceScheduler::IsPlacementGroupSchedulingStrategy(
     const rpc::SchedulingStrategy &scheduling_strategy) {
   return scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
@@ -166,13 +166,16 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // scheduling policies, except for HARD node affnity scheduling policy.
   if (actor_creation && resource_request.IsEmpty() &&
       !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy)) {
-    return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
+    auto random_result =
+        scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
+    *is_infeasible = random_result.status.IsInfeasible();
+    return random_result.SelectedNodeOrNil();
   }
 
-  auto best_node_id = scheduling::NodeID::Nil();
+  SchedulingResult result;
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    best_node_id =
+    result =
         scheduling_policy_->Schedule(resource_request,
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
@@ -180,7 +183,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   } else if (scheduling_strategy.scheduling_strategy_case() ==
              rpc::SchedulingStrategy::SchedulingStrategyCase::
                  kNodeAffinitySchedulingStrategy) {
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request,
         SchedulingOptions::NodeAffinity(
             force_spillback,
@@ -191,7 +194,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                 .spill_on_unavailable(),
             scheduling_strategy.node_affinity_scheduling_strategy()
                 .fail_on_unavailable()));
-  } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
+  } else if (IsPlacementGroupSchedulingStrategy(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
     auto placement_group_id = PlacementGroupID::FromBinary(
@@ -200,24 +203,24 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         std::pair(placement_group_id,
                   scheduling_strategy.placement_group_scheduling_strategy()
                       .placement_group_bundle_index());
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
   } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
-    best_node_id = scheduling_policy_->Schedule(
+    result = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
     // TODO(Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Hybrid(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback,
-                                         preferred_node_id));
+    result = scheduling_policy_->Schedule(resource_request,
+                                          SchedulingOptions::Hybrid(
+                                              /*avoid_local_node*/ force_spillback,
+                                              /*require_node_available*/ force_spillback,
+                                              preferred_node_id));
   }
 
-  *is_infeasible = best_node_id.IsNil();
-  if (!*is_infeasible) {
+  auto best_node_id = result.SelectedNodeOrNil();
+  *is_infeasible = result.status.IsInfeasible();
+  if (!best_node_id.IsNil()) {
     // TODO(Alex): Support soft constraints if needed later.
     *total_violations = 0;
   }

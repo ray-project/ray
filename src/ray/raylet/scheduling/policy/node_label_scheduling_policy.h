@@ -32,8 +32,8 @@ class NodeLabelSchedulingPolicy : public ISchedulingPolicy {
         is_node_alive_(is_node_alive),
         gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
  private:
   bool IsNodeMatchLabelExpression(const Node &node,

@@ -36,8 +36,8 @@ class NodeAffinitySchedulingPolicy : public ISchedulingPolicy {
         is_node_alive_(is_node_alive),
         hybrid_policy_(local_node_id_, nodes_, is_node_alive_) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
   const scheduling::NodeID local_node_id_;
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
