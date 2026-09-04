@@ -19,7 +19,6 @@ package api
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
@@ -419,6 +418,12 @@ func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunction
 	if actorType == nil {
 		return function.NewGoActorMethodDescriptorOrUnknown("unknown", "unknown", "unknown", "")
 	}
+	// Actors are passed as pointers (&MyActor{}); dereference so Name() and
+	// PkgPath() reflect the underlying type (a pointer type has empty Name and
+	// PkgPath, which previously degraded the descriptor to all-"unknown").
+	if actorType.Kind() == reflect.Ptr {
+		actorType = actorType.Elem()
+	}
 
 	typeName := actorType.Name()
 	if typeName == "" {
@@ -430,13 +435,15 @@ func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunction
 		packagePath = "unknown"
 	}
 
-	// Use module path from package path if available
-	modulePath := "unknown"
-	if idx := strings.Index(packagePath, "/"); idx != -1 {
-		modulePath = packagePath[:idx]
+	// Split module/package with the same heuristic as the function registry so
+	// the actor constructor descriptor matches registered functions.
+	moduleName, pkgPath := function.SplitModuleAndPackage(packagePath)
+	if moduleName == "" {
+		moduleName = "unknown"
 	}
 
-	return function.NewGoActorMethodDescriptorOrUnknown(modulePath, packagePath, typeName, "")
+	// "<init>" is the reserved method name for actor constructors.
+	return function.NewGoActorMethodDescriptorOrUnknown(moduleName, pkgPath, typeName, "<init>")
 }
 
 // convertArgToFunctionArg converts an interface{} argument to a FunctionArg.

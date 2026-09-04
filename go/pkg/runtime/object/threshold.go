@@ -140,8 +140,9 @@ func ParseGPUResourceIds(resourceIds map[string][]string) []string {
 //   - []string: List of actual CUDA device IDs, or the original resource IDs if CUDA_VISIBLE_DEVICES not set
 //
 // Example:
-//   If CUDA_VISIBLE_DEVICES="0,2,4" and gpuResourceIds=["0", "1"],
-//   then the result is ["0", "2"] (CUDA_VISIBLE_DEVICES[0]="0", CUDA_VISIBLE_DEVICES[1]="2")
+//
+//	If CUDA_VISIBLE_DEVICES="0,2,4" and gpuResourceIds=["0", "1"],
+//	then the result is ["0", "2"] (CUDA_VISIBLE_DEVICES[0]="0", CUDA_VISIBLE_DEVICES[1]="2")
 func mapToCudaDeviceIds(gpuResourceIds []string, cudaVisibleDevices []string) []string {
 	if cudaVisibleDevices == nil {
 		// CUDA_VISIBLE_DEVICES not set, return resource IDs as-is

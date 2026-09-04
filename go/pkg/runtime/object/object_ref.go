@@ -161,11 +161,11 @@ func (o *SerializedObjectRef) Serialize() (*NativeRayObject, error) {
 // - LanguageGo/Java/C++: Uses map format
 //
 // Deserialization strategy:
-// 1. If language field exists:
-//    a. LanguageGo: Use Go format (map)
-//    b. LanguagePython: First try Go format (map), then Python format (tuple) for backward compatibility
-//    c. Other languages: Try Go format first, then Python format
-// 2. If no language field (Python tuple format), use format-based detection (Go first, then Python)
+//  1. If language field exists:
+//     a. LanguageGo: Use Go format (map)
+//     b. LanguagePython: First try Go format (map), then Python format (tuple) for backward compatibility
+//     c. Other languages: Try Go format first, then Python format
+//  2. If no language field (Python tuple format), use format-based detection (Go first, then Python)
 //
 // This ensures backward compatibility while supporting language-specific serialization.
 func DeserializeObjectRef(nativeObj *NativeRayObject) (*SerializedObjectRef, error) {

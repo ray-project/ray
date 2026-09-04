@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Package zap provides Zap as the default logr implementation.
 package zap
 

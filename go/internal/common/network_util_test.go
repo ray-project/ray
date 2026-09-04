@@ -113,7 +113,6 @@ func TestGetNodeIpAddressFromPerspective_InvalidAddress(t *testing.T) {
 	assert.True(t, net.ParseIP(result) != nil, "Should return valid IP address")
 }
 
-
 func TestTryDetectIPFromAddress_ValidIPv4(t *testing.T) {
 	result := tryDetectIPFromAddress("8.8.8.8:53")
 	// Outbound UDP connectivity may not be available in sandboxed or

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package ids
 
 // murmurHash64A ports the public-domain algorithm from C++ id.cc lines 74-126.

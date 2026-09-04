@@ -42,7 +42,6 @@ type RuntimeFactory interface {
 // 4. Thread-safe using atomic.Pointer, no explicit locking required.
 var globalRuntimeFactory atomic.Pointer[RuntimeFactory]
 
-
 // SetRuntimeFactory sets the global runtime factory.
 //
 // Note: This function should be called at program startup, typically initialized by the native package.

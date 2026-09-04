@@ -341,11 +341,11 @@ func GetGoroutineID() uint64 {
 // from stack trace output. The result is cached using the goroutine ID itself as key.
 //
 // Limitations:
-// - Depends on runtime.Stack() output format (may break if Go runtime changes)
-// - Cache grows with number of unique goroutines, but is periodically
-//   cleaned up by a background goroutine to prevent memory leaks
-// - The cache cleanup runs every 1 minute and removes entries not accessed for 5 minutes
-// - Proactive cleanup is triggered when cache size exceeds threshold (5000)
+//   - Depends on runtime.Stack() output format (may break if Go runtime changes)
+//   - Cache grows with number of unique goroutines, but is periodically
+//     cleaned up by a background goroutine to prevent memory leaks
+//   - The cache cleanup runs every 1 minute and removes entries not accessed for 5 minutes
+//   - Proactive cleanup is triggered when cache size exceeds threshold (5000)
 //
 // Fallback mechanism:
 // If runtime.Stack() parsing fails, this function uses a fallback counter-based ID

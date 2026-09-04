@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Package lumberjack provides log file rotation Writer wrapper.
 // Based on gopkg.in/natefinch/lumberjack.v2.
 package lumberjack

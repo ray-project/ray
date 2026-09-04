@@ -177,9 +177,20 @@ std::function<ray::Status(
       c_args.push_back(c_arg);
     }
 
-    // For now, always pass null for actor ID. Actor tasks will be handled separately.
+    // Pass the worker context's current actor ID so the Go runtime can route
+    // actor creation and actor method tasks. The context is set by
+    // CoreWorker::HandlePushTask before this callback runs. Normal tasks get
+    // a null actor ID.
+    std::string actor_id_binary;
     const char* actor_id_data = nullptr;
     int actor_id_size = 0;
+    const ray::ActorID &current_actor_id =
+        ray::core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
+    if (!current_actor_id.IsNil()) {
+      actor_id_binary = current_actor_id.Binary();
+      actor_id_data = actor_id_binary.data();
+      actor_id_size = static_cast<int>(actor_id_binary.size());
+    }
 
     // Log returns size before calling Go
     RAY_LOG(INFO) << "C++ calling GoExecuteTask: returns size=" << returns->size();
@@ -202,7 +213,18 @@ std::function<ray::Status(
 
     if (c_results == nullptr) {
       *application_error = "Task execution failed in Go runtime";
-      return ray::Status::Invalid("Task execution failed");
+      if (task_type == ray::rpc::TaskType::ACTOR_CREATION_TASK) {
+        // A failed creation task must surface as CreationTaskError so the
+        // worker exits with USER_ERROR and the actor is marked dead; a plain
+        // Invalid status would hit the RAY_CHECK in CoreWorker::ExecuteTask
+        // and abort the worker.
+        return ray::Status::CreationTaskError(*application_error);
+      }
+      // Tasks without return slots cannot carry an error object; record the
+      // failure via the application error instead of failing the worker.
+      RAY_LOG(ERROR) << *application_error
+                     << "; task has no return slots to carry an error object";
+      return ray::Status::OK();
     }
 
     // Use RAII pointer for automatic cleanup (CSerializedObjectArrayPtr is defined in cgo_wrapper.h)

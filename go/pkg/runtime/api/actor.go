@@ -73,7 +73,7 @@ func GetActorWithNamespace[T any](name string, namespace string) (*ActorHandleIm
 	if err != nil {
 		return nil, fmt.Errorf("failed to get actor '%s' in namespace '%s': %w", name, namespace, err)
 	}
-	
+
 	if actorHandle == nil {
 		return nil, fmt.Errorf("actor '%s' not found in namespace '%s'", name, namespace)
 	}

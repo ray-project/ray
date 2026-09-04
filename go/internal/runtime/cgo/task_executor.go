@@ -182,7 +182,8 @@ func allocateCSerializedObject(cObj *C.CSerializedObject, data []byte, metadata 
 }
 
 // convertGoResultToC converts Go execution result to C.CSerializedObjectArray.
-// On error, serializes the error and returns an array with numReturns error objects.
+// On error, serializes the error and returns an array with numReturns error
+// objects, or null when numReturns is zero.
 // The C++ caller is responsible for freeing the returned array
 // using CNativeCommon_FreeCSerializedObjectArray (defined in cgo_wrapper.cc).
 //
@@ -229,14 +230,30 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 				Metadata: []byte(`{"type":"error"}`),
 			}
 		}
+		if numReturns == 0 {
+			// No return slots to carry an error object. Return null so the
+			// C++ caller treats the task as failed (nullptr distinguishes an
+			// error from an empty success result).
+			return nil
+		}
 
 		// Convert error results to C format
 		return convertGoResultToC(errorResults, nil, numReturns)
 	}
 
 	if len(results) == 0 {
+		// Empty success (e.g. an actor creation task with no return values).
+		// Return a zero-count array rather than null: null is reserved for
+		// execution errors and makes the C++ caller fail the task.
 		taskExecutorLogger.Info("Task execution returned empty results")
-		return nil
+		cArray := (*C.CSerializedObjectArray)(C.malloc(C.size_t(unsafe.Sizeof(C.CSerializedObjectArray{}))))
+		if cArray == nil {
+			taskExecutorLogger.Error(fmt.Errorf("malloc failed"), "Failed to allocate empty result array")
+			return nil
+		}
+		cArray.count = 0
+		cArray.objects = nil
+		return cArray
 	}
 
 	// Allocate C array structure
@@ -383,8 +400,11 @@ func GoExecuteTask(
 		goArgs[i] = convertCFunctionArgToBase(*cArg)
 	}
 
-	// Parse actor ID (if provided)
-	var actorID ids.ActorID
+	// Parse actor ID (if provided). Default to the nil actor ID so tasks
+	// without one (normal tasks pass null from C++) take the non-actor path:
+	// the Go zero-value ActorID is all zeroes, which ActorID.IsNil() (all
+	// 0xff) does not recognize as nil.
+	var actorID ids.ActorID = ids.NilActorID()
 	if actorIDData != nil && actorIDSize > 0 {
 		actorIDBytes := C.GoBytes(unsafe.Pointer(actorIDData), actorIDSize)
 		actorID, _ = ids.ActorIDFromBinary(actorIDBytes)

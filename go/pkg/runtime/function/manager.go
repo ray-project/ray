@@ -26,11 +26,11 @@ var managerLogger = log.WithName("function_manager")
 // FunctionManager manages function registration and lookup for Go Ray tasks.
 //
 // Design notes:
-//   1. Go does not support lambda serialization like Java, so we use explicit registration.
-//   2. Functions are registered with a GoFunctionDescriptor as the key.
-//   3. The manager is thread-safe for concurrent access during task execution.
-//   4. This is a simpler design compared to Java's FunctionManager which supports
-//      dynamic class loading and lambda deserialization.
+//  1. Go does not support lambda serialization like Java, so we use explicit registration.
+//  2. Functions are registered with a GoFunctionDescriptor as the key.
+//  3. The manager is thread-safe for concurrent access during task execution.
+//  4. This is a simpler design compared to Java's FunctionManager which supports
+//     dynamic class loading and lambda deserialization.
 type FunctionManager struct {
 	// mu protects the functions map
 	mu sync.RWMutex

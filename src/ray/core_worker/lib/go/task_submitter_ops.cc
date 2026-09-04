@@ -238,6 +238,11 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
   // Make a copy of namespace_ because ActorCreationOptions constructor
   // expects a non-const reference (unusual API design)
   std::string namespace_copy = options.namespace_;
+  // A valid scheduling strategy is mandatory: CoreWorker::CreateActor CHECK-fails
+  // when actor_creation_options.scheduling_strategy is NOT_SET. Actor creation
+  // has no placement-group fields, so the default scheduling strategy is used.
+  ray::rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   return ray::core::ActorCreationOptions(
       options.max_restarts,
       options.max_task_retries,
@@ -249,7 +254,7 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
       options.name,
       namespace_copy,
       false,  // is_detached
-      ray::rpc::SchedulingStrategy(),
+      scheduling_strategy,
       options.serialized_runtime_env_info,
       {},  // worker_capture_output
       false,  // is_global_publisher

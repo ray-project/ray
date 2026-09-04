@@ -20,10 +20,10 @@ import (
 	"sync"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
+	"github.com/ray-project/ray/go/internal/runtime/objectstore"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
 )
 

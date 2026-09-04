@@ -38,8 +38,8 @@ func TestFunctionManager_RegisterFunction(t *testing.T) {
 	manager := NewFunctionManager(nil)
 
 	desc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "MyTask",
 	}
 
@@ -56,8 +56,8 @@ func TestFunctionManager_GetFunction_Exists(t *testing.T) {
 	manager := NewFunctionManager(nil)
 
 	desc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "MyTask",
 	}
 
@@ -79,8 +79,8 @@ func TestFunctionManager_GetFunction_NotExists(t *testing.T) {
 	manager := NewFunctionManager(nil)
 
 	desc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "NonExistentTask",
 	}
 
@@ -95,8 +95,8 @@ func TestFunctionManager_GetFunctionByBaseDescriptor(t *testing.T) {
 
 	// Register with GoFunctionDescriptor
 	goDesc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "MyTask",
 	}
 	manager.RegisterFunction(goDesc, mockFunction)
@@ -120,8 +120,8 @@ func TestFunctionManager_IsRegistered(t *testing.T) {
 	manager := NewFunctionManager(nil)
 
 	desc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "MyTask",
 	}
 
@@ -142,13 +142,13 @@ func TestFunctionManager_ListRegisteredFunctions(t *testing.T) {
 
 	// Register multiple functions
 	desc1 := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "Task1",
 	}
 	desc2 := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "Task2",
 	}
 
@@ -163,8 +163,8 @@ func TestFunctionManager_UnregisterFunction(t *testing.T) {
 	manager := NewFunctionManager(nil)
 
 	desc := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "MyTask",
 	}
 
@@ -180,13 +180,13 @@ func TestFunctionManager_Clear(t *testing.T) {
 
 	// Register multiple functions
 	desc1 := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "Task1",
 	}
 	desc2 := &GoFunctionDescriptor{
-		ModuleName:  "github.com/example/myapp/tasks",
-		PackagePath: "pkg",
+		ModuleName:   "github.com/example/myapp/tasks",
+		PackagePath:  "pkg",
 		FunctionName: "Task2",
 	}
 
@@ -207,8 +207,8 @@ func TestFunctionManager_ThreadSafety(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(idx int) {
 			desc := &GoFunctionDescriptor{
-				ModuleName:  "github.com/example/myapp/tasks",
-				PackagePath: "pkg",
+				ModuleName:   "github.com/example/myapp/tasks",
+				PackagePath:  "pkg",
 				FunctionName: "Task" + string(rune('0'+idx)),
 			}
 			manager.RegisterFunction(desc, mockFunction)
@@ -228,8 +228,8 @@ func TestFunctionManager_ThreadSafety(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(idx int) {
 			desc := &GoFunctionDescriptor{
-				ModuleName:  "github.com/example/myapp/tasks",
-				PackagePath: "pkg",
+				ModuleName:   "github.com/example/myapp/tasks",
+				PackagePath:  "pkg",
 				FunctionName: "Task" + string(rune('0'+idx)),
 			}
 			fn, err := manager.GetFunction(desc)

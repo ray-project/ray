@@ -30,7 +30,7 @@ type NativeRayObject = object.NativeRayObject
 // This adapter wraps the internal Serializer to provide compatibility
 // with the object package's abstraction layer.
 type ObjectSerializerImpl struct {
-	*Serializer  // Embed the existing implementation
+	*Serializer // Embed the existing implementation
 }
 
 // Compile-time interface compliance check.

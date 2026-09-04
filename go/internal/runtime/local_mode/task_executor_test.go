@@ -17,9 +17,9 @@ package local_mode
 import (
 	"testing"
 
+	"github.com/ray-project/ray/go/internal/runtime/objectstore"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
