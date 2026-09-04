@@ -1726,7 +1726,7 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
 
 // Regression: HandleReturnWorkerLease with worker_exiting=true must release
 // pinned lease args without waiting on DisconnectClient.
-TEST_F(NodeManagerTest, ReturnWorkerLeaseWithWorkerExitingReleasesPinnedArgs) {
+TEST_F(NodeManagerTest, TestExitingWorkerReleasesPinnedLeaseArgs) {
   auto [lease_id, worker] = GrantLeaseWithPinnedArg(/*arg_bytes=*/1024);
   ASSERT_GT(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
   ASSERT_EQ(leased_workers_.size(), 1u);
