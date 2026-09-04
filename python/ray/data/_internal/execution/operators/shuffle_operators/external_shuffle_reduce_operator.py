@@ -163,11 +163,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         partition_id = extract_partition_id(refs)
         estimated_rows = sum((m.num_rows or 0) for m in refs.metadata)
 
-        # Single-input empty-partition fast path. Do not gate on
-        # ``size_bytes``: a ``null``-typed table can have rows with
-        # ``tbl.nbytes == 0``. Skipped for multi-input reduces (an outer
-        # join's empty side can still produce rows) and when a downstream map
-        # is fused in (the map must run even on empty partitions, e.g. Write).
         schema = refs.schema
         if (
             self._num_inputs == 1
