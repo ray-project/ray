@@ -36,6 +36,24 @@ class FileIndexer(ABC):
         """The file chunker that this indexer uses."""
         ...
 
+    @property
+    def produces_partitioned_manifests(self) -> bool:
+        """Whether ``list_files`` already produces partitioned manifests.
+
+        ``False`` (default) means the indexer yields per-file / per-chunk
+        manifests that still need size-balanced partitioning downstream. An
+        indexer that bin-packs internally (e.g. the footer-based Parquet indexer,
+        which reads footers and packs row groups into ~one-block manifests)
+        returns ``True``; ``ListFiles`` then skips the partitioner and runs
+        listing as a single task so packing sees the whole file stream.
+        """
+        return False
+
+    @property
+    def requires_file_io(self) -> bool:
+        """Whether listing reads file contents in addition to file metadata."""
+        return self.file_chunker.requires_file_io
+
     @abstractmethod
     def list_files(
         self,

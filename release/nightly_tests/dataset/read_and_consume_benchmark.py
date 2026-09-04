@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("path", type=str)
     parser.add_argument(
         "--format",
-        choices=["image", "parquet", "tfrecords"],
+        choices=["csv", "image", "parquet", "tfrecords"],
         required=True,
     )
     parser.add_argument(
@@ -95,7 +95,9 @@ def main(args):
 
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
-    if args.format == "image":
+    if args.format == "csv":
+        read_fn = ray.data.read_csv
+    elif args.format == "image":
         # FIXME: We specify the mode as a workaround for
         # https://github.com/ray-project/ray/issues/49883.
         read_fn = functools.partial(ray.data.read_images, mode="RGB")

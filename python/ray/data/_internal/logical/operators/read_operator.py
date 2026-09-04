@@ -441,6 +441,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
+    # Scheduling/runtime settings required for listing tasks to access the
+    # same storage environment as downstream read tasks. Compute-specific
+    # resources remain on ``ReadFiles`` because listing has a different
+    # resource profile.
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     file_partitioner: Optional["FilePartitioner"] = None
     file_extensions: Optional[List[str]] = None
     partition_filter: Optional["PathPartitionFilter"] = None

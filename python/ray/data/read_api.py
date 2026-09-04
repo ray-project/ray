@@ -559,6 +559,21 @@ def _read_datasource_v2(
         ctx=ctx,
     )
 
+    # Listing normally only reads filesystem metadata, but some V2 indexers
+    # also inspect headers or footers. Carry the settings needed to reach the
+    # same storage environment without assigning listing tasks the reader's
+    # compute-specific CPU/GPU/memory/custom-resource requirements.
+    list_files_ray_remote_args = {
+        key: ray_remote_args[key]
+        for key in (
+            "scheduling_strategy",
+            "label_selector",
+            "fallback_strategy",
+            "runtime_env",
+        )
+        if key in ray_remote_args
+    }
+
     pruners = _build_pruners(datasource.file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
@@ -637,6 +652,7 @@ def _read_datasource_v2(
         file_indexer=indexer,
         filesystem=datasource.filesystem,
         source_paths=list(datasource.paths),
+        ray_remote_args=list_files_ray_remote_args,
         file_partitioner=partitioner,
         file_extensions=datasource.file_extensions,
         partition_filter=partition_filter,
@@ -2447,6 +2463,14 @@ def read_csv(
         ...     file_extensions=["csv"])
         Dataset(num_rows=?, schema=Unknown schema)
 
+    .. note::
+
+        When DataSourceV2 is enabled, CSV files must have a consistent set of
+        columns. Ray samples a bounded number of files to determine the logical
+        schema and raises ``ValueError`` if a later file contains a column that
+        wasn't present in that sample. This fail-closed behavior prevents
+        silently dropping data from heterogeneous CSV inputs.
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -2510,6 +2534,41 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+
+    _validate_shuffle_arg(shuffle)
+
+    if DataContext.get_current().use_datasource_v2:
+        from ray.data._internal.datasource_v2.csv_datasource_v2 import (
+            CSVDatasourceV2,
+        )
+
+        datasource_v2 = CSVDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_csv_args=arrow_csv_args,
+            open_stream_args=arrow_open_stream_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = CSVDatasource(
         paths,
