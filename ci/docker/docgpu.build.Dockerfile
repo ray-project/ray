@@ -17,7 +17,9 @@ RUN <<EOF
 
 set -euo pipefail
 
-uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+# --no-binary deepspeed: the GPU locks resolve against Astral's cu128 index, which publishes prebuilt deepspeed wheels
+#   as local versions (0.18.9+cu.12.8.torch.2.11), however, currently we use torch 2.9 which is incompatible
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match --no-binary deepspeed
 
 # Remove installed ray so the source overlay at /rayci/ is used at test time
 pip uninstall -y ray
