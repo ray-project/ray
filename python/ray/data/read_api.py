@@ -5498,6 +5498,34 @@ def read_iceberg(
             if resolved.table_identifier is not None:
                 table_identifier = resolved.table_identifier
 
+    if DataContext.get_current().use_iceberg_datasource_v2:
+        from ray.data._internal.datasource_v2.iceberg_datasource_v2 import (
+            IcebergDatasourceV2,
+        )
+
+        # Under V2 the task count comes from bin-packing the planned files by
+        # size, so there is no knob for it to override.
+        if parallelism != -1 or override_num_blocks is not None:
+            logger.warning(
+                "`parallelism` and `override_num_blocks` are ignored by the "
+                "DataSourceV2 Iceberg reader; the number of read tasks is "
+                "determined by the size of the files being read."
+            )
+        return _read_datasource_v2(
+            IcebergDatasourceV2(
+                table_identifier=table_identifier,
+                row_filter=row_filter,
+                selected_fields=selected_fields,
+                snapshot_id=snapshot_id,
+                scan_kwargs=scan_kwargs,
+                catalog_kwargs=catalog_kwargs,
+            ),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+        )
+
     # Setup the Datasource
     datasource = IcebergDatasource(
         table_identifier=table_identifier,

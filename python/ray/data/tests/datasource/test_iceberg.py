@@ -132,6 +132,19 @@ def pyiceberg_table():
     table.delete(delete_filter=pyi_expr.GreaterThanOrEqual("col_a", 101))
 
 
+@pytest.fixture(params=[False, True], ids=["reader_v1", "reader_v2"])
+def both_iceberg_readers(request, restore_data_context):
+    """Run a read-path test against both the V1 and V2 Iceberg datasources.
+
+    ``read_iceberg`` picks the implementation off ``DataContext``, so flipping
+    the flag here is enough; ``restore_data_context`` puts it back afterwards.
+    Applied with ``usefixtures`` so the tests themselves stay reader-agnostic:
+    every assertion below must hold for both, which is the parity bar.
+    """
+    restore_data_context.use_iceberg_datasource_v2 = request.param
+    return request.param
+
+
 @pytest.fixture
 def fast_retry_config():
     """Configure DataContext for fast retry testing."""
@@ -857,6 +870,7 @@ def test_read_iceberg_does_not_mutate_caller_kwargs():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_read_basic():
 
     row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
@@ -957,6 +971,7 @@ def test_write_concurrency():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_predicate_pushdown():
     """Test that predicate pushdown works correctly with Iceberg datasource."""
     # Read the table and apply filters using Ray Data expressions
@@ -999,6 +1014,7 @@ def test_predicate_pushdown():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_predicate_pushdown_with_initial_filter():
     """Test that predicate pushdown works when combined with initial row_filter."""
     # Read with an initial PyIceberg filter
@@ -1048,6 +1064,7 @@ def test_predicate_pushdown_with_initial_filter():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_projection_pushdown():
     """Test that projection pushdown works correctly with Iceberg datasource."""
     # Read the table and apply projection using select
@@ -1123,6 +1140,7 @@ def test_projection_pushdown():
         ),
     ],
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_projection_and_predicate_pushdown(
     selected_cols, filter_expr, pyi_filter, expected_cols
 ):
@@ -1261,6 +1279,7 @@ def test_projection_and_predicate_pushdown(
         ),
     ],
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_rename_select_filter_combinations(
     rename_map, select_cols, filter_expr, pyi_filter, expected_cols
 ):
@@ -1354,6 +1373,7 @@ def test_rename_select_filter_combinations(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_predicate_pushdown_complex_expression():
     """Test predicate pushdown with complex expressions."""
     # Apply a complex filter expression
@@ -1404,6 +1424,139 @@ def test_predicate_pushdown_complex_expression():
     )
 
     assert rows_same(result, expected_table)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_predicate_pushdown_with_untranslatable_conjunct(both_iceberg_readers):
+    """A predicate Iceberg cannot express must still be applied, above the read.
+
+    Iceberg's expression language has no arithmetic, so ``col_a * 2 <= 100``
+    has no equivalent to push. What must not happen is the predicate being
+    dropped: whatever the scanner declines to take has to come back as a
+    ``Filter``, or the read returns rows the user filtered out.
+
+    Not a parity test: V1 has no residual mechanism at all, so it raises on the
+    whole query rather than filtering above the read. Pinned here so that the
+    difference is deliberate and so V1's behaviour cannot change unnoticed.
+    """
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    filtered_ds = ds.filter(expr=(col("col_c") >= 3) & (col("col_a") * 2 <= 100))
+
+    if not both_iceberg_readers:
+        with pytest.raises(ValueError, match="Arithmetic operations"):
+            filtered_ds.to_pandas()
+        return
+
+    result = filtered_ds.to_pandas()
+
+    optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
+    assert _has_operator_type(optimized_plan, Filter), (
+        "the untranslatable conjunct has to survive as a Filter, got operators: "
+        f"{_get_operator_types(optimized_plan)}"
+    )
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    expected = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_pandas()
+    expected = expected[(expected["col_c"] >= 3) & (expected["col_a"] * 2 <= 100)]
+    assert len(expected) > 0, "fixture must leave rows on both sides of the filter"
+    assert rows_same(result, expected)
+
+
+@pytest.fixture
+def empty_iceberg_table():
+    """A table that exists and declares its schema but holds no data files."""
+    catalog = SqlCatalog(
+        _CATALOG_NAME,
+        **{
+            "uri": f"sqlite:///{_WAREHOUSE_PATH}/ray_pyiceberg_test_catalog.db",
+            "warehouse": f"file://{_WAREHOUSE_PATH}",
+        },
+    )
+    identifier = f"{_DB_NAME}.ray_empty"
+    if (_DB_NAME, "ray_empty") in catalog.list_tables(_DB_NAME):
+        catalog.drop_table(identifier)
+    catalog.create_table(
+        identifier,
+        schema=pyi_schema.Schema(
+            pyi_types.NestedField(
+                field_id=1,
+                name="col_a",
+                field_type=pyi_types.IntegerType(),
+                required=False,
+            ),
+            pyi_types.NestedField(
+                field_id=2,
+                name="col_b",
+                field_type=pyi_types.StringType(),
+                required=False,
+            ),
+        ),
+    )
+    yield identifier
+    catalog.drop_table(identifier)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_read_table_with_no_data_files(both_iceberg_readers, empty_iceberg_table):
+    """A declared-but-empty table reads as an empty dataset with the right schema.
+
+    The catalog knows the columns exactly, so there is nothing to sample and
+    nothing to fail on -- which is what ``schema_needs_file_sample = False``
+    buys.
+
+    Not a parity test: V1 derives its schema from the files it read, of which
+    there are none, so it reports no schema at all. Pinned here for the same
+    reason as the residual test above.
+    """
+    ds = ray.data.read_iceberg(
+        table_identifier=empty_iceberg_table,
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    if not both_iceberg_readers:
+        assert ds.schema() is None
+        assert ds.count() == 0
+        return
+
+    assert ds.schema().names == ["col_a", "col_b"]
+    assert ds.count() == 0
+    assert ds.take_all() == []
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.usefixtures("both_iceberg_readers")
+def test_read_pins_the_snapshot_across_executions():
+    """Two executions of one ``Dataset`` see the same table version.
+
+    V2 lists files inside a task at execution time rather than on the driver at
+    plan time, so without pinning the snapshot up front, a write between two
+    executions would change the answer -- and so would a retried task.
+    """
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    before = len(ds.take_all())
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").append(create_pa_table())
+
+    after = len(ds.take_all())
+    assert before == after, (
+        "the second execution picked up rows written after the read was "
+        f"created ({before} -> {after})"
+    )
 
 
 # Helper functions and fixtures for schema evolution tests
@@ -2661,8 +2814,63 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
+def test_count_and_empty_projection():
+    """``count()`` and a zero-column read must still see every row.
+
+    Both go through an empty projection, where a reader can silently return
+    zero-row blocks instead of zero-width ones.
+    """
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    expected = len(
+        sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_arrow()
+    )
+
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    assert ds.count() == expected
+    empty_projection = ds.select_columns([])
+    assert empty_projection.count() == expected
+    assert empty_projection.schema().names == []
+
+
+def _optimized_count_plan(ds):
+    """The plan ``Dataset.count()`` executes, without executing it.
+
+    ``Dataset.count()`` builds this internally and never exposes it, so tests
+    reconstruct it to assert on the optimizer's output.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+
+    count_op = Count(
+        input_dependencies=[
+            Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+        ]
+    )
+    return LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context))
+
+
+def _walk(op):
+    yield op
+    for child in op.input_dependencies:
+        yield from _walk(child)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 class TestIcebergDatasourceV2:
-    """Tests for the V2-only machinery, which has no V1 counterpart."""
+    """Tests for the V2-only machinery, which has no V1 counterpart.
+
+    The parity tests above cover behavior shared with V1; these cover the two
+    pieces V2 adds: the manifest that carries per-file Iceberg state from the
+    listing task to the read tasks, and the bin packing that decides how many
+    read tasks there are.
+    """
 
     @staticmethod
     def _load_table() -> Table:
@@ -3146,6 +3354,95 @@ class TestIcebergDatasourceV2:
             )
         )
         assert 0 < filtered < unfiltered
+
+    def test_planning_samples_no_file(self, monkeypatch, restore_data_context):
+        """Plan time must not open -- or even list -- a single data file.
+
+        ``schema_needs_file_sample = False`` is what buys this: the catalog
+        already names every column, so ``_read_datasource_v2`` skips
+        ``sample_files`` outright. ``test_read_table_with_no_data_files``
+        covers the *consequence* (a table with no files still plans); this
+        covers the *mechanism*, by making any sampling attempt fail loudly
+        instead of merely being unnecessary.
+
+        ``sample_files`` is imported inside ``_read_datasource_v2``, so the
+        patch has to land on the module that defines it.
+        """
+        from ray.data._internal.datasource_v2.listing import listing_utils
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+
+        def explode(*args, **kwargs):
+            raise AssertionError("plan time sampled a file")
+
+        monkeypatch.setattr(listing_utils, "sample_files", explode)
+
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        # ``schema()`` is what forces plan-time inference, so if anything were
+        # going to sample, it would happen here.
+        assert ds.schema().names == ["col_a", "col_b", "col_c"]
+
+    def test_schema_hooks_accept_a_missing_sample(self):
+        """The two ``Optional[FileManifest]`` hooks, called the way the planner
+        calls them for this source.
+
+        Passing ``None`` explicitly pins both halves of the no-sample contract:
+        the schema really does come from the catalog, and Iceberg claims no
+        path-derived partitioning. The second matters because Iceberg
+        partitioning is hidden behind transforms -- ``col_c`` is an identity
+        partition here, but a ``day(ts)`` column would leave a path component
+        that is not a column value at all, so there is nothing a path parser
+        should be handed.
+        """
+        from ray.data._internal.datasource_v2.iceberg_datasource_v2 import (
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+        assert datasource.schema_needs_file_sample is False
+        assert datasource.infer_schema(None).names == ["col_a", "col_b", "col_c"]
+        assert datasource.resolve_partitioning(None) is None
+
+    def test_count_declines_the_metadata_pushdown(self, restore_data_context):
+        """Iceberg answers neither count hook yet, so the rule declines.
+
+        ``PushdownCountFiles`` asks two questions -- is the metadata row count
+        exact under this scan, and can the listing emit one row per file -- and
+        both default to "no". Neither ``IcebergScanner`` nor
+        ``IcebergFileIndexer`` overrides them, so ``count()`` keeps its
+        ``ReadFiles`` and gets the answer by reading. That is the fail-closed
+        default doing its job with a real datasource behind it rather than a
+        stub, and it is what a later change deliberately flips.
+        """
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        restore_data_context.use_iceberg_datasource_v2 = True
+
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        plan = _optimized_count_plan(ds)
+        assert any(isinstance(op, ReadFiles) for op in _walk(plan.dag)), (
+            "the count must still go through a read, got operators: "
+            f"{_get_operator_types(plan)}"
+        )
+        # The fixture table has positional deletes, so the right answer is
+        # below ``record_count`` -- which is exactly why the metadata hooks
+        # cannot be answered "yes" for free.
+        catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+        expected = len(
+            catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_arrow()
+        )
+        assert expected < len(create_pa_table())
+        assert ds.count() == expected
 
 
 if __name__ == "__main__":
