@@ -515,6 +515,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
+        "enable_strict_max_ongoing_requests": (
+            d._deployment_config.enable_strict_max_ongoing_requests
+        ),
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -580,6 +583,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
+        enable_strict_max_ongoing_requests=s.enable_strict_max_ongoing_requests,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
