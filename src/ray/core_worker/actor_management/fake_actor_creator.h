@@ -33,6 +33,13 @@ class FakeActorCreator : public ActorCreatorInterface {
   void AsyncRegisterActor(const TaskSpecification &task_spec,
                           rpc::StatusCallback callback) override {}
 
+  void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                               rpc::StatusCallback callback) override {
+    if (callback) {
+      callbacks.push_back(callback);
+    }
+  }
+
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,

@@ -123,6 +123,10 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleRegisterActorBatch(rpc::RegisterActorBatchRequest request,
+                                rpc::RegisterActorBatchReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleRestartActorForLineageReconstruction(
       rpc::RestartActorForLineageReconstructionRequest request,
       rpc::RestartActorForLineageReconstructionReply *reply,

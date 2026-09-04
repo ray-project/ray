@@ -130,6 +130,17 @@ class ActorInfoAccessorInterface {
                                   int64_t timeout_ms = -1) = 0;
 
   /**
+    Register actor batch asynchronously.
+
+    @param task_specs The specifications for the actor creation tasks.
+    @param callback Callback that will be called after the actors are registered.
+    @param timeout_ms Timeout ms. -1 means there's no timeout.
+   */
+  virtual void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                                       const rpc::StatusCallback &callback,
+                                       int64_t timeout_ms = -1) = 0;
+
+  /**
   Restart actor for lineage reconstruction asynchronously.
 
   @param actor_id The ID of the actor.

@@ -2830,6 +2830,88 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->port(), 9999);
 }
 
+TEST_F(GcsActorManagerTest, TestHandleRegisterActorBatch) {
+  // Test 1: Empty batch
+  {
+    rpc::RegisterActorBatchRequest empty_request;
+    rpc::RegisterActorBatchReply empty_reply;
+    bool callback_invoked = false;
+    gcs_actor_manager_->HandleRegisterActorBatch(
+        empty_request,
+        &empty_reply,
+        [&callback_invoked](
+            Status status, std::function<void()> success, std::function<void()> failure) {
+          callback_invoked = true;
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(callback_invoked);
+  }
+
+  // Test 2: Valid batch with multiple actors
+  auto job_id = JobID::FromInt(1);
+  auto register_request1 =
+      GenRegisterActorRequest(job_id, /*max_restarts=*/-1, /*detached=*/false);
+  auto register_request2 =
+      GenRegisterActorRequest(job_id, /*max_restarts=*/-1, /*detached=*/false);
+  auto actor_id1 = ActorID::FromBinary(
+      register_request1.task_spec().actor_creation_task_spec().actor_id());
+  auto actor_id2 = ActorID::FromBinary(
+      register_request2.task_spec().actor_creation_task_spec().actor_id());
+
+  rpc::RegisterActorBatchRequest batch_request;
+  batch_request.add_task_specs()->CopyFrom(register_request1.task_spec());
+  batch_request.add_task_specs()->CopyFrom(register_request2.task_spec());
+
+  rpc::RegisterActorBatchReply batch_reply;
+  bool callback_invoked = false;
+  gcs_actor_manager_->HandleRegisterActorBatch(
+      batch_request,
+      &batch_reply,
+      [&callback_invoked](
+          Status status, std::function<void()> success, std::function<void()> failure) {
+        callback_invoked = true;
+        ASSERT_TRUE(status.ok());
+      });
+  drain_io_context();
+  ASSERT_TRUE(callback_invoked);
+  ASSERT_EQ(RegisteredActorCount(*gcs_actor_manager_), 2u);
+  auto actor1 = GetRegisteredActor(*gcs_actor_manager_, actor_id1);
+  auto actor2 = GetRegisteredActor(*gcs_actor_manager_, actor_id2);
+  ASSERT_NE(actor1, nullptr);
+  ASSERT_NE(actor2, nullptr);
+  ASSERT_EQ(actor1->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  ASSERT_EQ(actor2->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
+
+  // Test 3: Batch with duplicate named actors should report error
+  {
+    std::string name = "duplicated_actor";
+    std::string ray_ns = "test_ns";
+    auto req_dup1 = GenRegisterActorRequest(job_id, 0, false, name, ray_ns);
+    auto req_dup2 = GenRegisterActorRequest(job_id, 0, false, name, ray_ns);
+
+    rpc::RegisterActorBatchRequest dup_batch_request;
+    dup_batch_request.add_task_specs()->CopyFrom(req_dup1.task_spec());
+    dup_batch_request.add_task_specs()->CopyFrom(req_dup2.task_spec());
+
+    rpc::RegisterActorBatchReply dup_batch_reply;
+    bool dup_callback_invoked = false;
+    Status dup_status = Status::OK();
+    gcs_actor_manager_->HandleRegisterActorBatch(
+        dup_batch_request,
+        &dup_batch_reply,
+        [&dup_callback_invoked, &dup_status](
+            Status status, std::function<void()> success, std::function<void()> failure) {
+          dup_callback_invoked = true;
+          dup_status = status;
+        });
+    drain_io_context();
+    ASSERT_TRUE(dup_callback_invoked);
+    ASSERT_TRUE(dup_status.ok());
+    ASSERT_EQ(dup_batch_reply.status().code(),
+              static_cast<int>(StatusCode::AlreadyExists));
+  }
+}
+
 }  // namespace gcs
 
 }  // namespace ray

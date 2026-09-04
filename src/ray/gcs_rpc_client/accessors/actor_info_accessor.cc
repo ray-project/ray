@@ -194,6 +194,24 @@ void ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_sp
       timeout_ms);
 }
 
+void ActorInfoAccessor::AsyncRegisterActorBatch(
+    const std::vector<TaskSpecification> &task_specs,
+    const rpc::StatusCallback &callback,
+    int64_t timeout_ms) {
+  RAY_CHECK(callback);
+  rpc::RegisterActorBatchRequest request;
+  for (const auto &task_spec : task_specs) {
+    RAY_CHECK(task_spec.IsActorCreationTask());
+    request.add_task_specs()->CopyFrom(task_spec.GetMessage());
+  }
+  context_->GetGcsRpcClient().RegisterActorBatch(
+      std::move(request),
+      [callback](const Status &status, rpc::RegisterActorBatchReply &&reply) {
+        callback(ComputeGcsStatus(status, reply.status()));
+      },
+      timeout_ms);
+}
+
 Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   rpc::RegisterActorRequest request;
