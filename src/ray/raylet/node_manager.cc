@@ -2251,8 +2251,8 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       CleanupLease(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
-    // If the worker is exiting, don't add it to our pool. The worker will
-    // cleanup and terminate itself.
+    // If the worker is exiting, don't add it to our pool. The worker will cleanup
+    // and terminate itself.
     if (!request.worker_exiting()) {
       HandleWorkerAvailable(worker);
     }
