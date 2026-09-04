@@ -3,8 +3,9 @@ import collections
 import inspect
 import logging
 import queue
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from threading import Thread
+from threading import Lock, Thread
 from types import GeneratorType
 from typing import (
     TYPE_CHECKING,
@@ -465,7 +466,9 @@ def _get_udf(
 
         def _wrapped_udf_map_fn(item: Any) -> Any:
             try:
-                return udf(item, *fn_args, **fn_kwargs)
+                return _call_udf_off_event_loop_thread(
+                    lambda: udf(item, *fn_args, **fn_kwargs)
+                )
             except Exception as e:
                 _try_wrap_udf_exception(e)
 
@@ -484,6 +487,37 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
         raise e
     else:
         raise UserCodeException("UDF failed to process a data block.") from e
+
+
+# Thread pool used to execute synchronous UDFs off of an event-loop thread.
+# Threads in this pool never run asyncio, so user code may safely call
+# asyncio.run() even when the surrounding worker hosts an event loop.
+# See https://github.com/ray-project/ray/issues/57729
+_sync_udf_executor: Optional[ThreadPoolExecutor] = None
+_sync_udf_executor_lock = Lock()
+
+
+def _get_sync_udf_executor() -> ThreadPoolExecutor:
+    global _sync_udf_executor
+    if _sync_udf_executor is None:
+        with _sync_udf_executor_lock:
+            if _sync_udf_executor is None:
+                _sync_udf_executor = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="ray-data-sync-udf"
+                )
+    return _sync_udf_executor
+
+
+def _call_udf_off_event_loop_thread(udf_call):
+    """Run a sync UDF call, dispatching to a loop-free thread if the current
+    thread already runs an event loop (e.g. in a fused worker that also hosts
+    an async UDF). Otherwise call it directly on the current thread.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return udf_call()
+    return _get_sync_udf_executor().submit(udf_call).result()
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
