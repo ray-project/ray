@@ -1,4 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
@@ -1824,6 +1825,7 @@ jinja2==3.1.6 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/test-requirements.txt
+#   -r python/requirements.txt
 #   flask
 #   moto
 #   torch
@@ -5209,9 +5211,7 @@ scipy==1.15.3 \
 #   mlflow
 #   scikit-learn
 #   skops
-#   torch-cluster
 #   torch-geometric
-#   torch-sparse
 segment-analytics-python==2.2.0 \
     --hash=sha256:b511dce9d22fa31c8a3f1b0e69d15af9705aeeed066fb317bd64bec8b786b0b2 \
     --hash=sha256:d9bbdd554d57fdfc9d8ebe1e5e0a891154aa9c5f5a79b78925861d5bd4789c41
@@ -5548,21 +5548,9 @@ tomlkit==0.13.3 \
 #   torchmetrics
 #   torchtext
 #   torchvision
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   -r python/requirements/ml/dl-cpu-requirements.txt
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   -r python/requirements/ml/dl-cpu-requirements.txt
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   -r python/requirements/ml/dl-cpu-requirements.txt
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/dl-cpu-requirements.txt

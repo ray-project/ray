@@ -72,7 +72,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.redoc",
+    "sphinxcontrib.openapi",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -216,10 +216,6 @@ import template_collections
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = [
     "config.cache",
-    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
-    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
-    # the existing (identical) file. Benign and not fixable upstream.
-    "misc.copy_overwrite",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -487,6 +483,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
@@ -785,16 +793,17 @@ def setup(app):
     app.connect("source-read", apply_ipython3_lexer)
 
 
-redoc = [
-    {
-        "name": "Ray Jobs API",
-        "page": "cluster/running-applications/job-submission/api",
-        "spec": "cluster/running-applications/job-submission/openapi.yml",
-        "embed": True,
-    },
-]
-
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Render the Jobs API OpenAPI spec with sphinxcontrib-openapi's httpdomain
+# renderer, selected here rather than per-directive.
+#
+# Two notes for anyone changing this. The default renderer is "httpdomain:old",
+# which silently renders no request or response schemas at all -- just paths,
+# parameters, and status codes -- so leaving this unset would quietly drop most
+# of the reference content. And selecting the renderer through this config value
+# rather than by writing `.. openapi:httpdomain::` in the page avoids an
+# "unknown directive name" warning, which matters because .readthedocs.yaml sets
+# fail_on_warning: true.
+openapi_default_renderer = "httpdomain"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
