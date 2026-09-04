@@ -442,21 +442,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// caller-supplied ObjectID. The language frontend (e.g. Go) generates and
   /// knows the ObjectID before calling Put, so it must register ownership
   /// explicitly; the three-argument CoreWorker::Put overload does this
-  /// automatically when it generates the ID.
-  void AddOwnedObject(
-      const ObjectID &object_id,
-      const std::vector<ObjectID> &contained_ids,
-      const int64_t object_size,
-      bool add_local_ref = false,
-      const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>()) {
+  /// automatically when it generates the ID. Like that overload, the object is
+  /// pinned at the local node so the reference counter records its location.
+  void AddOwnedObject(const ObjectID &object_id,
+                      const std::vector<ObjectID> &contained_object_ids,
+                      const int64_t object_size,
+                      bool add_local_ref = false) {
     reference_counter_->AddOwnedObject(object_id,
-                                       contained_ids,
+                                       contained_object_ids,
                                        rpc_address_,
                                        CurrentCallSite(),
                                        object_size,
                                        LineageReconstructionEligibility::INELIGIBLE_PUT,
                                        add_local_ref,
-                                       pinned_at_node_id);
+                                       NodeID::FromBinary(rpc_address_.node_id()));
   }
 
   /// Decrease the reference count for this object ID. Should be called

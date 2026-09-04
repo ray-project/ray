@@ -148,6 +148,19 @@ func (o *ObjectRef[T]) GetWithTimeout(timeoutMs int64) (T, error) {
 	// 2. Release() is explicitly called by the user
 	// This is consistent with Java's ObjectRefImpl.get() behavior.
 
+	// If the object's metadata encodes a Ray error type (e.g. WORKER_STARTUP_FAILED, WORKER_DIED,
+	// TASK_EXECUTION_EXCEPTION), surface it as a readable exception instead of a generic
+	// "failed to deserialize object" error. This runs before deserialization because an error
+	// object does not carry a T-typed payload.
+	if nativeObjects[0] == nil {
+		var zero T
+		return zero, fmt.Errorf("native object for object %s is nil", objectIDCopy.Hex())
+	}
+	if exc, ok := object.ErrorObjectFromNative(nativeObjects[0]); ok {
+		var zero T
+		return zero, fmt.Errorf("failed to get object %s: %w", objectIDCopy.Hex(), exc)
+	}
+
 	// Deserialize the object using the global serializer with type information
 	// This ensures type safety throughout the deserialization chain
 	ser := object.GetSerializer()
@@ -157,10 +170,6 @@ func (o *ObjectRef[T]) GetWithTimeout(timeoutMs int64) (T, error) {
 
 	// Deserialize directly to the target type T
 	// This avoids the issue of msgpack decoding small integers as int8/uint8
-	if nativeObjects[0] == nil {
-		var zero T
-		return zero, fmt.Errorf("native object is nil")
-	}
 	if err := ser.DeserializeTo(nativeObjects[0], &result); err != nil {
 		var zero T
 		return zero, fmt.Errorf("failed to deserialize object: %w", err)

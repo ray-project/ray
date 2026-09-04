@@ -328,16 +328,15 @@ func GoExecuteTask(
 	numReturns C.int,
 	actorIDData *C.char,
 	actorIDSize C.int,
-) *C.CSerializedObjectArray {
+) (cResult *C.CSerializedObjectArray) {
 	var funcDescList []string
-	var panicErr error
 	defer func() {
 		if r := recover(); r != nil {
 			// Capture panic with full stack trace
 			stackTrace := make([]byte, 1<<16)
 			n := runtime.Stack(stackTrace, false)
 
-			panicErr = errors.NewTaskExecutionError(
+			panicErr := errors.NewTaskExecutionError(
 				ids.NilTaskID(),
 				ids.NilJobID(),
 				fmt.Errorf("panic: %v", r),
@@ -349,6 +348,16 @@ func GoExecuteTask(
 				"taskType", taskType,
 				"functionDescriptor", funcDescList,
 				"stackTrace", string(stackTrace[:n]))
+
+			// Serialize the panic as a task execution error object and return it through the
+			// named return value. This must happen here: after a panic is recovered, execution
+			// never resumes below the panic point, so a check on panicErr after the task
+			// executor call would never run and the C++ caller would receive nullptr (which
+			// makes CoreWorker::ExecuteTask CHECK-fail and crash the worker).
+			cResult = convertGoResultToC(nil, panicErr, int(numReturns))
+			if cResult != nil {
+				taskExecutorLogger.Info("returning panic error result", "count", cResult.count)
+			}
 		}
 	}()
 
@@ -404,17 +413,8 @@ func GoExecuteTask(
 		actorID,
 	)
 
-	// Check for panic error captured in defer
-	if panicErr != nil {
-		// Convert panic error to C format
-		cResult := convertGoResultToC(nil, panicErr, int(numReturns))
-		taskExecutorLogger.Error(fmt.Errorf("returning panic error result"),
-			"count", cResult.count)
-		return cResult
-	}
-
 	// Convert result to C format
-	cResult := convertGoResultToC(results, err, int(numReturns))
+	cResult = convertGoResultToC(results, err, int(numReturns))
 	if cResult != nil && cResult.count > 0 && cResult.objects != nil {
 		objs := unsafe.Slice((*C.CSerializedObject)(cResult.objects), int(cResult.count))
 		taskExecutorLogger.V(1).Info("First result object details",

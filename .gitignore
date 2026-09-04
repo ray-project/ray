@@ -264,6 +264,8 @@ bazel/rewrite.txt
 # Local/internal working artifacts for the go-runtime open-source migration.
 # Not meant to be pushed to the public upstream repo.
 .log/
+# Generated Go runtime binaries and libraries (raygo + go_runtime.so), large.
+python/ray/go/
 .codex/
 .claude/outputs/
 *.patch

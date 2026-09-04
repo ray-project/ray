@@ -42,7 +42,6 @@ ray_cc_library(
         "gcs_client_actors.cc",
         "gcs_client_autoscaler.cc",
         "gcs_client_publisher.cc",
-        "gcs_client_subscriber.cc",
     ],
     hdrs = [
         "gcs_client_bridge.h",
@@ -67,8 +66,23 @@ ray_cc_test(
     name = "gcs_client_bridge_test",
     size = "small",
     srcs = ["gcs_client_bridge_test.cc"],
+    linkopts = ["-lm"],
     deps = [
         ":gcs_client_bridge",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# gcs_client_publisher unit test - cover the retained log-batch publish path
+# error boundaries (no live GCS cluster required)
+ray_cc_test(
+    name = "gcs_client_publisher_test",
+    size = "small",
+    srcs = ["gcs_client_publisher_test.cc"],
+    linkopts = ["-lm"],
+    deps = [
+        ":gcs_client_bridge",
+        ":gcs_memory",
         "@com_google_googletest//:gtest_main",
     ],
 )

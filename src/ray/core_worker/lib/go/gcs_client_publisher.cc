@@ -8,40 +8,6 @@
 
 extern "C" {
 
-int ray_gcs_client_publisher_publish_errors(CGcsClient* client,
-                                            char** error_out) {
-    if (!client) {
-        set_error(error_out, "Invalid arguments: client is null");
-        return 0;
-    }
-
-    try {
-        // TODO: 调用 C++ Publisher 的 PublishErrors 方法
-        // 当前返回成功占位
-        return 1;
-    } catch (const std::exception& e) {
-        set_error(error_out, e.what());
-        return 0;
-    }
-}
-
-int ray_gcs_client_publisher_publish_logs(CGcsClient* client,
-                                          char** error_out) {
-    if (!client) {
-        set_error(error_out, "Invalid arguments: client is null");
-        return 0;
-    }
-
-    try {
-        // TODO: 调用 C++ Publisher 的 PublishLogs 方法
-        // 当前返回成功占位
-        return 1;
-    } catch (const std::exception& e) {
-        set_error(error_out, e.what());
-        return 0;
-    }
-}
-
 int ray_gcs_client_publisher_publish_log_batch(CGcsClient* client,
                                                const char* key_id,
                                                const char* ip,

@@ -68,7 +68,12 @@ void ObjectStoreOperations::PutWithID(const ray::ObjectID& object_id,
   // subsequent Get cannot resolve an owner and the fetch never completes.
   core_worker.AddOwnedObject(object_id, contained_object_ids, object->GetSize(),
                              /*add_local_ref=*/true);
-  core_worker.Put(*object, contained_object_ids, object_id, /*pin_object=*/true);
+  auto status = core_worker.Put(*object, contained_object_ids, object_id, /*pin_object=*/true);
+  // Roll back the local reference on failure, matching the three-argument Put
+  // overload, so a failed write does not leak a reference.
+  if (!status.ok()) {
+    core_worker.RemoveLocalReference(object_id);
+  }
 }
 
 std::vector<std::shared_ptr<ray::RayObject>> ObjectStoreOperations::Get(

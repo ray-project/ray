@@ -75,12 +75,6 @@ type PlacementGroupInterface interface {
 	ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error)
 }
 
-// PublisherInterface publishes log and error streams.
-type PublisherInterface interface {
-	PublishErrors(ctx context.Context) (<-chan ErrorData, error)
-	PublishLogs(ctx context.Context) (<-chan LogData, error)
-}
-
 // AutoscalerInterface exposes the autoscaler status.
 type AutoscalerInterface interface {
 	// GetAutoscalerStatus returns the deserialized protobuf autoscaler status.

@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/examples/userfuncs",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/pkg/log",
         "//go/pkg/runtime/api",
     ],
 )

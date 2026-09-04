@@ -183,6 +183,11 @@ func (c *TaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
 	for i, arg := range args {
 		functionArgs[i] = convertArgToFunctionArg(arg)
 	}
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (successful submit, submit failure, or an
+	// unavailable submitter): once submitted, the C++ reference counter tracks
+	// the argument object; otherwise it would stay pinned in the object store.
+	defer releaseInternalByRefArgRefs(functionArgs)
 
 	// Get task submitter
 	submitter := getTaskSubmitter()
@@ -211,6 +216,31 @@ func (c *TaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
 	}
 
 	return nil, nil
+}
+
+// releaseInternalByRefArgRefs releases the local reference that PutWithID added
+// for the internal pass-by-reference arguments (marked ReleaseAfterSubmit). It is
+// deferred so it runs on every exit path: after a successful submit the C++
+// reference counter tracks the argument object (submitted-task reference plus the
+// worker's borrow), and on a failed submit or an unavailable submitter the argument
+// was never used. Either way the reference is dropped and the object is not pinned
+// in the object store forever.
+func releaseInternalByRefArgRefs(args []function.FunctionArg) {
+	handle, ok := tryGetHandle()
+	if !ok || handle == nil {
+		return
+	}
+	runtime := handle.Runtime()
+	if runtime == nil || runtime.GetObjectStore() == nil {
+		return
+	}
+	objectStore := runtime.GetObjectStore()
+	for _, arg := range args {
+		if arg.IsPassByRef() && arg.ObjectRef != nil && arg.ObjectRef.ReleaseAfterSubmit {
+			objectID := arg.ObjectRef.ObjectID
+			_ = objectStore.RemoveLocalReference(&objectID)
+		}
+	}
 }
 
 // ============================================================================
@@ -347,6 +377,9 @@ func (c *ActorCreator[T]) Create(args ...interface{}) (*ActorHandleImpl[T], erro
 	for i, arg := range args {
 		functionArgs[i] = convertArgToFunctionArg(arg)
 	}
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (see releaseInternalByRefArgRefs).
+	defer releaseInternalByRefArgRefs(functionArgs)
 
 	// Get task submitter
 	submitter := getTaskSubmitter()
@@ -445,8 +478,12 @@ func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
 					// Put the object into the object store with the generated ID
 					err := objectStore.PutRawWithID(nativeObj, &objectID)
 					if err == nil {
-						// Return pass-by-reference argument
-						return function.NewFunctionArgByRef(objectID, nil)
+						// Return pass-by-reference argument, marked for release once
+						// the task is submitted so the PutWithID local reference does
+						// not pin the object in the object store forever.
+						arg := function.NewFunctionArgByRef(objectID, nil)
+						arg.ObjectRef.ReleaseAfterSubmit = true
+						return arg
 					}
 				}
 			}
@@ -562,6 +599,12 @@ func (c *ActorTaskCaller[T]) Remote() (*ObjectRef[T], error) {
 	if c.err != nil {
 		return nil, c.err
 	}
+
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (successful submit, submit failure, or an
+	// unavailable submitter): once submitted, the C++ reference counter tracks
+	// the argument object; otherwise it would stay pinned in the object store.
+	defer releaseInternalByRefArgRefs(c.args)
 
 	submitter := getTaskSubmitter()
 	if submitter == nil {

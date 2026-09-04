@@ -18,10 +18,13 @@ package main
 
 import (
 	"github.com/ray-project/ray/go/examples/userfuncs"
+	"github.com/ray-project/ray/go/pkg/log"
 )
 
 func init() {
-	_ = userfuncs.RegisterFunctions()
+	if err := userfuncs.RegisterFunctions(); err != nil {
+		log.Log.Error(err, "register user functions failed")
+	}
 }
 
 func main() {

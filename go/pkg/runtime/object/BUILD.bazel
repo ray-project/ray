@@ -35,9 +35,11 @@ go_library(
     importpath = "github.com/ray-project/ray/go/pkg/runtime/object",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/internal/errors",
         "//go/pkg/ids",
         "//go/pkg/log",
         "@com_github_vmihailenco_msgpack_v5//:msgpack",
+        "@org_golang_google_protobuf//encoding/protowire",
     ],
 )
 
@@ -48,6 +50,7 @@ go_test(
     srcs = [
         "actor_handle_test.go",
         "exception_serializer_test.go",
+        "exception_test.go",
         "gpu_mapping_test.go",
         "object_ref_test.go",
         "object_serializer_test.go",
