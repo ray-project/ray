@@ -8,7 +8,9 @@ myst:
 
 # Sandboxed Code Execution with Ray and Agent Sandbox
 
-This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
+This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment, and how to {ref}`suspend and resume sandboxes <kuberay-agent-sandbox-snapshot>` between agent turns to reclaim their capacity while they're idle. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
+
+The setup below enables memory-snapshot suspend/resume by default. Suspension is opt-in at runtime — sandboxes behave normally until you suspend one — and each snapshot-specific setup piece is noted, so you can skip it if you only want sandboxed code execution.
 
 ---
 
@@ -32,7 +34,20 @@ The following example creates a KubeRay RayJob, which runs a Ray job that uses t
 
 ### Step 1: Create a GKE cluster and Node Pools   
 
-Run the following command to create a GKE cluster. In this example we will create two separate node pools, one for KubeRay provisioned Pods and one for Sandbox pods using the gVisor runtime:
+Create a GKE Standard cluster with [Pod Snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/pod-snapshots) enabled — Pod Snapshots power the memory-snapshot suspend/resume shown later in this guide and require version `1.35.3-gke.1234000` or later with Workload Identity Federation. If you don't plan to use suspend/resume, you can omit `--enable-pod-snapshots` and the Workload Identity flags:
+
+```bash
+gcloud container clusters create <YOUR_CLUSTER_NAME> \
+    --enable-pod-snapshots \
+    --cluster-version=<CLUSTER_VERSION> \
+    --workload-pool=<PROJECT_ID>.svc.id.goog \
+    --workload-metadata=GKE_METADATA \
+    --location=<LOCATION>
+```
+
+See [Prepare for Pod snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/pod-snapshots-prepare) for enabling the feature on an existing cluster.
+
+Create two separate node pools, one for KubeRay provisioned Pods and one for Sandbox pods using the gVisor runtime. The gVisor pool uses `n2-standard-4` because E2 machines don't support whole-pod snapshots (any machine type works if you skipped Pod Snapshots):
 
 ```bash
 gcloud container node-pools create ray-worker-pool \
@@ -43,7 +58,8 @@ gcloud container node-pools create ray-worker-pool \
 gcloud container node-pools create ray-gvisor-pool \
     --cluster=<YOUR_CLUSTER_NAME> \
     --sandbox type=gvisor \
-    --machine-type=e2-standard-4 \
+    --machine-type=n2-standard-4 \
+    --image-type=cos_containerd \
     --num-nodes=1
 ```
 
@@ -53,12 +69,12 @@ Follow the instructions in [KubeRay operator](kuberay-operator-deploy) to instal
 
 ### Step 3: Deploy Agent Sandbox 
 
-Install the Custom Resource Definitions (CRDs), controllers, and extensions from the official Agent Sandbox release.
+Install the Custom Resource Definitions (CRDs), controllers, and extensions from the official Agent Sandbox release. This guide uses `v1.0.0`, the minimum version for the SDK's snapshot extension:
 
 ```bash
-export VERSION="v0.5.0"
+export VERSION="v1.0.0"
 
-kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/sandbox.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml
 ```
 
@@ -101,6 +117,12 @@ Apply the RBAC configurations:
 kubectl apply -f rbac.yaml
 ```
 
+The suspend/resume path needs additional permissions: the SDK snapshot extension patches `Sandbox` resources (`spec.operatingMode`), reads Pods across the suspend/resume cycle, and manages `podsnapshot.gke.io` triggers and snapshots. Apply them too (skip if you don't plan to use suspend/resume):
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/rbac.yaml
+```
+
 ### Step 5: Deploy Sandbox Infrastructure
 
 Run the following command to create sandbox infrastructure using Agent Sandbox:
@@ -126,6 +148,51 @@ Based on the configuration of the SandboxWarmpool, we expect 6 gVisor Pods to be
 GVISOR_POD=$(kubectl get pod -l app=python-runtime-pool -o jsonpath='{.items[0].metadata.name}')
 kubectl get pod "$GVISOR_POD" -o jsonpath='{.spec.automountServiceAccountToken}{"\n"}'   # expect: false
 kubectl exec "$GVISOR_POD" -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1     # expect: No such file or directory
+```
+
+#### Snapshot storage and sandbox pool
+
+This part provisions the storage and warm pool used by memory-snapshot suspend/resume (skip it if you don't plan to use suspend/resume). Snapshot state is written to a Cloud Storage bucket, which needs hierarchical namespaces, uniform bucket-level access, and the same location as the cluster:
+
+```bash
+gcloud storage buckets create "gs://<BUCKET_NAME>" \
+    --uniform-bucket-level-access \
+    --enable-hierarchical-namespace \
+    --soft-delete-duration=0d \
+    --location=<LOCATION>
+```
+
+Grant access to the `sandbox-snapshot-ksa` Kubernetes ServiceAccount the sandbox pods run as (created below), via Workload Identity Federation:
+
+```bash
+gcloud storage buckets add-iam-policy-binding "gs://<BUCKET_NAME>" \
+    --member="principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/default/sa/sandbox-snapshot-ksa" \
+    --role="roles/storage.bucketViewer"
+
+gcloud storage buckets add-iam-policy-binding "gs://<BUCKET_NAME>" \
+    --member="principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/default/sa/sandbox-snapshot-ksa" \
+    --role="roles/storage.objectUser"
+```
+
+And grant the GKE Pod Snapshot controller access to the bucket:
+
+```bash
+gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
+    --member="serviceAccount:service-<PROJECT_NUMBER>@container-engine-robot.iam.gserviceaccount.com" \
+    --role="roles/storage.objectUser" \
+    --condition='expression=resource.name.startsWith("projects/_/buckets/<BUCKET_NAME>"),title=restrict_to_bucket'
+```
+
+Then download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
+
+- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it.
+- `PodSnapshotStorageConfig` — points Pod Snapshots at your bucket.
+- `PodSnapshotPolicy` — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The grouping rule is required by the SDK: it guarantees a sandbox restores only from its own snapshots.
+- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, separate from the pool above. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while the suspend/resume example's Ray actors connect to the sandbox pod IP directly; on a NetworkPolicy-enforcing cluster the managed policy would block them. For containment, layer on an egress NetworkPolicy like the one above.
+
+```bash
+kubectl apply -f sandbox-snapshot.yaml
+kubectl get pods -l app=python-snapshot-pool
 ```
 
 ### Step 6: Create the RayJob
@@ -185,8 +252,8 @@ The turn boundary is the natural suspend signal: the orchestrator (here, a Ray a
 
 Agent Sandbox supports two suspension mechanisms:
 
-1. **Pause/resume with `spec.operatingMode`** — built into Agent Sandbox, works on any Kubernetes cluster, and needs nothing beyond the setup you completed above. Suspending terminates the sandbox pod (freeing its CPU/memory reservation) while keeping the `Sandbox` resource and its volumes; resuming recreates the pod and remounts storage. Process state and memory are not preserved.
-2. **Memory snapshots** — Agent Sandbox supports snapshotting a sandbox's full memory state through the Python SDK's snapshot extension, which checkpoints the entire guest (process tree, memory, open file descriptors, `tmpfs`) to object storage before suspending, and restores it intact on resume. This guide uses [GKE Pod Snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/pod-snapshots) as the reference snapshot backend. The steps marked **(memory snapshots only)** below are required only for this mechanism.
+1. **Pause/resume with `spec.operatingMode`** — built into Agent Sandbox and works on any Kubernetes cluster, with no snapshot infrastructure at all. Suspending terminates the sandbox pod (freeing its CPU/memory reservation) while keeping the `Sandbox` resource and its volumes; resuming recreates the pod and remounts storage. Process state and memory are not preserved.
+2. **Memory snapshots** — Agent Sandbox supports snapshotting a sandbox's full memory state through the Python SDK's snapshot extension, which checkpoints the entire guest (process tree, memory, open file descriptors, `tmpfs`) to object storage before suspending, and restores it intact on resume. This guide uses GKE Pod Snapshots as the reference snapshot backend, using the snapshot pieces of Steps 1, 3, 4, and 5.
 
 Use plain `operatingMode` pause/resume when the sandbox's durable state lives on its persistent volumes. Use memory snapshots when the agent depends on live process state — running background processes, in-memory data, open files — that must survive the gap.
 
@@ -220,98 +287,13 @@ Semantics to plan around:
 - The pod IP and pod name change across the cycle. Re-resolve them from the Sandbox status after resume; don't cache connections across a suspend.
 - The pod's CPU/memory reservation is returned to the scheduler while suspended — this is where the density win comes from.
 
-### Memory snapshots (memory snapshots only from here on)
+### Memory snapshots
 
-The example runs a RayJob in which each Ray actor claims a sandbox from a warm pool and drives a simulated multi-turn rollout: at the turn boundary it calls `sandbox.suspend()` (snapshot + pod termination) while the "model is thinking", and `sandbox.resume()` before the next turn. The first turn writes state to `/tmp` inside the sandbox and the second turn reads it back after the suspend/resume cycle — `/tmp` is wiped by a plain pod restart, so the read succeeding (together with the SDK's `restored_from_snapshot` check) is what distinguishes a memory snapshot from a plain pause.
+The example runs a RayJob in which each Ray actor claims a sandbox from the `python-snapshot-pool` warm pool and drives a simulated multi-turn rollout: at the turn boundary it calls `sandbox.suspend()` (snapshot + pod termination) while the "model is thinking", and `sandbox.resume()` before the next turn. The first turn writes state to `/tmp` inside the sandbox and the second turn reads it back after the suspend/resume cycle — `/tmp` is wiped by a plain pod restart, so the read succeeding (together with the SDK's `restored_from_snapshot` check) is what distinguishes a memory snapshot from a plain pause.
 
-The suspend/resume calls come from the Agent Sandbox Python SDK's snapshot extension ([`k8s_agent_sandbox.gke_extensions.snapshots`](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client/k8s_agent_sandbox/gke_extensions/snapshots)), which layers GKE Pod Snapshots on top of the `operatingMode` mechanism above.
+The suspend/resume calls come from the Agent Sandbox Python SDK's snapshot extension ([`k8s_agent_sandbox.gke_extensions.snapshots`](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client/k8s_agent_sandbox/gke_extensions/snapshots)), which layers GKE Pod Snapshots on top of the `operatingMode` mechanism above. The SDK package `k8s-agent-sandbox>=1.0.0` requires Python 3.11 or later on the Ray image.
 
-#### Enable Pod Snapshots on the cluster (memory snapshots only)
-
-Pod Snapshots require a GKE Standard cluster on version `1.35.3-gke.1234000` or later, with Workload Identity Federation, and a gVisor node pool on a supported machine family (E2 machines don't support whole-pod snapshots — use `n2-standard-4` or similar for the gVisor pool):
-
-```bash
-gcloud container clusters create <YOUR_CLUSTER_NAME> \
-    --enable-pod-snapshots \
-    --cluster-version=<CLUSTER_VERSION> \
-    --workload-pool=<PROJECT_ID>.svc.id.goog \
-    --workload-metadata=GKE_METADATA \
-    --location=<LOCATION>
-
-# gVisor node pool for the sandbox pods (non-E2 machine type).
-gcloud container node-pools create ray-gvisor-pool \
-    --cluster=<YOUR_CLUSTER_NAME> \
-    --sandbox type=gvisor \
-    --machine-type=n2-standard-4 \
-    --image-type=cos_containerd \
-    --num-nodes=1 \
-    --location=<LOCATION>
-```
-
-See [Prepare for Pod snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/pod-snapshots-prepare) for enabling the feature on an existing cluster. Memory snapshots also require Agent Sandbox `v1.0.0` or later and the SDK package `k8s-agent-sandbox>=1.0.0` (which needs Python 3.11 or later on the Ray image):
-
-```bash
-export VERSION="v1.0.0"
-kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/sandbox.yaml
-kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml
-```
-
-#### Create the snapshot storage bucket and grant access (memory snapshots only)
-
-Snapshot state is written to a Cloud Storage bucket. The bucket needs hierarchical namespaces, uniform bucket-level access, and the same location as the cluster:
-
-```bash
-gcloud storage buckets create "gs://<BUCKET_NAME>" \
-    --uniform-bucket-level-access \
-    --enable-hierarchical-namespace \
-    --soft-delete-duration=0d \
-    --location=<LOCATION>
-```
-
-Grant access to the `sandbox-snapshot-ksa` Kubernetes ServiceAccount the sandbox pods run as (created below), via Workload Identity Federation:
-
-```bash
-gcloud storage buckets add-iam-policy-binding "gs://<BUCKET_NAME>" \
-    --member="principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/default/sa/sandbox-snapshot-ksa" \
-    --role="roles/storage.bucketViewer"
-
-gcloud storage buckets add-iam-policy-binding "gs://<BUCKET_NAME>" \
-    --member="principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/default/sa/sandbox-snapshot-ksa" \
-    --role="roles/storage.objectUser"
-```
-
-And grant the GKE Pod Snapshot controller access to the bucket:
-
-```bash
-gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
-    --member="serviceAccount:service-<PROJECT_NUMBER>@container-engine-robot.iam.gserviceaccount.com" \
-    --role="roles/storage.objectUser" \
-    --condition='expression=resource.name.startsWith("projects/_/buckets/<BUCKET_NAME>"),title=restrict_to_bucket'
-```
-
-#### Apply additional RBAC for the Ray workers (memory snapshots only)
-
-Beyond claiming sandboxes, the SDK snapshot extension patches `Sandbox` resources (`spec.operatingMode`), reads Pods across the suspend/resume cycle, and manages `podsnapshot.gke.io` triggers and snapshots:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/rbac.yaml
-```
-
-#### Deploy the snapshot-enabled sandbox pool (memory snapshots only)
-
-Download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
-
-- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it.
-- `PodSnapshotStorageConfig` — points Pod Snapshots at your bucket.
-- `PodSnapshotPolicy` — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The grouping rule is required by the SDK: it guarantees a sandbox restores only from its own snapshots.
-- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, as in the base example. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while this example's Ray actors connect to the sandbox pod IP directly; on a NetworkPolicy-enforcing cluster the managed policy would block them. For containment, layer on an egress NetworkPolicy like the one in Step 5.
-
-```bash
-kubectl apply -f sandbox-snapshot.yaml
-kubectl get pods -l app=python-snapshot-pool
-```
-
-#### Run the snapshot RayJob and verify (memory snapshots only)
+Run the suspend/resume RayJob and stream its logs:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/ray-job.yaml
