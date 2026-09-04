@@ -146,7 +146,7 @@ res = ray.get(sb.exec.remote("python3 -c 'import urllib.request; urllib.request.
 print(res.exit_code)  # Non-zero exit code
 ```
 
-With `network="public"`, each sandbox gets internet egress from its own private network namespace, bridged by [pasta](https://passt.top): sandboxes can bind the same port concurrently without conflicting, and can't reach each other, the Pod, or internal cluster services. This mode needs the `pasta` binary on the worker's `$PATH` and `/dev/net/tun` available in the Ray container (present on standard GKE `containerd` node pools).
+With `network="public"`, each sandbox gets internet egress from its own private network namespace, bridged by [pasta](https://passt.top): sandboxes can bind the same port concurrently without conflicting, and can't reach each other or the Pod's own services. They can still reach anything else the node can reach, including other Pods and internal cluster services, so keep `network="none"` for untrusted code. This mode needs the `pasta` binary on the worker's `$PATH` and `/dev/net/tun` available in the Ray container (present on standard GKE `containerd` node pools).
 
 ---
 

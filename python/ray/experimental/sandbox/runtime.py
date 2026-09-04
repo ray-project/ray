@@ -141,7 +141,6 @@ class SandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
-        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox.
 
@@ -153,8 +152,6 @@ class SandboxRuntime:
             env: Environment variables to set for the command.
             shell: Optional shell for string commands, overriding the
                 sandbox's configured shell (default /bin/bash).
-            user: Optional user to run as: a numeric uid, "uid:gid", or a
-                name from the image's /etc/passwd (default: the image user).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -166,7 +163,6 @@ class SandboxRuntime:
             cwd=cwd,
             env=env,
             shell=shell,
-            user=user,
         )
 
     async def exec_async(
@@ -177,7 +173,6 @@ class SandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
-        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox asynchronously.
 
@@ -189,8 +184,6 @@ class SandboxRuntime:
             env: Environment variables to set for the command.
             shell: Optional shell for string commands, overriding the
                 sandbox's configured shell (default /bin/bash).
-            user: Optional user to run as: a numeric uid, "uid:gid", or a
-                name from the image's /etc/passwd (default: the image user).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -203,7 +196,6 @@ class SandboxRuntime:
             cwd=cwd,
             env=env,
             shell=shell,
-            user=user,
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:
@@ -236,11 +228,7 @@ class SandboxRuntime:
             f.write(content)
 
     def write_file(
-        self,
-        instance_id: str,
-        path: str,
-        content: Union[str, bytes],
-        append: bool = False,
+        self, instance_id: str, path: str, content: Union[str, bytes]
     ) -> None:
         """Write string or binary content directly to a file inside the sandbox.
 
@@ -248,9 +236,8 @@ class SandboxRuntime:
             instance_id: Unique identifier of the sandbox instance.
             path: Destination file path inside the sandbox.
             content: String or binary content to write into the file.
-            append: Append to the file instead of truncating it.
         """
-        self._backend.write_file(instance_id, path, content, append=append)
+        self._backend.write_file(instance_id, path, content)
 
     def read_file(self, instance_id: str, path: str) -> bytes:
         """Read binary content from a file inside the sandbox.

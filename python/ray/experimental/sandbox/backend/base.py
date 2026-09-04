@@ -107,11 +107,7 @@ class BaseSandboxBackend(ABC):
 
     @abstractmethod
     def write_file(
-        self,
-        sandbox_id: str,
-        path: str,
-        content: Union[str, bytes],
-        append: bool = False,
+        self, sandbox_id: str, path: str, content: Union[str, bytes]
     ) -> None:
         """Write content to a file inside the sandbox.
 
@@ -119,7 +115,6 @@ class BaseSandboxBackend(ABC):
             sandbox_id: Unique string identifier of the sandbox.
             path: Target file path inside the sandbox environment.
             content: Text string or raw bytes to write.
-            append: Append to the file instead of truncating it.
         """
         pass
 

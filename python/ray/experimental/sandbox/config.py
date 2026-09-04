@@ -102,12 +102,13 @@ class SandboxConfig:
             pasta: ports and loopback are per-sandbox, nothing in the
             sandbox is reachable from the host or from other sandboxes, and
             /etc/resolv.conf is generated from ``dns``, inheriting nothing
-            from the host resolver. Requires the ``pasta`` binary on the
-            node; setting ``RAY_SANDBOX_PUBLIC_HOST_NETNS=1`` on workers
-            reverts "public" to the worker's shared namespace. "host" gives
-            full host network identity — the host's resolv.conf, internal
-            networks, and a port space shared with the worker and every
-            other host-mode sandbox.
+            from the host resolver. The sandbox can still reach any network
+            address the node can reach, including other Ray nodes and
+            internal services, so use "none" for untrusted code. Requires
+            the ``pasta`` binary on the node. "host" gives full host network
+            identity — the host's resolv.conf, internal networks, and a
+            port space shared with the worker and every other host-mode
+            sandbox.
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is

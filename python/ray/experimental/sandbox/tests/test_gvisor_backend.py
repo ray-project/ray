@@ -1,6 +1,5 @@
 import os
 import socket
-import subprocess
 import sys
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
-    SandboxExecError,
     SandboxNotFoundError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -309,50 +307,6 @@ def test_image_workdir_sets_cwd_without_becoming_writable():
         runtime.delete(instance_id)
 
 
-def test_resolve_exec_user(tmp_path, monkeypatch):
-    """Numeric users pass through; names resolve via the image's passwd."""
-    backend = GVisorSandboxBackend()
-    img_dir = tmp_path / "img"
-    (img_dir / "rootfs" / "etc").mkdir(parents=True)
-    (img_dir / "rootfs" / "etc" / "passwd").write_text(
-        "root:x:0:0:root:/root:/bin/bash\n"
-        "postfix:x:102:104::/var/spool/postfix:/usr/sbin/nologin\n"
-    )
-    monkeypatch.setattr(
-        backend._image_manager, "get_image_dir", lambda image: str(img_dir)
-    )
-
-    assert backend._resolve_exec_user("1000", "img") == "1000"
-    assert backend._resolve_exec_user("1000:1000", "img") == "1000:1000"
-    assert backend._resolve_exec_user("postfix", "img") == "102:104"
-    # "name:gid" resolves the name and honors the explicit gid.
-    assert backend._resolve_exec_user("postfix:999", "img") == "102:999"
-    with pytest.raises(SandboxExecError):
-        backend._resolve_exec_user("nosuch", "img")
-
-
-def test_kill_pasta_missing_pidfile_is_noop(tmp_path):
-    """No pasta.pid (the non-public path) means nothing to reap."""
-    GVisorSandboxBackend()._kill_pasta(str(tmp_path))
-
-
-def test_kill_pasta_signals_recorded_pid(tmp_path):
-    """A recorded pasta pid is SIGKILLed on teardown."""
-    proc = subprocess.Popen(["sleep", "30"])
-    (tmp_path / "pasta.pid").write_text(f"{proc.pid}\n")
-    GVisorSandboxBackend()._kill_pasta(str(tmp_path))
-    assert proc.wait(timeout=5) != 0
-
-
-_PUBLIC_HOST_NETNS_ENV = "RAY_SANDBOX_PUBLIC_HOST_NETNS"
-
-
-@pytest.fixture
-def no_host_netns(monkeypatch):
-    """Default posture: the shared-host-network kill switch is unset."""
-    monkeypatch.delenv(_PUBLIC_HOST_NETNS_ENV, raising=False)
-
-
 def _public_config() -> GVisorSandboxConfig:
     return GVisorSandboxConfig(
         image="busybox:latest", shell="/bin/sh", network="public"
@@ -390,10 +344,10 @@ def _pasta_pids() -> set:
     return pids
 
 
-def test_build_run_command_public_wraps_with_pasta(no_host_netns):
+def test_build_run_command_public_wraps_with_pasta():
     """The pasta flags are the isolation property and the chain's shape is the
     topology, so pin both: holder namespaces first, pasta attached from the pod
-    side, runsc entered as mapped root (never --rootless)."""
+    side in the foreground, runsc entered as mapped root (never --rootless)."""
     cmd = _run_argv("public")
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
@@ -404,12 +358,15 @@ def test_build_run_command_public_wraps_with_pasta(no_host_netns):
     assert script.endswith("run --bundle /tmp/rd sb-1")
     for fragment in (
         "/tmp/rd/netns.pid",
+        # pasta stays in the sandbox's process group (--foreground) and its
+        # pidfile, written once initialised, gates the runsc start.
         "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
-        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user",
-        # pasta's daemon pid is recorded so teardown can reap it.
-        "--pid /tmp/rd/pasta.pid",
-        # The wait loop fast-fails if the holder dies and refuses an empty
-        # NSPID (which would resolve to /proc//ns/net).
+        "--foreground --pid /tmp/rd/pasta.pid "
+        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user &",
+        "kill -0 $PASTA",
+        "[ -s /tmp/rd/pasta.pid ] ||",
+        # The holder wait fast-fails if the holder dies and refuses an
+        # empty NSPID (which would resolve to /proc//ns/net).
         "kill -0 $HOLDER",
         '[ -n "$NSPID" ]',
         "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
@@ -420,10 +377,25 @@ def test_build_run_command_public_wraps_with_pasta(no_host_netns):
     assert "--rootless" not in script
 
 
+def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
+    """Dropping --rootless must not make runsc start configuring cgroups: the
+    wrapper forces --ignore-cgroups for rootless configs, and only for them."""
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+
+    script = _run_argv("public")[2]
+    assert "--ignore-cgroups" in script
+    assert "--rootless" not in script
+
+    privileged = _run_argv("public", rootless=False)[2]
+    assert "--ignore-cgroups" not in privileged
+
+    assert "--ignore-cgroups" not in _run_argv("none")
+
+
 @pytest.mark.parametrize(
     "network,rootless", [("none", True), ("host", True), ("sandbox", False)]
 )
-def test_build_run_command_other_modes_unwrapped(no_host_netns, network, rootless):
+def test_build_run_command_other_modes_unwrapped(network, rootless):
     """Every mode but "public" keeps today's bare runsc invocation."""
     cmd = _run_argv(network, rootless=rootless)
     assert cmd[0] == "runsc"
@@ -432,16 +404,7 @@ def test_build_run_command_other_modes_unwrapped(no_host_netns, network, rootles
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
 
 
-def test_public_host_netns_kill_switch(monkeypatch):
-    """The env kill switch restores the pre-netns shared-host behavior."""
-    monkeypatch.setenv(_PUBLIC_HOST_NETNS_ENV, "1")
-    cmd = _run_argv("public")
-    assert cmd[0] == "runsc"
-    assert "pasta" not in cmd
-    assert cmd[cmd.index("--network") + 1] == "host"
-
-
-def test_create_sandbox_requires_pasta(no_host_netns, monkeypatch):
+def test_create_sandbox_requires_pasta(monkeypatch):
     """A missing pasta fails fast — before the image pull — with remediation."""
 
     class _NoPullImageManager:
@@ -455,10 +418,7 @@ def test_create_sandbox_requires_pasta(no_host_netns, monkeypatch):
     backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(_public_config())
-    assert all(
-        hint in str(err.value)
-        for hint in ("pasta", "auto_install_pasta", _PUBLIC_HOST_NETNS_ENV)
-    )
+    assert all(hint in str(err.value) for hint in ("pasta", "passt"))
 
 
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
@@ -518,13 +478,16 @@ def test_netns_egress_and_dns(ensure_pasta):
 
 def test_netns_teardown_reaps_pasta(ensure_pasta):
     """delete_sandbox ends the pasta process tree and removes all state."""
+    before = _pasta_pids()
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(_public_config())
     meta = backend._sandbox_metadata[sb]
     assert meta["proc"].poll() is None
+    assert _pasta_pids() > before
 
     backend.delete_sandbox(sb)
     assert meta["proc"].poll() is not None
+    assert _pasta_pids() == before
     assert not os.path.exists(meta["root_dir"])
     assert sb not in backend._sandbox_metadata
 
