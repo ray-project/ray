@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray.data._internal.datasource.mcap_datasource import (
     MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT,
-    MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND,
     MCAPDatasource,
     TimeRange,
 )
