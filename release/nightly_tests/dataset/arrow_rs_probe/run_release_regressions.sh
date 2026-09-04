@@ -28,7 +28,10 @@
 #
 # Knobs (env): TPCH_SF, WRITE_SF, GROUPBY_SF, JOINS_SF (downsizes),
 #   JOIN_TYPES=right_outer[,inner,...], REPEAT, ONLY (non-tpch cell filter),
-#   SKIP_TPCH=1 / SKIP_PROBE=1, FORCE_SETUP=1, DRY_RUN=1
+#   SKIP_TPCH=1 / SKIP_PROBE=1, FORCE_SETUP=1, DRY_RUN=1,
+#   ARMS=pa,rs,rseos (add rstrim; 2026-09-04 allocator arms), CPUS=24,48,96
+#   (non-tpch cells once per local num_cpus — the M107 col02 sweep),
+#   MONITOR_INTERVAL=1.0 (node-mem sampler seconds; 0.1 for the q6/wide rows)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -60,12 +63,14 @@ if [ "${SKIP_TPCH:-0}" != "1" ]; then
   python "$SCRIPT_DIR/tpch_probe.py" --outdir "$OUT_ROOT/tpch_v2" \
     --sf "${TPCH_SF:-10}" --repeat "${REPEAT:-1}" $DRY_FLAG \
     --cell-timeout "${TPCH_CELL_TIMEOUT:-3600}" \
+    --arms "${ARMS:-pa,rs,rseos}" --monitor-interval "${MONITOR_INTERVAL:-1.0}" \
     --queries "${TPCH_QUERIES_V2:-tpch_q2,tpch_q3,tpch_q6,tpch_q10,tpch_q11,tpch_q13,tpch_q17,tpch_q18}" \
     --strategies hash_shuffle_v2 2>&1 | tee "$OUT_ROOT/tpch_v2.out"
   say "2/3 tpch leg, hash_shuffle v1 (sf ${TPCH_SF:-10}; $OUT_ROOT/tpch_v1)"
   python "$SCRIPT_DIR/tpch_probe.py" --outdir "$OUT_ROOT/tpch_v1" \
     --sf "${TPCH_SF:-10}" --repeat "${REPEAT:-1}" $DRY_FLAG \
     --cell-timeout "${TPCH_CELL_TIMEOUT:-3600}" \
+    --arms "${ARMS:-pa,rs,rseos}" --monitor-interval "${MONITOR_INTERVAL:-1.0}" \
     --queries "${TPCH_QUERIES_V1:-tpch_q4,tpch_q6,tpch_q14,tpch_q17,tpch_q22}" \
     --strategies hash_shuffle 2>&1 | tee "$OUT_ROOT/tpch_v1.out"
 fi
@@ -77,7 +82,8 @@ if [ "${SKIP_PROBE:-0}" != "1" ]; then
     --cell-timeout "${PROBE_CELL_TIMEOUT:-3600}" \
     --write-sf "${WRITE_SF:-100}" --groupby-sf "${GROUPBY_SF:-10}" \
     --joins-sf "${JOINS_SF:-10}" --join-types "${JOIN_TYPES:-right_outer}" \
-    ${ONLY:+--only "$ONLY"} 2>&1 | tee "$OUT_ROOT/probe.out"
+    --arms "${ARMS:-pa,rs,rseos}" --monitor-interval "${MONITOR_INTERVAL:-1.0}" \
+    ${CPUS:+--cpus "$CPUS"} ${ONLY:+--only "$ONLY"} 2>&1 | tee "$OUT_ROOT/probe.out"
 fi
 
 say "done — tables in $OUT_ROOT/{tpch_v2,tpch_v1,probe}.out; per-cell benchmark JSONs beside them"

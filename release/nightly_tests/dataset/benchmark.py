@@ -217,9 +217,12 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
     object-store peak cannot see. Best-effort: returns a partial/empty dict rather
     than failing the benchmark.
 
-    A ``read_*`` top-level convenience is filled from the first ``Read*`` operator so
-    the "parquet part" (read wall time + output bytes + decode USS/RSS) is a
-    first-class field.
+    A ``read_*`` top-level convenience is filled from the ``Read*`` operator with
+    the most tasks (ties: plan order) so the "parquet part" (read wall time +
+    output bytes + decode USS/RSS) is a first-class field; ``read_operators``
+    lists every ``Read*`` operator compactly, since a multi-table plan (TPC-H
+    q17: ``part`` AND ``lineitem``) has several and the headline used to be
+    whichever came first.
 
     NOTE: stats attach to the consumed dataset handle. Consume ``ds`` itself
     (``iter_*``/``write_*``/``materialize``) before calling this; ``ds.count()``
@@ -256,6 +259,10 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         ("decoded_bytes_per_task_dist", "read_task_decoded_bytes"),
         ("decode_wall_s_per_task_dist", "read_task_decode_wall_s"),
         ("peak_batch_bytes_per_task_dist", "read_task_peak_batch_bytes"),
+        # Wall seconds of the reader's end-of-stream finalizer (the arrow-rs
+        # malloc_trim under RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS); inside
+        # decode_wall_s. 0 for pyarrow and for arrow-rs with the knob off.
+        ("trim_wall_s_per_task_dist", "read_task_trim_wall_s"),
     ]
 
     out: Dict[str, Any] = {"operators_detail": []}
@@ -286,18 +293,61 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                         **dists,
                     }
                 )
-        for entry in out["operators_detail"]:
-            if "Read" in (entry["operator_name"] or ""):
-                out["read_operator_name"] = entry["operator_name"]
-                out["read_wall_time_s"] = entry["wall_time_s"]
-                out["read_output_size_bytes"] = entry["output_size_bytes"]
-                out["read_output_num_blocks"] = entry["output_num_blocks"]
-                out["read_block_size_bytes_mean"] = entry["block_size_bytes_mean"]
-                for out_key, _ in mem_keys:
-                    out[f"read_{out_key}"] = entry[out_key]
-                for out_key, _ in dist_keys:
-                    out[f"read_{out_key}"] = entry[out_key]
-                break
+
+        def _n_tasks(entry) -> int:
+            # One sample per finished task that emitted a block. Task duration
+            # is recorded on every platform; max_uss only where USS is readable
+            # (Linux), so it is the fallback.
+            for key in ("task_duration_dist", "max_uss_per_task_dist"):
+                n = (entry.get(key) or {}).get("num_samples")
+                if n:
+                    return n
+            return 0
+
+        def _q(entry, dist_key, stat):
+            return (entry.get(dist_key) or {}).get(stat)
+
+        read_entries = [
+            e for e in out["operators_detail"] if "Read" in (e["operator_name"] or "")
+        ]
+        # One compact row per Read operator, in plan order. A task that emits
+        # no block carries no worker stats at all (TaskExecWorkerStats rides
+        # on block metadata), so ``tasks`` can be below the operator's task
+        # count and ``decoded_*_n`` == ``tasks`` when the reader stats fired.
+        out["read_operators"] = [
+            {
+                "operator_name": e["operator_name"],
+                "tasks": _n_tasks(e),
+                "wall_time_s": e["wall_time_s"],
+                "output_num_rows": e["output_num_rows"],
+                "output_size_bytes": e["output_size_bytes"],
+                "output_num_blocks": e["output_num_blocks"],
+                "max_uss_per_task_p50": _q(e, "max_uss_per_task_dist", "p50"),
+                "max_uss_per_task_max": _q(e, "max_uss_per_task_dist", "max"),
+                "task_duration_p50": _q(e, "task_duration_dist", "p50"),
+                "decoded_bytes_n": _q(e, "decoded_bytes_per_task_dist", "num_samples"),
+                "decoded_bytes_p50": _q(e, "decoded_bytes_per_task_dist", "p50"),
+                "decoded_bytes_max": _q(e, "decoded_bytes_per_task_dist", "max"),
+                "peak_batch_bytes_p50": _q(e, "peak_batch_bytes_per_task_dist", "p50"),
+                "peak_batch_bytes_max": _q(e, "peak_batch_bytes_per_task_dist", "max"),
+                "trim_wall_s_p50": _q(e, "trim_wall_s_per_task_dist", "p50"),
+                "trim_wall_s_max": _q(e, "trim_wall_s_per_task_dist", "max"),
+            }
+            for e in read_entries
+        ]
+        if read_entries:
+            # Headline = the Read with the most tasks; ``max`` keeps the first
+            # maximal entry, i.e. plan order breaks ties.
+            entry = max(read_entries, key=_n_tasks)
+            out["read_operator_name"] = entry["operator_name"]
+            out["read_wall_time_s"] = entry["wall_time_s"]
+            out["read_output_size_bytes"] = entry["output_size_bytes"]
+            out["read_output_num_blocks"] = entry["output_num_blocks"]
+            out["read_block_size_bytes_mean"] = entry["block_size_bytes_mean"]
+            for out_key, _ in mem_keys:
+                out[f"read_{out_key}"] = entry[out_key]
+            for out_key, _ in dist_keys:
+                out[f"read_{out_key}"] = entry[out_key]
     except Exception:
         logger.warning("collect_operator_metrics failed", exc_info=True)
     return out

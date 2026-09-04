@@ -40,6 +40,12 @@ Usage:
   python release_regression_probe.py --outdir DIR [--repeat 1]
       [--only write_parquet,mapg_hash] [--write-sf 100] [--groupby-sf 10]
       [--joins-sf 10] [--join-types right_outer] [--dry-run]
+      [--arms pa,rs,rseos] [--cpus 24,48,96] [--monitor-interval 1.0]
+--arms adds the allocator arms of build 106096 (rstrim / rseos, see ARMS);
+--cpus runs every cell once per local num_cpus value (cell name gets an
+"@Ncpu" suffix) — the M107 col02 concurrency sweep; --monitor-interval
+(seconds) is the node-memory sampler period (0.1 = the 10 Hz per-worker view
+for the short q6/wide_schema sustained rows).
 Needs AWS creds; ARROW_RS_S3_BUCKET redirects write_parquet's output (the
 release write bucket s3://ray-data-write-benchmark may be unwritable to us).
 """
@@ -55,10 +61,36 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.abspath(os.path.join(HERE, ".."))
 TPCH = "s3://ray-benchmark-data/tpch/parquet"
 
+# Reader arms, by env, mirroring the 2x2(x3) release build (arrow_rs_docs/
+# 2026-09-04.md): pa = PyArrow; rs = arrow-rs as shipped; rstrim = arrow-rs +
+# mallopt(M_TRIM_THRESHOLD, 0) once per worker; rseos = arrow-rs + one glibc
+# malloc_trim(0) per read-task stream (the M101 candidate default — its col02
+# fleet wall 2.37 is the flip blocker, TODO 34f). Both knobs are DataContext
+# fields read only inside the arrow-rs read task, so they are inert for pa.
+_RS = "RAY_DATA_USE_ARROW_RS_PARQUET_READER"
+_KNOBS = ("RAY_DATA_ARROW_RS_MALLOC_TRIM", "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS")
+ARMS = {
+    "pa": {_RS: "0"},
+    "rs": {_RS: "1"},
+    "rstrim": {_RS: "1", "RAY_DATA_ARROW_RS_MALLOC_TRIM": "1"},
+    "rseos": {_RS: "1", "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS": "1"},
+}
+
+
+def arm_env(env, arm):
+    """Pin ``env`` to one arm: clear both allocator knobs, then set the arm's."""
+    if arm not in ARMS:
+        raise SystemExit(f"unknown arm {arm!r}; choose from {sorted(ARMS)}")
+    for knob in _KNOBS:
+        env.pop(knob, None)
+    env.update(ARMS[arm])
+    return env
+
+
 # One cell, fresh process: import the release script as a module, patch its
 # write root if asked, run its own parse_args()+main() under our sys.argv.
 SNIPPET = r"""
-import importlib, json, re, sys, time
+import importlib, json, os, re, sys, time
 
 mod_name, argv_json, write_root, dry = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
 sched_mem_gb = int(sys.argv[5])
@@ -75,7 +107,14 @@ import ray
 # stock, multi-JoinOperator/aggregator cells deadlock on one box: the operators'
 # reservations consume the whole ~14.4GiB budget and upstream tasks starve
 # (seen on tpch q2 sf10, PyArrow arm too).
-ray.init(address="local", **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}))
+# PROBE_NUM_CPUS caps the local instance's CPUs = the read/shuffle task
+# concurrency on this box (the --cpus sweep); empty = every core.
+num_cpus = int(os.environ.get("PROBE_NUM_CPUS", "0") or 0)
+ray.init(
+    address="local",
+    **({"num_cpus": num_cpus} if num_cpus else {}),
+    **({"_memory": sched_mem_gb << 30} if sched_mem_gb else {}),
+)
 # The workspace's own Ray (:6379) coexists with this cell's local instance, and
 # the state API's address autodetection dies on "multiple active Ray instances"
 # — which silently emptied every per-task stats dist. Pin it to this cell.
@@ -230,8 +269,9 @@ def run_cell(name, module, argv, extra_env, reader, a):
     tag = f"{name}.{reader}"
     env = dict(os.environ)
     env["PYTHONPATH"] = DATASET_DIR + os.pathsep + env.get("PYTHONPATH", "")
-    env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
+    arm_env(env, reader)
     env["RAY_DATA_BENCH_NODE_MEM_MONITOR"] = "1"
+    env["RAY_DATA_BENCH_NODE_MEM_INTERVAL"] = str(a.monitor_interval)
     # Anyscale pins RAY_OVERRIDE_RESOURCES (memory=14.4GiB on this box) and it
     # beats ray.init(_memory=...); rewrite the memory field per cell or the
     # multi-JoinOperator/aggregator cells deadlock on reservation starvation.
@@ -359,17 +399,48 @@ def main():
         action="store_true",
         help="import-and-exit per cell: validates plumbing offline",
     )
+    p.add_argument(
+        "--arms",
+        default="pa,rs,rseos",
+        help=f"comma list from {sorted(ARMS)}; pa is the denominator",
+    )
+    p.add_argument(
+        "--cpus",
+        default="",
+        help="comma list of local num_cpus values; each cell runs once per "
+        "value as <cell>@<N>cpu (empty = the box's core count)",
+    )
+    p.add_argument(
+        "--monitor-interval",
+        type=float,
+        default=float(os.environ.get("RAY_DATA_BENCH_NODE_MEM_INTERVAL", "1.0")),
+        help="node-memory sampler period in seconds (release: 1.0; 0.1 = 10 Hz)",
+    )
     a = p.parse_args()
+    arms = [s.strip() for s in a.arms.split(",") if s.strip()]
+    for arm in arms:
+        arm_env({}, arm)  # validate names up front
     os.makedirs(a.outdir, exist_ok=True)
 
     todo = cells(a)
     if a.only:
         keep = {s.strip() for s in a.only.split(",")}
         todo = [c for c in todo if any(k in c[0] for k in keep)]
+    if a.cpus:
+        todo = [
+            (
+                f"{name}@{c.strip()}cpu",
+                module,
+                argv,
+                {**env, "PROBE_NUM_CPUS": c.strip()},
+            )
+            for c in a.cpus.split(",")
+            for name, module, argv, env in todo
+        ]
 
     results = {}
     for name, module, argv, extra_env in todo:
-        for reader in ("pa", "rs"):
+        for reader in arms:
             runs = [
                 run_cell(name, module, argv, extra_env, reader, a)
                 for _ in range(a.repeat)
@@ -391,17 +462,18 @@ def main():
     # was made on, computed from each cell's own TEST_OUTPUT_JSON.
     print("\n========== RELEASE-REGRESSION PROBE (R = arrow_rs/pyarrow) ==========")
     hdr = (
-        f"{'cell':<24} {'wall R':>7} {'tUSS p50 R':>10} {'tUSS max R':>10} "
+        f"{'cell [arm]':<34} {'wall R':>7} {'tUSS p50 R':>10} {'tUSS max R':>10} "
         f"{'wUSS pk R':>9} {'wUSS sust R':>11} {'pkbatch R':>9} {'n tasks':>8} "
-        f"{'spill pa/rs':>12}"
+        f"{'trim p50 s':>10} {'spill pa/arm':>12}"
     )
     print(hdr)
-    for name, _, _, _ in todo:
+    for (name, _, _, _), arm in ((c, m) for c in todo for m in arms if m != "pa"):
         pa = results.get(f"{name}.pa") or {}
-        rs = results.get(f"{name}.rs") or {}
+        rs = results.get(f"{name}.{arm}") or {}
         bp, br = pa.get("bench", {}), rs.get("bench", {})
+        trim = _g(br, "read_trim_wall_s_per_task_dist", "p50")
         row = (
-            f"{name:<24} "
+            f"{name + ' [' + arm + ']':<34} "
             f"{_r(rs.get('wall_s'), pa.get('wall_s')):>7} "
             f"{_r(_g(br, 'read_max_uss_per_task_dist', 'p50'), _g(bp, 'read_max_uss_per_task_dist', 'p50')):>10} "
             f"{_r(_g(br, 'read_max_uss_per_task_dist', 'max'), _g(bp, 'read_max_uss_per_task_dist', 'max')):>10} "
@@ -409,6 +481,7 @@ def main():
             f"{_r(_g(br, 'node_mem_p50_worker_uss_gb'), _g(bp, 'node_mem_p50_worker_uss_gb')):>11} "
             f"{_r(_g(br, 'read_peak_batch_bytes_per_task_dist', 'p50'), _g(bp, 'read_peak_batch_bytes_per_task_dist', 'p50')):>9} "
             f"{_g(br, 'read_max_uss_per_task_dist', 'num_samples') or '—':>8} "
+            f"{(f'{trim:.3f}' if isinstance(trim, (int, float)) else '—'):>10} "
             f"{str(pa.get('spilled_gb')) + '/' + str(rs.get('spilled_gb')):>12}"
         )
         print(row)

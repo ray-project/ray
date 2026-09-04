@@ -421,6 +421,49 @@ class NodeMemoryMonitor:
             _series_pctile(uss_node, "workers_uss", 0.90) if uss_node else None
         )
 
+        # Per-node compact view + worker counts. Sustained (p50-over-time) summed
+        # USS on a SHORT test tracks how many workers were alive, not what each
+        # held (arrow_rs_docs TODO 36: wide_schema/q6 p50 rows), so report the
+        # count and the per-worker mean alongside it. "Workers" = every ray::*
+        # process the sampler saw (task workers incl. ray::IDLE, actors; the
+        # sampler itself excluded) — the same set workers_uss sums over.
+        def _worker_count(smp):
+            return sum(e.get("n", 0) for e in (smp.get("by_title") or {}).values())
+
+        def _pctile(vals, q):
+            vals = sorted(vals)
+            return vals[min(len(vals) - 1, int(q * len(vals)))] if vals else None
+
+        def _node_compact(node):
+            samples = node.get("samples") or []
+            counts = [_worker_count(s) for s in samples]
+            means = [
+                s["workers_uss"] / n
+                for s, n in zip(samples, counts)
+                if n and s.get("workers_uss") is not None
+            ]
+            mean_p50 = _pctile(means, 0.50)
+            return {
+                "node_ip": node.get("node_ip"),
+                "peak_worker_uss_gb": _bytes_to_gb(node.get("peak_workers_uss")),
+                "p50_worker_uss_gb": _bytes_to_gb(
+                    _series_pctile(node, "workers_uss", 0.50)
+                ),
+                "workers_p50": _pctile(counts, 0.50),
+                "workers_max": max(counts) if counts else None,
+                "mean_worker_uss_p50_mb": (
+                    round(mean_p50 / (1024**2), 1) if mean_p50 is not None else None
+                ),
+                "num_samples": len(samples),
+            }
+
+        per_node_compact = sorted(
+            (_node_compact(n) for n in per_node),
+            key=lambda c: c["peak_worker_uss_gb"] or 0,
+            reverse=True,
+        )[:64]
+        uss_node_compact = _node_compact(uss_node) if uss_node else {}
+
         # Worst single node per proctitle — the provenance the node total lacks.
         # USS where available, RSS as a separate field rather than a silent substitute.
         def _top(key):
@@ -438,6 +481,15 @@ class NodeMemoryMonitor:
             "node_mem_peak_worker_uss_gb": _bytes_to_gb(peak_worker_uss),
             "node_mem_p50_worker_uss_gb": _bytes_to_gb(p50_worker_uss),
             "node_mem_p90_worker_uss_gb": _bytes_to_gb(p90_worker_uss),
+            # Same (peak-USS) node: how many ray:: workers it typically held and
+            # what one of them typically held — the sustained row's denominator.
+            "node_mem_workers_p50": uss_node_compact.get("workers_p50"),
+            "node_mem_workers_max": uss_node_compact.get("workers_max"),
+            "node_mem_mean_worker_uss_p50_mb": uss_node_compact.get(
+                "mean_worker_uss_p50_mb"
+            ),
+            "node_mem_per_node": per_node_compact,
+            "node_mem_interval_s": self._interval_s,
             "node_mem_peak_worker_rss_gb": _bytes_to_gb(peak_worker_rss),
             "node_mem_top_workers_uss": _top("peak_uss_by_title"),
             "node_mem_top_workers_rss": _top("peak_rss_by_title"),

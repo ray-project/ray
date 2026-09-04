@@ -41,6 +41,9 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from release_regression_probe import ARMS, arm_env  # noqa: E402  same dir
+
 DATASET_DIR = os.path.abspath(os.path.join(HERE, ".."))
 TPCH_DIR = os.path.join(DATASET_DIR, "tpch")
 
@@ -85,7 +88,17 @@ print("CELL_JSON " + json.dumps({"wall_s": round(wall, 1), "spilled_gb": spilled
 """
 
 
-def run_cell(query, strategy, reader, sf, outdir, dry_run, timeout_s, sched_mem_gb):
+def run_cell(
+    query,
+    strategy,
+    reader,
+    sf,
+    outdir,
+    dry_run,
+    timeout_s,
+    sched_mem_gb,
+    monitor_interval=1.0,
+):
     tag = f"{query}.{strategy}.{reader}"
     env = dict(os.environ)
     env["PYTHONPATH"] = (
@@ -101,7 +114,8 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run, timeout_s, sched_mem_
         ovr = json.loads(env["RAY_OVERRIDE_RESOURCES"])
         ovr["memory"] = sched_mem_gb << 30
         env["RAY_OVERRIDE_RESOURCES"] = json.dumps(ovr)
-    env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
+    arm_env(env, reader)
+    env["RAY_DATA_BENCH_NODE_MEM_INTERVAL"] = str(monitor_interval)
     env["TEST_OUTPUT_JSON"] = os.path.join(outdir, f"{tag}.benchmark.json")
     cmd = [
         sys.executable,
@@ -184,13 +198,28 @@ def main():
         action="store_true",
         help="import-and-exit per cell: validates module/env plumbing offline",
     )
+    p.add_argument(
+        "--arms",
+        default="pa,rs,rseos",
+        help=f"comma list from {sorted(ARMS)}; pa is the denominator",
+    )
+    p.add_argument(
+        "--monitor-interval",
+        type=float,
+        default=float(os.environ.get("RAY_DATA_BENCH_NODE_MEM_INTERVAL", "1.0")),
+        help="node-memory sampler period in seconds (release: 1.0; 0.1 = 10 Hz "
+        "for the short q6 sustained-wUSS rows)",
+    )
     a = p.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
+    arms = [s.strip() for s in a.arms.split(",") if s.strip()]
+    for arm in arms:
+        arm_env({}, arm)  # validate names up front
 
     results = {}
     for query in a.queries.split(","):
         for strategy in a.strategies.split(","):
-            for reader in ("pa", "rs"):
+            for reader in arms:
                 runs = [
                     run_cell(
                         query,
@@ -201,6 +230,7 @@ def main():
                         a.dry_run,
                         a.cell_timeout,
                         a.sched_mem_gb,
+                        a.monitor_interval,
                     )
                     for _ in range(a.repeat)
                 ]
@@ -218,18 +248,23 @@ def main():
         print("\ndry run OK — all query modules import")
         return
 
-    print("\n================ TPCH PROBE (R = arrow_rs/pyarrow) ================")
-    print(f"{'cell':<34} {'wall pa':>8} {'wall rs':>8} {'R':>6} {'spill pa/rs GB':>15}")
+    print("\n================ TPCH PROBE (R = arm/pyarrow) ================")
+    print(
+        f"{'cell [arm]':<42} {'wall pa':>8} {'wall arm':>8} {'R':>6} "
+        f"{'spill pa/arm GB':>15}"
+    )
     for query in a.queries.split(","):
         for strategy in a.strategies.split(","):
             pa_r = results.get(f"{query}.{strategy}.pa") or {}
-            rs_r = results.get(f"{query}.{strategy}.rs") or {}
-            wp, wr = pa_r.get("wall_s"), rs_r.get("wall_s")
-            ratio = f"{wr / wp:.2f}" if wp and wr else "—"
-            spill = f"{pa_r.get('spilled_gb')}/{rs_r.get('spilled_gb')}"
-            print(
-                f"{query + '.' + strategy:<34} {wp or '—':>8} {wr or '—':>8} {ratio:>6} {spill:>15}"
-            )
+            for arm in (m for m in arms if m != "pa"):
+                rs_r = results.get(f"{query}.{strategy}.{arm}") or {}
+                wp, wr = pa_r.get("wall_s"), rs_r.get("wall_s")
+                ratio = f"{wr / wp:.2f}" if wp and wr else "—"
+                spill = f"{pa_r.get('spilled_gb')}/{rs_r.get('spilled_gb')}"
+                cell = f"{query}.{strategy} [{arm}]"
+                print(
+                    f"{cell:<42} {wp or '—':>8} {wr or '—':>8} {ratio:>6} {spill:>15}"
+                )
     print(
         "\nRead it as: q20 gap only under hash_shuffle_v2+rs => block-granularity"
         "\nsuspect confirmed locally (M46); no gap => release-regime-only, fold into"
