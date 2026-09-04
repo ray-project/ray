@@ -119,6 +119,10 @@ def test_no_group_when_there_is_no_analysis(tmpdir):
         "test_name",
     )
 
+    # Positive control: every assertion below is about something being absent,
+    # and absence also holds when the script never ran at all. This line is
+    # only printed once it reaches the end.
+    assert "Release test finished with final exit code 40" in output
     assert "Observability agent analysis" not in output
 
 
@@ -143,6 +147,10 @@ def test_stale_analysis_is_not_reported_against_a_later_attempt(tmpdir):
         "test_name",
     )
 
+    # Positive control: every assertion below is about something being absent,
+    # and absence also holds when the script never ran at all. This line is
+    # only printed once it reaches the end.
+    assert "Release test finished with final exit code 40" in output
     assert "stale analysis" not in output
 
 
