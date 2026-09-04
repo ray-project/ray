@@ -7,6 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
@@ -76,6 +77,19 @@ _SLIRP4NETNS_FLAGS = [
     "--disable-dns",
     "--enable-seccomp",
 ]
+
+
+def _lookup_db_entry(path: str, name: str) -> Optional[List[str]]:
+    """Return the fields of the ``name`` entry in a passwd- or group-style file."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        fields = line.split(":")
+        if len(fields) >= 3 and fields[0] == name:
+            return fields
+    return None
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -281,6 +295,48 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # Only now is the overlay's lower layer unused.
             self._image_manager.release_image(config.image, sandbox_id)
 
+    def _resolve_exec_user(self, user: str, image: str) -> str:
+        """Turn ``user`` into the numeric ``uid[:gid]`` form runsc exec accepts.
+
+        Names resolve against the image's own ``/etc/passwd`` and
+        ``/etc/group``; a named user with no explicit group gets its login
+        group.
+
+        Args:
+            user: ``uid``, ``uid:gid``, or ``name[:group]`` from the image.
+            image: The sandbox's image, locating its root filesystem.
+
+        Returns:
+            A ``uid`` or ``uid:gid`` string runsc accepts.
+
+        Raises:
+            SandboxExecError: When a named user or group is not in the image.
+        """
+        name, _, group = user.partition(":")
+        if name.isdigit() and (not group or group.isdigit()):
+            return user
+        rootfs = self._image_manager.get_rootfs_path(image)
+        uid, login_gid = name, None
+        if not name.isdigit():
+            entry = _lookup_db_entry(os.path.join(rootfs, "etc", "passwd"), name)
+            if entry is None:
+                raise SandboxExecError(
+                    f"user {name!r} not found in the image's /etc/passwd; "
+                    "pass a numeric uid instead"
+                )
+            uid = entry[2]
+            login_gid = entry[3] if len(entry) > 3 else None
+        if group and not group.isdigit():
+            entry = _lookup_db_entry(os.path.join(rootfs, "etc", "group"), group)
+            if entry is None:
+                raise SandboxExecError(
+                    f"group {group!r} not found in the image's /etc/group; "
+                    "pass a numeric gid instead"
+                )
+            group = entry[2]
+        gid = group or login_gid
+        return uid if gid is None else f"{uid}:{gid}"
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -289,6 +345,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -303,6 +360,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
         runsc_args.extend(["exec", "-cwd", exec_cwd])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(user, config.image)])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
@@ -344,9 +403,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
 
     def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
+        self,
+        sandbox_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
-        """Write content to a file inside the local gVisor sandbox directory."""
+        """Write (or append) content to a file inside the sandbox."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
 
@@ -360,7 +423,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p "$(dirname "$1")" && cat > "$1"',
+                'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
+                if append
+                else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"',
                 "--",
                 path,
             ]
