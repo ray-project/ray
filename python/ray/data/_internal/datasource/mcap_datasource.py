@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -368,17 +369,26 @@ class MCAPDatasource(FileBasedDatasource):
     def _estimate_file_inmemory_size(self, path: str) -> Optional[int]:
         """Estimate the in-memory size of the rows one MCAP file produces.
 
-        Reads at most ``MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES`` messages,
-        builds a block from them through the same conversion the read path
-        uses, and scales the measured bytes per row by the file's message
-        count. If the iteration finishes before reaching that cap it has seen
-        the whole selection, and the measured size is returned unscaled.
+        Reads at most ``MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES`` messages and
+        builds blocks from them through the same conversion the read path uses.
+        If the iteration finishes before reaching that cap it has seen the whole
+        selection, and the measured size is returned unscaled.
 
-        The sampled messages are the first ones the reader yields rather than a
-        spread across the file, so a recording whose message size changes
-        markedly from start to end is estimated from its opening. Bounding the
-        read this way keeps planning cheap; the sample across *files* is spread
-        instead (see ``_sample_files``).
+        Otherwise the sample is extrapolated **per channel**, weighted by the
+        exact per-channel counts the summary carries. Messages within one
+        channel are close to uniform in size, while channels differ by orders of
+        magnitude -- a 200 Hz IMU sample against a compressed camera frame -- so
+        scaling a mixed sample by a single message count makes the estimate
+        depend on how many of each topic happen to land in the window. The
+        window spans a fraction of a second of a recording that may run for
+        minutes, and one message either way on a topic carrying most of the
+        bytes moves the estimate by double digits. Weighting per channel removes
+        that: only the size of a channel's rows is sampled, never the mix
+        between them.
+
+        A channel absent from the sample falls back to the mean row size across
+        the whole sample. That suits rare topics with small messages; a rare
+        topic with very large ones would be underestimated.
 
         Returns ``None`` if the file carries no summary to read the message
         count from, or if it can't be sampled.
@@ -399,7 +409,10 @@ class MCAPDatasource(FileBasedDatasource):
                 if not num_messages:
                     return 0
 
-                builder = DelegatingBlockBuilder()
+                # One builder per channel for the per-channel row size, and a
+                # combined one for the whole-sample mean.
+                combined = DelegatingBlockBuilder()
+                per_channel = defaultdict(DelegatingBlockBuilder)
                 # Whether the iteration saw every message a read would select
                 # rather than stopping at the sample cap.
                 read_whole_selection = True
@@ -412,31 +425,46 @@ class MCAPDatasource(FileBasedDatasource):
                 ):
                     if not self._should_include_message(schema, channel, message):
                         continue
-                    builder.add(self._message_to_dict(schema, channel, message, path))
-                    if builder.num_rows() >= MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES:
+                    row = self._message_to_dict(schema, channel, message, path)
+                    combined.add(dict(row))
+                    per_channel[channel.id].add(row)
+                    if combined.num_rows() >= MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES:
                         read_whole_selection = False
                         break
 
-                if builder.num_rows() == 0:
+                if combined.num_rows() == 0:
                     return 0
 
-                block = builder.build()
-                if self._include_paths:
-                    # `FileBasedDatasource` appends this column downstream of
-                    # `_read_stream`, so add it to keep the sample faithful.
-                    block = BlockAccessor.for_block(block).fill_column("path", path)
-
-                accessor = BlockAccessor.for_block(block)
+                combined_accessor = self._sampled_block_accessor(combined, path)
                 if read_whole_selection:
                     # Every message a read selects was materialized, so this is
                     # the size itself rather than a sample of it. This is the
                     # usual case for a narrow ``time_range`` or
-                    # ``message_types`` filter, neither of which
-                    # ``_count_selected_messages`` can resolve from the summary.
-                    return accessor.size_bytes()
+                    # ``message_types`` filter, neither of which the summary can
+                    # resolve.
+                    return combined_accessor.size_bytes()
 
-                bytes_per_row = accessor.size_bytes() / accessor.num_rows()
-                return int(bytes_per_row * num_messages)
+                mean_bytes_per_row = (
+                    combined_accessor.size_bytes() / combined_accessor.num_rows()
+                )
+                bytes_per_row = {}
+                for channel_id, channel_builder in per_channel.items():
+                    accessor = self._sampled_block_accessor(channel_builder, path)
+                    bytes_per_row[channel_id] = (
+                        accessor.size_bytes() / accessor.num_rows()
+                    )
+
+                counts = self._selected_channel_message_counts(summary)
+                if not counts:
+                    # The summary carries a total but no per-channel breakdown.
+                    return int(mean_bytes_per_row * num_messages)
+
+                return int(
+                    sum(
+                        bytes_per_row.get(channel_id, mean_bytes_per_row) * count
+                        for channel_id, count in counts.items()
+                    )
+                )
         except Exception:
             # Warn rather than log at debug: falling back silently restores the
             # fixed-ratio behaviour this method exists to replace, and a
@@ -449,6 +477,37 @@ class MCAPDatasource(FileBasedDatasource):
             )
             return None
 
+    def _sampled_block_accessor(
+        self, builder: DelegatingBlockBuilder, path: str
+    ) -> "BlockAccessor":
+        """Build a sampled block and return an accessor over it.
+
+        ``include_paths`` adds a column downstream of ``_read_stream``, so the
+        sample has to add it too or it under-counts.
+        """
+        block = builder.build()
+        if self._include_paths:
+            block = BlockAccessor.for_block(block).fill_column("path", path)
+        return BlockAccessor.for_block(block)
+
+    def _selected_channel_message_counts(self, summary: "Summary") -> Dict[int, int]:
+        """Return the per-channel message counts a read selects.
+
+        Empty when the summary carries no per-channel breakdown, which callers
+        must handle: the total in ``statistics.message_count`` can be present
+        without it.
+        """
+        counts = summary.statistics.channel_message_counts
+        if not self._topics:
+            return dict(counts)
+
+        return {
+            channel_id: count
+            for channel_id, count in counts.items()
+            if channel_id in summary.channels
+            and summary.channels[channel_id].topic in self._topics
+        }
+
     def _count_selected_messages(self, summary: "Summary") -> int:
         """Return an upper bound on how many messages of a file a read selects.
 
@@ -456,21 +515,13 @@ class MCAPDatasource(FileBasedDatasource):
         and ``message_types`` are not represented there, so a read using them
         selects at most this many messages.
 
-        This bound is consulted only when sampling stopped at the message cap.
-        A filter narrow enough to select fewer messages than the cap lets the
-        caller measure the whole selection directly, so the bound is unused
-        exactly where it would be loosest.
+        Used to decide whether anything is selected at all, and to scale the
+        sample when the summary carries no per-channel breakdown.
         """
-        statistics = summary.statistics
         if not self._topics:
-            return statistics.message_count
+            return summary.statistics.message_count
 
-        return sum(
-            count
-            for channel_id, count in statistics.channel_message_counts.items()
-            if channel_id in summary.channels
-            and summary.channels[channel_id].topic in self._topics
-        )
+        return sum(self._selected_channel_message_counts(summary).values())
 
     def get_name(self) -> str:
         """Return a human-readable name for this datasource."""

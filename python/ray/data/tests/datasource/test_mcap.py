@@ -460,6 +460,64 @@ def create_binary_mcap_file(
         writer.finish()
 
 
+def create_skewed_mcap_file(file_path: str) -> None:
+    """Create a file whose leading messages misrepresent the whole.
+
+    Two topics differing by orders of magnitude in message size and rate. The
+    first 100 messages by log time -- the estimator's sample window -- are half
+    large messages, while the file overall is 5% large. Extrapolating the
+    window's mean row size across the file's message count therefore overstates
+    the size by roughly an order of magnitude.
+    """
+    from mcap.writer import Writer
+
+    small_payload = b"s" * 100
+    large_payload = b"L" * 20000
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=LARGE_SCHEMA_DEFINITION,
+        )
+        small = writer.register_channel(
+            schema_id=schema_id, topic="/small", message_encoding="cdr"
+        )
+        large = writer.register_channel(
+            schema_id=schema_id, topic="/large", message_encoding="cdr"
+        )
+
+        log_time = 1000000000
+        # The sample window: alternating, so half of it is large messages.
+        for i in range(100):
+            channel, payload = (
+                (large, large_payload) if i % 2 else (small, small_payload)
+            )
+            writer.add_message(
+                channel_id=channel,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=i,
+            )
+            log_time += 1000000
+        # The rest of the file: small messages only, leaving 5% large overall.
+        for i in range(100, 1000):
+            writer.add_message(
+                channel_id=small,
+                log_time=log_time,
+                publish_time=log_time,
+                data=small_payload,
+                sequence=i,
+            )
+            log_time += 1000000
+
+        writer.finish()
+
+
 @pytest.fixture
 def binary_mcap_file(tmp_path):
     """Fixture providing an MCAP file with 360 binary messages."""
@@ -651,6 +709,28 @@ def test_estimate_inmemory_data_size_filter_selecting_nothing(
     assert estimate == on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
 
     assert ray.data.read_mcap(binary_mcap_file, topics={"/no_such_topic"}).count() == 0
+
+
+def test_estimate_inmemory_data_size_weights_channels_by_summary_counts(
+    ray_start_regular_shared, tmp_path
+):
+    """The sample window's topic mix must not drive the estimate.
+
+    Channels differ by orders of magnitude in message size, so extrapolating a
+    mixed sample by one message count makes the estimate depend on which topics
+    happen to fall in the window rather than on the file. The summary carries
+    exact per-channel counts; weighting by those removes the dependency.
+    """
+    path = os.path.join(tmp_path, "skewed.mcap")
+    create_skewed_mcap_file(path)
+
+    estimate = MCAPDatasource(paths=[path]).estimate_inmemory_data_size()
+    actual = ray.data.read_mcap(path).materialize().size_bytes()
+
+    # Scaling the window's mean row size by the file's message count overstates
+    # this file by close to an order of magnitude, so this band is only
+    # reachable by weighting each channel separately.
+    assert 0.7 * actual <= estimate <= 1.5 * actual
 
 
 def test_read_mcap_orders_messages_by_log_time(ray_start_regular_shared, tmp_path):
