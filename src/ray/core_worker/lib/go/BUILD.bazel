@@ -1,6 +1,20 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
-# gcs_memory - 独立的内存管理库（无外部依赖）
+# gcs_memory - standalone memory management library (no external deps)
 ray_cc_library(
     name = "gcs_memory",
     srcs = ["gcs_memory.cc"],
@@ -8,7 +22,7 @@ ray_cc_library(
     visibility = ["//go:__subpackages__"],
 )
 
-# gcs_client_utils - CGO 桥接辅助函数库
+# gcs_client_utils - CGO bridge helper library
 ray_cc_library(
     name = "gcs_client_utils",
     srcs = ["gcs_client_utils.cc"],
@@ -16,7 +30,7 @@ ray_cc_library(
     visibility = ["//go:__subpackages__"],
 )
 
-# gcs_client_internal - 内部结构定义头文件
+# gcs_client_internal - internal struct definitions header
 ray_cc_library(
     name = "gcs_client_internal",
     hdrs = ["gcs_client_internal.h"],
@@ -28,7 +42,7 @@ ray_cc_library(
     ],
 )
 
-# gcs_client_bridge - 主库：客户端创建/销毁和基础方法
+# gcs_client_bridge - main library: client create/destroy and base methods
 ray_cc_library(
     name = "gcs_client_bridge",
     srcs = [
@@ -61,7 +75,7 @@ ray_cc_library(
     ],
 )
 
-# gcs_client_bridge 单元测试
+# gcs_client_bridge unit tests
 ray_cc_test(
     name = "gcs_client_bridge_test",
     size = "small",
@@ -87,7 +101,7 @@ ray_cc_test(
     ],
 )
 
-# gcs_memory 单元测试 - 只依赖 gcs_memory 库（无 gRPC 依赖）
+# gcs_memory unit tests - depends only on gcs_memory (no gRPC)
 ray_cc_test(
     name = "gcs_memory_test",
     size = "small",
@@ -125,7 +139,7 @@ ray_cc_library(
     ],
 )
 
-# native_runtime_go_headers - Go CGO 头文件库（命名与 Java 运行时保持一致）
+# native_runtime_go_headers - Go CGO headers library (named consistently with the Java runtime)
 ray_cc_library(
     name = "native_runtime_go_headers",
     hdrs = [
@@ -321,7 +335,7 @@ ray_cc_library(
     ],
 )
 
-# native_worker_context 单元测试
+# native_worker_context unit tests
 # Note: Mock implementations of CoreWorkerProcess methods are embedded in
 # native_worker_context_test.cc using weak symbols to override actual implementations
 ray_cc_test(
@@ -368,7 +382,7 @@ ray_cc_library(
 
 
 
-# native_runtime 单元测试
+# native_runtime unit tests
 # Note: Mock implementations of CoreWorkerProcess methods are embedded in
 # native_runtime_test.cc using weak symbols to override actual implementations
 # Deferred: native_runtime_test.cc is written against a newer Ray API
@@ -385,7 +399,7 @@ ray_cc_library(
 #    ],
 # )
 
-# native_object_store 单元测试
+# native_object_store unit tests
 # Note: Tests the CGO boundary layer for ObjectStore operations
 ray_cc_test(
     name = "native_object_store_test",
@@ -398,7 +412,7 @@ ray_cc_test(
     ],
 )
 
-# task_submitter_ops 单元测试
+# task_submitter_ops unit tests
 # Note: Uses MockCoreWorkerProvider to test business logic without full Ray setup
 ray_cc_test(
     name = "task_submitter_ops_test",

@@ -32,7 +32,7 @@ func TestNewGlobalState(t *testing.T) {
 }
 
 func TestGlobalState_InitializeGlobalState(t *testing.T) {
-	t.Run("正常初始化", func(t *testing.T) {
+	t.Run("normal initialization", func(t *testing.T) {
 		state := NewGlobalState()
 
 		opts := &gcs.ClientOptions{
@@ -46,7 +46,7 @@ func TestGlobalState_InitializeGlobalState(t *testing.T) {
 		assert.Equal(t, opts, state.gcsOptions)
 	})
 
-	t.Run("重复初始化", func(t *testing.T) {
+	t.Run("repeated initialization", func(t *testing.T) {
 		state := NewGlobalState()
 
 		opts1 := &gcs.ClientOptions{
@@ -65,7 +65,7 @@ func TestGlobalState_InitializeGlobalState(t *testing.T) {
 		assert.Equal(t, opts2, state.gcsOptions)
 	})
 
-	t.Run("nil参数", func(t *testing.T) {
+	t.Run("nil argument", func(t *testing.T) {
 		state := NewGlobalState()
 		state.InitializeGlobalState(nil)
 		assert.Nil(t, state.gcsOptions)
@@ -73,7 +73,7 @@ func TestGlobalState_InitializeGlobalState(t *testing.T) {
 }
 
 func TestGlobalState_ConnectAndGetAccessor(t *testing.T) {
-	t.Run("未初始化时调用返回错误", func(t *testing.T) {
+	t.Run("call returns error when not initialized", func(t *testing.T) {
 		state := NewGlobalState()
 
 		accessor, err := state.ConnectAndGetAccessor()
@@ -83,7 +83,7 @@ func TestGlobalState_ConnectAndGetAccessor(t *testing.T) {
 		assert.Contains(t, err.Error(), "Ray has not been started yet")
 	})
 
-	t.Run("获取访问器失败（未设置全局访问器）", func(t *testing.T) {
+	t.Run("get accessor fails (global accessor not set)", func(t *testing.T) {
 		state := NewGlobalState()
 		opts := &gcs.ClientOptions{
 			Address:   "127.0.0.1:6379",
@@ -100,7 +100,7 @@ func TestGlobalState_ConnectAndGetAccessor(t *testing.T) {
 }
 
 func TestGlobalState_Disconnect(t *testing.T) {
-	t.Run("未初始化时断开连接", func(t *testing.T) {
+	t.Run("disconnect when not initialized", func(t *testing.T) {
 		state := NewGlobalState()
 
 		err := state.Disconnect()
@@ -112,7 +112,7 @@ func TestGlobalState_Disconnect(t *testing.T) {
 }
 
 func TestGlobalState_AddWorker(t *testing.T) {
-	t.Run("获取访问器失败", func(t *testing.T) {
+	t.Run("get accessor fails", func(t *testing.T) {
 		state := NewGlobalState()
 
 		workerID := ids.NewWorkerID()
@@ -127,7 +127,7 @@ func TestGlobalState_AddWorker(t *testing.T) {
 }
 
 func TestGlobalState_Concurrency(t *testing.T) {
-	t.Run("并发调用InitializeGlobalState", func(t *testing.T) {
+	t.Run("concurrent InitializeGlobalState calls", func(t *testing.T) {
 		state := NewGlobalState()
 
 		done := make(chan bool, 10)

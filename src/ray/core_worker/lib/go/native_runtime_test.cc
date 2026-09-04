@@ -506,8 +506,9 @@ TEST_F(NativeRuntimeCGOTest, InitializeWithSpecialCharacters) {
 }
 
 TEST_F(NativeRuntimeCGOTest, InitializeWithUnicodeCharacters) {
-  // Test: Unicode characters in strings
-  std::string unicode_str = "测试驱动";
+  // Test: Unicode characters in strings (non-ASCII é keeps the byte-level
+  // Unicode round-trip meaningful without carrying Chinese text).
+  std::string unicode_str = "test-driver-\xC3\xA9";
   opts_.driver_name = unicode_str.c_str();
 
   worker_ = CNativeRuntime_Initialize(&opts_);

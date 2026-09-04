@@ -1,3 +1,17 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_bridge.h
 #pragma once
 #include <stdint.h>
@@ -10,21 +24,21 @@ extern "C" {
 // === GcsClient ===
 typedef struct CGcsClient CGcsClient;
 
-// 创建/销毁
+// Create/destroy
 CGcsClient* ray_gcs_client_create(const char* address, const char* cluster_id_hex,
                                    int64_t timeout_ms, char** error_out);
 void ray_gcs_client_destroy(CGcsClient* client);
 
-// 基础方法
-// 注意：返回的字符串使用 malloc 分配，调用者必须调用 free 释放
+// Base methods
+// Note: returned strings are allocated with malloc; callers must free them
 const char* ray_gcs_client_address(CGcsClient* client);  // owner: caller
 const char* ray_gcs_client_cluster_id(CGcsClient* client);  // owner: caller
 
-// 内存管理工具
-// 释放 C++ 端分配的字符串（仅用于 strdup/malloc 返回的内存）
+// Memory management helpers
+// Free strings allocated by C++ (only for strdup/malloc-returned memory)
 void ray_gcs_free_string(const char* str);
 
-// InternalKV - 零拷贝返回
+// InternalKV - zero-copy returns
 int ray_gcs_client_kv_get(CGcsClient* client, const char* ns, const char* key,
                           void** data_out, size_t* size_out, char** error_out);
 int ray_gcs_client_kv_multi_get(CGcsClient* client, const char* ns, const char** keys, int key_count,
@@ -134,10 +148,10 @@ int ray_gcs_client_publisher_publish_log_batch(CGcsClient* client,
                                                char** error_out);
 
 // Autoscaler
-// 返回 AutoscalingState 的 protobuf 序列化数据，由 Go 端解析并判断状态
-// serialized_out: 输出参数，指向 protobuf 序列化数据（malloc 分配）
-// size_out: 输出参数，序列化数据的大小（字节）
-// 调用者必须调用 free() 释放 serialized_out
+// Returns the protobuf-serialized AutoscalingState; the Go side parses it to judge the state
+// serialized_out: output parameter pointing to protobuf-serialized data (malloc-allocated)
+// size_out: output parameter, size of the serialized data (bytes)
+// Callers must free() serialized_out
 int ray_gcs_client_autoscaler_get_status(CGcsClient* client,
                                          char** serialized_out,
                                          int* size_out,

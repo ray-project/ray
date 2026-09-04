@@ -1,5 +1,19 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_autoscaler.cc
-// GCS Client CGO 桥接 - Autoscaler 操作
+// GCS Client CGO bridge - Autoscaler operations
 #include "gcs_client_bridge.h"
 #include "gcs_client_utils.h"
 #include "gcs_client_internal.h"
@@ -11,7 +25,7 @@
 
 extern "C" {
 
-// 薄 CGO 厚 Go 原则：C++ 端只返回原始 protobuf 数据，业务逻辑（状态判断）在 Go 端
+// Thin CGO, thick Go: the C++ side only returns raw protobuf data; business logic (state judgment) lives in Go
 int ray_gcs_client_autoscaler_get_status(CGcsClient* client,
                                          char** serialized_out,
                                          int* size_out,

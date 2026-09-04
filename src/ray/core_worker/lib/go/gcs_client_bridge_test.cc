@@ -1,3 +1,17 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_bridge_test.cc
 #include "gcs_client_bridge.h"
 #include "gcs_memory.h"
@@ -5,13 +19,13 @@
 #include <cstring>
 #include <string>
 
-// Test 1: 验证头文件可以正确编译和包含
+// Test 1: verify the header compiles and includes correctly
 TEST(GcsClientBridgeTest, HeaderCompiles) {
-    // 验证类型定义存在
+    // Verify type definitions exist
     CGcsClient* client = nullptr;
-    (void)client; // 避免未使用变量警告
+    (void)client; // avoid unused variable warning
 
-    // 验证函数声明存在（不实际调用，因为需要有效实现）
+    // Verify function declarations exist (not called; needs a real implementation)
     void (*create_fn)(const char*, const char*, int64_t, char**) =
         reinterpret_cast<void (*)(const char*, const char*, int64_t, char**)>(
             reinterpret_cast<uintptr_t>(&ray_gcs_client_create));
@@ -20,9 +34,9 @@ TEST(GcsClientBridgeTest, HeaderCompiles) {
     SUCCEED() << "Header compiles successfully";
 }
 
-// Test 2: 验证 C ABI 兼容性 - 确保 extern "C" 正确工作
+// Test 2: verify C ABI compatibility - ensure extern "C" works correctly
 TEST(GcsClientBridgeTest, CAriCompatibility) {
-    // 验证函数指针可以直接访问（证明有 C 链接）
+    // Verify function pointers are directly accessible (proves C linkage)
     void (*free_fn)(void*) = ray_gcs_free_memory;
     void (*free_arr_fn)(char**, int) = ray_gcs_free_string_array;
 
@@ -34,9 +48,9 @@ TEST(GcsClientBridgeTest, CAriCompatibility) {
     SUCCEED() << "C ABI compatibility verified";
 }
 
-// Test 3: 验证内存释放函数的基本行为
+// Test 3: verify basic behavior of the memory-free function
 TEST(GcsClientBridgeTest, MemoryFree) {
-    // 分配一些内存并释放
+    // Allocate some memory and free it
     char* test_str = static_cast<char*>(malloc(10));
     ASSERT_NE(test_str, nullptr);
 
@@ -44,14 +58,14 @@ TEST(GcsClientBridgeTest, MemoryFree) {
     ASSERT_EQ(strlen(test_str), 4);
 
     ray_gcs_free_memory(test_str);
-    // 释放后不应再访问
+    // Must not access after free
 
     SUCCEED() << "Memory free works correctly";
 }
 
-// Test 4: 验证字符串数组释放函数
+// Test 4: verify the string-array free function
 TEST(GcsClientBridgeTest, StringArrayFree) {
-    // 创建一个简单的字符串数组
+    // Create a simple string array
     char** arr = static_cast<char**>(malloc(3 * sizeof(char*)));
     ASSERT_NE(arr, nullptr);
 
@@ -65,37 +79,37 @@ TEST(GcsClientBridgeTest, StringArrayFree) {
     strcpy(arr[1], "str2");
 
     ray_gcs_free_string_array(arr, 2);
-    // 释放后不应再访问
+    // Must not access after free
 
     SUCCEED() << "String array free works correctly";
 }
 
-// Test 5: 验证 ray_gcs_free_string 函数
+// Test 5: verify the ray_gcs_free_string function
 TEST(GcsClientBridgeTest, FreeString) {
-    // 使用 strdup 分配内存（模拟 C++ 端返回字符串）
+    // Allocate with strdup (simulating a C++-returned string)
     const char* test_str = strdup("test string");
     ASSERT_NE(test_str, nullptr);
     ASSERT_STREQ(test_str, "test string");
 
-    // 使用 ray_gcs_free_string 释放
+    // Free with ray_gcs_free_string
     ray_gcs_free_string(test_str);
-    // 释放后不应再访问
+    // Must not access after free
 
     SUCCEED() << "ray_gcs_free_string works correctly";
 }
 
-// Test 6: 验证 ray_gcs_free_string 处理空指针
+// Test 6: verify ray_gcs_free_string handles null pointers
 TEST(GcsClientBridgeTest, FreeStringNullPointer) {
-    // 传递 nullptr 不应该崩溃
+    // Passing nullptr should not crash
     ray_gcs_free_string(nullptr);
     SUCCEED() << "ray_gcs_free_string handles nullptr safely";
 }
 
-// Test 7: 验证 Invalid arguments 处理
+// Test 7: verify invalid-arguments handling
 TEST(GcsClientBridgeTest, InvalidArguments) {
     char* error = nullptr;
 
-    // 测试空地址
+    // Test empty address
     CGcsClient* client = ray_gcs_client_create(
         nullptr,
         "00000000000000000000000000000000000000000000000000000000",
@@ -110,14 +124,14 @@ TEST(GcsClientBridgeTest, InvalidArguments) {
     ray_gcs_free_memory(error);
 }
 
-// Test 8: 验证 ClusterID 长度检查
+// Test 8: verify ClusterID length checking
 TEST(GcsClientBridgeTest, InvalidClusterIdLength) {
     char* error = nullptr;
 
-    // 测试无效的 ClusterID 长度（应该是 56 个十六进制字符）
+    // Test invalid ClusterID length (should be 56 hex chars)
     CGcsClient* client = ray_gcs_client_create(
         "127.0.0.1:6379",
-        "short_id",  // 太短
+        "short_id",  // too short
         5000,
         &error
     );
@@ -129,14 +143,14 @@ TEST(GcsClientBridgeTest, InvalidClusterIdLength) {
     ray_gcs_free_memory(error);
 }
 
-// Test 9: 验证 Autoscaler GetStatus 函数签名和基本错误处理
+// Test 9: verify the Autoscaler GetStatus signature and basic error handling
 TEST(GcsClientBridgeTest, AutoscalerGetStatusSignature) {
-    // 验证函数存在且可以调用（即使没有实际连接）
+    // Verify the function exists and can be called (even without a live connection)
     char* serialized = nullptr;
     int size = 0;
     char* error = nullptr;
 
-    // 测试空指针参数
+    // Test null pointer argument
     int result = ray_gcs_client_autoscaler_get_status(nullptr, &serialized, &size, &error);
     ASSERT_EQ(result, 0);
     ASSERT_NE(error, nullptr);
@@ -146,7 +160,7 @@ TEST(GcsClientBridgeTest, AutoscalerGetStatusSignature) {
         ray_gcs_free_memory(serialized);
     }
 
-    // 测试空 serialized_out 参数 - 使用 nullptr client
+    // Test null serialized_out argument - use nullptr client
     error = nullptr;
     result = ray_gcs_client_autoscaler_get_status(nullptr, nullptr, nullptr, &error);
     ASSERT_EQ(result, 0);

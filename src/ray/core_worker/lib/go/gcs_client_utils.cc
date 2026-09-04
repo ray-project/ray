@@ -1,10 +1,24 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // src/ray/core_worker/lib/go/gcs_client_utils.cc
-// CGO 桥接辅助函数实现
+// CGO bridge helper implementations
 #include "gcs_client_utils.h"
 #include <cstdlib>
 #include <cstring>
 
-// 辅助函数：设置错误消息
+// Helper: set an error message
 void set_error(char** error_out, const char* msg) {
     if (error_out && msg) {
         size_t len = strlen(msg);
@@ -15,7 +29,7 @@ void set_error(char** error_out, const char* msg) {
     }
 }
 
-// 辅助函数：分配序列化字符串数组（带大小）
+// Helper: allocate a serialized string array (with sizes)
 bool allocate_serialized_array(
     const std::vector<std::string>& data,
     char*** serialized_out,
@@ -63,7 +77,7 @@ bool allocate_serialized_array(
     return true;
 }
 
-// 辅助函数：分配字符串数组（不带大小，用于字符串 ID）
+// Helper: allocate a string array (without sizes, for string IDs)
 bool allocate_string_array(
     const std::vector<std::string>& data,
     char*** string_out,

@@ -1,69 +1,83 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gcs_memory.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
 
-// 测试释放单个内存块
+// Test freeing a single memory block
 TEST(GcsMemoryTest, FreeMemory) {
-  // 分配内存
+  // Allocate memory
   void* ptr = malloc(100);
   ASSERT_NE(ptr, nullptr);
 
-  // 写入测试数据
+  // Write test data
   memset(ptr, 0xAB, 100);
 
-  // 释放内存 - 这是 Go CGO 会调用的函数
+  // Free memory - this is the function Go CGO calls
   ray_gcs_free_memory(ptr);
 
-  // 注意：free 后访问内存是未定义行为，这里只验证函数不崩溃
+  // Note: accessing freed memory is undefined; here we only verify the function does not crash
   SUCCEED();
 }
 
-// 测试释放 NULL 指针
+// Test freeing a NULL pointer
 TEST(GcsMemoryTest, FreeMemoryNullPointer) {
-  // 传递 NULL 指针应该安全处理
+  // Passing a NULL pointer should be handled safely
   ray_gcs_free_memory(nullptr);
   SUCCEED();
 }
 
-// 测试释放字符串数组
+// Test freeing a string array
 TEST(GcsMemoryTest, FreeStringArray) {
   const int count = 3;
   char** arr = static_cast<char**>(malloc(count * sizeof(char*)));
   ASSERT_NE(arr, nullptr);
 
-  // 分配每个字符串
+  // Allocate each string
   for (int i = 0; i < count; i++) {
     arr[i] = static_cast<char*>(malloc(10));
     ASSERT_NE(arr[i], nullptr);
     snprintf(arr[i], 10, "str%d", i);
   }
 
-  // 释放字符串数组
+  // Free the string array
   ray_gcs_free_string_array(arr, count);
 
   SUCCEED();
 }
 
-// 测试释放空字符串数组
+// Test freeing an empty string array
 TEST(GcsMemoryTest, FreeStringArrayNull) {
-  // 传递 NULL 数组应该安全处理
+  // Passing a NULL array should be handled safely
   ray_gcs_free_string_array(nullptr, 5);
   SUCCEED();
 }
 
-// 测试释放包含 NULL 元素的字符串数组
+// Test freeing a string array with NULL elements
 TEST(GcsMemoryTest, FreeStringArrayWithNullElements) {
   const int count = 3;
   char** arr = static_cast<char**>(malloc(count * sizeof(char*)));
   ASSERT_NE(arr, nullptr);
 
-  // 部分元素为 NULL
+  // Some elements are NULL
   arr[0] = static_cast<char*>(malloc(10));
-  arr[1] = nullptr;  // NULL 元素
+  arr[1] = nullptr;  // NULL element
   arr[2] = static_cast<char*>(malloc(10));
 
-  // 释放字符串数组 - 应该正确处理 NULL 元素
+  // Free the string array - should handle NULL elements correctly
   ray_gcs_free_string_array(arr, count);
 
   SUCCEED();

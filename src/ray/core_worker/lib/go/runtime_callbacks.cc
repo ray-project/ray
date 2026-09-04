@@ -117,6 +117,7 @@ std::function<ray::Status(
     RAY_UNUSED(defined_concurrency_groups);
     RAY_UNUSED(name_of_concurrency_group_to_execute);
     RAY_UNUSED(actor_repr_name);
+    RAY_UNUSED(num_objects_per_yield);
     RAY_UNUSED(tensor_transport);
     *is_retryable_error = false;
 
