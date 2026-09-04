@@ -2199,7 +2199,7 @@ smart-open==6.2.0
     #   -r python/requirements/test-requirements.txt
 smmap==5.0.3
     # via gitdb
-snowflake-connector-python==4.3.0
+snowflake-connector-python==4.7.1
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
