@@ -10,7 +10,7 @@
 setuptools==84.0.0
 
 # Syntax highlighting
-Pygments==2.18.0
+Pygments==2.21.0
 
 # Sphinx
 sphinx==8.2.3
@@ -42,9 +42,9 @@ urllib3 < 1.27
 
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
-click==8.1.7
+click==8.5.0
 boto3==1.34.69
-requests==2.32.5
+requests==2.34.2
 tensorflow==2.20.0
 tf-keras==2.20.1
 xmltodict==0.13.0
