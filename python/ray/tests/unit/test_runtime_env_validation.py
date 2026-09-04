@@ -504,6 +504,10 @@ class TestValidateUV:
                 }
             )
 
+        # Invalid uv package type.
+        with pytest.raises(TypeError, match=r"packages.*list\[str\].*0-th item"):
+            validation.parse_and_validate_uv({"packages": [1]})
+
         # Valid uv install options.
         result = validation.parse_and_validate_uv(
             {
