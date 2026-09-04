@@ -24,6 +24,10 @@ clickhouse-connect
 confluent-kafka
 pybase64
 hudi==0.4.0
+# ray.data.read_mcap. Without this, python/ray/data/tests/datasource/test_mcap.py
+# skips every test through its module-level skipif and the //python/ray/data:test_mcap
+# target passes without running anything.
+mcap
 datasketches
 testcontainers[kafka]
 obstore

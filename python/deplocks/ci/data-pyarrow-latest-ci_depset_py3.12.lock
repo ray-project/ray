@@ -2298,6 +2298,7 @@ lz4==4.4.5 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   clickhouse-connect
+    #   mcap
 markdown==3.10.2 \
     --hash=sha256:994d51325d25ad8aa7ce4ebaec003febcce822c3f8c911e3b17c52f7f589f950 \
     --hash=sha256:e91464b71ae3ee7afd3017d9f358ef0baf158fd9a298db92f1d4761133824c36
@@ -2318,6 +2319,10 @@ markupsafe==3.0.3 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   jinja2
     #   werkzeug
+mcap==1.3.0 \
+    --hash=sha256:5f0d5826ba3b8418508c1d992bada4c5744073f1b3e6d685579f0aca0389fb2f \
+    --hash=sha256:6262a68cd5a9ed7f8fe8fa6330412a87949842782ab42a4800cd033d0f38e4cd
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
@@ -6079,6 +6084,7 @@ zstandard==0.25.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   clickhouse-connect
+    #   mcap
     #   pyiceberg
 
 # The following packages were excluded from the output:
