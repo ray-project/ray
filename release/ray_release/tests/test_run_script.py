@@ -50,6 +50,97 @@ def _run_script(test_script, state_file, *exits):
         return e.returncode
 
 
+def _run_script_capturing(test_script, extra_env, *args):
+    """Run the real release test script and return its combined output."""
+    env = {
+        **os.environ,
+        "NO_INSTALL": "1",
+        "NO_CLONE": "1",
+        "NO_ARTIFACTS": "1",
+        "OVERRIDE_SLEEP_TIME": "0",
+        "MAX_RETRIES": "1",
+        **extra_env,
+    }
+    proc = subprocess.run(
+        f"{test_script} {' '.join(args)}",
+        shell=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout + proc.stderr
+
+
+def test_obs_agent_analysis_is_printed_in_its_own_group(tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        fp.write(f'echo "the analysis" > {analysis_file}\nexit 40\n')
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
+        },
+        "test_name",
+    )
+
+    assert "+++ :robot_face: Observability agent analysis" in output
+    assert "the analysis" in output
+    # The group is the last thing the script prints, so nothing it emits can be
+    # filed under the analysis heading.
+    assert output.rstrip().endswith("the analysis")
+
+
+def test_no_group_when_there_is_no_analysis(tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        fp.write("exit 40\n")
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
+        },
+        "test_name",
+    )
+
+    assert "Observability agent analysis" not in output
+
+
+def test_stale_analysis_is_not_reported_against_a_later_attempt(tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    with open(analysis_file, "wt") as fp:
+        fp.write("stale analysis from a previous attempt\n")
+
+    writer = os.path.join(tmpdir, "writer.sh")
+    with open(writer, "wt") as fp:
+        fp.write("exit 40\n")
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    output = _run_script_capturing(
+        test_script,
+        {
+            "RAY_TEST_SCRIPT": f"bash {writer}",
+            "RELEASE_TEST_OBS_AGENT_FILE": analysis_file,
+        },
+        "test_name",
+    )
+
+    assert "stale analysis" not in output
+
+
 def test_repeat(setup):
     state_file, test_script = setup
 
