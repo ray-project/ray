@@ -85,8 +85,11 @@ def _run_script_capturing(
         "MAX_RETRIES": "1",
         **extra_env,
     }
-    if "RELEASE_TEST_OBS_AGENT_FILE" not in extra_env:
-        env.pop("RELEASE_TEST_OBS_AGENT_FILE", None)
+    # A value inherited from the caller's shell would decide the outcome of the
+    # tests that are about what the script does when these are unset.
+    for name in ("RELEASE_TEST_OBS_AGENT_FILE", "BUILDKITE_MAX_RETRIES"):
+        if name not in extra_env:
+            env.pop(name, None)
     proc = subprocess.run(
         f"{test_script} {' '.join(args)}",
         shell=True,
@@ -314,56 +317,28 @@ def test_the_default_analysis_path_is_under_the_results_dir(tmpdir):
     assert os.path.exists(os.path.join(results_dir, "obs_agent_analysis.txt"))
 
 
-def test_buildkite_max_retries_is_inherited(tmpdir):
-    """The step publishes the retry budget; the script must not clobber it."""
-    recorder = os.path.join(tmpdir, "recorder.sh")
+@pytest.mark.parametrize(
+    "published,expected",
+    [({"BUILDKITE_MAX_RETRIES": "3"}, "3"), ({}, "1")],
+    ids=["published_by_the_step", "not_published"],
+)
+def test_the_job_sees_the_retry_budget_the_step_published(published, expected, tmpdir):
+    """The step publishes the budget; without one the script keeps its default."""
     recorded = os.path.join(tmpdir, "recorded.txt")
-    with open(recorder, "wt") as fp:
-        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
 
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    _run_script_capturing(
+        RELEASE_TEST_SCRIPT,
+        {
+            "RAY_TEST_SCRIPT": _write_stub(
+                tmpdir, f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n'
+            ),
+            **published,
+        },
+        "test_name",
     )
-    env = {
-        **os.environ,
-        "NO_INSTALL": "1",
-        "NO_CLONE": "1",
-        "NO_ARTIFACTS": "1",
-        "OVERRIDE_SLEEP_TIME": "0",
-        "MAX_RETRIES": "1",
-        "RAY_TEST_SCRIPT": f"bash {recorder}",
-        "BUILDKITE_MAX_RETRIES": "3",
-    }
-    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
 
-    with open(recorded, "rt") as fp:
-        assert fp.read().strip() == "3"
-
-
-def test_buildkite_max_retries_defaults_to_one(tmpdir):
-    """Without a published budget the job keeps the historical default."""
-    recorder = os.path.join(tmpdir, "recorder.sh")
-    recorded = os.path.join(tmpdir, "recorded.txt")
-    with open(recorder, "wt") as fp:
-        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
-
-    test_script = os.path.join(
-        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
-    )
-    env = {
-        **os.environ,
-        "NO_INSTALL": "1",
-        "NO_CLONE": "1",
-        "NO_ARTIFACTS": "1",
-        "OVERRIDE_SLEEP_TIME": "0",
-        "MAX_RETRIES": "1",
-        "RAY_TEST_SCRIPT": f"bash {recorder}",
-    }
-    env.pop("BUILDKITE_MAX_RETRIES", None)
-    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
-
-    with open(recorded, "rt") as fp:
-        assert fp.read().strip() == "1"
+    with open(recorded, "rt", encoding="utf-8") as fp:
+        assert fp.read().strip() == expected
 
 
 if __name__ == "__main__":
