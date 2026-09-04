@@ -204,6 +204,25 @@
             "type": "object",
             "description": "How Ray will authenticate with newly launched nodes.",
             "additionalProperties": false,
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "ssh_proxy_use_node_id": {
+                                "const": true
+                            }
+                        },
+                        "required": [
+                            "ssh_proxy_use_node_id"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "ssh_proxy_command"
+                        ]
+                    }
+                }
+            ],
             "properties": {
                 "ssh_user": {
                     "type": "string",

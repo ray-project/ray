@@ -505,6 +505,16 @@ class AutoscalingTest(unittest.TestCase):
         with pytest.raises(ValidationError):
             validate_config(config)
 
+        # Enabling node-ID proxy targets requires a proxy command.
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["auth"]["ssh_proxy_use_node_id"] = True
+        with pytest.raises(ValidationError):
+            validate_config(config)
+
+        # Disabling node-ID proxy targets does not require a proxy command.
+        config["auth"]["ssh_proxy_use_node_id"] = False
+        validate_config(config)
+
     def testValidateDefaultConfig(self):
         config = {}
         config["provider"] = {
