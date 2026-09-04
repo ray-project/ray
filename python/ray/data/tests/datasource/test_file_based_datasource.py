@@ -292,6 +292,34 @@ def test_ignore_missing_paths_false(ray_start_regular_shared, tmp_path):
         execute_read_tasks(tasks)
 
 
+def test_empty_directory_raises_no_files_found(ray_start_regular_shared, tmp_path):
+    with pytest.raises(ValueError, match="No files found under"):
+        MockFileBasedDatasource(tmp_path)
+
+
+@pytest.mark.parametrize("filename", ["_SUCCESS", ".hidden.txt"])
+def test_excluded_prefixes_only_raises_no_files_found(
+    ray_start_regular_shared, tmp_path, filename
+):
+    # Directory listing drops names starting with "_" or ".", so a directory
+    # holding only those (e.g. a Spark output directory with just its _SUCCESS
+    # marker) expands to no files at all.
+    with open(os.path.join(tmp_path, filename), "wb"):
+        pass
+
+    with pytest.raises(ValueError, match="No files found under"):
+        MockFileBasedDatasource(tmp_path)
+
+
+def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(
+            ["missing1.txt", "missing2.txt"], ignore_missing_paths=True
+        )
+
+    assert "'ignore_missing_paths' is set to True" in str(exc_info.value)
+
+
 def test_local_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     with open(path, "w"):
