@@ -162,6 +162,7 @@ class Repeater(Searcher):
                 "Trial {} not in group; cannot report score. "
                 "Seen trials: {}".format(trial_id, list(self._trial_id_to_group))
             )
+            return
         trial_group = self._trial_id_to_group[trial_id]
         if not result or self.searcher.metric not in result:
             score = np.nan

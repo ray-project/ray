@@ -128,6 +128,42 @@ def test_set_get_repeater():
     assert new_repeater.searcher.returned_result[-1] == {"result": 3}
 
 
+def test_repeater_ignores_unknown_trial():
+    """Reporting a trial the Repeater never suggested should not raise.
+
+    On resume, Tune can restore a trial that was suggested after the last
+    search algorithm checkpoint was written. Such a trial is missing from the
+    restored ``_trial_id_to_group`` mapping, and completing it used to raise a
+    ``KeyError`` that tore down the whole experiment.
+    """
+
+    class TestSuggestion(Searcher):
+        def __init__(self):
+            self.returned_result = []
+            super().__init__(metric="result", mode="max")
+
+        def suggest(self, trial_id):
+            return {"score": 1}
+
+        def on_trial_complete(self, trial_id, result=None, **kwargs):
+            self.returned_result.append(result)
+
+    searcher = TestSuggestion()
+    repeater = Repeater(searcher, repeat=2, set_index=False)
+    repeater.suggest("known_1")
+
+    # A trial that is absent from the restored group mapping is skipped
+    # instead of aborting the experiment.
+    repeater.on_trial_complete("unknown", {"result": 8})
+    assert searcher.returned_result == []
+
+    # Groups the Repeater does know about still report normally.
+    repeater.suggest("known_2")
+    repeater.on_trial_complete("known_1", {"result": 1})
+    repeater.on_trial_complete("known_2", {"result": 3})
+    assert searcher.returned_result == [{"result": 2.0}]
+
+
 def test_set_get_limiter():
     class TestSuggestion(Searcher):
         def __init__(self, index):
