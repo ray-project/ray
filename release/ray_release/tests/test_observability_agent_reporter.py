@@ -10,6 +10,7 @@ from ray_release.exception import ExitCode
 from ray_release.logger import logger
 from ray_release.reporter.observability_agent import (
     ANALYSIS_FILE_ENV,
+    ANNOTATION_CONTEXT_PREFIX,
     COMMAND_FAILURE_RETURN_CODES,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
@@ -462,6 +463,123 @@ def test_empty_analysis_still_reports_the_failure(caplog, tmpdir):
     assert "no slack thread" in written
     assert DEBUG_SESSION_ID in written
     assert "None" not in written
+
+
+class FakeCompleted:
+    def __init__(self, returncode: int = 0, stderr: str = ""):
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def _report_annotating(result, responses, env=None):
+    """Run the reporter as if on a buildkite agent, capturing the annotate call."""
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return FakeCompleted()
+
+    fake_post = FakePost(responses)
+    full_env = {
+        "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+        "ANYSCALE_CLI_TOKEN": "test_token",
+        "BUILDKITE": "true",
+        "BUILDKITE_JOB_ID": "01a0691c-job",
+        "BUILDKITE_RETRY_COUNT": "2",
+        **(env or {}),
+    }
+    with (
+        patch.dict(os.environ, full_env, clear=True),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch("ray_release.reporter.observability_agent.subprocess.run", fake_run),
+    ):
+        ObservabilityAgentReporter().report_result(_test(), result)
+    return calls
+
+
+def test_annotation_is_appended_to_a_context_that_outlives_the_job():
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+    )
+
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[:2] == ["buildkite-agent", "annotate"]
+    assert "--append" in command
+    assert f"--context={ANNOTATION_CONTEXT_PREFIX}test_name" in command
+    assert "--style=info" in command
+    # The job is named for attribution, but it is not the identity of the
+    # annotation: a retry is a new job, and the context has to survive that.
+    assert command[command.index("--job") + 1] == "01a0691c-job"
+
+    body = command[-1]
+    assert SUMMARY in body
+    assert SLACK_THREAD in body
+    assert "attempt 2" in body
+
+
+def test_no_annotation_outside_buildkite():
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        env={"BUILDKITE": ""},
+    )
+
+    assert calls == []
+
+
+def test_annotation_failures_never_propagate(caplog):
+    """An annotation is advisory; it must not change the test's outcome."""
+    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
+    with (
+        caplog.at_level("WARNING", logger=logger.name),
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+                "BUILDKITE": "true",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.subprocess.run",
+            side_effect=FileNotFoundError("buildkite-agent"),
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test(), _result(ResultStatus.ERROR.value)
+        )
+
+    assert "Could not annotate the buildkite job" in caplog.text
+
+
+def test_a_non_zero_annotate_exit_is_logged_not_raised(caplog):
+    def fake_run(command, **kwargs):
+        return FakeCompleted(returncode=1, stderr="boom")
+
+    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
+    with (
+        caplog.at_level("WARNING", logger=logger.name),
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+                "BUILDKITE": "true",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch("ray_release.reporter.observability_agent.subprocess.run", fake_run),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test(), _result(ResultStatus.ERROR.value)
+        )
+
+    assert "buildkite-agent annotate exited 1" in caplog.text
 
 
 if __name__ == "__main__":

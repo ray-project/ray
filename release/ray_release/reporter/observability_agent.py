@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from typing import Any, Dict, Optional
 
 import requests
@@ -9,7 +10,7 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
-from ray_release.util import ANYSCALE_HOST, format_link
+from ray_release.util import ANYSCALE_HOST, anyscale_job_url, format_link
 
 # Result statuses that trigger the observability agent. These are the failures
 # that are attributable to the test workload itself, TIMEOUT included: it is set
@@ -60,6 +61,16 @@ FAKE_DEBUG_SESSION_ID = "oasess_fake000000000000000000000000000"
 # inline keeps it out of the middle of the reporting output, where it competes
 # with the other reporters and the traceback.
 ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
+
+# The annotation is keyed on the test name rather than the job id, because a
+# buildkite retry is a new job with a new id: keying on the job would create a
+# separate annotation per attempt instead of appending to one. `step_key` is
+# null for release test jobs, so it is not usable either.
+ANNOTATION_CONTEXT_PREFIX = "obs-agent-"
+
+# info rather than warning or error: the analysis is advisory, and error is what
+# the build's own failures use.
+ANNOTATION_STYLE = "info"
 
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
@@ -180,6 +191,8 @@ class ObservabilityAgentReporter(Reporter):
                 "\n>>> and its feedback buttons cannot be reached from here."
             )
 
+        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+
         analysis_file = self._write_analysis(message)
         if analysis_file:
             logger.info(
@@ -188,6 +201,66 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+    def _annotate(
+        self,
+        test: Test,
+        job_id: str,
+        debug_session_id: str,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> None:
+        """Append this attempt's analysis to the job's buildkite annotation.
+
+        Appending rather than replacing keeps every attempt's report, and the
+        context outlives the job id so that a retry adds to the same annotation
+        instead of opening a new one.
+        """
+        if not os.environ.get("BUILDKITE"):
+            return
+
+        attempt = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+        lines = [
+            f"<strong>{test.get_name()}</strong> — attempt {attempt} — "
+            f"<a href={anyscale_job_url(job_id)!r}>{job_id}</a>",
+            "",
+            summary or "The agent returned no summary for this job.",
+        ]
+        if slack_thread:
+            lines += [
+                "",
+                f"<a href={slack_thread!r}>Full report and feedback</a> — rate it "
+                "with the 'All good' or 'Needs correction' buttons in the thread.",
+            ]
+        else:
+            lines += ["", f"No slack thread; debug session {debug_session_id}."]
+        lines.append("<br/>")
+
+        command = [
+            "buildkite-agent",
+            "annotate",
+            f"--style={ANNOTATION_STYLE}",
+            f"--context={ANNOTATION_CONTEXT_PREFIX}{test.get_name()}",
+            "--append",
+        ]
+        if os.environ.get("BUILDKITE_JOB_ID"):
+            command += ["--job", os.environ["BUILDKITE_JOB_ID"]]
+        # The body is the positional argument, so it stays last.
+        command.append("\n".join(lines))
+
+        try:
+            # Not check=True: an annotation is advisory, and a missing binary or
+            # a non-zero exit must not change the outcome of the test run.
+            completed = subprocess.run(command, capture_output=True, text=True)
+        except Exception as e:
+            logger.warning(f"Could not annotate the buildkite job: {e}")
+            return
+
+        if completed.returncode != 0:
+            logger.warning(
+                f"buildkite-agent annotate exited {completed.returncode}: "
+                f"{completed.stderr.strip()}"
+            )
 
     def _fake_response(self) -> Optional[Dict[str, Any]]:
         """TEMPORARY -- DO NOT MERGE. Serve a canned response, if one is set.
