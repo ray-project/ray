@@ -22,6 +22,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "context_test",
+    size = "small",
+    srcs = ["context_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:core_worker_context",
+    ],
+)
+
+ray_cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["memory_store_test.cc"],
@@ -33,6 +45,26 @@ ray_cc_test(
         "//src/ray/core_worker:memory_store",
         "//src/ray/util:clock",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_test(
+    name = "future_resolver_test",
+    size = "small",
+    srcs = ["future_resolver_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/core_worker:future_resolver",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:reference_counter",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/pubsub:fake_subscriber",
+        "//src/ray/util:clock",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -95,6 +127,7 @@ ray_cc_test(
         "//src/ray/core_worker:task_manager",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/util:clock",
     ],
@@ -208,6 +241,7 @@ ray_cc_test(
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_ipc_client:fake_raylet_ipc_client",
         "//src/ray/raylet_rpc_client:fake_raylet_client",

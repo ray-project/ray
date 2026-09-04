@@ -5,6 +5,12 @@ import urllib.parse
 from typing import Tuple
 from urllib.parse import urlparse
 
+from ray._common.runtime_env_package import (
+    COMPOUND_ARCHIVE_EXTENSIONS,
+    WHEEL_EXTENSION,
+    get_package_extension,
+)
+
 _REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
 
 
@@ -35,8 +41,7 @@ class Protocol(enum.Enum):
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage.
-        # These protocols should only be used with paths that end in
-        # ".zip", ".whl", ".tar.gz", or ".tgz".
+        # RuntimeEnv fields apply their own format constraints to these URIs.
         return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
 
 
@@ -83,7 +88,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         )
 
     if protocol in Protocol.remote_protocols():
-        if uri.path.endswith(".whl"):
+        if uri.path.endswith(WHEEL_EXTENSION):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
             # for more information.
@@ -92,16 +97,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # Hash the URI to produce a stable, NAME_MAX-safe local filename
             # regardless of how long or deeply nested the URI is. The extension
             # is preserved so is_zip_uri / is_jar_uri keep working. Compound
-            # extensions (.tar.gz, .tar.bz2) are kept intact so archive-type
+            # compound extensions are kept intact so archive-type
             # detection downstream still works.
             # netloc + path covers URIs where the filename has no path
             # component (e.g., s3://package.zip puts "package.zip" in netloc).
             raw = uri.netloc + uri.path
-            if raw.endswith(".tar.gz"):
-                suffix = ".tar.gz"
-            elif raw.endswith(".tar.bz2"):
-                suffix = ".tar.bz2"
-            else:
+            suffix = get_package_extension(raw, COMPOUND_ARCHIVE_EXTENSIONS)
+            if suffix is None:
                 suffix = pathlib.Path(raw).suffix
             digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
             package_name = f"{protocol.value}_{digest}{suffix}"

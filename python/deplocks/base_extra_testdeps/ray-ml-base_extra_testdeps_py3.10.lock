@@ -1,4 +1,3 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 
 absl-py==2.4.0 \
@@ -229,9 +228,9 @@ anyscale==0.26.105 \
     --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
     --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
-argcomplete==3.3.0 \
-    --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
-    --hash=sha256:fd03ff4a5b9e6580569d34b273f741e85cd9e072f3feeeee3eba4891c70eda62
+argcomplete==3.5.3 \
+    --hash=sha256:2ab2c4a215c59fd6caaff41a869480a23e8f6a5f910b266c1808037f4e375b61 \
+    --hash=sha256:c12bf50eded8aebb298c7b7da7a5ff3ee24dffd9f5281867dfe1424b58c55392
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -320,9 +319,9 @@ azure-common==1.1.28 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   smart-open
-azure-core==1.39.0 \
-    --hash=sha256:4ac7b70fab5438c3f68770649a78daf97833caa83827f91df9c14e0e0ea7d34f \
-    --hash=sha256:8a90a562998dd44ce84597590fff6249701b98c0e8797c95fcdd695b54c35d74
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -337,9 +336,9 @@ azure-datalake-store==0.0.53 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   adlfs
-azure-identity==1.17.1 \
-    --hash=sha256:32ecc67cc73f4bd0595e4f64b1ca65cd05186f4fe6f98ed2ae9f1aa32646efea \
-    --hash=sha256:db8d59c183b680e763722bfe8ebc45930e6c57df510620985939f7f3191e0382
+azure-identity==1.23.1 \
+    --hash=sha256:226c1ef982a9f8d5dcf6e0f9ed35eaef2a4d971e7dd86317e9b9d52e70a035e4 \
+    --hash=sha256:7eed28baa0097a47e3fb53bd35a63b769e6b085bb3cb616dfce2b67f28a004a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -2502,6 +2501,7 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
+    #   ray
     #   torch
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
@@ -3345,18 +3345,18 @@ mpmath==1.3.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   sympy
-msal==1.28.1 \
-    --hash=sha256:563c2d70de77a2ca9786aab84cb4e133a38a6897e6676774edc23d610bfc9e7b \
-    --hash=sha256:d72bbfe2d5c2f2555f4bc6205be4450ddfd12976610dd9a16a9ab0f05c68b64d
+msal==1.34.0b1 \
+    --hash=sha256:3b6373325e3509d97873e36965a75e9cc9393f1b579d12cc03c0ca0ef6d37eb4 \
+    --hash=sha256:86cdbfec14955e803379499d017056c6df4ed40f717fd6addde94bdeb4babd78
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0b1 \
-    --hash=sha256:217f391bb549de11b19abe8029a8375fe3ca0556aa8cce004b2083f00a569b71 \
-    --hash=sha256:3658b3814cd6a7759e83cb0ec145f30330ee249a92444adaf9aa4eb4f5bbcbbc
+msal-extensions==1.2.0 \
+    --hash=sha256:6f41b320bfd2933d631a215c91ca0dd3e67d84bd1a2f50ce917d5874ec646bef \
+    --hash=sha256:cf5ba83a2113fa6dc011a254a72f1c223c88d7dfad74cc30617c4679a417704d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -3969,6 +3969,76 @@ oauthlib==3.3.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   requests-oauthlib
+obstore==0.10.0 \
+    --hash=sha256:012ebb24ba0c47e54840fa02bef780ce4f4d73a3c9685d9addd53222f1b375b2 \
+    --hash=sha256:03b4e07d97e5271da136942dae71febd5a42c455aeee42a40892a6977171e9fa \
+    --hash=sha256:081a7d7e5c63b864747491520d17ac3c9fb957a3df62c5c177fd98f29dc1d9eb \
+    --hash=sha256:089d64f61649ded2b4f997ec94a4b659f594e6632f65c1c88622ad21c73f6089 \
+    --hash=sha256:0ac211c847759579b3b0951e8a7758c38da68d6aac5c904d78cbd71a62ccb7c6 \
+    --hash=sha256:0d6b1cf7af217dd6091e097e240347a64709a11eb22a89adcc85dda7462d2b4b \
+    --hash=sha256:1a96beb5628f3303d8fdfd003b1957f4c2a38f0f224a47b6e488ab0b4eb23edb \
+    --hash=sha256:1fc3a232026f9b33affa4c6aa9d4a1765c08aa4e2d0aa8a6034801cf3f8a3cf6 \
+    --hash=sha256:2509b29b89e5a00480f165d5351132da2efeeca6a57d29f018c4e0534a5a5dc0 \
+    --hash=sha256:25e1cad14a7723e48e358c5635dc199ec1d0ddb0f6724ff58d92057ed93ad81b \
+    --hash=sha256:2c8fece4ed62af616bf6def15f822d770d2a5919aa0809f390ae6617817e6581 \
+    --hash=sha256:2cccb3adef4e6e113fcd54a12c342c2a01fb8e470abfa1a5f9ce4ad2830514f1 \
+    --hash=sha256:2d07b04a16c6a586444de1997f2121a332db05aac7953fbcb3e8fb28140306a8 \
+    --hash=sha256:315fe386cc631247175c2cc64dfa77f7ec4746248d0a03a7126d9b6a063a1a1d \
+    --hash=sha256:351a8c57fd10d2f04cbc8fb0b29b39c29a4502d6418604cccb6e0b127c47b12e \
+    --hash=sha256:38a10746b540aab3f898422d87fa7112dab35a824dfa912b64480eb37b55c755 \
+    --hash=sha256:3911b95eac66328606cfa0c5545592ef18c04c242f5c5631c18ef4c3ce456009 \
+    --hash=sha256:4fc646ad2c2ceaa3dbe07536eb207e1e868e4c701c89f71dd35678e1ee957283 \
+    --hash=sha256:52ed02949c1ea3dd445c963b246e95801ccd54b5d0d24050ad7ae9570e2c1195 \
+    --hash=sha256:5b071781d2ef95653f78aef588bd054480381d679ae57c4f5d2553b366de1a05 \
+    --hash=sha256:5f86aa14f02e35db95b5331dda4387761366fefd52ec0856c9eed07bf92c681d \
+    --hash=sha256:616ab6d789e138f6f21b61b4325bc8eea6a537445819481d37c5ec644c55b7ae \
+    --hash=sha256:6b53a9c3e3afe24ea53e554c1d5626fdd456b2e7960091fce4a77af5b7a0ffb7 \
+    --hash=sha256:6f3baeffb01c6e018ca770e48d7456bc1f262f213912725d8262e3c7c3fa1c1e \
+    --hash=sha256:6fc9c80c6042897b474c3de108a37d5f1aef76cdb64aa53e973e3a1051354471 \
+    --hash=sha256:70accdf1fc624559c810bed68041f599a218f3dc4fb3afdeed50f7151e240ff8 \
+    --hash=sha256:71657a256f938715f5a4d3fe84c5141b79572dbe2436b90d0020ecb9cfe6548b \
+    --hash=sha256:722dbd451470f570eadbdf45b9a2db205d35648da3cf2f387111621dec715fb1 \
+    --hash=sha256:72610b6e7b3da608762b6a8a37989e0559c813ac115b9376a176810eb0173bd8 \
+    --hash=sha256:7d172fc21521683799ff8e8dd81d13991e20642d079fba43c2283984c0df3386 \
+    --hash=sha256:7e14e1ef6bb63730d6aec78499b0aa48dde160d1ad8fdd1e5553c930e7664107 \
+    --hash=sha256:81c5db4905a5031f15946e0ada948cd1f3cdca0c12635054570fc749d9c94b9b \
+    --hash=sha256:87259012873a9943d34a3faebf30ee0755e2566750c877df3f1d5dd7e3c13aa8 \
+    --hash=sha256:8d2290638739df5c4c9e766e716fb536eb0e591350302ba492ff2dac7b03e913 \
+    --hash=sha256:954204ff0c510f9025661b1b485342321dd5c36c5407cbbfbfd7c4da9e4f5b9a \
+    --hash=sha256:973a99da0102cbebe0eb9f34bb13a071a5bf56a11d473c4428699567452455a2 \
+    --hash=sha256:98594d7acecbd113c70d6e931c40758edca91ce64ba5dda496f95603c831727a \
+    --hash=sha256:9a64ededa74677649358bb35a1f07d912c77c51f732b77c531383ef964e29cdd \
+    --hash=sha256:a58698cc89feb153bb856365e2dbae305794355ab2cc1f667c70da6caf95f8e8 \
+    --hash=sha256:a5b55daeedbfd744578aea9b62074f4bcf00e6894ee32f7c0a39aee78599ed6e \
+    --hash=sha256:a6db2098dfb06740079f83dd254af2151c48aa97b8473659ff3b78f1f79c3e50 \
+    --hash=sha256:b29f2477551114f1d3e01d9729fc54f88b6d6cd83fdc6e40d36eb4781ad03cd4 \
+    --hash=sha256:b4b1fcf083474384565c5fd06523894419280fca4aeb23a7f3f88add8db2d824 \
+    --hash=sha256:b581d2f78b521c7c72862721384c109b6764c57222b7bf06dc83626a7c4a6945 \
+    --hash=sha256:b94bc574bc730a9a25117de96f88ef39dd9bce069cba44fd8726d1067a36d693 \
+    --hash=sha256:b9e28b4a59c08e077c5b2803717f9e45cb033b21f7f65cf193aa92e4dcf51c39 \
+    --hash=sha256:c058d8f08f7df45cabeca1a1c4e68bc8b41be921f554e5d2657600202e391fd2 \
+    --hash=sha256:c2c4974845b1192ec50959ad8579e01699b6ae8c64adb6433addcfbf35263901 \
+    --hash=sha256:c338a9fcbb18aebf5aab654fbb0731feaa27b80a0c1153aba0aa93188e89a6de \
+    --hash=sha256:d0396e857e403848a366ba38ee0289a5ea206cff1e184d2ce7f63eeb2a24da20 \
+    --hash=sha256:d12bc7c84cb923c65055d83705870e4fd7a233aba9db91a26aebcf2327614429 \
+    --hash=sha256:d90894aafb8baf02d4d7d4e6debbbd43b26890bfbe0bcad7c6d75b41b019ed6b \
+    --hash=sha256:defe889c3baf0781eb83e0335e89fb1331723bebd6a015dc4eecb99794c70210 \
+    --hash=sha256:e0a81816daa83da5fca85acf9520cc45a4ac8c2c5863b50100b3802914fcd8ca \
+    --hash=sha256:e360ce37f4b5f7b6e3eaf6517b8bbb481379eb0773a16bb2971c02b4363ca787 \
+    --hash=sha256:e4547eeb8a7e83e9ab3b27d8e76b881e261a71846779e1ae4f1d07276d032982 \
+    --hash=sha256:e45deb76f3f1a54cf730c43e917af72d3f1a46e4c502190a9111d2dabec3d71e \
+    --hash=sha256:e62afd200b2e5bc93cff75e6f930877f4203a6a2f0e13252c6ce7dba78d77c9c \
+    --hash=sha256:e8a443c729dfb6324591664aa4cca5394d89924014d585ea4ac7e2d448ad3a8e \
+    --hash=sha256:ea1ba8896799ad0bb28fce0aa3b23de1177a4bb588fce8e252fa161dab722907 \
+    --hash=sha256:eab9e7aa7b64c242af6a290a40b750a6b759776dcc6e9e1432f974e76a2aa596 \
+    --hash=sha256:f343227c37c6f217aaf56e82f58335fa5f34b70a727f4e5e718becc9c613060a \
+    --hash=sha256:f4e69ce8e579227f6416c4e547c485a9ff84425ec92fd95107f2ad0cfb02f1cc \
+    --hash=sha256:f84be7473d5b2484059563126b1ac71377aecb2ed3db78c7fb3fddeb7f263b2c \
+    --hash=sha256:fedac1464b8835063a5661da8dd33519d0d24988d2b256c92b5841c26b18ce28
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
 openai-whisper==20250625 \
     --hash=sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96
     # via -r release/ray_release/byod/requirements_ml_byod_3.10.in
@@ -6201,6 +6271,7 @@ six==1.17.0 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r docker/base-deps/requirements.in
     #   anyscale
+    #   azure-core
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-oauth
@@ -6818,6 +6889,7 @@ typing-extensions==4.15.0 \
     #   mistune
     #   modin
     #   multidict
+    #   obstore
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions

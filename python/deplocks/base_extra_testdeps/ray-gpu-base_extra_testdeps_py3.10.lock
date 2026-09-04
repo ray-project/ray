@@ -1,4 +1,3 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 
 absl-py==2.4.0 \
@@ -240,9 +239,9 @@ anyscale==0.26.105 \
     --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
     --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
     # via -r docker/base-extra/requirements.in
-argcomplete==3.3.0 \
-    --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
-    --hash=sha256:fd03ff4a5b9e6580569d34b273f741e85cd9e072f3feeeee3eba4891c70eda62
+argcomplete==3.5.3 \
+    --hash=sha256:2ab2c4a215c59fd6caaff41a869480a23e8f6a5f910b266c1808037f4e375b61 \
+    --hash=sha256:c12bf50eded8aebb298c7b7da7a5ff3ee24dffd9f5281867dfe1424b58c55392
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   gsutil
@@ -332,9 +331,9 @@ azure-common==1.1.28 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   smart-open
-azure-core==1.39.0 \
-    --hash=sha256:4ac7b70fab5438c3f68770649a78daf97833caa83827f91df9c14e0e0ea7d34f \
-    --hash=sha256:8a90a562998dd44ce84597590fff6249701b98c0e8797c95fcdd695b54c35d74
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   adlfs
@@ -347,9 +346,9 @@ azure-datalake-store==0.0.53 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   adlfs
-azure-identity==1.17.1 \
-    --hash=sha256:32ecc67cc73f4bd0595e4f64b1ca65cd05186f4fe6f98ed2ae9f1aa32646efea \
-    --hash=sha256:db8d59c183b680e763722bfe8ebc45930e6c57df510620985939f7f3191e0382
+azure-identity==1.23.1 \
+    --hash=sha256:226c1ef982a9f8d5dcf6e0f9ed35eaef2a4d971e7dd86317e9b9d52e70a035e4 \
+    --hash=sha256:7eed28baa0097a47e3fb53bd35a63b769e6b085bb3cb616dfce2b67f28a004a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -r docker/base-extra/requirements.in
@@ -2166,6 +2165,7 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
+    #   ray
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
     --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
@@ -2659,17 +2659,17 @@ monotonic==1.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   gsutil
-msal==1.28.1 \
-    --hash=sha256:563c2d70de77a2ca9786aab84cb4e133a38a6897e6676774edc23d610bfc9e7b \
-    --hash=sha256:d72bbfe2d5c2f2555f4bc6205be4450ddfd12976610dd9a16a9ab0f05c68b64d
+msal==1.34.0b1 \
+    --hash=sha256:3b6373325e3509d97873e36965a75e9cc9393f1b579d12cc03c0ca0ef6d37eb4 \
+    --hash=sha256:86cdbfec14955e803379499d017056c6df4ed40f717fd6addde94bdeb4babd78
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0b1 \
-    --hash=sha256:217f391bb549de11b19abe8029a8375fe3ca0556aa8cce004b2083f00a569b71 \
-    --hash=sha256:3658b3814cd6a7759e83cb0ec145f30330ee249a92444adaf9aa4eb4f5bbcbbc
+msal-extensions==1.2.0 \
+    --hash=sha256:6f41b320bfd2933d631a215c91ca0dd3e67d84bd1a2f50ce917d5874ec646bef \
+    --hash=sha256:cf5ba83a2113fa6dc011a254a72f1c223c88d7dfad74cc30617c4679a417704d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   azure-identity
@@ -4674,6 +4674,7 @@ six==1.17.0 \
     #   -r docker/base-deps/requirements.in
     #   anyscale
     #   astunparse
+    #   azure-core
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-oauth

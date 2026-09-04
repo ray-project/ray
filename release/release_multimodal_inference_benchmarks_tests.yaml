@@ -13,8 +13,12 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        # Fail on spilling
-        - RAYTEST_FAIL_ON_SPILLING=1
+        # Ray Data attempts to limit cluster-wide object store usage of primary copies
+        # to 50% with its `ResourceBudget` backpressure policy. Since Ray Data doesn't
+        # keep track of secondary copies, the worst case utilization is 50% * 2 copies
+        # = 100%. If we exceed this amount on a linear pipeline, it means backpressure
+        # is very broken.
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
 
 - name: image_classification
 
@@ -34,31 +38,6 @@
       run:
         script: python image_classification/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python image_classification/daft_main.py
-
-- name: large_image_embedding
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: large_image_embedding/compute.yaml
-    byod:
-      post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: large_image_embedding_py3.10.lock
-
-  run:
-    timeout: 3600
-
-  variations:
-    - __suffix__: ray
-      frequency: nightly
-      run:
-        script: python large_image_embedding/ray_data_main.py
-
-    - __suffix__: daft
-      run:
-        script: python large_image_embedding/daft_main.py
 
 - name: document_embedding
 
@@ -77,10 +56,6 @@
     frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
-
-  - __suffix__: daft
-    run:
-      script: python document_embedding/daft_main.py
 
 
 - name: audio_transcription
@@ -102,10 +77,6 @@
       run:
         script: python audio_transcription/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python audio_transcription/daft_main.py
-
 - name: video_object_detection
 
   cluster:
@@ -114,18 +85,6 @@
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: video_object_detection_py3.10.lock
-      runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        # Fail the test if a node dies
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-          # In general, Ray Data shouldn't spill on stable fixed-size clusters, but
-          # we've observed occasional and negligible O(~10 GiB) spills in weekly runs.
-          # The spilling is likely due to unbalanced object distribution.
-          #
-          # To avoid creating low-signal failures, we've disabled the spill check on
-          # this test.
-        - RAYTEST_FAIL_ON_SPILLING=0
   run:
     timeout: 3600
 
@@ -134,7 +93,3 @@
       frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
-
-    - __suffix__: daft
-      run:
-        script: python video_object_detection/daft_main.py

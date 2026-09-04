@@ -1,5 +1,5 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 absl-py==2.4.0 \
@@ -236,9 +236,9 @@ applicationinsights==0.11.10 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-telemetry
-argcomplete==3.3.0 \
-    --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
-    --hash=sha256:fd03ff4a5b9e6580569d34b273f741e85cd9e072f3feeeee3eba4891c70eda62
+argcomplete==3.5.3 \
+    --hash=sha256:2ab2c4a215c59fd6caaff41a869480a23e8f6a5f910b266c1808037f4e375b61 \
+    --hash=sha256:c12bf50eded8aebb298c7b7da7a5ff3ee24dffd9f5281867dfe1424b58c55392
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-core
@@ -325,9 +325,9 @@ aws-xray-sdk==2.15.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   moto
-azure-cli-core==2.62.0 \
-    --hash=sha256:203dde70989ebfbb82c368a37d096f10adcf56873384652c83f3160728c03b71 \
-    --hash=sha256:f734927df3597e222cc63121e5c8ff82eb408f38ad90cbbf48d91a5c5ffd4f9c
+azure-cli-core==2.77.0 \
+    --hash=sha256:5e04dd530e23fcdef6e8d5a7a8da02b382e2216d617def12dc8d6d1e35a3b34e \
+    --hash=sha256:cf980de2ac72760d021e48cf60898d64c752f6548b9e0c6d20cd4f201f27f172
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -345,23 +345,24 @@ azure-common==1.1.28 \
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
-azure-core==1.39.0 \
-    --hash=sha256:4ac7b70fab5438c3f68770649a78daf97833caa83827f91df9c14e0e0ea7d34f \
-    --hash=sha256:8a90a562998dd44ce84597590fff6249701b98c0e8797c95fcdd695b54c35d74
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   azure-cli-core
     #   azure-identity
     #   azure-mgmt-core
     #   msrest
-azure-identity==1.17.1 \
-    --hash=sha256:32ecc67cc73f4bd0595e4f64b1ca65cd05186f4fe6f98ed2ae9f1aa32646efea \
-    --hash=sha256:db8d59c183b680e763722bfe8ebc45930e6c57df510620985939f7f3191e0382
+azure-identity==1.23.1 \
+    --hash=sha256:226c1ef982a9f8d5dcf6e0f9ed35eaef2a4d971e7dd86317e9b9d52e70a035e4 \
+    --hash=sha256:7eed28baa0097a47e3fb53bd35a63b769e6b085bb3cb616dfce2b67f28a004a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-azure-mgmt-compute==31.0.0 \
-    --hash=sha256:39cad123d814390cca6adbe02afe2269aa179b9051dc022c7f07134ebd416207 \
-    --hash=sha256:5a5b1c4fc1a19ecb022a12ded1be8b1b155f6979d03fb9efc04642f606644bbf
+azure-mgmt-compute==35.0.0 \
+    --hash=sha256:43196911135507d1ce76f089c4e57d3b225885e5127d023be2ce1c597fd44336 \
+    --hash=sha256:52d18b39da48547a086ba74e418de1bfb1108b8f8c9d6cb002919ece2f3902ed
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -374,15 +375,15 @@ azure-mgmt-core==1.6.0 \
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
-azure-mgmt-network==25.4.0 \
-    --hash=sha256:a338e62d81fdbf050f802143c28cb965b07edd43800ef0504cdfa6b8854d7554 \
-    --hash=sha256:ae30f9ff25c22e14e0394d432d7aebc06ac1c5bf4de24cf226972c12bd664035
+azure-mgmt-network==29.0.0 \
+    --hash=sha256:577fbc76a195f744b97bac4275e11279f7f3e63c659d98773f3b4a9a6e0943b9 \
+    --hash=sha256:c04dc0d9f6b936abe4ec7c5fa9cee1514795b1f84d2742dead2115dcde33476c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-azure-mgmt-resource==23.1.1 \
-    --hash=sha256:20b6b006b544fdb19607f3f6a381105625e0bb60fbf3036f39885c4646d3343e \
-    --hash=sha256:fcaa4eca357d216f285b04e20b7f7bfaefda738ba6d30d956193090d3e325248
+azure-mgmt-resource==24.0.0 \
+    --hash=sha256:27b32cd223e2784269f5a0db3c282042886ee4072d79cedc638438ece7cd0df4 \
+    --hash=sha256:cf6b8995fcdd407ac9ff1dd474087129429a1d90dbb1ac77f97c19b96237b265
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -399,73 +400,6 @@ backoff==1.10.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   segment-analytics-python
-bcrypt==5.0.0 \
-    --hash=sha256:046ad6db88edb3c5ece4369af997938fb1c19d6a699b9c1b27b0db432faae4c4 \
-    --hash=sha256:0c418ca99fd47e9c59a301744d63328f17798b5947b0f791e9af3c1c499c2d0a \
-    --hash=sha256:0c8e093ea2532601a6f686edbc2c6b2ec24131ff5c52f7610dd64fa4553b5464 \
-    --hash=sha256:0cae4cb350934dfd74c020525eeae0a5f79257e8a201c0c176f4b84fdbf2a4b4 \
-    --hash=sha256:137c5156524328a24b9fac1cb5db0ba618bc97d11970b39184c1d87dc4bf1746 \
-    --hash=sha256:200af71bc25f22006f4069060c88ed36f8aa4ff7f53e67ff04d2ab3f1e79a5b2 \
-    --hash=sha256:212139484ab3207b1f0c00633d3be92fef3c5f0af17cad155679d03ff2ee1e41 \
-    --hash=sha256:2b732e7d388fa22d48920baa267ba5d97cca38070b69c0e2d37087b381c681fd \
-    --hash=sha256:35a77ec55b541e5e583eb3436ffbbf53b0ffa1fa16ca6782279daf95d146dcd9 \
-    --hash=sha256:38cac74101777a6a7d3b3e3cfefa57089b5ada650dce2baf0cbdd9d65db22a9e \
-    --hash=sha256:3abeb543874b2c0524ff40c57a4e14e5d3a66ff33fb423529c88f180fd756538 \
-    --hash=sha256:3ca8a166b1140436e058298a34d88032ab62f15aae1c598580333dc21d27ef10 \
-    --hash=sha256:3cf67a804fc66fc217e6914a5635000259fbbbb12e78a99488e4d5ba445a71eb \
-    --hash=sha256:4870a52610537037adb382444fefd3706d96d663ac44cbb2f37e3919dca3d7ef \
-    --hash=sha256:48f753100931605686f74e27a7b49238122aa761a9aefe9373265b8b7aa43ea4 \
-    --hash=sha256:4bfd2a34de661f34d0bda43c3e4e79df586e4716ef401fe31ea39d69d581ef23 \
-    --hash=sha256:560ddb6ec730386e7b3b26b8b4c88197aaed924430e7b74666a586ac997249ef \
-    --hash=sha256:5b1589f4839a0899c146e8892efe320c0fa096568abd9b95593efac50a87cb75 \
-    --hash=sha256:5feebf85a9cefda32966d8171f5db7e3ba964b77fdfe31919622256f80f9cf42 \
-    --hash=sha256:611f0a17aa4a25a69362dcc299fda5c8a3d4f160e2abb3831041feb77393a14a \
-    --hash=sha256:61afc381250c3182d9078551e3ac3a41da14154fbff647ddf52a769f588c4172 \
-    --hash=sha256:64d7ce196203e468c457c37ec22390f1a61c85c6f0b8160fd752940ccfb3a683 \
-    --hash=sha256:64ee8434b0da054d830fa8e89e1c8bf30061d539044a39524ff7dec90481e5c2 \
-    --hash=sha256:6b8f520b61e8781efee73cba14e3e8c9556ccfb375623f4f97429544734545b4 \
-    --hash=sha256:741449132f64b3524e95cd30e5cd3343006ce146088f074f31ab26b94e6c75ba \
-    --hash=sha256:744d3c6b164caa658adcb72cb8cc9ad9b4b75c7db507ab4bc2480474a51989da \
-    --hash=sha256:79cfa161eda8d2ddf29acad370356b47f02387153b11d46042e93a0a95127493 \
-    --hash=sha256:7aeef54b60ceddb6f30ee3db090351ecf0d40ec6e2abf41430997407a46d2254 \
-    --hash=sha256:7edda91d5ab52b15636d9c30da87d2cc84f426c72b9dba7a9b4fe142ba11f534 \
-    --hash=sha256:7f277a4b3390ab4bebe597800a90da0edae882c6196d3038a73adf446c4f969f \
-    --hash=sha256:7f4c94dec1b5ab5d522750cb059bb9409ea8872d4494fd152b53cca99f1ddd8c \
-    --hash=sha256:801cad5ccb6b87d1b430f183269b94c24f248dddbbc5c1f78b6ed231743e001c \
-    --hash=sha256:83e787d7a84dbbfba6f250dd7a5efd689e935f03dd83b0f919d39349e1f23f83 \
-    --hash=sha256:89042e61b5e808b67daf24a434d89bab164d4de1746b37a8d173b6b14f3db9ff \
-    --hash=sha256:92864f54fb48b4c718fc92a32825d0e42265a627f956bc0361fe869f1adc3e7d \
-    --hash=sha256:9d52ed507c2488eddd6a95bccee4e808d3234fa78dd370e24bac65a21212b861 \
-    --hash=sha256:9fffdb387abe6aa775af36ef16f55e318dcda4194ddbf82007a6f21da29de8f5 \
-    --hash=sha256:a28bc05039bdf3289d757f49d616ab3efe8cf40d8e8001ccdd621cd4f98f4fc9 \
-    --hash=sha256:a5393eae5722bcef046a990b84dff02b954904c36a194f6cfc817d7dca6c6f0b \
-    --hash=sha256:a71f70ee269671460b37a449f5ff26982a6f2ba493b3eabdd687b4bf35f875ac \
-    --hash=sha256:b17366316c654e1ad0306a6858e189fc835eca39f7eb2cafd6aaca8ce0c40a2e \
-    --hash=sha256:baade0a5657654c2984468efb7d6c110db87ea63ef5a4b54732e7e337253e44f \
-    --hash=sha256:c2388ca94ffee269b6038d48747f4ce8df0ffbea43f31abfa18ac72f0218effb \
-    --hash=sha256:c58b56cdfb03202b3bcc9fd8daee8e8e9b6d7e3163aa97c631dfcfcc24d36c86 \
-    --hash=sha256:cde08734f12c6a4e28dc6755cd11d3bdfea608d93d958fffbe95a7026ebe4980 \
-    --hash=sha256:d79e5c65dcc9af213594d6f7f1fa2c98ad3fc10431e7aa53c176b441943efbdd \
-    --hash=sha256:d8d65b564ec849643d9f7ea05c6d9f0cd7ca23bdd4ac0c2dbef1104ab504543d \
-    --hash=sha256:db99dca3b1fdc3db87d7c57eac0c82281242d1eabf19dcb8a6b10eb29a2e72d1 \
-    --hash=sha256:dcd58e2b3a908b5ecc9b9df2f0085592506ac2d5110786018ee5e160f28e0911 \
-    --hash=sha256:dd19cf5184a90c873009244586396a6a884d591a5323f0e8a5922560718d4993 \
-    --hash=sha256:ddb4e1500f6efdd402218ffe34d040a1196c072e07929b9820f363a1fd1f4191 \
-    --hash=sha256:e3cf5b2560c7b5a142286f69bde914494b6d8f901aaa71e453078388a50881c4 \
-    --hash=sha256:ed2e1365e31fc73f1825fa830f1c8f8917ca1b3ca6185773b349c20fd606cec2 \
-    --hash=sha256:edfcdcedd0d0f05850c52ba3127b1fce70b9f89e0fe5ff16517df7e81fa3cbb8 \
-    --hash=sha256:f0ce778135f60799d89c9693b9b398819d15f1921ba15fe719acb3178215a7db \
-    --hash=sha256:f2347d3534e76bf50bca5500989d6c1d05ed64b440408057a37673282c654927 \
-    --hash=sha256:f3c08197f3039bec79cee59a606d62b96b16669cff3949f21e74796b6e3cd2be \
-    --hash=sha256:f632fd56fc4e61564f78b46a2269153122db34988e78b6be8b32d28507b7eaeb \
-    --hash=sha256:f6984a24db30548fd39a44360532898c33528b74aedf81c26cf29c51ee47057e \
-    --hash=sha256:f70aadb7a809305226daedf75d90379c397b094755a710d7014b8b117df1ebbf \
-    --hash=sha256:f748f7c2d6fd375cc93d3fba7ef4a9e3a092421b8dbf34d8d4dc06be9492dfdd \
-    --hash=sha256:f8429e1c410b4073944f03bd778a9e066e7fad723564a52ff91841d278dfc822 \
-    --hash=sha256:fc746432b951e92b58317af8e0ca746efe93e66555f1b40888865ef5bf56446b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   paramiko
 beautifulsoup4==4.11.1 \
     --hash=sha256:58d5c3d29f5a36ffeb94f02f0d786cd53014cf9b3b3951d42e0080d8a9498d30 \
     --hash=sha256:ad9aa55b65ef2808eb405f46cf74df7fcb7044d5cbc26487f96eb2ef2e436693
@@ -698,7 +632,6 @@ cffi==1.17.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   cryptography
-    #   pynacl
 cfn-lint==1.47.1 \
     --hash=sha256:3a4b5dba0fd03c24f2bc0e112a88ad90fa29014971e881b8f1e297d22f398a97 \
     --hash=sha256:b2eedbcee3aa104602f79933e3ad74c01f0fa1e226b70327118926fd78d8d3f1
@@ -1019,7 +952,6 @@ cryptography==44.0.3 \
     #   mlflow
     #   moto
     #   msal
-    #   paramiko
     #   pyjwt
     #   pyopenssl
     #   trustme
@@ -2209,6 +2141,7 @@ jinja2==3.1.6 \
     #   gradio
     #   memray
     #   moto
+    #   ray
     #   torch
     #   torch-geometric
 jmespath==1.1.0 \
@@ -2904,6 +2837,12 @@ memray==1.19.3 ; sys_platform != 'win32' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ray
+microsoft-security-utilities-secret-masker==1.0.0b4 \
+    --hash=sha256:0429fcaad10fc8ae3f940ab84fd2926e4f50ede134162144123b35937be831a8 \
+    --hash=sha256:a30bd361ac18c8b52f6844076bc26465335949ea9c7a004d95f5196ec6fdef3e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   azure-cli-core
 ml-dtypes==0.5.4 \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
     --hash=sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d \
@@ -3098,17 +3037,17 @@ mpmath==1.3.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   sympy
-msal==1.28.1 \
-    --hash=sha256:563c2d70de77a2ca9786aab84cb4e133a38a6897e6676774edc23d610bfc9e7b \
-    --hash=sha256:d72bbfe2d5c2f2555f4bc6205be4450ddfd12976610dd9a16a9ab0f05c68b64d
+msal==1.34.0b1 \
+    --hash=sha256:3b6373325e3509d97873e36965a75e9cc9393f1b579d12cc03c0ca0ef6d37eb4 \
+    --hash=sha256:86cdbfec14955e803379499d017056c6df4ed40f717fd6addde94bdeb4babd78
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-core
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0b1 \
-    --hash=sha256:217f391bb549de11b19abe8029a8375fe3ca0556aa8cce004b2083f00a569b71 \
-    --hash=sha256:3658b3814cd6a7759e83cb0ec145f30330ee249a92444adaf9aa4eb4f5bbcbbc
+msal-extensions==1.2.0 \
+    --hash=sha256:6f41b320bfd2933d631a215c91ca0dd3e67d84bd1a2f50ce917d5874ec646bef \
+    --hash=sha256:cf5ba83a2113fa6dc011a254a72f1c223c88d7dfad74cc30617c4679a417704d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-core
@@ -3186,13 +3125,12 @@ msrest==0.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   msrestazure
-msrestazure==0.6.4 \
-    --hash=sha256:3de50f56147ef529b31e099a982496690468ecef33f0544cb0fa0cfe1e1de5b9 \
-    --hash=sha256:a06f0dabc9a6f5efe3b6add4bd8fb623aeadacf816b7a35b0f89107e0544d189
+msrestazure==0.6.4.post1 \
+    --hash=sha256:2264493b086c2a0a82ddf5fd87b35b3fffc443819127fed992ac5028354c151e \
+    --hash=sha256:39842007569e8c77885ace5c46e4bf2a9108fcb09b1e6efdf85b6e2c642b55d4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-    #   azure-cli-core
 multidict==6.7.1 \
     --hash=sha256:026d264228bcd637d4e060844e39cdc60f86c479e463d49075dedc21b18fbbe0 \
     --hash=sha256:03ede2a6ffbe8ef936b92cb4529f27f42be7f56afcdab5ab739cd5f27fb1cbf9 \
@@ -4054,12 +3992,6 @@ pandas==2.3.3 \
     #   gradio
     #   mlflow
     #   ray
-paramiko==3.5.1 \
-    --hash=sha256:43b9a0501fc2b5e70680388d9346cf252cfb7d00b0667c39e80eb43a408b8f61 \
-    --hash=sha256:b2c665bc45b2b215bd7d7f039901b14b067da00f3a11e6640995fd58f2664822
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   azure-cli-core
 parso==0.8.6 \
     --hash=sha256:2b9a0332696df97d454fa67b81618fd69c35a7b90327cbe6ba5c92d2c68a7bfd \
     --hash=sha256:2c549f800b70a5c4952197248825584cb00f033b29c692671d3bf08bf380baff
@@ -4480,6 +4412,12 @@ py==1.11.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pytest-forked
+py-deviceid==0.1.1 \
+    --hash=sha256:c0e32815e87a08087a0811c18f4402ee88b28a321f997753d75ecdaab570321b \
+    --hash=sha256:c3e7577ada23666e7f39e69370dfdaa76fe9de79c02635376d6aa0229bfa30e3
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   azure-cli-core
 py-partiql-parser==0.6.3 \
     --hash=sha256:09cecf916ce6e3da2c050f0cb6106166de42c33d34a078ec2eb19377ea70389a \
     --hash=sha256:deb0769c3346179d2f590dcbde556f708cdb929059fb654bad75f4cf6e07f582
@@ -4888,37 +4826,6 @@ pymongo==4.3.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pynacl==1.6.0 \
-    --hash=sha256:04f20784083014e265ad58c1b2dd562c3e35864b5394a14ab54f5d150ee9e53e \
-    --hash=sha256:10d755cf2a455d8c0f8c767a43d68f24d163b8fe93ccfaabfa7bafd26be58d73 \
-    --hash=sha256:140373378e34a1f6977e573033d1dd1de88d2a5d90ec6958c9485b2fd9f3eb90 \
-    --hash=sha256:16c60daceee88d04f8d41d0a4004a7ed8d9a5126b997efd2933e08e93a3bd850 \
-    --hash=sha256:16dd347cdc8ae0b0f6187a2608c0af1c8b7ecbbe6b4a06bff8253c192f696990 \
-    --hash=sha256:25720bad35dfac34a2bcdd61d9e08d6bfc6041bebc7751d9c9f2446cf1e77d64 \
-    --hash=sha256:2d6cd56ce4998cb66a6c112fda7b1fdce5266c9f05044fa72972613bef376d15 \
-    --hash=sha256:347dcddce0b4d83ed3f32fd00379c83c425abee5a9d2cd0a2c84871334eaff64 \
-    --hash=sha256:4853c154dc16ea12f8f3ee4b7e763331876316cc3a9f06aeedf39bcdca8f9995 \
-    --hash=sha256:49c336dd80ea54780bcff6a03ee1a476be1612423010472e60af83452aa0f442 \
-    --hash=sha256:4a25cfede801f01e54179b8ff9514bd7b5944da560b7040939732d1804d25419 \
-    --hash=sha256:51fed9fe1bec9e7ff9af31cd0abba179d0e984a2960c77e8e5292c7e9b7f7b5d \
-    --hash=sha256:536703b8f90e911294831a7fbcd0c062b837f3ccaa923d92a6254e11178aaf42 \
-    --hash=sha256:5789f016e08e5606803161ba24de01b5a345d24590a80323379fc4408832d290 \
-    --hash=sha256:6b08eab48c9669d515a344fb0ef27e2cbde847721e34bba94a343baa0f33f1f4 \
-    --hash=sha256:6b393bc5e5a0eb86bb85b533deb2d2c815666665f840a09e0aa3362bb6088736 \
-    --hash=sha256:84709cea8f888e618c21ed9a0efdb1a59cc63141c403db8bf56c469b71ad56f2 \
-    --hash=sha256:8bfaa0a28a1ab718bad6239979a5a57a8d1506d0caf2fba17e524dbb409441cf \
-    --hash=sha256:bbcc4452a1eb10cd5217318c822fde4be279c9de8567f78bad24c773c21254f8 \
-    --hash=sha256:cb36deafe6e2bce3b286e5d1f3e1c246e0ccdb8808ddb4550bb2792f2df298f2 \
-    --hash=sha256:cf831615cc16ba324240de79d925eacae8265b7691412ac6b24221db157f6bd1 \
-    --hash=sha256:dcdeb41c22ff3c66eef5e63049abf7639e0db4edee57ba70531fc1b6b133185d \
-    --hash=sha256:dea103a1afcbc333bc0e992e64233d360d393d1e63d0bc88554f572365664348 \
-    --hash=sha256:ef214b90556bb46a485b7da8258e59204c244b1b5b576fb71848819b468c44a7 \
-    --hash=sha256:f3482abf0f9815e7246d461fab597aa179b7524628a4bc36f86a7dc418d2608d \
-    --hash=sha256:f46386c24a65383a9081d68e9c2de909b1834ec74ff3013271f1bca9c2d233eb \
-    --hash=sha256:f4b3824920e206b4f52abd7de621ea7a44fd3cb5c8daceb7c3612345dfc54f2e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   paramiko
 pyopenssl==25.1.0 \
     --hash=sha256:2b11f239acc47ac2e5aca04fd7fa829800aeee22a2eb30d744572a157bd8a1ab \
     --hash=sha256:8d031884482e0c67ee92bf9a4d8cceb08d92aba7136432ffb0703c5280fc205b
@@ -5773,7 +5680,6 @@ scipy==1.15.3 \
     #   ray
     #   scikit-learn
     #   skops
-    #   torch-cluster
     #   torch-geometric
     #   torch-sparse
     #   xgboost
@@ -5907,6 +5813,7 @@ six==1.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   astunparse
+    #   azure-core
     #   google-pasta
     #   kubernetes
     #   msrestazure
@@ -6283,32 +6190,32 @@ torch==2.9.0+cpu \
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
     #   tensordict
+    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt29cpu \
-    --hash=sha256:250b7d207623831c03bf162bc45381c57dc19884be9b1b6f2fcaf00749202a42
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-scatter==2.1.2+pt29cpu \
-    --hash=sha256:62a0ad1d9e51da83d3c775b24cb498dc5b94075d18644653a3b24c158f288db6
+torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
+    --hash=sha256:2e34f7d83b32512b349e93355b18b1db48e317f30828d7ab717df6628825e000 \
+    --hash=sha256:34a11594df5338600a3fd55986fed088e4186ba56f2524a0a962cc3e40f75a4d \
+    --hash=sha256:51bcef861b61095f1b00f8451fe179fbfa48dc7f03af80dd01f29635090d66eb \
+    --hash=sha256:53ea146be456e3defaec4e70ad482a7c257db9eb8499865dc76ffe8310212cb1 \
+    --hash=sha256:6f9c0cce6e58e94aa9d0db24f9c579c1189973e03e9e1aa57f1e6492694af48d \
+    --hash=sha256:a2ef52eb9376db18986499b226ee54b94e8c1c39bfdf7f0d0a093a95dd3d3f4a \
+    --hash=sha256:b158c84bbff4554fc244f89e920ccfb2a437e13eb905d16d8b53c911dab467ad \
+    --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
+    --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
+    --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt29cpu \
+torch-sparse==0.6.18+pt29cpu ; sys_platform == 'linux' \
     --hash=sha256:e4b76895717d17a635dbda6880ae46d7e5ef4438d66ffa6c45f85c74f50ea9e3
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2+pt29cpu \
-    --hash=sha256:d450dae7a383a08fa6ba57a800589becaa79a330fd81700f3255c13d29708283
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -6420,6 +6327,9 @@ typing-extensions==4.15.0 \
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
     #   cfn-lint
     #   dulwich
     #   etils

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Validate checkpoints asynchronously so training continues while validation runs, with TorchTrainer and Ray Data approaches and subcluster isolation.
+
 .. _train-validating-checkpoints:
 
 Validating checkpoints asynchronously
@@ -116,7 +119,7 @@ You should use ``map_batches`` if:
   aggregation manually using low-level collective operations or rely on third-party libraries
   such as `torchmetrics <https://lightning.ai/docs/torchmetrics/stable>`_.
 
-Example: validation with Ray Train TorchTrainer
+Example: Validation with Ray Train TorchTrainer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
@@ -134,7 +137,7 @@ loss on a validation set. Note the following about this example:
     :start-after: __validation_fn_torch_trainer_start__
     :end-before: __validation_fn_torch_trainer_end__
 
-Example: validation with Ray Data map_batches
+Example: Validation with Ray Data map_batches
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validation_fn`` that uses :func:`ray.data.Dataset.map_batches` to
@@ -221,7 +224,7 @@ redundant:
         with ray.data.DataContext.current(ctx):
             train_dataset = ray.data.read_parquet(...)
 
-        # (2) Pin per-worker ingest — Train replaces ds.context options
+        # (2) Pin per-worker ingest. Train replaces ds.context options
         # wholesale, so the selector must be restated here.
         trainer = ray.train.torch.TorchTrainer(
             ...,

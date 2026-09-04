@@ -260,7 +260,6 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._image_row_column_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -424,32 +423,7 @@ class vLLMEngineWrapper:
 
         multimodal_data = row.pop("multimodal_data", None)
 
-        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.58.0.
-        if "image" in row:
-            legacy_image = row.pop("image")
-            if not self._image_row_column_warning_logged:
-                logger.warning(
-                    "The 'image' input column is deprecated. Provide images via "
-                    "the 'multimodal_data' column (e.g. multimodal_data="
-                    "{'image': [...]}), or enable `prepare_multimodal_stage` to "
-                    "populate it automatically from chat messages."
-                )
-                self._image_row_column_warning_logged = True
-            if legacy_image is not None and len(legacy_image) > 0:
-                if multimodal_data is None:
-                    multimodal_data = {"image": legacy_image}
-                elif "image" in multimodal_data:
-                    raise ValueError(
-                        "Both the deprecated 'image' column and "
-                        "multimodal_data['image'] are set on the same row. "
-                        "Remove the 'image' column and pass images only via "
-                        "multimodal_data['image']."
-                    )
-                else:
-                    multimodal_data = {**multimodal_data, "image": legacy_image}
-
-        # TODO (jeffreywang): Remove in Ray 2.58.0 as we decouple the multimodal
-        # processor from the vLLM engine; these kwargs become unneeded here.
+        # Pass multimodal settings through to vLLM's prompt API.
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
@@ -1016,7 +990,6 @@ class vLLMEngineStage(StatefulStage):
         ret = {
             "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
-            "image": "[DEPRECATED] The image(s) for multimodal input. Prefer `multimodal_data={'image': [...]}` or enable `prepare_multimodal_stage`.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
             "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
@@ -1033,7 +1006,8 @@ class vLLMEngineStage(StatefulStage):
                 "Tokenization keyword arguments passed to the vLLM engine. "
                 "Use this to control prompt truncation, e.g. "
                 '{"truncation": true, "max_length": 512}. '
-                "See https://docs.vllm.ai/en/latest/features/input_processing.html "
+                "See "
+                "https://docs.vllm.ai/en/latest/api/vllm/entrypoints/pooling/offline/#vllm.entrypoints.pooling.offline.PoolingOfflineMixin.embed "
                 "for details."
             )
         return ret

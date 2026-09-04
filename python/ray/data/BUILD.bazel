@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//bazel:python.bzl", "doctest", "py_test_module_list")
+load("@rules_python//python:defs.bzl", "py_library")
+load(":test.bzl", "doctest", "py_test", "py_test_module_list")
 
 # Export pytest plugin so it can be used in the documentation tests.
 exports_files(
@@ -776,6 +776,48 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_external_runtime",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_smoke",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_smoke.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_repartition",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_repartition.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -837,6 +879,20 @@ py_test(
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lineage_tracker_linear",
+    size = "small",
+    srcs = ["tests/test_lineage_tracker_linear.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -959,6 +1015,20 @@ py_test(
 )
 
 py_test(
+    name = "test_orc",
+    size = "small",
+    srcs = ["tests/datasource/test_orc.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/datasource/test_pandas.py"],
@@ -1015,6 +1085,20 @@ py_test(
 )
 
 py_test(
+    name = "test_placement_group_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_placement_group_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],
@@ -1030,7 +1114,7 @@ py_test(
 
 py_test(
     name = "test_predicate_pushdown",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
@@ -1100,7 +1184,7 @@ py_test(
 
 py_test(
     name = "test_tensor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensor.py"],
     tags = [
         "exclusive",
@@ -1206,6 +1290,21 @@ py_test(
     srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_inference",
+    size = "medium",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "gpu",
         "team:data",
     ],
     deps = [
@@ -1742,6 +1841,20 @@ py_test(
 )
 
 py_test(
+    name = "test_no_progress_guard",
+    size = "medium",
+    srcs = ["tests/test_no_progress_guard.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_ref_bundle",
     size = "small",
     srcs = ["tests/test_ref_bundle.py"],
@@ -2134,6 +2247,20 @@ py_test(
 )
 
 py_test(
+    name = "test_combine_downloads",
+    size = "small",
+    srcs = ["tests/test_combine_downloads.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
@@ -2235,6 +2362,20 @@ py_test(
     name = "test_write_delta",
     size = "medium",
     srcs = ["tests/datasource/test_write_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta_catalog_e2e",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta_catalog_e2e.py"],
     tags = [
         "exclusive",
         "team:data",

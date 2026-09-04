@@ -1,3 +1,6 @@
+.. meta::
+   :description: The HTTP endpoints behind the Ray Jobs CLI and SDK, with beta OpenAPI documentation, for submitting jobs directly.
+
 .. _ray-job-rest-api:
 
 Ray Jobs REST API
@@ -88,4 +91,4 @@ OpenAPI Documentation (Beta)
 
 We provide an OpenAPI specification for the Ray Job API. You can use this to generate client libraries for other languages.
 
-View the `Ray Jobs REST API OpenAPI documentation <api.html>`_.
+For the full generated reference, covering every endpoint, request body, and response schema, see :ref:`ray-job-rest-api-openapi`.

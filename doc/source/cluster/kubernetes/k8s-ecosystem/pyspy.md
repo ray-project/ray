@@ -1,9 +1,15 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray workloads on Kubernetes with py-spy, viewing flame graphs in the dashboard from a SYS_PTRACE-capable RayCluster."
+---
+
 (kuberay-pyspy-integration)=
 
 # Profiling with py-spy
 
 ## Stack trace and CPU profiling
-[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. It lets you visualize what your Python program is spending time on without restarting the program or modifying the code in any way. This section describes how to configure RayCluster YAML file to enable py-spy and see Stack Trace and CPU Flame Graph on Ray Dashboard.
+[py-spy](https://github.com/benfred/py-spy/tree/master) is a sampling profiler for Python programs. It lets you visualize what your Python program is spending time on without restarting the program or modifying the code in any way. This section describes how to configure RayCluster YAML file to enable py-spy and see Stack Trace and CPU Flame Graph on Ray dashboard.
 
 ## Prerequisite
 py-spy requires the `SYS_PTRACE` capability to read process memory. However, Kubernetes omits this capability by default. To enable profiling, add the following to the `template.spec.containers` for both the head and worker Pods.
@@ -17,7 +23,7 @@ securityContext:
 **Notes:**
 - The `baseline` and `restricted` Pod Security Standards forbid adding `SYS_PTRACE`. See [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) for more details.
 
-## Check CPU flame graph and stack trace on Ray Dashboard
+## Check CPU flame graph and stack trace on Ray dashboard
 
 ### Step 1: Create a Kind cluster
 
@@ -56,12 +62,12 @@ python3 samples/long_running_task.py
 **Notes:**
 - If you're running your own examples and encounter the error `Failed to write flamegraph: I/O error: No stack counts found` when viewing CPU Flame Graph, it might be due to the process being idle. Notably, using the `sleep` function can lead to this state. In such situations, py-spy filters out the idle stack traces. Refer to this [issue](https://github.com/benfred/py-spy/issues/321#issuecomment-731848950) for more information.
 
-### Step 6: Profile using Ray Dashboard
+### Step 6: Profile using Ray dashboard
 
 - Visit http://localhost:8265/#/cluster.
 - Click `Stack Trace` for `ray::long_running_task`. ![StackTrace](../images/stack_trace.png)
 - Click `CPU Flame Graph` for `ray::long_running_task`. ![FlameGraph](../images/cpu_flame_graph.png)
-- For additional details on using the profiler, See [Python CPU profiling in the Dashboard](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
+- For additional details on using the profiler, See [Python CPU profiling in the dashboard](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
 
 ### Step 7: Clean up
 

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure Ray's logging system: log directory layout, application and system logs, worker-to-driver redirection, and actor log prefixes."
+---
+
 (configure-logging)=
 
 # Configuring Logging
@@ -44,9 +50,9 @@ System logs may include information about your applications. For example, ``runt
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. Ray streams all stdout and stderr from Tasks or Actors to these files. Note that job_id is the ID of the driver.
 
 ### System/component logs
-- ``dashboard.[log|out|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
+- ``dashboard.[log|out|err]``: A log file of a Ray dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
 - ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
-- ``dashboard_[module_name].[log|out|err]``: The log files for the Ray Dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
+- ``dashboard_[module_name].[log|out|err]``: The log files for the Ray dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor respectively. They're usually empty except when the log monitor crashes unexpectedly.
@@ -93,6 +99,44 @@ By default, Ray prints Actor log prefixes in light blue. Turn color logging off 
 
 ![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png)
 
+### Disable the worker log prefix
+
+Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` to stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix to worker stdout and stderr lines forwarded to the driver, while continuing to forward the logs. Use it for structured logging formats such as newline-delimited JSON, when you want to collect logs from the driver's stdout and stderr rather than from the per-worker log files under the {ref}`logging directory <logging-directory>`.
+
+For example, an Actor that emits one JSON object per line:
+
+```python
+import ray
+
+ray.init()
+
+@ray.remote
+class SegmentationActor:
+    def run(self):
+        print('{"event": "segmenting batch", "job_id": "abc123", "level": "info"}')
+
+actor = SegmentationActor.remote()
+ray.get(actor.run.remote())
+```
+
+By default, the prefix turns each line into invalid JSON:
+
+```bash
+(SegmentationActor pid=558) {"event": "segmenting batch", "job_id": "abc123", "level": "info"}
+```
+
+With `RAY_DISABLE_WORKER_LOG_PREFIX=1`, each line stays parseable:
+
+```bash
+{"event": "segmenting batch", "job_id": "abc123", "level": "info"}
+```
+
+If you're disabling the worker log prefix specifically to avoid interference with structured logging, also set `RAY_DEDUP_LOGS=0`. By default, Ray {ref}`deduplicates repeated log messages <log-deduplication>` and annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented log formats.
+
+:::{note}
+Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which task, actor, or process emitted a given line.
+:::
+
 ### Disable logging to the driver
 In large scale runs, you may not want to route all worker logs to the driver. Disable this feature by setting ``log_to_driver=False`` in `ray.init`:
 
@@ -104,6 +148,7 @@ ray.init(log_to_driver=False)
 ```
 
 
+(log-deduplication)=
 ## Log deduplication
 
 By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, Ray buffers subsequent log messages of the same pattern for up to five seconds and prints them in batch. Note that Ray also ignores words with numeric components. For example, for the following code snippet:
@@ -567,7 +612,7 @@ When enabled, the Job Supervisor Python logs output in the following JSON format
 ```
 
 :::{note}
-Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the Dashboard, Dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
+Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the dashboard, dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
 :::
 
 C++ system logs (such as Raylet, GCS) output in the following JSON format:

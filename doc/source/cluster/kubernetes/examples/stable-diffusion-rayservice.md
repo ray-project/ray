@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a Stable Diffusion text-to-image model on a GPU Kubernetes cluster with RayService."
+---
+
 (kuberay-stable-diffusion-rayservice-example)=
 
 # Serve a StableDiffusion text-to-image model on Kubernetes
@@ -30,7 +36,7 @@ This RayService configuration contains some important settings:
         value: "worker"
         effect: "NoSchedule"
     ```
-* It includes `diffusers` in `runtime_env` since this package isn't included by default in the `ray-ml` image.
+* It includes `diffusers`, `transformers`, and `torch` in `runtime_env` since these packages aren't included by default in the `rayproject/ray` image.
 
 ## Step 4: Forward the port of Serve
 

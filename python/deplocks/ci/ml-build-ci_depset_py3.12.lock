@@ -1,5 +1,5 @@
---index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 about-time==4.2.1 \
@@ -1510,7 +1510,6 @@ gymnasium==1.2.2 \
     #   minigrid
     #   pettingzoo
     #   ray
-    #   shimmy
     #   supersuit
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
@@ -1782,6 +1781,7 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
+    #   ray
     #   torch
     #   torch-geometric
 jmespath==1.1.0 \
@@ -3085,7 +3085,6 @@ numpy==2.2.6 \
     #   ray
     #   scikit-learn
     #   scipy
-    #   shimmy
     #   stanio
     #   statsforecast
     #   statsmodels
@@ -5079,7 +5078,6 @@ scipy==1.17.1 \
     #   scikit-learn
     #   statsforecast
     #   statsmodels
-    #   torch-cluster
     #   torch-geometric
     #   torch-sparse
 send2trash==2.1.0 \
@@ -5163,12 +5161,6 @@ shellingham==1.5.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   typer
-shimmy==2.0.0 \
-    --hash=sha256:4244e693b0ff28bd5ce55e73c636cab953df2a1fafe639718158ee6510613dfe \
-    --hash=sha256:a42d07806fc1ca5460439cb4799f32d4855a9e1138b39a39031e72fb8460a508
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1 \
     --hash=sha256:3c11d2007b915c43bee3e10625f068d8a349e04f0d81f08f5fa08507427ebf1f \
     --hash=sha256:492c7402ff91beb1342a5898bd61ea953985bf24a41cd9f247409aa2e03c8f77
@@ -5559,32 +5551,32 @@ torch==2.9.0+cpu \
     #   pytorch-lightning
     #   s3torchconnector
     #   timm
+    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt29cpu \
-    --hash=sha256:562d2ea316ba0e9173915ae9bc9906eb35455969e6414fa0fe63d08023222a12
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-scatter==2.1.2+pt29cpu \
-    --hash=sha256:ff4aa866c5fde07fa153622df4f833af19ec2335736c1072e8c2c1f48f7d5745
+torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
+    --hash=sha256:2e34f7d83b32512b349e93355b18b1db48e317f30828d7ab717df6628825e000 \
+    --hash=sha256:34a11594df5338600a3fd55986fed088e4186ba56f2524a0a962cc3e40f75a4d \
+    --hash=sha256:51bcef861b61095f1b00f8451fe179fbfa48dc7f03af80dd01f29635090d66eb \
+    --hash=sha256:53ea146be456e3defaec4e70ad482a7c257db9eb8499865dc76ffe8310212cb1 \
+    --hash=sha256:6f9c0cce6e58e94aa9d0db24f9c579c1189973e03e9e1aa57f1e6492694af48d \
+    --hash=sha256:a2ef52eb9376db18986499b226ee54b94e8c1c39bfdf7f0d0a093a95dd3d3f4a \
+    --hash=sha256:b158c84bbff4554fc244f89e920ccfb2a437e13eb905d16d8b53c911dab467ad \
+    --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
+    --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
+    --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt29cpu \
+torch-sparse==0.6.18+pt29cpu ; sys_platform == 'linux' \
     --hash=sha256:e1434c9ebe78727576ddbd279b2322a81e97060c31ef97145f47db173d81ef93
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2+pt29cpu \
-    --hash=sha256:2155b53ae8bf02d40522a4567eb8a7ba8e1c26d605323b3774fd7b0055ec3400
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
