@@ -33,18 +33,29 @@ const createCompletedJobTimeRange = (startTime: number, endTime: number) => {
   return { from: Math.max(0, startTime - padding), to: endTime + padding };
 };
 
+export const createJobMetricsTimeRange = (
+  startTime: number | null | undefined,
+  endTime: number | null | undefined,
+): { from: number; to: number | "now" } | undefined => {
+  if (startTime === null || startTime === undefined) {
+    return undefined;
+  }
+  if (endTime !== null && endTime !== undefined && endTime > 0) {
+    return createCompletedJobTimeRange(startTime, endTime);
+  }
+  return {
+    from: Math.max(0, startTime - MIN_METRICS_RANGE_MS),
+    to: "now",
+  };
+};
+
 export const JobDetailChartsPage = () => {
   const { job, msg, isLoading, params } = useJobDetail();
 
-  const nodeCountTimeRange: { from: number; to: number | "now" } | undefined =
-    job?.start_time !== null && job?.start_time !== undefined
-      ? job.end_time !== null && job.end_time !== undefined
-        ? createCompletedJobTimeRange(job.start_time, job.end_time)
-        : {
-            from: Math.max(0, job.start_time - MIN_METRICS_RANGE_MS),
-            to: "now",
-          }
-      : undefined;
+  const nodeCountTimeRange = createJobMetricsTimeRange(
+    job?.start_time,
+    job?.end_time,
+  );
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
   const [taskTableExpanded, setTaskTableExpanded] = useState(false);
