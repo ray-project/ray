@@ -3281,7 +3281,12 @@ def read_mcap(
         message_types: Optional list or set of message type names (schema names) to
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
-            Defaults to True. When True, includes schema, channel, and message metadata.
+            Defaults to True. When True, adds ``channel_id``, ``message_encoding``,
+            ``schema_name``, ``schema_encoding``, ``schema_data`` and
+            ``channel_metadata``. ``channel_metadata`` is the Channel record's
+            ``Map<string, string>``, typed as ``map<string, string>``: ROS 2 records
+            ``offered_qos_profiles`` there, and recorders commonly add sensor serials
+            or calibration identifiers.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.

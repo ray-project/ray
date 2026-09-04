@@ -8,7 +8,17 @@ time-series data.
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -155,6 +165,14 @@ class MCAPDatasource(FileBasedDatasource):
         )
 
         builder = DelegatingBlockBuilder()
+        # Collected alongside the builder rather than inside `_message_to_dict`:
+        # Arrow infers `struct` from a Python dict, and a struct's fields are
+        # the union of the keys it happens to see, so two files with different
+        # metadata keys yield blocks that will not concatenate.
+        # `_add_channel_metadata` builds a `map` column instead.
+        channel_metadata: Optional[List[List[Tuple[str, str]]]] = (
+            [] if self._include_metadata else None
+        )
 
         for schema, channel, message in messages:
             # Apply filters that couldn't be pushed down to MCAP level
@@ -164,10 +182,12 @@ class MCAPDatasource(FileBasedDatasource):
             # Convert message to dictionary format
             message_data = self._message_to_dict(schema, channel, message, path)
             builder.add(message_data)
+            if channel_metadata is not None:
+                channel_metadata.append(list(channel.metadata.items()))
 
         # Yield the block if we have any messages
         if builder.num_rows() > 0:
-            yield builder.build()
+            yield _add_channel_metadata(builder.build(), channel_metadata)
 
     def _should_include_message(
         self, schema: "Schema", channel: "Channel", message: "Message"
@@ -256,3 +276,37 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP files can be read in parallel across multiple files.
         """
         return True
+
+
+CHANNEL_METADATA_COLUMN = "channel_metadata"
+
+
+def _add_channel_metadata(
+    block: Block, values: Optional[List[List[Tuple[str, str]]]]
+) -> Block:
+    """Attach each message's channel metadata as a ``map<string, string>`` column.
+
+    A Channel record carries a ``metadata`` field of type ``Map<string, string>``
+    (MCAP specification, op=0x04) holding whatever the recorder chose to record
+    about the topic. ROS 2 writes ``offered_qos_profiles`` there, and rigs
+    commonly add sensor serials or calibration identifiers. No message record
+    reproduces it, so without this column that information is not reachable from
+    the dataset at all.
+
+    The column is typed explicitly rather than inferred. Arrow reads a Python
+    dict as a ``struct`` whose fields are the union of the keys it happens to
+    see: blocks from two files recording different keys then carry different
+    types and fail to concatenate, and a channel that never had a key becomes
+    indistinguishable from one whose value is null. A ``map`` matches the
+    specification's own type, keeps the block schema stable whatever the keys
+    are, and concatenates across files.
+    """
+    import pyarrow as pa
+
+    if values is None or not isinstance(block, pa.Table):
+        # `include_metadata=False`, or a pandas block, which
+        # `DelegatingBlockBuilder` produces for row values Arrow cannot hold.
+        return block
+
+    column = pa.array(values, type=pa.map_(pa.string(), pa.string()))
+    return block.append_column(CHANNEL_METADATA_COLUMN, column)
