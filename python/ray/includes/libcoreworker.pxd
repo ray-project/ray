@@ -66,6 +66,9 @@ ctypedef void (*ray_callback_function) \
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
+ctypedef void (*wait_async_callback) \
+    (CRayStatus status, void *user_data)
+
 # NOTE: This ctypedef is needed, because Cython doesn't compile
 # "pair[shared_ptr[const CActorHandle], CRayStatus]".
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
@@ -330,6 +333,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
+        uint64_t WaitAsync(const CObjectID &object_id,
+                           wait_async_callback callback, void *user)
+        void CancelWaitAsync(uint64_t handle)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
                 c_vector[optional[CObjectLocation]] *results)

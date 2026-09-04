@@ -16,7 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -59,6 +61,13 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Defined in core_worker.cc; opaque to callers.
+ */
+struct WaitAsyncState;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -791,6 +800,51 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /**
+   * Asynchronously wait for one object to become ready without blocking the
+   * calling thread. Invokes ``callback`` once when it is ready.
+   *
+   * An object is ready when it is in the in-process memory store or a plasma
+   * marker is present. This does not pull plasma objects locally.
+   *
+   * The callback is invoked at most once, on ``io_service_``, even when the
+   * object is already present. ``Status::OK`` means the object is ready.
+   *
+   * The caller must keep a reference to ``object_id`` alive until the callback
+   * runs; if the last reference is dropped the object can be deleted from the
+   * memory store and the wait will never complete.
+   *
+   * \param[in] object_id ID of the object to wait for.
+   * \param[in] callback Invoked with status and ``user``.
+   * \param[in] user Opaque pointer passed through to ``callback``.
+   * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
+   * already invoked synchronously on the calling thread (unknown owner, or the
+   * worker is shutting down).
+   */
+  uint64_t WaitAsync(const ObjectID &object_id,
+                     void (*callback)(Status status, void *user),
+                     void *user);
+
+  /**
+   * Cancel an in-flight ``WaitAsync`` identified by its handle.
+   *
+   * Completes a pending request (callback once with a cancelled status).
+   * No-op if ``handle`` is 0 or the request already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   */
+  void CancelWaitAsync(uint64_t handle);
+
+  /**
+   * Complete every in-flight ``WaitAsync`` with a shutdown error.
+   *
+   * Invokes each pending callback once. Safe to call more than once. Also
+   * latches the shutdown, so any later ``WaitAsync`` fails fast rather than
+   * registering a wait that the stopped ``io_service_`` can never complete.
+   * The embedding runtime must still be alive — see ``~CoreWorker``.
+   */
+  void CancelAllWaitAsync();
 
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
@@ -1908,6 +1962,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       ObjectID object_id,
                       void *py_future);
 
+  /**
+   * Complete a ``WaitAsync`` request and invoke its callback at most once.
+   *
+   * Unregisters the handle and cancels the memory-store registration before
+   * running the callback. All three run with ``state->mu`` released.
+   *
+   * \param[in] state Shared wait state for the request.
+   * \param[in] status Status passed to the user callback.
+   */
+  void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -2125,6 +2190,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+
+  // In-flight WaitAsync requests, keyed by handle.
+  absl::Mutex wait_async_mu_;
+  uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
+  absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>> wait_async_requests_
+      ABSL_GUARDED_BY(wait_async_mu_);
+  // Set by CancelAllWaitAsync; no new waits are accepted afterwards.
+  bool wait_async_shutdown_ ABSL_GUARDED_BY(wait_async_mu_) = false;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.

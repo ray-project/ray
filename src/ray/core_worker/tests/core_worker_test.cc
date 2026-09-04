@@ -1737,6 +1737,226 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
   EXPECT_EQ(fire_count, 1);
 }
 
+namespace {
+
+struct WaitAsyncCallbackResult {
+  Status status = Status::OK();
+  int calls = 0;
+};
+
+void OnWaitAsyncDone(Status status, void *user) {
+  WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(user);
+  result->status = std::move(status);
+  result->calls += 1;
+}
+
+void AddOwnedObjectForWaitAsync(
+    const std::shared_ptr<CoreWorker> &core_worker,
+    const std::shared_ptr<ReferenceCounterInterface> &reference_counter,
+    const ObjectID &object_id) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker->GetWorkerID().Binary());
+  reference_counter->AddOwnedObject(object_id,
+                                    {},
+                                    owner_address,
+                                    "",
+                                    0,
+                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                    true);
+}
+
+void DrainIoUntilWaitAsyncDone(instrumented_io_context &io_service,
+                               WaitAsyncCallbackResult &result) {
+  while (result.calls == 0) {
+    ASSERT_GT(io_service.run_one(), 0);
+  }
+}
+
+}  // namespace
+
+TEST_F(CoreWorkerTest, WaitAsyncUnknownOwner) {
+  ObjectID object_id = ObjectID::FromRandom();
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsObjectUnknownOwner());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  // Already-present objects still complete asynchronously: GetAsync posts the
+  // callback to the io context rather than running it on the calling thread.
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(result.calls, 0);
+  ASSERT_FALSE(io_service_.poll_one());
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReady) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCancel) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+
+  // Second cancel is a no-op.
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+
+  // After cancel, a new wait on the same ref can still complete.
+  WaitAsyncCallbackResult result2;
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
+  ASSERT_NE(handle2, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result2);
+  ASSERT_EQ(result2.calls, 1);
+  ASSERT_TRUE(result2.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsUnknownError());
+
+  // Second shutdown is a no-op (callback already ran; map is empty).
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncAfterShutdownFailsFast) {
+  // Once CancelAllWaitAsync has latched, io_service_ is about to stop. A new
+  // wait must report shutdown synchronously instead of registering a callback
+  // that would never be posted -- otherwise the caller hangs forever.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  core_worker_->CancelAllWaitAsync();
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsUnknownError());
+
+  // Nothing was registered with the memory store, so the object arriving
+  // afterwards must not invoke the callback a second time.
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
+  // Completing a wait must deregister its memory-store GetAsync callback.
+  // Otherwise the registration -- and the WaitAsyncState it references --
+  // survives until an object that may never arrive shows up.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(object_id));
+  }
+
+  // The object arriving afterwards must not resurrect anything.
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, HandlePlasmaObjectReadyIgnoresDuplicateNotifications) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  rpc::PlasmaObjectReadyRequest request;
+  request.set_object_id(object_id.Binary());
+  rpc::PlasmaObjectReadyReply reply;
+  int reply_count = 0;
+  rpc::SendReplyCallback send_reply =
+      [&reply_count](Status status, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(status.ok());
+        ++reply_count;
+      };
+
+  // The raylet may emit a duplicate notification if an object becomes local
+  // between the core worker's Contains() and SubscribePlasmaReady(). Both
+  // notifications must be harmless when there are no remaining listeners.
+  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
+  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
+
+  ASSERT_EQ(reply_count, 2);
+}
+
 TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
 

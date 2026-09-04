@@ -15,7 +15,9 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <future>
 #include <memory>
 #include <string>
@@ -55,6 +57,24 @@ using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
+
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Plain data: CoreWorker::FinishWaitAsync owns the state machine. Lock order:
+ * wait_async_mu_ -> mu -> CoreWorkerMemoryStore::mu_. `mu` is held across
+ * memory_store_->GetAsync() so that registering a callback and recording its
+ * cancellation token cannot interleave with completion.
+ */
+struct WaitAsyncState {
+  uint64_t handle = 0;
+  ObjectID object_id;
+  bool done = false;
+  void (*callback)(Status status, void *user) = nullptr;
+  void *user = nullptr;
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+  absl::Mutex mu;
+};
 
 namespace {
 // Default capacity for serialization caches.
@@ -589,7 +609,26 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
+  // Drain WaitAsync *after* shutdown completes: that joins io_thread_, so no
+  // GetAsync callback can be mid-FinishWaitAsync while we clear the map.
+  // Clearing before the join left a window where a completion already taken
+  // off the state would still call the user callback from here.
   WaitForShutdownComplete();
+  // Do not invoke the callbacks: this can run after Py_Finalize(). Graceful
+  // shutdown already cancelled pending waits (CancelAllWaitAsync), so a
+  // non-empty map here means shutdown never ran. Leaking on process exit is
+  // fine; `done` keeps any surviving GetAsync callback off `this`.
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      absl::MutexLock state_lock(&entry.second->mu);
+      entry.second->done = true;
+      entry.second->callback = nullptr;
+      entry.second->user = nullptr;
+    }
+    wait_async_requests_.clear();
+  }
   RAY_LOG(INFO) << "Core worker is destructed";
 }
 
@@ -1720,6 +1759,146 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
+}
+
+void CoreWorker::FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state,
+                                 Status status) {
+  void (*callback)(Status status, void *user) = nullptr;
+  void *user = nullptr;
+  uint64_t handle = 0;
+  ObjectID object_id;
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+  {
+    absl::MutexLock lock(&state->mu);
+    if (state->done) {
+      return;
+    }
+    state->done = true;
+    callback = state->callback;
+    user = state->user;
+    handle = state->handle;
+    object_id = state->object_id;
+    memory_callback_id = state->memory_callback_id;
+    state->callback = nullptr;
+    state->user = nullptr;
+    state->memory_callback_id = 0;
+  }
+
+  // Everything below runs with state->mu released; see the lock-order note on
+  // WaitAsyncState. Unregister first so completed waits do not stay in the map.
+  if (handle != 0) {
+    absl::MutexLock lock(&wait_async_mu_);
+    wait_async_requests_.erase(handle);
+  }
+  if (memory_callback_id != 0) {
+    memory_store_->CancelGetAsync(object_id, memory_callback_id);
+  }
+  if (callback != nullptr) {
+    callback(std::move(status), user);
+  }
+}
+
+uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
+                               void (*callback)(Status status, void *user),
+                               void *user) {
+  rpc::Address owner_address;
+  Status owner_status = GetOwnerAddress(object_id, &owner_address);
+  if (!owner_status.ok()) {
+    callback(std::move(owner_status), user);
+    return 0;
+  }
+
+  std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
+  state->object_id = object_id;
+  state->callback = callback;
+  state->user = user;
+
+  uint64_t handle = 0;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    // Once CancelAllWaitAsync has run, io_service_ is about to stop, so a new
+    // registration would never be posted. Fail fast instead of hanging.
+    if (wait_async_shutdown_) {
+      handle = 0;
+    } else {
+      // Handles are never zero; zero means "already completed / not registered".
+      do {
+        ++wait_async_next_handle_;
+      } while (wait_async_next_handle_ == 0);
+      handle = wait_async_next_handle_;
+      state->handle = handle;
+      wait_async_requests_[handle] = state;
+    }
+  }
+  if (handle == 0) {
+    callback(Status::UnknownError("Core worker is shutting down."), user);
+    return 0;
+  }
+
+  // Note: do not pre-check with Contains() — that is a blocking raylet IPC and
+  // would stall an async/event-loop caller. GetAsync covers the already-present
+  // case by posting the callback; in-memory values and plasma markers both
+  // count as ready.
+  std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
+      [this,
+       weak_state = std::weak_ptr<WaitAsyncState>(state)](std::shared_ptr<RayObject>) {
+        std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
+        if (wait_state == nullptr) {
+          return;
+        }
+        FinishWaitAsync(wait_state, Status::OK());
+      };
+
+  // Register and record the cancellation token under one acquisition of
+  // state->mu, so completion cannot slip between them and leave an orphan
+  // registration behind. GetAsync returns 0 when the object was already
+  // present: the callback is posted rather than queued, so there is nothing
+  // to cancel.
+  {
+    absl::MutexLock lock(&state->mu);
+    if (state->done) {
+      return 0;
+    }
+    state->memory_callback_id = memory_store_->GetAsync(object_id, on_memory_object);
+  }
+  return handle;
+}
+
+void CoreWorker::CancelWaitAsync(uint64_t handle) {
+  if (handle == 0) {
+    return;
+  }
+  std::shared_ptr<WaitAsyncState> state;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>>::iterator it =
+        wait_async_requests_.find(handle);
+    if (it == wait_async_requests_.end()) {
+      return;
+    }
+    state = it->second;
+  }
+  // No Status::Cancelled; Invalid uniquely means this wait was cancelled.
+  FinishWaitAsync(state, Status::Invalid("WaitAsync cancelled"));
+}
+
+void CoreWorker::CancelAllWaitAsync() {
+  // Steal the map under the lock, then finish outside it: FinishWaitAsync takes
+  // wait_async_mu_ to unregister, so holding it here would deadlock.
+  std::vector<std::shared_ptr<WaitAsyncState>> pending;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    wait_async_shutdown_ = true;
+    pending.reserve(wait_async_requests_.size());
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      pending.push_back(entry.second);
+    }
+    wait_async_requests_.clear();
+  }
+  for (const std::shared_ptr<WaitAsyncState> &state : pending) {
+    FinishWaitAsync(state, Status::UnknownError("Core worker is shutting down."));
+  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -4760,13 +4939,22 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::function<void(void)>> callbacks;
+  std::vector<std::function<void()>> callbacks;
   {
     absl::MutexLock lock(&plasma_mutex_);
-    auto it = async_plasma_callbacks_.extract(ObjectID::FromBinary(request.object_id()));
-    callbacks = it.mapped();
+    // A notification can arrive with no listener registered, so this lookup
+    // must tolerate a missing key: the raylet fires PlasmaObjectReady
+    // immediately for an already-local object, so two subscriptions for one
+    // object yield two notifications while the first drains every callback.
+    const ObjectID object_id = ObjectID::FromBinary(request.object_id());
+    absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>::iterator it =
+        async_plasma_callbacks_.find(object_id);
+    if (it != async_plasma_callbacks_.end()) {
+      callbacks = std::move(it->second);
+      async_plasma_callbacks_.erase(it);
+    }
   }
-  for (const auto &callback : callbacks) {
+  for (const std::function<void()> &callback : callbacks) {
     // This callback needs to be asynchronous because it runs on the io_service_, so no
     // RPCs can be processed while it's running. This can easily lead to deadlock (for
     // example if the callback calls ray.get() on an object that is dependent on an RPC

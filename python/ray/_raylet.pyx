@@ -214,12 +214,10 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
-    GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEndOfStreamError,
     RayChannelError,
     RayChannelTimeoutError,
 )
@@ -5170,6 +5168,19 @@ cdef class CoreWorker:
             <void*>user_callback
         )
 
+    def set_wait_async_callback(self, ObjectRef object_ref, user_callback: Callable):
+        # Like set_get_async_callback, but does not pull or deserialize. Returns
+        # a handle for cancel_wait_async, or 0 if user_callback already ran.
+        cpython.Py_INCREF(user_callback)
+        return CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+            object_ref.native(),
+            wait_async_callback_impl,
+            <void*>user_callback
+        )
+
+    def cancel_wait_async(self, uint64_t handle):
+        CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
+
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
@@ -5432,6 +5443,28 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
+        cpython.Py_DECREF(user_callback)
+
+
+cdef void wait_async_callback_impl(CRayStatus status,
+                                   void *user_callback_ptr) with gil:
+    user_callback = <object>user_callback_ptr
+    try:
+        exc = None
+        if not status.ok():
+            # Do not call check_status (unsafe across this C++ boundary).
+            # WaitAsync only produces ObjectUnknownOwner, Invalid (cancel),
+            # and UnknownError (shutdown). Invalid maps to RaySystemError,
+            # not ValueError.
+            message = status.message().decode("utf-8", "replace")
+            if status.IsObjectUnknownOwner():
+                exc = ValueError(message)
+            else:
+                exc = RaySystemError(message)
+        user_callback(exc)
+    except BaseException:
+        logger.exception("failed to run set_wait_async_callback (user func)")
+    finally:
         cpython.Py_DECREF(user_callback)
 
 

@@ -290,6 +290,51 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize("is_streaming", [False, True])
+async def test_rejection_does_not_wait_async_until_accepted(
+    setup_fake_replica, accepted: bool, is_streaming: bool
+):
+    """Consume-wait starts only after an accepted unary rejection frame.
+
+    The constructor must not peek or ``_on_ready``-consume: that races
+    ``get_rejection_response`` on streaming, and hangs on rejected unary
+    (no user ref is written). Streaming never starts a consume-wait.
+    """
+    actor_handle = setup_fake_replica.get_actor_handle()
+    replica = RunningReplica(setup_fake_replica)
+    ray.get(
+        actor_handle.set_replica_queue_length_info.remote(
+            ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
+        )
+    )
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={"is_streaming": is_streaming},
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+            is_streaming=is_streaming,
+        ),
+    )
+    replica_result = replica.try_send_request(pr, with_rejection=True)
+    assert replica_result._cancel_consume_wait is None
+
+    info = await replica_result.get_rejection_response()
+    assert info.accepted == accepted
+    if not accepted:
+        assert replica_result._cancel_consume_wait is None
+    elif is_streaming:
+        assert replica_result._cancel_consume_wait is None
+        assert await replica_result.__anext__() == "Hello-0"
+    else:
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
+        # Consume is posted to the io thread; wait until it runs.
+        await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
+
+
+@pytest.mark.asyncio
 async def test_send_request_with_rejection_cancellation(setup_fake_replica):
     """
     Verify that the downstream actor method call is cancelled if the call to send the
