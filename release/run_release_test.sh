@@ -86,7 +86,7 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
     rm -rf "${RELEASE_RESULTS_DIR:?}"/* || true
   fi
 
-  rm -f "${RELEASE_TEST_OBS_AGENT_FILE}"
+  rm -f "${RELEASE_TEST_OBS_AGENT_FILE}" || true
 
   # SC2329: invoked indirectly by the `trap` below; shellcheck 0.11.0 misses this
   # because every path through this script ends in an explicit `exit`.
@@ -166,12 +166,15 @@ fi
 
 # Printed last: buildkite groups run until the next header, so anything printed
 # after this would be filed under the analysis heading.
-if [[ -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
+# -f as well as -s: a directory has a non-zero size, and reading one would abort
+# the run under `set -e`. The read is guarded for the same reason -- a file that
+# exists but cannot be read must not take the harness down with it.
+if [[ -f "${RELEASE_TEST_OBS_AGENT_FILE}" && -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
   echo "+++ :robot_face: Observability agent analysis"
   # Indented: the analysis is prose written by the agent, and a line of it that
   # started with ---, +++ or ~~~ would otherwise open a buildkite group of its
   # own and file the rest of the analysis under it.
-  sed 's/^/  /' "${RELEASE_TEST_OBS_AGENT_FILE}"
+  sed 's/^/  /' "${RELEASE_TEST_OBS_AGENT_FILE}" || true
 fi
 
 if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then

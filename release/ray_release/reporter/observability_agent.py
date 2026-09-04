@@ -142,7 +142,33 @@ class ObservabilityAgentReporter(Reporter):
             )
             return
 
-        message = f"Observability agent analysis of job {job_id}:\n{summary}"
+        # The full analysis also holds the findings, issues and next steps that
+        # back the summary; those stay out of the logs to keep them readable.
+        logger.debug(f"Observability agent response: {json.dumps(response)}")
+
+        # `or {}` guards against nulls in the response: raising here would
+        # escape the reporter, and glue.py does not guard the reporting loop.
+        query_result = response.get("result") or {}
+        summary = (query_result.get("analysis") or {}).get("summary")
+        slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
+
+        # Whatever the agent leaves out is called out in the message rather
+        # than left blank: the group is the prominent part of the step, so a
+        # response that came back empty has to say so there, not only in an
+        # error line buried in the reporting output above.
+        message = f"Observability agent analysis of job {job_id}:"
+        if summary:
+            message += f"\n{summary}"
+        else:
+            logger.error(
+                f"Observability agent response for job {job_id} carries no "
+                f"summary; debug session {debug_session_id}"
+            )
+            message += (
+                f"\n>>> The agent returned no summary for this job."
+                f"\n>>> Debug session: {debug_session_id}"
+            )
+
         if slack_thread:
             message += (
                 f"\n{FEEDBACK_REMINDER}"
@@ -153,6 +179,10 @@ class ObservabilityAgentReporter(Reporter):
                 f"Observability agent response for job {job_id} carries no slack "
                 "thread; the full report and its feedback buttons cannot be "
                 "linked from here"
+            )
+            message += (
+                "\n>>> The agent returned no slack thread, so the full report"
+                "\n>>> and its feedback buttons cannot be reached from here."
             )
 
         analysis_file = self._write_analysis(message)
