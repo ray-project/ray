@@ -24,6 +24,7 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
         description="The name of the serve application to use.",
         default="default",
     )
+    stream: bool = True
     dtype_mapping: Dict[str, Type[Any]] = Field(
         description="A dictionary mapping data type names to their corresponding request classes for the serve deployment.",
         default=None,
@@ -79,6 +80,7 @@ def build_serve_deployment_processor(
             fn_constructor_kwargs=dict(
                 deployment_name=config.deployment_name,
                 app_name=config.app_name,
+                stream=config.stream,
                 dtype_mapping=config.dtype_mapping,
                 should_continue_on_error=config.should_continue_on_error,
                 request_timeout_s=config.request_timeout_s,
