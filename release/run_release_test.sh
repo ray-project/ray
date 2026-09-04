@@ -30,7 +30,10 @@ BUILDKITE_RETRY_CODE=79
 BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 # The observability agent reporter writes its analysis here instead of logging
 # it inline; this script prints it under its own group once the test is over.
-RELEASE_TEST_OBS_AGENT_FILE=${RELEASE_TEST_OBS_AGENT_FILE:-/tmp/obs_agent_analysis.txt}
+# Under RELEASE_RESULTS_DIR so that the copy below carries it into the buildkite
+# artifacts, where it outlives the step's scrollback, and so that the path is
+# per-run rather than one global name every harness on the host shares.
+RELEASE_TEST_OBS_AGENT_FILE=${RELEASE_TEST_OBS_AGENT_FILE:-${RELEASE_RESULTS_DIR}/obs_agent_analysis.txt}
 
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE
 
@@ -87,7 +90,9 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
   fi
 
   # An analysis from a previous attempt must not be reported against this one.
-  # Failing to clean it up is not worth aborting the run under `set -e`.
+  # The wipe above covers the default path, but not a caller-provided one, and
+  # not when NO_ARTIFACTS is set. Failing to clean it up is not worth aborting
+  # the run under `set -e`.
   rm -f "${RELEASE_TEST_OBS_AGENT_FILE}" || true
 
   _term() {
