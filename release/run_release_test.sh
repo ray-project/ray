@@ -87,7 +87,8 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
   fi
 
   # An analysis from a previous attempt must not be reported against this one.
-  rm -f "${RELEASE_TEST_OBS_AGENT_FILE}"
+  # Failing to clean it up is not worth aborting the run under `set -e`.
+  rm -f "${RELEASE_TEST_OBS_AGENT_FILE}" || true
 
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
@@ -164,12 +165,15 @@ fi
 
 # Printed last: buildkite groups run until the next header, so anything printed
 # after this would be filed under the analysis heading.
-if [[ -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
+# -f as well as -s: a directory has a non-zero size, and reading one would abort
+# the run under `set -e`. The read is guarded for the same reason -- a file that
+# exists but cannot be read must not take the harness down with it.
+if [[ -f "${RELEASE_TEST_OBS_AGENT_FILE}" && -s "${RELEASE_TEST_OBS_AGENT_FILE}" ]]; then
   echo "+++ :robot_face: Observability agent analysis"
   # Indented: the analysis is prose written by the agent, and a line of it that
   # started with ---, +++ or ~~~ would otherwise open a buildkite group of its
   # own and file the rest of the analysis under it.
-  sed 's/^/  /' "${RELEASE_TEST_OBS_AGENT_FILE}"
+  sed 's/^/  /' "${RELEASE_TEST_OBS_AGENT_FILE}" || true
 fi
 
 if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then

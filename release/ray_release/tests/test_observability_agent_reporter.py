@@ -408,5 +408,54 @@ def test_write_failures_never_propagate(caplog, tmpdir):
     assert SUMMARY in caplog.text
 
 
+def test_missing_summary_is_named_in_the_analysis(caplog, tmpdir):
+    """A response with no summary must say so where the group is read."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    query_response = {
+        "result": {
+            "analysis": {},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        written = fp.read()
+    assert "returned no summary" in written
+    assert DEBUG_SESSION_ID in written
+    # The thread is still reachable, so the full report is not lost with it.
+    assert SLACK_THREAD in written
+    assert "None" not in written
+    assert "carries no summary" in caplog.text
+
+
+def test_empty_analysis_still_reports_the_failure(caplog, tmpdir):
+    """Neither field came back: the group must still say what happened."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse({"result": {}})],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        written = fp.read()
+    # Non-empty, so run_release_test.sh still prints the group rather than
+    # leaving the step looking as though the agent never ran.
+    assert written.strip()
+    assert "returned no summary" in written
+    assert "no slack thread" in written
+    assert DEBUG_SESSION_ID in written
+    assert "None" not in written
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
