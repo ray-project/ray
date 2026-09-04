@@ -2,8 +2,13 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 # Consumed by //ci/pipeline:test_doc_api_rules_sync, which reads the doc_api
-# rule out of this file to keep it in sync with the API-page set.
-exports_files(["test.rules.txt"])
+# rule out of these files to keep it in sync with the API-page set. The doc_api
+# routing lives in doc.rules.txt; test.rules.txt is read too because rayci unions
+# the two files' tags and the docs deplock rule that emits doc_api stays there.
+exports_files([
+    "test.rules.txt",
+    "doc.rules.txt",
+])
 
 py_binary(
     name = "copy_files",
