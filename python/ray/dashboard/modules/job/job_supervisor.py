@@ -365,6 +365,21 @@ class JobSupervisor:
             except FileNotFoundError:
                 # Job finished and log file was already cleaned up.
                 return
+            except Exception:
+                # A transient failure (e.g. disk full, permission error)
+                # in a single rotation attempt must not permanently kill
+                # rotation for the rest of the job. Without this, one
+                # bad attempt would silently disable rotation entirely,
+                # quietly reintroducing the original unbounded log
+                # growth problem this feature exists to prevent. Log and
+                # let the while loop try again next check_period_s. See
+                # PR #65006 discussion on Cursor's "Rotation stops after
+                # unexpected errors" comment.
+                self._logger.warning(
+                    f"Job {self._job_id} log rotation attempt failed "
+                    f"unexpectedly: {traceback.format_exc()} Will retry "
+                    f"on the next check in {check_period_s} seconds."
+                )
 
     async def _wait_for_rotation_to_finish(
         self,
@@ -418,6 +433,23 @@ class JobSupervisor:
                 f"Job {self._job_id} timed out waiting for log "
                 "rotation to finish, proceeding, failure message "
                 "may reflect a transient mid-rotation state."
+            )
+        except Exception:
+            # rotate_log_file failing (e.g. disk full, permission error)
+            # must never affect job status. This method exists purely to
+            # avoid reading the log file mid-rotation, an incidental
+            # logging side-operation failing is not a reason to mark an
+            # otherwise successful job as failed. Verified empirically
+            # that exceptions from the executor thread propagate through
+            # wrap_future/wait_for unmodified, so a plain broad except
+            # here is sufficient, no special-casing needed. See PR
+            # #65006 discussion on Cursor's "Rotation errors fail
+            # successful jobs" comment.
+            self._logger.warning(
+                f"Job {self._job_id} log rotation raised an unexpected "
+                f"error while being awaited: {traceback.format_exc()} "
+                "Proceeding, failure message may reflect a transient "
+                "mid-rotation state."
             )
 
     async def _poll_all(self, processes: List[psutil.Process]):
