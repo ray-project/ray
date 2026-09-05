@@ -104,7 +104,13 @@ func GetNodeIpAddressFromPerspective(address *string) string {
 }
 
 func tryDetectIPFromAddress(addr string) string {
+	// The perspective address is typically "host:port" (e.g. the GCS address),
+	// so resolve the host portion only. Mirrors the C++ implementation, which
+	// splits host and port before dialing the endpoint.
 	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
 
 	ip := net.ParseIP(host)
 	if ip == nil {

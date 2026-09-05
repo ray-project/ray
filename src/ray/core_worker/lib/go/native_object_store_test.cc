@@ -17,9 +17,10 @@
 // Ray infrastructure initialization.
 
 #include "native_object_store.h"
-#include "cgo_wrapper.h"  // for CSerializedObjectArray definition
 
 #include <cstdlib>
+
+#include "cgo_wrapper.h"  // for CSerializedObjectArray definition
 
 // ============================================================================
 // Mock implementation of Go CGO callback functions
@@ -32,16 +33,19 @@ extern "C" {
 
 // Mock GoObjectRefHandle structure
 typedef struct {
-  void* data_ptr;
+  void *data_ptr;
   size_t size;
-  void* ref_handle;
+  void *ref_handle;
 } GoObjectRefHandle;
 
 // Mock GoAllocateObject - returns a minimal valid handle
-__attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int object_id_size,
-                       const char* data, int data_size,
-                       const char* metadata, int metadata_size) {
-  GoObjectRefHandle* handle = (GoObjectRefHandle*)malloc(sizeof(GoObjectRefHandle));
+__attribute__((weak)) void *GoAllocateObject(const char *object_id_data,
+                                             int object_id_size,
+                                             const char *data,
+                                             int data_size,
+                                             const char *metadata,
+                                             int metadata_size) {
+  GoObjectRefHandle *handle = (GoObjectRefHandle *)malloc(sizeof(GoObjectRefHandle));
   if (handle) {
     handle->data_ptr = nullptr;
     handle->size = 0;
@@ -51,30 +55,26 @@ __attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int obj
 }
 
 // Mock GoReleaseObjectRef - does nothing
-__attribute__((weak)) void GoReleaseObjectRef(void* handle) {
+__attribute__((weak)) void GoReleaseObjectRef(void *handle) {
   // Stub
 }
 
 // Mock GoGetObjectData - returns null
-__attribute__((weak)) void* GoGetObjectData(void* handle) {
-  return nullptr;
-}
+__attribute__((weak)) void *GoGetObjectData(void *handle) { return nullptr; }
 
 // Mock GoGetObjectSize - returns 0
-__attribute__((weak)) size_t GoGetObjectSize(void* handle) {
-  return 0;
-}
+__attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 
 // Mock GoExecuteTask - returns null to indicate no task execution
 // This stub allows the test to link without requiring the actual Go runtime
-__attribute__((weak)) CSerializedObjectArray* GoExecuteTask(
+__attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
     int task_type,
-    const char** function_descriptor,
+    const char **function_descriptor,
     int function_descriptor_count,
-    const CFunctionArg* args,
+    const CFunctionArg *args,
     int args_count,
     int num_returns,
-    const char* actor_id_data,
+    const char *actor_id_data,
     int actor_id_size) {
   // Stub: return null to indicate no task execution
   return nullptr;
@@ -127,7 +127,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeObjectReferenceWithValidData) {
   // Test: FreeObjectReference with valid data
   CObjectReference ref{};  // Zero-initialize all fields
   ref.size = 10;
-  ref.data = static_cast<char*>(malloc(ref.size));
+  ref.data = static_cast<char *>(malloc(ref.size));
   memset(ref.data, 0, ref.size);
   // Other fields (metadata, metadata_size, contained_ids, contained_ids_count)
   // are already zero-initialized by {} initialization
@@ -145,7 +145,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeObjectArrayWithValidObjects) {
   // Test: FreeObjectArray with valid objects
   CObjectArray array{};  // Zero-initialize
   array.count = 2;
-  array.objects = static_cast<CObjectReference*>(malloc(sizeof(CObjectReference) * 2));
+  array.objects = static_cast<CObjectReference *>(malloc(sizeof(CObjectReference) * 2));
   if (array.objects == nullptr) {
     FAIL() << "Failed to allocate memory for objects array";
   }
@@ -153,11 +153,11 @@ TEST_F(NativeObjectStoreCGOTest, FreeObjectArrayWithValidObjects) {
   // Zero-initialize each CObjectReference
   memset(array.objects, 0, sizeof(CObjectReference) * 2);
 
-  array.objects[0].data = static_cast<char*>(malloc(10));
+  array.objects[0].data = static_cast<char *>(malloc(10));
   array.objects[0].size = 10;
   // metadata, metadata_size, contained_ids, contained_ids_count already zero
 
-  array.objects[1].data = static_cast<char*>(malloc(20));
+  array.objects[1].data = static_cast<char *>(malloc(20));
   array.objects[1].size = 20;
   // metadata, metadata_size, contained_ids, contained_ids_count already zero
 
@@ -174,7 +174,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeWaitResultWithValidReady) {
   // Test: FreeWaitResult with valid ready array
   CWaitResult result;
   result.count = 3;
-  result.ready = static_cast<bool*>(malloc(sizeof(bool) * 3));
+  result.ready = static_cast<bool *>(malloc(sizeof(bool) * 3));
 
   EXPECT_NO_THROW(CObjectStore_FreeWaitResult(result));
 }
@@ -186,7 +186,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeStringWithNullPointer) {
 
 TEST_F(NativeObjectStoreCGOTest, FreeStringWithValidPointer) {
   // Test: FreeString with valid pointer
-  char* str = static_cast<char*>(malloc(20));
+  char *str = static_cast<char *>(malloc(20));
   strcpy(str, "test_string");
 
   EXPECT_NO_THROW(CObjectStore_FreeString(str));
@@ -199,7 +199,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeStringWithValidPointer) {
 TEST_F(NativeObjectStoreCGOTest, CObjectReference_StructSize) {
   // Test: Verify CObjectReference struct size
   // Note: Size includes padding for memory alignment
-  EXPECT_GE(sizeof(CObjectReference), sizeof(char*));
+  EXPECT_GE(sizeof(CObjectReference), sizeof(char *));
   EXPECT_GE(sizeof(CObjectReference), sizeof(int));
 }
 
@@ -217,7 +217,7 @@ TEST_F(NativeObjectStoreCGOTest, CObjectReference_NullInitialization) {
 TEST_F(NativeObjectStoreCGOTest, CObjectArray_StructSize) {
   // Test: Verify CObjectArray struct size
   // Note: Size includes padding for memory alignment
-  EXPECT_GE(sizeof(CObjectArray), sizeof(CObjectReference*));
+  EXPECT_GE(sizeof(CObjectArray), sizeof(CObjectReference *));
   EXPECT_GE(sizeof(CObjectArray), sizeof(int));
 }
 
@@ -235,7 +235,7 @@ TEST_F(NativeObjectStoreCGOTest, CObjectArray_NullInitialization) {
 TEST_F(NativeObjectStoreCGOTest, CWaitResult_StructSize) {
   // Test: Verify CWaitResult struct size
   // Note: Size includes padding for memory alignment
-  EXPECT_GE(sizeof(CWaitResult), sizeof(bool*));
+  EXPECT_GE(sizeof(CWaitResult), sizeof(bool *));
   EXPECT_GE(sizeof(CWaitResult), sizeof(int));
 }
 
@@ -309,27 +309,31 @@ TEST_F(NativeObjectStoreCGOTest, RegisterOwnershipInfoAndResolveFutureWithNullPo
 
 TEST_F(NativeObjectStoreCGOTest, PutWithIDWithNullObjectId) {
   // Test: PutWithID with null object ID should fail
-  int result = CObjectStore_PutWithID(
-      nullptr, 0,
-      test_data_.c_str(), static_cast<int>(test_data_.size()),
-      test_metadata_.c_str(), static_cast<int>(test_metadata_.size()));
+  int result = CObjectStore_PutWithID(nullptr,
+                                      0,
+                                      test_data_.c_str(),
+                                      static_cast<int>(test_data_.size()),
+                                      test_metadata_.c_str(),
+                                      static_cast<int>(test_metadata_.size()));
 
   EXPECT_EQ(result, -1);  // -1 indicates error per CGO convention
 }
 
 TEST_F(NativeObjectStoreCGOTest, PutWithIDWithZeroSize) {
   // Test: PutWithID with zero size object ID should fail
-  int result = CObjectStore_PutWithID(
-      test_data_.c_str(), 0,
-      test_data_.c_str(), static_cast<int>(test_data_.size()),
-      test_metadata_.c_str(), static_cast<int>(test_metadata_.size()));
+  int result = CObjectStore_PutWithID(test_data_.c_str(),
+                                      0,
+                                      test_data_.c_str(),
+                                      static_cast<int>(test_data_.size()),
+                                      test_metadata_.c_str(),
+                                      static_cast<int>(test_metadata_.size()));
 
   EXPECT_EQ(result, -1);  // -1 indicates error per CGO convention
 }
 
 TEST_F(NativeObjectStoreCGOTest, GetWithNullPointers) {
   // Test: Get with null pointers should return empty result
-  CObjectArray* result = CObjectStore_Get(nullptr, nullptr, 0, 1000);
+  CObjectArray *result = CObjectStore_Get(nullptr, nullptr, 0, 1000);
 
   EXPECT_NE(result, nullptr);  // Should return a valid pointer
   EXPECT_EQ(result->count, 0);
@@ -341,7 +345,7 @@ TEST_F(NativeObjectStoreCGOTest, GetWithNullPointers) {
 
 TEST_F(NativeObjectStoreCGOTest, GetWithEmptyCount) {
   // Test: Get with count=0 should return empty result
-  CObjectArray* result = CObjectStore_Get(nullptr, nullptr, 0, 1000);
+  CObjectArray *result = CObjectStore_Get(nullptr, nullptr, 0, 1000);
 
   EXPECT_NE(result, nullptr);  // Should return a valid pointer
   EXPECT_EQ(result->count, 0);

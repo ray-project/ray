@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <stdexcept>
+
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
 
@@ -41,7 +42,7 @@ class ICoreWorkerProvider {
    * @brief Get the CoreWorker instance.
    * @return Reference to the CoreWorker.
    */
-  virtual core::CoreWorker& GetCoreWorker() = 0;
+  virtual core::CoreWorker &GetCoreWorker() = 0;
 
   /**
    * @brief Check if CoreWorker is initialized.
@@ -66,7 +67,7 @@ class DefaultCoreWorkerProvider : public ICoreWorkerProvider {
    * @brief Get the CoreWorker instance from the singleton.
    * @return Reference to the CoreWorker.
    */
-  core::CoreWorker& GetCoreWorker() override {
+  core::CoreWorker &GetCoreWorker() override {
     return ray::core::CoreWorkerProcess::GetCoreWorker();
   }
 
@@ -97,16 +98,14 @@ class MockCoreWorkerProvider : public ICoreWorkerProvider {
    * @brief Set the mock CoreWorker instance.
    * @param worker Pointer to the mock CoreWorker (must outlive this provider).
    */
-  void SetCoreWorker(core::CoreWorker* worker) {
-    mock_worker_ = worker;
-  }
+  void SetCoreWorker(core::CoreWorker *worker) { mock_worker_ = worker; }
 
   /**
    * @brief Get the mock CoreWorker instance.
    * @return Reference to the mock CoreWorker.
    * @throws std::runtime_error if no mock worker has been set.
    */
-  core::CoreWorker& GetCoreWorker() override {
+  core::CoreWorker &GetCoreWorker() override {
     if (mock_worker_ == nullptr) {
       throw std::runtime_error("Mock worker not set");
     }
@@ -117,12 +116,10 @@ class MockCoreWorkerProvider : public ICoreWorkerProvider {
    * @brief Check if a mock CoreWorker has been set.
    * @return true if mock worker is set, false otherwise.
    */
-  bool IsInitialized() const override {
-    return mock_worker_ != nullptr;
-  }
+  bool IsInitialized() const override { return mock_worker_ != nullptr; }
 
  private:
-  core::CoreWorker* mock_worker_ = nullptr;
+  core::CoreWorker *mock_worker_ = nullptr;
 };
 
 // ============================================================================
@@ -142,7 +139,7 @@ class CoreWorkerProviderRegistry {
    * @brief Get the singleton instance.
    * @return Reference to the registry instance.
    */
-  static CoreWorkerProviderRegistry& Instance() {
+  static CoreWorkerProviderRegistry &Instance() {
     static CoreWorkerProviderRegistry instance;
     return instance;
   }
@@ -160,7 +157,7 @@ class CoreWorkerProviderRegistry {
    * @return Reference to the current provider.
    * @throws std::runtime_error if no provider has been set.
    */
-  ICoreWorkerProvider& GetProvider() {
+  ICoreWorkerProvider &GetProvider() {
     if (provider_ == nullptr) {
       throw std::runtime_error("CoreWorker provider not set");
     }
@@ -171,9 +168,7 @@ class CoreWorkerProviderRegistry {
    * @brief Convenience method to get CoreWorker directly.
    * @return Reference to the CoreWorker.
    */
-  core::CoreWorker& GetCoreWorker() {
-    return GetProvider().GetCoreWorker();
-  }
+  core::CoreWorker &GetCoreWorker() { return GetProvider().GetCoreWorker(); }
 
   /**
    * @brief Check if provider is initialized.

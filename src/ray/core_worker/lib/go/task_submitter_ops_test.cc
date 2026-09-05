@@ -18,8 +18,8 @@
 
 #include "task_submitter_ops.h"
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
@@ -55,39 +55,40 @@ namespace go {
 // These are defined in the global namespace and linked via weak symbols
 
 __attribute__((weak)) std::vector<ray::rpc::ObjectReference> ray_core_worker_SubmitTask(
-    const ray::core::RayFunction& func,
-    const std::vector<std::unique_ptr<ray::TaskArg>>& args,
-    const ray::core::TaskOptions& options,
+    const ray::core::RayFunction &func,
+    const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+    const ray::core::TaskOptions &options,
     int num_returns) {
   // Default mock implementation - return empty vector
   return std::vector<ray::rpc::ObjectReference>();
 }
 
 __attribute__((weak)) ray::Status ray_core_worker_CreateActor(
-    const ray::core::RayFunction& func,
-    const std::vector<std::unique_ptr<ray::TaskArg>>& args,
-    const ray::core::ActorCreationOptions& options,
-    const std::string& actor_name,
-    const std::string& serialized_runtime_env,
-    ray::ActorID* actor_id) {
+    const ray::core::RayFunction &func,
+    const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+    const ray::core::ActorCreationOptions &options,
+    const std::string &actor_name,
+    const std::string &serialized_runtime_env,
+    ray::ActorID *actor_id) {
   // Default mock implementation - return OK status and set a dummy actor ID
   if (actor_id) {
     // Use a fixed dummy actor ID for testing
-    *actor_id = ray::ActorID::FromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+    *actor_id = ray::ActorID::FromHex(
+        "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
   }
   return ray::Status::OK();
 }
 
 __attribute__((weak)) ray::Status ray_core_worker_SubmitActorTask(
-    const ray::ActorID& actor_id,
-    const ray::core::RayFunction& func,
-    const std::vector<std::unique_ptr<ray::TaskArg>>& args,
-    const ray::core::TaskOptions& options,
+    const ray::ActorID &actor_id,
+    const ray::core::RayFunction &func,
+    const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+    const ray::core::TaskOptions &options,
     int num_returns,
     bool is_async,
-    const std::string& serialized_runtime_env,
-    const std::string& debug_event_string,
-    std::vector<ray::rpc::ObjectReference>& return_refs) {
+    const std::string &serialized_runtime_env,
+    const std::string &debug_event_string,
+    std::vector<ray::rpc::ObjectReference> &return_refs) {
   // Default mock implementation - return OK status and empty return_refs
   return_refs.clear();
   return ray::Status::OK();
@@ -168,7 +169,8 @@ namespace {
 //   options.num_returns = 2;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify: Mock returns empty vector
 //   EXPECT_TRUE(result.empty());
@@ -182,7 +184,8 @@ namespace {
 //   TaskSubmitOptions options = CreateDefaultOptions();
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify: Should not crash, returns empty vector from mock
 //   EXPECT_TRUE(result.empty());
@@ -195,11 +198,13 @@ namespace {
 //   args.push_back(CreateValueArg("arg1"));
 //
 //   TaskSubmitOptions options = CreateDefaultOptions();
-//   options.placement_group_id_hex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+//   options.placement_group_id_hex =
+//   "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 //   options.bundle_index = 0;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -216,7 +221,8 @@ namespace {
 //   options.resources["GPU"] = 1.0;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -232,7 +238,8 @@ namespace {
 //   options.serialized_runtime_env_info = "{\"pip\": [\"requests\"]}";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -249,7 +256,8 @@ namespace {
 //   TaskSubmitOptions options = CreateDefaultOptions();
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify: Should not crash, returns empty vector from mock
 //   EXPECT_TRUE(result.empty());
@@ -262,11 +270,13 @@ namespace {
 //   args.push_back(CreateValueArg("arg1"));
 //
 //   TaskSubmitOptions options = CreateDefaultOptions();
-//   options.placement_group_id_hex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+//   options.placement_group_id_hex =
+//   "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 //   options.bundle_index = 0;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -283,7 +293,8 @@ namespace {
 //   options.resources["GPU"] = 1.0;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -299,7 +310,8 @@ namespace {
 //   options.serialized_runtime_env_info = "{\"pip\": [\"requests\"]}";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -321,7 +333,8 @@ namespace {
 //   options.name = "TestActor";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args,
+//   options);
 //
 //   // Verify: Should return a valid ActorID (mock returns random ID)
 //   EXPECT_FALSE(result.IsNil());
@@ -336,7 +349,8 @@ namespace {
 //   options.name = "TestActor";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_FALSE(result.IsNil());
@@ -353,7 +367,8 @@ namespace {
 //   options.name = "TestActor";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_FALSE(result.IsNil());
@@ -367,7 +382,8 @@ namespace {
 
 // TEST_F(TaskSubmitterOpsTest, SubmitActorTaskSuccess) {
 //   // Setup: Actor task submission
-//   ActorID actor_id = ActorID::FromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+//   ActorID actor_id =
+//   ActorID::FromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
 //   std::vector<std::string> func_desc = {"module", "method"};
 //   std::vector<std::unique_ptr<TaskArgument>> args;
 //   args.push_back(CreateValueArg("method_arg"));
@@ -376,7 +392,8 @@ namespace {
 //   options.num_returns = 1;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitActorTask(actor_id, func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitActorTask(actor_id,
+//   func_desc, args, options);
 //
 //   // Verify: Mock returns empty vector
 //   EXPECT_TRUE(result.empty());
@@ -384,14 +401,16 @@ namespace {
 //
 // TEST_F(TaskSubmitterOpsTest, SubmitActorTaskWithEmptyArgs) {
 //   // Setup: Actor task with no args
-//   ActorID actor_id = ActorID::FromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+//   ActorID actor_id =
+//   ActorID::FromHex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
 //   std::vector<std::string> func_desc = {"module", "method"};
 //   std::vector<std::unique_ptr<TaskArgument>> args;  // Empty
 //
 //   TaskSubmitOptions options = CreateDefaultOptions();
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitActorTask(actor_id, func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitActorTask(actor_id,
+//   func_desc, args, options);
 //
 //   // Verify
 //   EXPECT_TRUE(result.empty());
@@ -506,7 +525,8 @@ TEST_F(TaskSubmitterOpsTest, HexToBinaryInvalidCharacters) {
 //   options.num_returns = 2;
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().SubmitTask(func_desc, args,
+//   options);
 //
 //   // Verify: Mock returns empty vector, but flow should complete without error
 //   EXPECT_TRUE(result.empty());
@@ -526,7 +546,8 @@ TEST_F(TaskSubmitterOpsTest, HexToBinaryInvalidCharacters) {
 //   options.name = "MyTestActor";
 //
 //   // Execute
-//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args, options);
+//   auto result = TaskSubmitterOperations::GetInstance().CreateActor(func_desc, args,
+//   options);
 //
 //   // Verify
 //   EXPECT_FALSE(result.IsNil());

@@ -37,18 +37,18 @@
 #include <atomic>
 #include <functional>
 #include <memory>
-#include <string>
-#include <vector>
-#include <unordered_map>
 #include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
+#include "core_worker_provider.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "task_argument.h"
-#include "core_worker_provider.h"
 
 namespace ray {
 namespace go {
@@ -74,12 +74,12 @@ class TaskArgument;
  */
 using TaskExecutionCallback = std::function<void(
     ray::rpc::TaskType task_type,
-    const std::vector<std::string>& function_descriptor,
-    const std::vector<std::shared_ptr<ray::RayObject>>& args,
-    const std::vector<ray::rpc::ObjectReference>& arg_refs,
-    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>>* returns,
-    std::string* application_error,
-    bool* is_retryable_error)>;
+    const std::vector<std::string> &function_descriptor,
+    const std::vector<std::shared_ptr<ray::RayObject>> &args,
+    const std::vector<ray::rpc::ObjectReference> &arg_refs,
+    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *returns,
+    std::string *application_error,
+    bool *is_retryable_error)>;
 
 /**
  * @brief Business logic operations for task execution
@@ -97,7 +97,7 @@ class TaskExecutorOperations {
    * @brief Get singleton instance
    * @return Reference to singleton instance
    */
-  static TaskExecutorOperations& GetInstance();
+  static TaskExecutorOperations &GetInstance();
 
   /**
    * @brief Set the CoreWorker provider
@@ -113,7 +113,7 @@ class TaskExecutorOperations {
    * @brief Get the current CoreWorker provider
    * @return Reference to current provider
    */
-  static ICoreWorkerProvider& GetCoreWorkerProvider();
+  static ICoreWorkerProvider &GetCoreWorkerProvider();
 
   /**
    * @brief Set the task execution callback
@@ -150,8 +150,8 @@ class TaskExecutorOperations {
    * @throws std::exception on error
    */
   std::vector<std::shared_ptr<ray::RayObject>> ExecuteTask(
-      const std::vector<std::string>& function_descriptor,
-      const std::vector<std::unique_ptr<ray::go::TaskArgument>>& args,
+      const std::vector<std::string> &function_descriptor,
+      const std::vector<std::unique_ptr<ray::go::TaskArgument>> &args,
       int num_returns);
 
   /**
@@ -165,9 +165,9 @@ class TaskExecutorOperations {
    * @throws std::exception on error
    */
   std::vector<std::shared_ptr<ray::RayObject>> ExecuteActorTask(
-      const ray::ActorID& actor_id,
-      const std::vector<std::string>& function_descriptor,
-      const std::vector<std::unique_ptr<ray::go::TaskArgument>>& args,
+      const ray::ActorID &actor_id,
+      const std::vector<std::string> &function_descriptor,
+      const std::vector<std::unique_ptr<ray::go::TaskArgument>> &args,
       int num_returns);
 
  private:
@@ -175,13 +175,13 @@ class TaskExecutorOperations {
   ~TaskExecutorOperations() = default;
 
   // Non-copyable
-  TaskExecutorOperations(const TaskExecutorOperations&) = delete;
-  TaskExecutorOperations& operator=(const TaskExecutorOperations&) = delete;
+  TaskExecutorOperations(const TaskExecutorOperations &) = delete;
+  TaskExecutorOperations &operator=(const TaskExecutorOperations &) = delete;
 
   /**
    * @brief Get CoreWorker from provider
    */
-  ray::core::CoreWorker& GetCoreWorker() const {
+  ray::core::CoreWorker &GetCoreWorker() const {
     return GetCoreWorkerProvider().GetCoreWorker();
   }
 

@@ -16,23 +16,21 @@
 // CGO bridge helpers and common utilities
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 // Helper: set an error message
-void set_error(char** error_out, const char* msg);
+void set_error(char **error_out, const char *msg);
 
 // Helper: allocate a serialized string array (with sizes)
 // Returns false on allocation failure
-bool allocate_serialized_array(
-    const std::vector<std::string>& data,
-    char*** serialized_out,
-    int** sizes_out,
-    int* count_out);
+bool allocate_serialized_array(const std::vector<std::string> &data,
+                               char ***serialized_out,
+                               int **sizes_out,
+                               int *count_out);
 
 // Helper: allocate a string array (without sizes, for string IDs)
 // Returns false on allocation failure
-bool allocate_string_array(
-    const std::vector<std::string>& data,
-    char*** string_out,
-    int* count_out);
+bool allocate_string_array(const std::vector<std::string> &data,
+                           char ***string_out,
+                           int *count_out);

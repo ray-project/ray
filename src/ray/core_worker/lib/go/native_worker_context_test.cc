@@ -16,23 +16,27 @@
 // and error handling. These tests verify the C API wrapper implementation
 // without requiring a full Ray infrastructure setup.
 
-#include "src/ray/core_worker/lib/go/native_worker_context.h"
+#include "ray/core_worker/lib/go/native_worker_context.h"
 
 // Mock implementations of Go functions using weak symbols
 // This allows the test to compile and run without Go runtime
 extern "C" {
 
 typedef struct {
-  void* data_ptr;
+  void *data_ptr;
   size_t size;
-  void* ref_handle;
+  void *ref_handle;
 } MockGoObjectRefHandle;
 
-__attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int object_id_size,
-                       const char* data, int data_size,
-                       const char* metadata, int metadata_size) {
+__attribute__((weak)) void *GoAllocateObject(const char *object_id_data,
+                                             int object_id_size,
+                                             const char *data,
+                                             int data_size,
+                                             const char *metadata,
+                                             int metadata_size) {
   // Allocate a minimal handle structure
-  MockGoObjectRefHandle* handle = (MockGoObjectRefHandle*)malloc(sizeof(MockGoObjectRefHandle));
+  MockGoObjectRefHandle *handle =
+      reinterpret_cast<MockGoObjectRefHandle *>(malloc(sizeof(MockGoObjectRefHandle)));
   if (handle) {
     handle->data_ptr = nullptr;
     handle->size = 0;
@@ -41,21 +45,18 @@ __attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int obj
   return handle;
 }
 
-__attribute__((weak)) void GoReleaseObjectRef(void* handle) {
+__attribute__((weak)) void GoReleaseObjectRef(void *handle) {
   // Stub: nothing to do in mock
 }
 
-__attribute__((weak)) void* GoGetObjectData(void* handle) {
-  return nullptr;
-}
+__attribute__((weak)) void *GoGetObjectData(void *handle) { return nullptr; }
 
-__attribute__((weak)) size_t GoGetObjectSize(void* handle) {
-  return 0;
-}
+__attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 
 }  // extern "C"
 
 #include <gtest/gtest.h>
+
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -97,11 +98,11 @@ TEST_F(NativeWorkerContextCGOTest, CByteArrayStructureIsValid) {
 TEST_F(NativeWorkerContextCGOTest, CByteArrayAllocation) {
   // Test: Verify we can allocate CByteArray structures
   const int kTestSize = 100;
-  CByteArray* result = static_cast<CByteArray*>(malloc(sizeof(CByteArray)));
+  CByteArray *result = static_cast<CByteArray *>(malloc(sizeof(CByteArray)));
 
   ASSERT_NE(result, nullptr);
   result->size = kTestSize;
-  result->data = static_cast<char*>(malloc(kTestSize));
+  result->data = static_cast<char *>(malloc(kTestSize));
   ASSERT_NE(result->data, nullptr);
 
   // Fill with test data
@@ -119,7 +120,7 @@ TEST_F(NativeWorkerContextCGOTest, CByteArrayAllocation) {
 
 TEST_F(NativeWorkerContextCGOTest, CByteArrayNullHandling) {
   // Test: Verify proper handling of NULL data pointers
-  CByteArray* result = static_cast<CByteArray*>(malloc(sizeof(CByteArray)));
+  CByteArray *result = static_cast<CByteArray *>(malloc(sizeof(CByteArray)));
   ASSERT_NE(result, nullptr);
 
   result->size = 0;
@@ -131,7 +132,7 @@ TEST_F(NativeWorkerContextCGOTest, CByteArrayNullHandling) {
 
 TEST_F(NativeWorkerContextCGOTest, CByteArrayZeroSize) {
   // Test: Zero-size allocation edge case
-  CByteArray* result = static_cast<CByteArray*>(malloc(sizeof(CByteArray)));
+  CByteArray *result = static_cast<CByteArray *>(malloc(sizeof(CByteArray)));
   ASSERT_NE(result, nullptr);
 
   result->size = 0;
@@ -147,11 +148,11 @@ TEST_F(NativeWorkerContextCGOTest, CByteArrayLargeAllocation) {
   // Test: Large CByteArray allocation
 
   const size_t kLargeSize = 1024 * 1024;  // 1MB
-  CByteArray* result = static_cast<CByteArray*>(malloc(sizeof(CByteArray)));
+  CByteArray *result = static_cast<CByteArray *>(malloc(sizeof(CByteArray)));
   ASSERT_NE(result, nullptr);
 
   result->size = static_cast<int>(kLargeSize);
-  result->data = static_cast<char*>(malloc(kLargeSize));
+  result->data = static_cast<char *>(malloc(kLargeSize));
   ASSERT_NE(result->data, nullptr);
 
   // Fill with test pattern

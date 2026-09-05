@@ -33,25 +33,26 @@ extern "C" {
 // CObjectReference represents a reference to an object (typically an ObjectID).
 // Caller is responsible for freeing the data, metadata, and contained_ids pointers.
 typedef struct {
-  char* data;                    // Binary data (e.g., ObjectID or serialized address)
-  int size;                      // Size of data in bytes
-  char* metadata;                // Metadata binary data (can be NULL if empty)
-  int metadata_size;             // Size of metadata in bytes
-  char** contained_ids;          // Array of contained object ID binary data (can be NULL if empty)
-  int contained_ids_count;       // Number of contained object IDs
+  char *data;         // Binary data (e.g., ObjectID or serialized address)
+  int size;           // Size of data in bytes
+  char *metadata;     // Metadata binary data (can be NULL if empty)
+  int metadata_size;  // Size of metadata in bytes
+  char *
+      *contained_ids;  // Array of contained object ID binary data (can be NULL if empty)
+  int contained_ids_count;  // Number of contained object IDs
 } CObjectReference;
 
 // CObjectArray represents an array of object references.
 // Caller is responsible for freeing the entire structure and its contents.
 typedef struct {
-  CObjectReference* objects;  // Array of object references
-  int count;                   // Number of objects
+  CObjectReference *objects;  // Array of object references
+  int count;                  // Number of objects
 } CObjectArray;
 
 // CWaitResult represents the result of a wait operation.
 // Caller is responsible for freeing the ready array.
 typedef struct {
-  bool* ready;  // Array of boolean values indicating which objects are ready
+  bool *ready;  // Array of boolean values indicating which objects are ready
   int count;    // Number of elements in ready array
 } CWaitResult;
 
@@ -72,9 +73,12 @@ typedef struct {
 // Returns:
 //   CObjectReference containing the object ID, or empty reference on failure.
 //   Caller is responsible for freeing the returned CObjectReference.
-CObjectReference CObjectStore_Put(const char* data, int data_size,
-                                   const char* metadata, int metadata_size,
-                                   const char* owner_address, int owner_address_size);
+CObjectReference CObjectStore_Put(const char *data,
+                                  int data_size,
+                                  const char *metadata,
+                                  int metadata_size,
+                                  const char *owner_address,
+                                  int owner_address_size);
 
 // CObjectStore_PutWithID puts an object into the object store with a specific ID.
 //
@@ -88,9 +92,12 @@ CObjectReference CObjectStore_Put(const char* data, int data_size,
 //
 // Returns:
 //   0 on success, -1 on failure.
-int CObjectStore_PutWithID(const char* object_id_data, int object_id_size,
-                            const char* data, int data_size,
-                            const char* metadata, int metadata_size);
+int CObjectStore_PutWithID(const char *object_id_data,
+                           int object_id_size,
+                           const char *data,
+                           int data_size,
+                           const char *metadata,
+                           int metadata_size);
 
 // CObjectStore_Get gets objects from the object store.
 //
@@ -102,9 +109,12 @@ int CObjectStore_PutWithID(const char* object_id_data, int object_id_size,
 //
 // Returns:
 //   Pointer to CObjectArray containing the retrieved objects, or empty array on failure.
-//   Caller is responsible for freeing the returned CObjectArray by calling CObjectStore_FreeObjectArray.
-CObjectArray* CObjectStore_Get(const char** object_ids, int* object_id_sizes,
-                               int count, long long timeout_ms);
+//   Caller is responsible for freeing the returned CObjectArray by calling
+//   CObjectStore_FreeObjectArray.
+CObjectArray *CObjectStore_Get(const char **object_ids,
+                               int *object_id_sizes,
+                               int count,
+                               long long timeout_ms);
 
 // CObjectStore_Wait waits for objects to be available in the object store.
 //
@@ -119,9 +129,12 @@ CObjectArray* CObjectStore_Get(const char** object_ids, int* object_id_sizes,
 // Returns:
 //   CWaitResult indicating which objects are ready, or empty result on failure.
 //   Caller is responsible for freeing the returned CWaitResult.
-CWaitResult CObjectStore_Wait(const char** object_ids, int* object_id_sizes,
-                               int count, int num_objects,
-                               long long timeout_ms, bool fetch_local);
+CWaitResult CObjectStore_Wait(const char **object_ids,
+                              int *object_id_sizes,
+                              int count,
+                              int num_objects,
+                              long long timeout_ms,
+                              bool fetch_local);
 
 // CObjectStore_Delete deletes objects from the object store.
 //
@@ -133,8 +146,10 @@ CWaitResult CObjectStore_Wait(const char** object_ids, int* object_id_sizes,
 //
 // Returns:
 //   0 on success, -1 on failure.
-int CObjectStore_Delete(const char** object_ids, int* object_id_sizes,
-                         int count, bool local_only);
+int CObjectStore_Delete(const char **object_ids,
+                        int *object_id_sizes,
+                        int count,
+                        bool local_only);
 
 // ============================================================================
 // ObjectStore Functions - Reference Management
@@ -148,7 +163,7 @@ int CObjectStore_Delete(const char** object_ids, int* object_id_sizes,
 //
 // Returns:
 //   0 on success, -1 on failure.
-int CObjectStore_AddLocalReference(const char* object_id_data, int object_id_size);
+int CObjectStore_AddLocalReference(const char *object_id_data, int object_id_size);
 
 // CObjectStore_RemoveLocalReference removes a local reference from an object.
 //
@@ -158,7 +173,7 @@ int CObjectStore_AddLocalReference(const char* object_id_data, int object_id_siz
 //
 // Returns:
 //   0 on success, -1 on failure.
-int CObjectStore_RemoveLocalReference(const char* object_id_data, int object_id_size);
+int CObjectStore_RemoveLocalReference(const char *object_id_data, int object_id_size);
 
 // CObjectStore_GetAllReferenceCounts gets all reference counts.
 //
@@ -166,7 +181,7 @@ int CObjectStore_RemoveLocalReference(const char* object_id_data, int object_id_
 //   JSON string containing reference counts, or NULL on failure.
 //   Format: {"object_id_hex":[local_count, submitted_count], ...}
 //   Caller is responsible for freeing the returned string using CObjectStore_FreeString.
-char* CObjectStore_GetAllReferenceCounts();
+char *CObjectStore_GetAllReferenceCounts();
 
 // CObjectStore_GetOwnerAddress gets the owner address for an object.
 //
@@ -177,7 +192,8 @@ char* CObjectStore_GetAllReferenceCounts();
 // Returns:
 //   CObjectReference containing serialized owner address, or empty reference on failure.
 //   Caller is responsible for freeing the returned CObjectReference.
-CObjectReference CObjectStore_GetOwnerAddress(const char* object_id_data, int object_id_size);
+CObjectReference CObjectStore_GetOwnerAddress(const char *object_id_data,
+                                              int object_id_size);
 
 // CObjectStore_GetOwnershipInfo gets ownership information for an object.
 //
@@ -188,9 +204,11 @@ CObjectReference CObjectStore_GetOwnerAddress(const char* object_id_data, int ob
 // Returns:
 //   CObjectReference containing serialized ownership info, or empty reference on failure.
 //   Caller is responsible for freeing the returned CObjectReference.
-CObjectReference CObjectStore_GetOwnershipInfo(const char* object_id_data, int object_id_size);
+CObjectReference CObjectStore_GetOwnershipInfo(const char *object_id_data,
+                                               int object_id_size);
 
-// CObjectStore_RegisterOwnershipInfoAndResolveFuture registers ownership info and resolves a future.
+// CObjectStore_RegisterOwnershipInfoAndResolveFuture registers ownership info and
+// resolves a future.
 //
 // Parameters:
 //   object_id_data - Binary data of object ID
@@ -202,10 +220,12 @@ CObjectReference CObjectStore_GetOwnershipInfo(const char* object_id_data, int o
 //
 // Returns:
 //   0 on success, -1 on failure.
-int CObjectStore_RegisterOwnershipInfoAndResolveFuture(
-    const char* object_id_data, int object_id_size,
-    const char* outer_object_id_data, int outer_object_id_size,
-    const char* owner_address, int owner_address_size);
+int CObjectStore_RegisterOwnershipInfoAndResolveFuture(const char *object_id_data,
+                                                       int object_id_size,
+                                                       const char *outer_object_id_data,
+                                                       int outer_object_id_size,
+                                                       const char *owner_address,
+                                                       int owner_address_size);
 
 // ============================================================================
 // Memory Management Helper Functions
@@ -221,7 +241,7 @@ void CObjectStore_FreeObjectReference(CObjectReference ref);
 //
 // Parameters:
 //   array - Pointer to CObjectArray to free
-void CObjectStore_FreeObjectArray(CObjectArray* array);
+void CObjectStore_FreeObjectArray(CObjectArray *array);
 
 // CObjectStore_FreeWaitResult frees a CWaitResult.
 //
@@ -233,7 +253,7 @@ void CObjectStore_FreeWaitResult(CWaitResult result);
 //
 // Parameters:
 //   str - String to free
-void CObjectStore_FreeString(char* str);
+void CObjectStore_FreeString(char *str);
 
 #ifdef __cplusplus
 }  // extern "C"

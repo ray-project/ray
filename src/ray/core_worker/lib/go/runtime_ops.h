@@ -15,16 +15,16 @@
 #ifndef RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
 #define RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
 
-#include "ray/core_worker/lib/go/core_worker_provider.h"
-#include "ray/core_worker/lib/go/cgo_wrapper.h"
-#include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/core_worker.h"
-#include "ray/gcs_rpc_client/gcs_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
-
 #include <functional>
 #include <memory>
 #include <string>
+
+#include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/core_worker_provider.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::go {
 
@@ -58,10 +58,10 @@ struct RuntimeInitializeOptions {
 class RuntimeOperations {
  public:
   // Get singleton instance
-  static RuntimeOperations& GetInstance();
+  static RuntimeOperations &GetInstance();
 
   // Initialize the Ray runtime with the given options
-  void Initialize(const RuntimeInitializeOptions& options);
+  void Initialize(const RuntimeInitializeOptions &options);
 
   // Shutdown the Ray runtime (safe to call even if not initialized)
   void Shutdown();
@@ -74,39 +74,38 @@ class RuntimeOperations {
 
   // Allocate an object in Go heap memory
   // Returns nullptr if allocation fails
-  std::shared_ptr<ray::RayObject> AllocateObject(
-      const ray::RayObject& object,
-      const ray::ObjectID& object_id);
+  std::shared_ptr<ray::RayObject> AllocateObject(const ray::RayObject &object,
+                                                 const ray::ObjectID &object_id);
 
   // Allocate multiple objects in Go heap memory (batch operation)
   // Returns vector of allocated objects, with nullptr for failed allocations
   std::vector<std::shared_ptr<ray::RayObject>> AllocateObjects(
-      const std::vector<std::pair<ray::RayObject, ray::ObjectID>>& objects);
+      const std::vector<std::pair<ray::RayObject, ray::ObjectID>> &objects);
 
   // Release an object reference
-  void ReleaseObjectRef(const ray::ObjectID& object_id);
+  void ReleaseObjectRef(const ray::ObjectID &object_id);
 
  private:
   RuntimeOperations() = default;
   ~RuntimeOperations() = default;
 
   // Delete copy constructor and assignment operator
-  RuntimeOperations(const RuntimeOperations&) = delete;
-  RuntimeOperations& operator=(const RuntimeOperations&) = delete;
+  RuntimeOperations(const RuntimeOperations &) = delete;
+  RuntimeOperations &operator=(const RuntimeOperations &) = delete;
 
   // Internal helper methods
-  void InitializeCoreWorker(const RuntimeInitializeOptions& options);
+  void InitializeCoreWorker(const RuntimeInitializeOptions &options);
   void ShutdownCoreWorker();
   void ShutdownRayLogging();
 
  public:
   // InitializeRayLogging is public to allow early logging initialization
   // before parameter validation in CNativeRuntime_Initialize
-  void InitializeRayLogging(const RuntimeInitializeOptions& options);
+  void InitializeRayLogging(const RuntimeInitializeOptions &options);
 
   // Member variables
   std::shared_ptr<ray::gcs::GcsClient> gcs_client_;
-  ray::core::CoreWorker* core_worker_ = nullptr;  // Owned by CoreWorkerProcess singleton
+  ray::core::CoreWorker *core_worker_ = nullptr;  // Owned by CoreWorkerProcess singleton
   bool runtime_initialized_ = false;
 };
 

@@ -16,17 +16,18 @@
 #define RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H
 
 #ifdef __cplusplus
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
-#include <cstdint>
-#include <cstring>
-#include <cstdio>
+
 #include "ray/util/logging.h"
 #else
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 #endif
 
 #ifdef __cplusplus
@@ -42,8 +43,8 @@ extern "C" {
  * Caller is responsible for freeing both data pointer and the struct itself.
  */
 typedef struct CByteArray {
-  char* data;   // Binary data
-  int size;     // Size of data in bytes
+  char *data;  // Binary data
+  int size;    // Size of data in bytes
 } CByteArray;
 
 /**
@@ -51,10 +52,10 @@ typedef struct CByteArray {
  * Caller is responsible for freeing data and metadata pointers.
  */
 typedef struct CSerializedObject {
-  char* data;           // Serialized data
-  int data_size;        // Size of data in bytes
-  char* metadata;       // Object metadata
-  int metadata_size;    // Size of metadata in bytes
+  char *data;         // Serialized data
+  int data_size;      // Size of data in bytes
+  char *metadata;     // Object metadata
+  int metadata_size;  // Size of metadata in bytes
 } CSerializedObject;
 
 /**
@@ -62,8 +63,8 @@ typedef struct CSerializedObject {
  * Caller is responsible for freeing the entire structure and its contents.
  */
 typedef struct CSerializedObjectArray {
-  CSerializedObject* objects;  // Array of serialized objects
-  int count;                    // Number of objects
+  CSerializedObject *objects;  // Array of serialized objects
+  int count;                   // Number of objects
 } CSerializedObjectArray;
 
 /**
@@ -77,9 +78,10 @@ typedef struct CSerializedObjectArray {
  *   Free each object_ids[i].data individually.
  */
 typedef struct CObjectIdArray {
-  CByteArray* object_ids;      // Array of object IDs (each is a CByteArray)
-  int count;                    // Number of object IDs
-  char* data_buffer_start;      // Start of shared data buffer (null if independently allocated)
+  CByteArray *object_ids;  // Array of object IDs (each is a CByteArray)
+  int count;               // Number of object IDs
+  char *
+      data_buffer_start;  // Start of shared data buffer (null if independently allocated)
 } CObjectIdArray;
 
 // ============================================================================
@@ -93,17 +95,17 @@ typedef struct CObjectIdArray {
  * @brief CFunctionArgType represents the type of function argument.
  */
 typedef enum {
-  FUNCTION_ARG_TYPE_VALUE = 0,       // Pass by value (serialized object)
-  FUNCTION_ARG_TYPE_REFERENCE = 1,   // Pass by reference (object ID)
+  FUNCTION_ARG_TYPE_VALUE = 0,      // Pass by value (serialized object)
+  FUNCTION_ARG_TYPE_REFERENCE = 1,  // Pass by reference (object ID)
 } CFunctionArgType;
 
 /**
  * @brief CFunctionArgValue represents arguments passed by value (serialized object)
  */
 typedef struct {
-  const char* data;          // Serialized object data
+  const char *data;  // Serialized object data
   int data_size;
-  const char* metadata;      // Object metadata
+  const char *metadata;  // Object metadata
   int metadata_size;
 } CFunctionArgValue;
 
@@ -111,9 +113,9 @@ typedef struct {
  * @brief CFunctionArgReference represents arguments passed by reference (object ID)
  */
 typedef struct {
-  const char* object_id_data;  // Object ID binary data
+  const char *object_id_data;  // Object ID binary data
   int object_id_size;
-  const char* owner_address;   // Serialized owner address
+  const char *owner_address;  // Serialized owner address
   int owner_address_size;
 } CFunctionArgReference;
 
@@ -122,10 +124,10 @@ typedef struct {
  * Uses union to save memory and clarify which fields are used for each type.
  */
 typedef struct {
-  int arg_type;              // CFunctionArgType - must be first for type safety
+  int arg_type;  // CFunctionArgType - must be first for type safety
   union {
-    CFunctionArgValue value;         // Used when arg_type == FUNCTION_ARG_TYPE_VALUE
-    CFunctionArgReference reference; // Used when arg_type == FUNCTION_ARG_TYPE_REFERENCE
+    CFunctionArgValue value;          // Used when arg_type == FUNCTION_ARG_TYPE_VALUE
+    CFunctionArgReference reference;  // Used when arg_type == FUNCTION_ARG_TYPE_REFERENCE
   };
 } CFunctionArg;
 
@@ -138,45 +140,45 @@ typedef struct {
 // ============================================================================
 
 // Get the argument type (FUNCTION_ARG_TYPE_VALUE or FUNCTION_ARG_TYPE_REFERENCE)
-int CFunctionArg_GetType(const CFunctionArg* arg);
+int CFunctionArg_GetType(const CFunctionArg *arg);
 
 // Set value argument (for FUNCTION_ARG_TYPE_VALUE)
-void CFunctionArg_SetValue(CFunctionArg* arg,
-                           const char* data,
+void CFunctionArg_SetValue(CFunctionArg *arg,
+                           const char *data,
                            int data_size,
-                           const char* metadata,
+                           const char *metadata,
                            int metadata_size);
 
 // Get value argument data
-const char* CFunctionArg_GetValueData(const CFunctionArg* arg);
+const char *CFunctionArg_GetValueData(const CFunctionArg *arg);
 
 // Get value argument data size
-int CFunctionArg_GetValueDataSize(const CFunctionArg* arg);
+int CFunctionArg_GetValueDataSize(const CFunctionArg *arg);
 
 // Get value argument metadata
-const char* CFunctionArg_GetValueMetadata(const CFunctionArg* arg);
+const char *CFunctionArg_GetValueMetadata(const CFunctionArg *arg);
 
 // Get value argument metadata size
-int CFunctionArg_GetValueMetadataSize(const CFunctionArg* arg);
+int CFunctionArg_GetValueMetadataSize(const CFunctionArg *arg);
 
 // Set reference argument (for FUNCTION_ARG_TYPE_REFERENCE)
-void CFunctionArg_SetReference(CFunctionArg* arg,
-                               const char* object_id_data,
+void CFunctionArg_SetReference(CFunctionArg *arg,
+                               const char *object_id_data,
                                int object_id_size,
-                               const char* owner_address,
+                               const char *owner_address,
                                int owner_address_size);
 
 // Get reference argument object ID data
-const char* CFunctionArg_GetReferenceObjectIdData(const CFunctionArg* arg);
+const char *CFunctionArg_GetReferenceObjectIdData(const CFunctionArg *arg);
 
 // Get reference argument object ID data size
-int CFunctionArg_GetReferenceObjectIdSize(const CFunctionArg* arg);
+int CFunctionArg_GetReferenceObjectIdSize(const CFunctionArg *arg);
 
 // Get reference argument owner address
-const char* CFunctionArg_GetReferenceOwnerAddress(const CFunctionArg* arg);
+const char *CFunctionArg_GetReferenceOwnerAddress(const CFunctionArg *arg);
 
 // Get reference argument owner address size
-int CFunctionArg_GetReferenceOwnerAddressSize(const CFunctionArg* arg);
+int CFunctionArg_GetReferenceOwnerAddressSize(const CFunctionArg *arg);
 
 // ============================================================================
 // Memory Management Functions (C-linkage for CGO)
@@ -186,19 +188,19 @@ int CFunctionArg_GetReferenceOwnerAddressSize(const CFunctionArg* arg);
  * @brief Frees the memory allocated for a CByteArray.
  * @param array Pointer to CByteArray to free (may be NULL)
  */
-void CNativeCommon_FreeCByteArray(CByteArray* array);
+void CNativeCommon_FreeCByteArray(CByteArray *array);
 
 /**
  * @brief Frees the memory allocated for a CSerializedObjectArray.
  * @param array Pointer to CSerializedObjectArray to free (may be NULL)
  */
-void CNativeCommon_FreeCSerializedObjectArray(CSerializedObjectArray* array);
+void CNativeCommon_FreeCSerializedObjectArray(CSerializedObjectArray *array);
 
 /**
  * @brief Frees the memory allocated for a CObjectIdArray.
  * @param array Pointer to CObjectIdArray to free (may be NULL)
  */
-void CNativeCommon_FreeCObjectIdArray(CObjectIdArray* array);
+void CNativeCommon_FreeCObjectIdArray(CObjectIdArray *array);
 
 // Note: Free functions for CObjectReference, CObjectArray, CWaitResult are defined
 // in native_object_store.cc because those types are defined in native_object_store.h
@@ -219,7 +221,6 @@ extern "C" void GoTriggerGC();
 void GoTriggerGC();
 #endif
 
-
 #ifdef __cplusplus
 }  // extern "C"
 
@@ -232,7 +233,7 @@ void GoTriggerGC();
  * @param c_str The C string to convert
  * @return std::string The converted string
  */
-std::string CNativeCommon_ConvertToString(const char* c_str);
+std::string CNativeCommon_ConvertToString(const char *c_str);
 
 /**
  * @brief Helper function to convert C string array to std::vector<std::string>
@@ -240,7 +241,8 @@ std::string CNativeCommon_ConvertToString(const char* c_str);
  * @param count The number of elements
  * @return std::vector<std::string> The converted string vector
  */
-std::vector<std::string> CNativeCommon_ConvertToStringVector(const char** c_array, int count);
+std::vector<std::string> CNativeCommon_ConvertToStringVector(const char **c_array,
+                                                             int count);
 
 /**
  * @brief Helper function to convert std::vector<std::string> to C string array
@@ -248,14 +250,14 @@ std::vector<std::string> CNativeCommon_ConvertToStringVector(const char** c_arra
  * @param strings The string vector to convert
  * @return const char** The C string array (caller must free)
  */
-const char** CNativeCommon_ConvertToCStringArray(const std::vector<std::string>& strings);
+const char **CNativeCommon_ConvertToCStringArray(const std::vector<std::string> &strings);
 
 /**
  * @brief Helper function to free C string array
  * @param array The C string array to free
  * @param count The number of elements
  */
-void CNativeCommon_FreeCStringArray(const char** array, int count);
+void CNativeCommon_FreeCStringArray(const char **array, int count);
 
 #endif  // __cplusplus
 
@@ -274,9 +276,8 @@ class TaskArgument;  // Forward declaration to avoid including task_argument.h
 /// TaskArgument vector (used in business logic layer). It handles both
 /// FUNCTION_ARG_TYPE_VALUE (pass by value) and FUNCTION_ARG_TYPE_REFERENCE
 /// (pass by reference) cases.
-std::vector<std::unique_ptr<TaskArgument>> BuildTaskArgs(
-    const CFunctionArg* args,
-    int args_count);
+std::vector<std::unique_ptr<TaskArgument>> BuildTaskArgs(const CFunctionArg *args,
+                                                         int args_count);
 }  // namespace go
 }  // namespace ray
 
@@ -292,9 +293,9 @@ namespace go {
  * @tparam T The C structure type.
  * @tparam FreeFunc Pointer to the C function that frees the structure.
  */
-template<typename T, void (*FreeFunc)(T*)>
+template <typename T, void (*FreeFunc)(T *)>
 struct CgoDeleter {
-  void operator()(T* ptr) const {
+  void operator()(T *ptr) const {
     if (ptr != nullptr) {
       FreeFunc(ptr);
     }
@@ -306,7 +307,7 @@ struct CgoDeleter {
  * @tparam T The C structure type.
  * @tparam FreeFunc Pointer to the C function that frees the structure.
  */
-template<typename T, void (*FreeFunc)(T*)>
+template <typename T, void (*FreeFunc)(T *)>
 using CgoUniquePtr = std::unique_ptr<T, CgoDeleter<T, FreeFunc>>;
 
 /**
@@ -347,11 +348,11 @@ class CgoErrorHandler {
    * @param func_name Name of the function for logging purposes.
    * @param func The function to execute.
    */
-  template<typename Func>
-  static void ExecuteVoid(const char* func_name, Func&& func) {
+  template <typename Func>
+  static void ExecuteVoid(const char *func_name, Func &&func) {
     try {
       std::forward<Func>(func)();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "CGO Error: " << func_name << " failed: " << e.what();
     } catch (...) {
       RAY_LOG(ERROR) << "CGO Error: " << func_name << " failed with unknown exception";
@@ -364,14 +365,15 @@ class CgoErrorHandler {
    * @tparam Func The function type.
    * @param func_name Name of the function for logging purposes.
    * @param func The function to execute.
-   * @return decltype(func()) The result of the function, or nullptr if an exception occurred.
+   * @return decltype(func()) The result of the function, or nullptr if an exception
+   * occurred.
    */
-  template<typename Func>
-  static auto Execute(const char* func_name, Func&& func) -> decltype(func()) {
+  template <typename Func>
+  static auto Execute(const char *func_name, Func &&func) -> decltype(func()) {
     using ResultType = decltype(func());
     try {
       return std::forward<Func>(func)();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "CGO Error: " << func_name << " failed: " << e.what();
       return ResultType{};
     } catch (...) {
@@ -390,11 +392,11 @@ class CgoErrorHandler {
    * @param func The function to execute.
    * @return int The result of the function, or -1 if an exception occurred.
    */
-  template<typename Func>
-  static int ExecuteInt(const char* func_name, Func&& func) {
+  template <typename Func>
+  static int ExecuteInt(const char *func_name, Func &&func) {
     try {
       return std::forward<Func>(func)();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "CGO Error: " << func_name << " failed: " << e.what();
       return -1;
     } catch (...) {
@@ -422,7 +424,7 @@ class CgoTypeConverter {
    * @param c_str The C string to convert (may be nullptr).
    * @return std::string The converted string (empty if c_str is nullptr).
    */
-  static std::string ToStdString(const char* c_str) {
+  static std::string ToStdString(const char *c_str) {
     if (c_str == nullptr) {
       return "";
     }
@@ -436,7 +438,7 @@ class CgoTypeConverter {
    * @param count The number of elements in the array.
    * @return std::vector<std::string> The converted string vector.
    */
-  static std::vector<std::string> ToStringVector(const char** c_array, int count) {
+  static std::vector<std::string> ToStringVector(const char **c_array, int count) {
     std::vector<std::string> result;
     if (c_array == nullptr || count <= 0) {
       return result;
@@ -452,11 +454,10 @@ class CgoTypeConverter {
    * @brief Convert std::string to C string (caller must free).
    *
    * @param str The std::string to convert.
-   * @return char* The C string (caller must free with free()), or nullptr if allocation fails.
+   * @return char* The C string (caller must free with free()), or nullptr if allocation
+   * fails.
    */
-  static char* ToCString(const std::string& str) {
-    return strdup(str.c_str());
-  }
+  static char *ToCString(const std::string &str) { return strdup(str.c_str()); }
 
   /**
    * @brief Convert CByteArray to std::vector<uint8_t>.
@@ -464,11 +465,11 @@ class CgoTypeConverter {
    * @param c_bytes The CByteArray to convert (may be nullptr).
    * @return std::vector<uint8_t> The converted byte vector (empty if c_bytes is nullptr).
    */
-  static std::vector<uint8_t> ToByteVector(const CByteArray* c_bytes) {
+  static std::vector<uint8_t> ToByteVector(const CByteArray *c_bytes) {
     if (c_bytes == nullptr || c_bytes->data == nullptr) {
       return {};
     }
-    const uint8_t* data_ptr = reinterpret_cast<const uint8_t*>(c_bytes->data);
+    const uint8_t *data_ptr = reinterpret_cast<const uint8_t *>(c_bytes->data);
     return std::vector<uint8_t>(data_ptr, data_ptr + c_bytes->size);
   }
 
@@ -477,22 +478,23 @@ class CgoTypeConverter {
    *
    * @param data Pointer to the byte data.
    * @param size Size of the byte data.
-   * @return CByteArray* The CByteArray (caller must free with CNativeCommon_FreeCByteArray()),
-   *                     or nullptr if allocation fails or data is null/size <= 0.
+   * @return CByteArray* The CByteArray (caller must free with
+   * CNativeCommon_FreeCByteArray()), or nullptr if allocation fails or data is null/size
+   * <= 0.
    */
-  static CByteArray* ToCByteArray(const uint8_t* data, int size) {
+  static CByteArray *ToCByteArray(const uint8_t *data, int size) {
     if (data == nullptr || size <= 0) {
       return nullptr;
     }
 
-    auto* result = static_cast<CByteArray*>(malloc(sizeof(CByteArray)));
+    auto *result = static_cast<CByteArray *>(malloc(sizeof(CByteArray)));
     if (result == nullptr) {
       RAY_LOG(ERROR) << "Failed to allocate CByteArray structure";
       return nullptr;
     }
 
     result->size = size;
-    result->data = static_cast<char*>(malloc(static_cast<size_t>(size)));
+    result->data = static_cast<char *>(malloc(static_cast<size_t>(size)));
     if (result->data == nullptr) {
       free(result);
       RAY_LOG(ERROR) << "Failed to allocate data buffer of size " << size;
@@ -508,9 +510,10 @@ class CgoTypeConverter {
    * must free).
    *
    * @param bytes The byte vector to convert.
-   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation fails or bytes is empty.
+   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation fails
+   * or bytes is empty.
    */
-  static CByteArray* ToCByteArray(const std::vector<uint8_t>& bytes) {
+  static CByteArray *ToCByteArray(const std::vector<uint8_t> &bytes) {
     if (bytes.empty()) {
       return nullptr;
     }
@@ -521,13 +524,15 @@ class CgoTypeConverter {
    * @brief Convert std::string to CByteArray (caller must free).
    *
    * @param str The string to convert (treated as byte sequence).
-   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation fails or str is empty.
+   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation fails
+   * or str is empty.
    */
-  static CByteArray* StringToCByteArray(const std::string& str) {
+  static CByteArray *StringToCByteArray(const std::string &str) {
     if (str.empty()) {
       return nullptr;
     }
-    return ToCByteArray(reinterpret_cast<const uint8_t*>(str.data()), static_cast<int>(str.size()));
+    return ToCByteArray(reinterpret_cast<const uint8_t *>(str.data()),
+                        static_cast<int>(str.size()));
   }
 
   /**
@@ -535,29 +540,31 @@ class CgoTypeConverter {
    *
    * @tparam IdType The Ray ID type (must have Binary() method).
    * @param id The ID to convert.
-   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation fails.
+   * @return CByteArray* The CByteArray (caller must free), or nullptr if allocation
+   * fails.
    */
-  template<typename IdType>
-  static CByteArray* IdToCByteArray(const IdType& id) {
-    const auto& binary = id.Binary();
-    return ToCByteArray(
-        reinterpret_cast<const uint8_t*>(binary.data()),
-        static_cast<int>(binary.size()));
+  template <typename IdType>
+  static CByteArray *IdToCByteArray(const IdType &id) {
+    const auto &binary = id.Binary();
+    return ToCByteArray(reinterpret_cast<const uint8_t *>(binary.data()),
+                        static_cast<int>(binary.size()));
   }
 
   /**
    * @brief Convert std::vector<std::string> to C string array (caller must free).
    *
    * @param strings The string vector to convert.
-   * @return const char** The C string array (caller must free with CNativeCommon_FreeCStringArray()),
-   *                      or nullptr if allocation fails or strings is empty.
+   * @return const char** The C string array (caller must free with
+   * CNativeCommon_FreeCStringArray()), or nullptr if allocation fails or strings is
+   * empty.
    */
-  static const char** ToCStringArray(const std::vector<std::string>& strings) {
+  static const char **ToCStringArray(const std::vector<std::string> &strings) {
     if (strings.empty()) {
       return nullptr;
     }
 
-    const char** result = static_cast<const char**>(malloc(sizeof(char*) * strings.size()));
+    const char **result =
+        static_cast<const char **>(malloc(sizeof(char *) * strings.size()));
     if (result == nullptr) {
       RAY_LOG(ERROR) << "Failed to allocate string array";
       return nullptr;
@@ -569,7 +576,7 @@ class CgoTypeConverter {
         RAY_LOG(ERROR) << "Failed to duplicate string at index " << i;
         // Free already allocated strings
         for (size_t j = 0; j < i; ++j) {
-          free(const_cast<char*>(result[j]));
+          free(const_cast<char *>(result[j]));
         }
         free(result);
         return nullptr;

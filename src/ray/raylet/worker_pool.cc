@@ -294,7 +294,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
         } else if (language == Language::CPP) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
         } else if (language == Language::GO) {
-          // Go uses --code-search-path flag (defined in go/cmd/raygo/default_worker/default_worker.go)
+          // Go uses --code-search-path flag (defined in
+          // go/cmd/raygo/default_worker/default_worker.go)
           code_search_path_str = "--code-search-path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);

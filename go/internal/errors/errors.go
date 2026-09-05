@@ -518,6 +518,9 @@ type SerializedRayError struct {
 	ErrorType string `json:"error_type"`
 	// ErrorMessage is the full error message including context
 	ErrorMessage string `json:"error_message"`
+	// BaseMessage is the original, unformatted error message. Populated by
+	// Go serializers; preferred over parsing ErrorMessage on deserialization.
+	BaseMessage string `json:"base_message,omitempty"`
 	// CauseMessage is the underlying cause message
 	CauseMessage string `json:"cause_message"`
 	// StackTrace is the stack trace as a string
@@ -561,7 +564,7 @@ type baseRayError struct {
 
 // Error implements the error interface.
 func (b *baseRayError) Error() string {
-	return fmt.Sprintf("(pid=%d, ip=%s, jobId=%s)", b.message, b.pid, b.ipAddress, b.jobID.Hex())
+	return fmt.Sprintf("(pid=%d, ip=%s, jobId=%s)", b.pid, b.ipAddress, b.jobID.Hex())
 }
 
 // CauseMessage implements RayError interface.
@@ -584,6 +587,9 @@ func (b *baseRayError) ToSerializedFormBase(errorType, errorCode, errorMessage s
 		ErrorCode:    errorCode,
 		ErrorType:    errorType,
 		ErrorMessage: errorMessage,
+		// BaseMessage carries the unformatted original message so
+		// deserialization does not depend on parsing ErrorMessage.
+		BaseMessage:  b.message,
 		CauseMessage: b.CauseMessage(),
 		StackTrace:   b.StackTrace(),
 		PID:          b.pid,
@@ -864,13 +870,17 @@ func DeserializeError(data []byte) (*TaskExecutionError, error) {
 	// Reconstruct TaskExecutionError from serialized form
 	taskID, _ := ids.TaskIDFromHex(serialized.TaskID)
 	jobID, _ := ids.JobIDFromHex(serialized.JobID)
-	// Extract message from ErrorMessage (remove the RayTaskException prefix)
-	message := serialized.ErrorMessage
-	if idx := strings.Index(serialized.ErrorMessage, ": "); idx != -1 {
-		message = serialized.ErrorMessage[idx+2:]
-		// Remove the (pid=..., ip=..., taskId=...) suffix
-		if parenIdx := strings.Index(message, " ("); parenIdx != -1 {
-			message = message[:parenIdx]
+	// Prefer BaseMessage (set by Go serializers); fall back to parsing
+	// ErrorMessage for serialized forms without it (e.g. cross-language).
+	message := serialized.BaseMessage
+	if message == "" {
+		message = serialized.ErrorMessage
+		if idx := strings.Index(serialized.ErrorMessage, ": "); idx != -1 {
+			message = serialized.ErrorMessage[idx+2:]
+			// Remove the (pid=..., ip=..., taskId=...) suffix
+			if parenIdx := strings.Index(message, " ("); parenIdx != -1 {
+				message = message[:parenIdx]
+			}
 		}
 	}
 	return &TaskExecutionError{

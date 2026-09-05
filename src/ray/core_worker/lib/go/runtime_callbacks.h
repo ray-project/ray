@@ -15,18 +15,18 @@
 #ifndef RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H
 #define RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H
 
-#include "cgo_wrapper.h"
-#include "native_task_executor.h"
-#include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/core_worker.h"
-#include "ray/gcs_rpc_client/gcs_client.h"
-#include "src/ray/protobuf/gcs.pb.h"
-
 #include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
+
+#include "cgo_wrapper.h"
+#include "native_task_executor.h"
+#include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_process.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::go {
 
@@ -67,7 +67,8 @@ std::function<ray::Status(
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
     std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *returns,
-    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *dynamic_returns,
+    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>>
+        *dynamic_returns,
     std::vector<std::pair<ray::ObjectID, bool>> *streaming_generator_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
@@ -80,7 +81,8 @@ std::function<ray::Status(
     bool retry_exception,
     int64_t generator_backpressure_num_objects,
     int64_t num_objects_per_yield,
-    const std::optional<std::string> &tensor_transport)> CreateTaskExecutionCallback();
+    const std::optional<std::string> &tensor_transport)>
+CreateTaskExecutionCallback();
 
 }  // namespace ray::go
 

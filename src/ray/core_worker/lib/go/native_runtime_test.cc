@@ -15,15 +15,15 @@
 // Unit tests for native_runtime.cc - CGO wrapper for Ray NativeRuntime C++ API.
 // This test file verifies the C API wrapper functions for the Go runtime.
 
-#include "src/ray/core_worker/lib/go/native_runtime.h"
-#include "src/ray/core_worker/lib/go/go_heap_buffer.h"
+#include "ray/core_worker/lib/go/native_runtime.h"
 
 #include <stddef.h>  // for size_t
 #include <stdlib.h>  // for malloc
 
-#include "src/ray/common/function_descriptor.h"  // for function descriptor types
-#include "src/ray/core_worker/lib/go/cgo_wrapper.h"  // for CSerializedObjectArray, CFunctionArg
-#include "src/ray/core_worker/lib/go/runtime_callbacks.h"  // for callback factory functions
+#include "ray/common/function_descriptor.h"      // for function descriptor types
+#include "ray/core_worker/lib/go/cgo_wrapper.h"  // for CSerializedObjectArray, CFunctionArg
+#include "ray/core_worker/lib/go/go_heap_buffer.h"
+#include "ray/core_worker/lib/go/runtime_callbacks.h"  // for callback factory functions
 
 // ============================================================================
 // Mock Implementation of CoreWorkerProcess for Unit Testing
@@ -32,7 +32,7 @@
 // to avoid requiring actual Ray infrastructure during unit tests.
 // These weak symbols override the actual implementations during testing.
 
-#include "src/ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/core_worker_process.h"
 
 namespace ray {
 namespace core {
@@ -43,7 +43,8 @@ static bool g_mock_initialized = false;
 // Mock implementation of CoreWorkerProcess static methods
 // These weak symbols override the actual implementations during tests
 
-__attribute__((weak)) void CoreWorkerProcess::Initialize(const CoreWorkerOptions& options) {
+__attribute__((weak)) void CoreWorkerProcess::Initialize(
+    const CoreWorkerOptions &options) {
   // Mock implementation: just set the flag
   // This allows tests to run without actual Ray infrastructure
   g_mock_initialized = true;
@@ -78,17 +79,21 @@ extern "C" {
 // Define MockGoObjectRefHandle in global namespace for mock implementations
 // This is separate from ray::go::GoObjectRefHandle to avoid conflicts
 typedef struct {
-  void* data_ptr;
+  void *data_ptr;
   size_t size;
-  void* ref_handle;
+  void *ref_handle;
 } MockGoObjectRefHandle;
 
 // Mock GoAllocateObject - returns a minimal valid handle
-__attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int object_id_size,
-                       const char* data, int data_size,
-                       const char* metadata, int metadata_size) {
+__attribute__((weak)) void *GoAllocateObject(const char *object_id_data,
+                                             int object_id_size,
+                                             const char *data,
+                                             int data_size,
+                                             const char *metadata,
+                                             int metadata_size) {
   // Allocate a minimal handle structure
-  MockGoObjectRefHandle* handle = (MockGoObjectRefHandle*)malloc(sizeof(MockGoObjectRefHandle));
+  MockGoObjectRefHandle *handle =
+      reinterpret_cast<MockGoObjectRefHandle *>(malloc(sizeof(MockGoObjectRefHandle)));
   if (handle) {
     handle->data_ptr = nullptr;
     handle->size = 0;
@@ -98,30 +103,26 @@ __attribute__((weak)) void* GoAllocateObject(const char* object_id_data, int obj
 }
 
 // Mock GoReleaseObjectRef - does nothing
-__attribute__((weak)) void GoReleaseObjectRef(void* handle) {
+__attribute__((weak)) void GoReleaseObjectRef(void *handle) {
   // Stub: nothing to do in mock
 }
 
 // Mock GoGetObjectData - returns null
-__attribute__((weak)) void* GoGetObjectData(void* handle) {
-  return nullptr;
-}
+__attribute__((weak)) void *GoGetObjectData(void *handle) { return nullptr; }
 
 // Mock GoGetObjectSize - returns 0
-__attribute__((weak)) size_t GoGetObjectSize(void* handle) {
-  return 0;
-}
+__attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 
 // Mock GoExecuteTask - returns null to indicate no task execution
 // This stub allows the test to link without requiring the actual Go runtime
-__attribute__((weak)) CSerializedObjectArray* GoExecuteTask(
+__attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
     int task_type,
-    const char** function_descriptor,
+    const char **function_descriptor,
     int function_descriptor_count,
-    const CFunctionArg* args,
+    const CFunctionArg *args,
     int args_count,
     int num_returns,
-    const char* actor_id_data,
+    const char *actor_id_data,
     int actor_id_size) {
   // Stub: return null to indicate no task execution
   // Tests that need task execution should mock differently
@@ -130,14 +131,15 @@ __attribute__((weak)) CSerializedObjectArray* GoExecuteTask(
 
 }  // extern "C"
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <climits>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace ray {
@@ -200,7 +202,7 @@ class NativeRuntimeCGOTest : public ::testing::Test {
   std::string cluster_id_hex_;
   std::string log_dir_;
   std::string job_config_;
-  CNativeRuntime* worker_ = nullptr;
+  CNativeRuntime *worker_ = nullptr;
 };
 
 // ============================================================================
@@ -213,7 +215,7 @@ class NativeRuntimeCGOTest : public ::testing::Test {
 
 TEST_F(NativeRuntimeCGOTest, InitializeWithNullOptions) {
   // Test: Passing null options should return null
-  CNativeRuntime* result = CNativeRuntime_Initialize(nullptr);
+  CNativeRuntime *result = CNativeRuntime_Initialize(nullptr);
   EXPECT_EQ(result, nullptr);
 }
 
@@ -326,7 +328,9 @@ TEST_F(NativeRuntimeCGOTest, InitializeWithEmptyJobIdHex) {
 TEST_F(NativeRuntimeCGOTest, InitializeWithClusterId) {
   // Test: Valid cluster ID (28 bytes = 56 hex characters)
   // ClusterID is a UniqueID with kUniqueIDSize=28 bytes
-  std::string cluster_id = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c";  // 28-byte cluster ID in hex (56 chars)
+  std::string cluster_id =
+      "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c";  // 28-byte cluster ID
+                                                                   // in hex (56 chars)
   opts_.cluster_id_hex = cluster_id.c_str();
 
   worker_ = CNativeRuntime_Initialize(&opts_);
@@ -423,9 +427,7 @@ TEST_F(NativeRuntimeCGOTest, RunTaskExecutionLoopAfterInitialize) {
 
   if (worker_ != nullptr) {
     // Run in a separate thread to avoid blocking
-    std::thread loop_thread([]() {
-      CNativeRuntime_RunTaskExecutionLoop();
-    });
+    std::thread loop_thread([]() { CNativeRuntime_RunTaskExecutionLoop(); });
 
     // Give it some time to start
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -470,14 +472,14 @@ TEST_F(NativeRuntimeCGOTest, ParseJobIDWithValidHex) {
 TEST_F(NativeRuntimeCGOTest, ConvertToStringWithNullPointer) {
   // Test: ConvertToString with null pointer should return empty string
   // This is tested indirectly through Initialize with null strings
-  const char* null_str = nullptr;
+  const char *null_str = nullptr;
   std::string result = null_str ? std::string(null_str) : "";
   EXPECT_EQ(result, "");
 }
 
 TEST_F(NativeRuntimeCGOTest, ConvertToStringWithValidString) {
   // Test: ConvertToString with valid string
-  const char* valid_str = "test_string";
+  const char *valid_str = "test_string";
   std::string result(valid_str);
   EXPECT_EQ(result, "test_string");
 }
@@ -551,7 +553,7 @@ TEST_F(NativeRuntimeCGOTest, InitializeWithMaxIntValues) {
 TEST_F(NativeRuntimeCGOTest, ConcurrentInitialize) {
   // Test: Concurrent initialization from multiple threads
   std::vector<std::thread> threads;
-  std::vector<CNativeRuntime*> workers(10, nullptr);
+  std::vector<CNativeRuntime *> workers(10, nullptr);
 
   for (int i = 0; i < 10; i++) {
     threads.emplace_back([&workers, i, this]() {
@@ -562,12 +564,12 @@ TEST_F(NativeRuntimeCGOTest, ConcurrentInitialize) {
     });
   }
 
-  for (auto& t : threads) {
+  for (auto &t : threads) {
     t.join();
   }
 
   // Clean up
-  for (auto& w : workers) {
+  for (auto &w : workers) {
     if (w != nullptr) {
       CNativeRuntime_Shutdown();
     }
@@ -583,12 +585,10 @@ TEST_F(NativeRuntimeCGOTest, ConcurrentShutdown) {
 
     // Create multiple threads to call shutdown concurrently
     for (int i = 0; i < 10; i++) {
-      threads.emplace_back([]() {
-        CNativeRuntime_Shutdown();
-      });
+      threads.emplace_back([]() { CNativeRuntime_Shutdown(); });
     }
 
-    for (auto& t : threads) {
+    for (auto &t : threads) {
       t.join();
     }
 
@@ -624,7 +624,8 @@ TEST(NativeRuntimeGCCTest, GCCollectCallbackRespectsOneSecondInterval) {
   // Test: Verify GC is not triggered more than once per second
   // This is a critical test for the GC Collect Callback feature (P1)
 
-  using namespace ray::go;
+  using ray::go::CreateGCCollectCallback;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto gc_callback = CreateGCCollectCallback();
 
@@ -653,7 +654,8 @@ TEST(NativeRuntimeGCCTest, GCCollectCallbackThreadSafety) {
   // Test: Verify thread safety with concurrent calls
   // The callback uses absl::Mutex to serialize access
 
-  using namespace ray::go;
+  using ray::go::CreateGCCollectCallback;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto gc_callback = CreateGCCollectCallback();
 
@@ -668,7 +670,7 @@ TEST(NativeRuntimeGCCTest, GCCollectCallbackThreadSafety) {
     });
   }
 
-  for (auto& t : threads) {
+  for (auto &t : threads) {
     t.join();
   }
 
@@ -684,13 +686,13 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithCppFunctionDescrip
   // Test: Verify task execution with C++ function descriptor
   // This is a critical test for the Task Execution Callback feature (P0)
 
-  using namespace ray::go;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto task_callback = CreateTaskExecutionCallback();
 
   // Create a mock C++ function descriptor using protobuf message
   rpc::FunctionDescriptor fd_message;
-  auto* cpp_fd_msg = fd_message.mutable_cpp_function_descriptor();
+  auto *cpp_fd_msg = fd_message.mutable_cpp_function_descriptor();
   cpp_fd_msg->set_function_name("test_function");
   cpp_fd_msg->set_caller("test_caller");
   cpp_fd_msg->set_class_name("test_class");
@@ -721,14 +723,28 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithCppFunctionDescrip
   ray::rpc::TensorTransport tensor_transport;
 
   // Call the callback - should use stub implementation and return failure
-  ray::Status status = task_callback(
-      caller_address, task_type, task_name, ray_function, required_resources,
-      args, arg_refs, debugger_breakpoint, serialized_retry_exception_allowlist,
-      &returns, &dynamic_returns, &streaming_generator_returns,
-      creation_task_exception_pb_bytes, &is_retryable_error, &application_error,
-      defined_concurrency_groups, name_of_concurrency_group_to_execute,
-      is_reattempt, is_streaming_generator, retry_exception,
-      generator_backpressure_num_objects, tensor_transport);
+  ray::Status status = task_callback(caller_address,
+                                     task_type,
+                                     task_name,
+                                     ray_function,
+                                     required_resources,
+                                     args,
+                                     arg_refs,
+                                     debugger_breakpoint,
+                                     serialized_retry_exception_allowlist,
+                                     &returns,
+                                     &dynamic_returns,
+                                     &streaming_generator_returns,
+                                     creation_task_exception_pb_bytes,
+                                     &is_retryable_error,
+                                     &application_error,
+                                     defined_concurrency_groups,
+                                     name_of_concurrency_group_to_execute,
+                                     is_reattempt,
+                                     is_streaming_generator,
+                                     retry_exception,
+                                     generator_backpressure_num_objects,
+                                     tensor_transport);
 
   // With stub implementation, should return failure status
   EXPECT_FALSE(status.ok());
@@ -738,13 +754,13 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithCppFunctionDescrip
 TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithPythonFunctionDescriptor) {
   // Test: Verify task execution with Python function descriptor
 
-  using namespace ray::go;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto task_callback = CreateTaskExecutionCallback();
 
   // Create a mock Python function descriptor using protobuf message
   rpc::FunctionDescriptor fd_message;
-  auto* py_fd_msg = fd_message.mutable_python_function_descriptor();
+  auto *py_fd_msg = fd_message.mutable_python_function_descriptor();
   py_fd_msg->set_module_name("test_module");
   py_fd_msg->set_class_name("test_class");
   py_fd_msg->set_function_name("test_function");
@@ -777,14 +793,28 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithPythonFunctionDesc
   ray::rpc::TensorTransport tensor_transport;
 
   // Call the callback
-  ray::Status status = task_callback(
-      caller_address, task_type, task_name, ray_function, required_resources,
-      args, arg_refs, debugger_breakpoint, serialized_retry_exception_allowlist,
-      &returns, &dynamic_returns, &streaming_generator_returns,
-      creation_task_exception_pb_bytes, &is_retryable_error, &application_error,
-      defined_concurrency_groups, name_of_concurrency_group_to_execute,
-      is_reattempt, is_streaming_generator, retry_exception,
-      generator_backpressure_num_objects, tensor_transport);
+  ray::Status status = task_callback(caller_address,
+                                     task_type,
+                                     task_name,
+                                     ray_function,
+                                     required_resources,
+                                     args,
+                                     arg_refs,
+                                     debugger_breakpoint,
+                                     serialized_retry_exception_allowlist,
+                                     &returns,
+                                     &dynamic_returns,
+                                     &streaming_generator_returns,
+                                     creation_task_exception_pb_bytes,
+                                     &is_retryable_error,
+                                     &application_error,
+                                     defined_concurrency_groups,
+                                     name_of_concurrency_group_to_execute,
+                                     is_reattempt,
+                                     is_streaming_generator,
+                                     retry_exception,
+                                     generator_backpressure_num_objects,
+                                     tensor_transport);
 
   // Should return failure with stub implementation
   EXPECT_FALSE(status.ok());
@@ -793,13 +823,13 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithPythonFunctionDesc
 TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithJavaFunctionDescriptor) {
   // Test: Verify task execution with Java function descriptor
 
-  using namespace ray::go;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto task_callback = CreateTaskExecutionCallback();
 
   // Create a mock Java function descriptor using protobuf message
   rpc::FunctionDescriptor fd_message;
-  auto* java_fd_msg = fd_message.mutable_java_function_descriptor();
+  auto *java_fd_msg = fd_message.mutable_java_function_descriptor();
   java_fd_msg->set_class_name("test.Class");
   java_fd_msg->set_function_name("testMethod");
   java_fd_msg->set_signature("testSignature");
@@ -831,14 +861,28 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithJavaFunctionDescri
   ray::rpc::TensorTransport tensor_transport;
 
   // Call the callback
-  ray::Status status = task_callback(
-      caller_address, task_type, task_name, ray_function, required_resources,
-      args, arg_refs, debugger_breakpoint, serialized_retry_exception_allowlist,
-      &returns, &dynamic_returns, &streaming_generator_returns,
-      creation_task_exception_pb_bytes, &is_retryable_error, &application_error,
-      defined_concurrency_groups, name_of_concurrency_group_to_execute,
-      is_reattempt, is_streaming_generator, retry_exception,
-      generator_backpressure_num_objects, tensor_transport);
+  ray::Status status = task_callback(caller_address,
+                                     task_type,
+                                     task_name,
+                                     ray_function,
+                                     required_resources,
+                                     args,
+                                     arg_refs,
+                                     debugger_breakpoint,
+                                     serialized_retry_exception_allowlist,
+                                     &returns,
+                                     &dynamic_returns,
+                                     &streaming_generator_returns,
+                                     creation_task_exception_pb_bytes,
+                                     &is_retryable_error,
+                                     &application_error,
+                                     defined_concurrency_groups,
+                                     name_of_concurrency_group_to_execute,
+                                     is_reattempt,
+                                     is_streaming_generator,
+                                     retry_exception,
+                                     generator_backpressure_num_objects,
+                                     tensor_transport);
 
   // Should return failure with stub implementation
   EXPECT_FALSE(status.ok());
@@ -847,13 +891,13 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithJavaFunctionDescri
 TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithEmptyArgs) {
   // Test: Verify task execution with no arguments
 
-  using namespace ray::go;
+  using ray::go::CreateTaskExecutionCallback;
 
   auto task_callback = CreateTaskExecutionCallback();
 
   // Create a mock C++ function descriptor using protobuf message
   rpc::FunctionDescriptor fd_message;
-  auto* cpp_fd_msg = fd_message.mutable_cpp_function_descriptor();
+  auto *cpp_fd_msg = fd_message.mutable_cpp_function_descriptor();
   cpp_fd_msg->set_function_name("test_function");
   cpp_fd_msg->set_caller("test_caller");
   cpp_fd_msg->set_class_name("test_class");
@@ -885,14 +929,28 @@ TEST(NativeRuntimeTaskExecutionTest, TaskExecutionCallbackWithEmptyArgs) {
   ray::rpc::TensorTransport tensor_transport;
 
   // Call the callback with empty args
-  ray::Status status = task_callback(
-      caller_address, task_type, task_name, ray_function, required_resources,
-      args, arg_refs, debugger_breakpoint, serialized_retry_exception_allowlist,
-      &returns, &dynamic_returns, &streaming_generator_returns,
-      creation_task_exception_pb_bytes, &is_retryable_error, &application_error,
-      defined_concurrency_groups, name_of_concurrency_group_to_execute,
-      is_reattempt, is_streaming_generator, retry_exception,
-      generator_backpressure_num_objects, tensor_transport);
+  ray::Status status = task_callback(caller_address,
+                                     task_type,
+                                     task_name,
+                                     ray_function,
+                                     required_resources,
+                                     args,
+                                     arg_refs,
+                                     debugger_breakpoint,
+                                     serialized_retry_exception_allowlist,
+                                     &returns,
+                                     &dynamic_returns,
+                                     &streaming_generator_returns,
+                                     creation_task_exception_pb_bytes,
+                                     &is_retryable_error,
+                                     &application_error,
+                                     defined_concurrency_groups,
+                                     name_of_concurrency_group_to_execute,
+                                     is_reattempt,
+                                     is_streaming_generator,
+                                     retry_exception,
+                                     generator_backpressure_num_objects,
+                                     tensor_transport);
 
   // Should handle empty args gracefully
   EXPECT_FALSE(status.ok());

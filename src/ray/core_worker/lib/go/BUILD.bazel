@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 # gcs_memory - standalone memory management library (no external deps)
 ray_cc_library(
@@ -36,9 +36,9 @@ ray_cc_library(
     hdrs = ["gcs_client_internal.h"],
     visibility = ["//go:__subpackages__"],
     deps = [
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
-        "//src/ray/asio:instrumented_io_context",
     ],
 )
 
@@ -46,16 +46,16 @@ ray_cc_library(
 ray_cc_library(
     name = "gcs_client_bridge",
     srcs = [
-        "gcs_client_bridge.cc",
-        "gcs_client_kv.cc",
-        "gcs_client_jobs.cc",
-        "gcs_client_nodes.cc",
-        "gcs_client_node_resources.cc",
-        "gcs_client_placement_groups.cc",
-        "gcs_client_workers.cc",
         "gcs_client_actors.cc",
         "gcs_client_autoscaler.cc",
+        "gcs_client_bridge.cc",
+        "gcs_client_jobs.cc",
+        "gcs_client_kv.cc",
+        "gcs_client_node_resources.cc",
+        "gcs_client_nodes.cc",
+        "gcs_client_placement_groups.cc",
         "gcs_client_publisher.cc",
+        "gcs_client_workers.cc",
     ],
     hdrs = [
         "gcs_client_bridge.h",
@@ -63,15 +63,15 @@ ray_cc_library(
     ],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":gcs_memory",
-        ":gcs_client_utils",
         ":gcs_client_internal",
+        ":gcs_client_utils",
+        ":gcs_memory",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:autoscaler_cc_proto",
-        "//src/ray/util:raii",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:logging",
+        "//src/ray/util:raii",
     ],
 )
 
@@ -83,7 +83,6 @@ ray_cc_test(
     linkopts = ["-lm"],
     deps = [
         ":gcs_client_bridge",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -97,7 +96,6 @@ ray_cc_test(
     deps = [
         ":gcs_client_bridge",
         ":gcs_memory",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -108,7 +106,6 @@ ray_cc_test(
     srcs = ["gcs_memory_test.cc"],
     deps = [
         ":gcs_memory",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -134,8 +131,8 @@ ray_cc_library(
     deps = [
         ":task_argument",
         "//src/ray/core_worker:core_worker_lib",
-        "//src/ray/util:raii",
         "//src/ray/util:logging",
+        "//src/ray/util:raii",
     ],
 )
 
@@ -143,15 +140,15 @@ ray_cc_library(
 ray_cc_library(
     name = "native_runtime_go_headers",
     hdrs = [
-        "native_runtime.h",
-        "native_object_store.h",
-        "native_worker_context.h",
-        "native_task_submitter.h",
+        "cgo_wrapper.h",
         "gcs_client_bridge.h",
         "gcs_memory.h",
-        "cgo_wrapper.h",
-        "task_submitter_ops.h",
+        "native_object_store.h",
+        "native_runtime.h",
+        "native_task_submitter.h",
+        "native_worker_context.h",
         "object_store_ops.h",
+        "task_submitter_ops.h",
     ],
     visibility = ["//go:__subpackages__"],
 )
@@ -194,11 +191,11 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":go_heap_buffer",
-        ":core_worker_provider",
-        ":runtime_callbacks",
         ":cgo_wrapper",
+        ":core_worker_provider",
+        ":go_heap_buffer",
         ":native_task_executor_bridge",
+        ":runtime_callbacks",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/util:logging",
@@ -213,11 +210,11 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
+        ":cgo_wrapper",
+        ":gcs_client_bridge",
+        ":gcs_memory",
         ":go_heap_buffer",
         ":runtime_ops",
-        ":cgo_wrapper",
-        ":gcs_memory",
-        ":gcs_client_bridge",
         "//src/ray/core_worker:core_worker_lib",
     ],
 )
@@ -270,9 +267,9 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":task_argument",
         ":cgo_wrapper",  # Provides TaskArgument implementation
         ":core_worker_provider",
+        ":task_argument",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/protobuf:common_cc_proto",
     ],
@@ -286,9 +283,9 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":task_argument",
         ":cgo_wrapper",  # Provides TaskArgument implementation
         ":core_worker_provider",
+        ":task_argument",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/protobuf:common_cc_proto",
     ],
@@ -306,10 +303,10 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
+        ":cgo_wrapper",
+        ":core_worker_provider",
         ":task_argument",
         ":task_executor_ops",
-        ":core_worker_provider",
-        ":cgo_wrapper",
         "//src/ray/core_worker:core_worker_lib",
     ],
 )
@@ -326,11 +323,11 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":task_argument",
-        ":task_submitter_ops",
+        ":cgo_wrapper",
         ":core_worker_provider",
         ":runtime_ops",
-        ":cgo_wrapper",
+        ":task_argument",
+        ":task_submitter_ops",
         "//src/ray/core_worker:core_worker_lib",
     ],
 )
@@ -345,11 +342,8 @@ ray_cc_test(
     deps = [
         ":native_worker_context_bridge",
         "//src/ray/core_worker:core_worker_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
-
-
 
 # object_store_ops - Business logic layer for object store operations
 ray_cc_library(
@@ -373,14 +367,11 @@ ray_cc_library(
     includes = ["."],
     visibility = ["//go:__subpackages__"],
     deps = [
-        ":object_store_ops",
         ":cgo_wrapper",
+        ":object_store_ops",
         "//src/ray/core_worker:core_worker_lib",
     ],
 )
-
-
-
 
 # native_runtime unit tests
 # Note: Mock implementations of CoreWorkerProcess methods are embedded in
@@ -408,7 +399,6 @@ ray_cc_test(
     deps = [
         ":native_object_store_bridge",
         "//src/ray/core_worker:core_worker_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -419,13 +409,12 @@ ray_cc_test(
     size = "small",
     srcs = ["task_submitter_ops_test.cc"],
     deps = [
-        ":task_submitter_ops",
         ":core_worker_provider",
         ":task_argument",
+        ":task_submitter_ops",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/protobuf:core_worker_cc_proto",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

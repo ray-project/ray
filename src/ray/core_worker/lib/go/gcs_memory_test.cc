@@ -14,13 +14,14 @@
 
 #include "gcs_memory.h"
 
-#include <cstring>
 #include <gtest/gtest.h>
+
+#include <cstring>
 
 // Test freeing a single memory block
 TEST(GcsMemoryTest, FreeMemory) {
   // Allocate memory
-  void* ptr = malloc(100);
+  void *ptr = malloc(100);
   ASSERT_NE(ptr, nullptr);
 
   // Write test data
@@ -29,7 +30,8 @@ TEST(GcsMemoryTest, FreeMemory) {
   // Free memory - this is the function Go CGO calls
   ray_gcs_free_memory(ptr);
 
-  // Note: accessing freed memory is undefined; here we only verify the function does not crash
+  // Note: accessing freed memory is undefined; here we only verify the function does not
+  // crash
   SUCCEED();
 }
 
@@ -43,12 +45,12 @@ TEST(GcsMemoryTest, FreeMemoryNullPointer) {
 // Test freeing a string array
 TEST(GcsMemoryTest, FreeStringArray) {
   const int count = 3;
-  char** arr = static_cast<char**>(malloc(count * sizeof(char*)));
+  char **arr = static_cast<char **>(malloc(count * sizeof(char *)));
   ASSERT_NE(arr, nullptr);
 
   // Allocate each string
   for (int i = 0; i < count; i++) {
-    arr[i] = static_cast<char*>(malloc(10));
+    arr[i] = static_cast<char *>(malloc(10));
     ASSERT_NE(arr[i], nullptr);
     snprintf(arr[i], 10, "str%d", i);
   }
@@ -69,13 +71,13 @@ TEST(GcsMemoryTest, FreeStringArrayNull) {
 // Test freeing a string array with NULL elements
 TEST(GcsMemoryTest, FreeStringArrayWithNullElements) {
   const int count = 3;
-  char** arr = static_cast<char**>(malloc(count * sizeof(char*)));
+  char **arr = static_cast<char **>(malloc(count * sizeof(char *)));
   ASSERT_NE(arr, nullptr);
 
   // Some elements are NULL
-  arr[0] = static_cast<char*>(malloc(10));
+  arr[0] = static_cast<char *>(malloc(10));
   arr[1] = nullptr;  // NULL element
-  arr[2] = static_cast<char*>(malloc(10));
+  arr[2] = static_cast<char *>(malloc(10));
 
   // Free the string array - should handle NULL elements correctly
   ray_gcs_free_string_array(arr, count);

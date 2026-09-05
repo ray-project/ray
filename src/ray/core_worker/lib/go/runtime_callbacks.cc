@@ -14,22 +14,21 @@
 
 #include "runtime_callbacks.h"
 
-#include "ray/common/function_descriptor.h"
-#include "ray/util/logging.h"
-#include "ray/util/time.h"
-#include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/common.h"
-#include "cgo_wrapper.h"
-#include "native_task_executor.h"
-
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <unordered_map>
-#include <functional>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "cgo_wrapper.h"
+#include "native_task_executor.h"
+#include "ray/common/function_descriptor.h"
+#include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker_process.h"
+#include "ray/util/logging.h"
+#include "ray/util/time.h"
 
 namespace ray::go {
 
@@ -53,10 +52,9 @@ std::function<void()> CreateGCCollectCallback() {
       try {
         GoTriggerGC();
         int64_t end = ray::current_time_ms();
-        RAY_LOG(DEBUG) << "GC finished in "
-                       << static_cast<double>(end - start) / 1000
+        RAY_LOG(DEBUG) << "GC finished in " << static_cast<double>(end - start) / 1000
                        << " seconds.";
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         RAY_LOG(ERROR) << "GC callback failed: " << e.what();
       } catch (...) {
         RAY_LOG(ERROR) << "GC callback failed with unknown exception";
@@ -76,7 +74,8 @@ std::function<ray::Status(
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
     std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *returns,
-    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *dynamic_returns,
+    std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>>
+        *dynamic_returns,
     std::vector<std::pair<ray::ObjectID, bool>> *streaming_generator_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
@@ -89,7 +88,8 @@ std::function<ray::Status(
     bool retry_exception,
     int64_t generator_backpressure_num_objects,
     int64_t num_objects_per_yield,
-    const std::optional<std::string> &tensor_transport)> CreateTaskExecutionCallback() {
+    const std::optional<std::string> &tensor_transport)>
+CreateTaskExecutionCallback() {
   return [](const ray::rpc::Address &caller_address,
             ray::rpc::TaskType task_type,
             const std::string task_name,
@@ -99,8 +99,10 @@ std::function<ray::Status(
             const std::vector<ray::rpc::ObjectReference> &arg_refs,
             const std::string &debugger_breakpoint,
             const std::string &serialized_retry_exception_allowlist,
-            std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *returns,
-            std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>> *dynamic_returns,
+            std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>>
+                *returns,
+            std::vector<std::pair<ray::ObjectID, std::shared_ptr<ray::RayObject>>>
+                *dynamic_returns,
             std::vector<std::pair<ray::ObjectID, bool>> *streaming_generator_returns,
             std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
             bool *is_retryable_error,
@@ -127,51 +129,49 @@ std::function<ray::Status(
     auto fd_type = function_descriptor->Type();
     if (fd_type == ray::FunctionDescriptorType::kCppFunctionDescriptor) {
       auto typed_fd = function_descriptor->As<ray::CppFunctionDescriptor>();
-      func_desc_list = {typed_fd->FunctionName(),
-                       typed_fd->Caller(),
-                       typed_fd->ClassName()};
+      func_desc_list = {
+          typed_fd->FunctionName(), typed_fd->Caller(), typed_fd->ClassName()};
     } else if (fd_type == ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
       auto typed_fd = function_descriptor->As<ray::PythonFunctionDescriptor>();
       func_desc_list = {typed_fd->ModuleName(),
-                       typed_fd->ClassName(),
-                       typed_fd->FunctionName(),
-                       typed_fd->FunctionHash()};
+                        typed_fd->ClassName(),
+                        typed_fd->FunctionName(),
+                        typed_fd->FunctionHash()};
     } else if (fd_type == ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
       auto typed_fd = function_descriptor->As<ray::JavaFunctionDescriptor>();
-      func_desc_list = {typed_fd->ClassName(),
-                       typed_fd->FunctionName(),
-                       typed_fd->Signature()};
+      func_desc_list = {
+          typed_fd->ClassName(), typed_fd->FunctionName(), typed_fd->Signature()};
     } else if (fd_type == ray::FunctionDescriptorType::kGoFunctionDescriptor) {
       auto typed_fd = function_descriptor->As<ray::GoFunctionDescriptor>();
-      // Go function descriptor has 4 elements: [module_name, package_path, function_name, method_name]
-      // This matches the format expected by Go's FunctionDescriptorFromList
+      // Go function descriptor has 4 elements: [module_name, package_path, function_name,
+      // method_name] This matches the format expected by Go's FunctionDescriptorFromList
       func_desc_list = {typed_fd->ModuleName(),
-                       typed_fd->PackagePath(),
-                       typed_fd->FunctionName(),
-                       typed_fd->MethodName()};
+                        typed_fd->PackagePath(),
+                        typed_fd->FunctionName(),
+                        typed_fd->MethodName()};
     } else {
       RAY_LOG(ERROR) << "Unknown function descriptor type: " << fd_type
                      << ". This should not happen in normal operation.";
       return ray::Status::Invalid("Unknown function descriptor type");
     }
 
-    std::vector<const char*> func_desc_cstrs;
-    for (const auto& s : func_desc_list) {
+    std::vector<const char *> func_desc_cstrs;
+    for (const auto &s : func_desc_list) {
       func_desc_cstrs.push_back(s.c_str());
     }
 
     std::vector<CFunctionArg> c_args;
-    for (const auto& arg : args) {
+    for (const auto &arg : args) {
       CFunctionArg c_arg;
       memset(&c_arg, 0, sizeof(c_arg));
       if (arg->HasData()) {
-        const auto& data = arg->GetData();
-        const auto& metadata = arg->GetMetadata();
+        const auto &data = arg->GetData();
+        const auto &metadata = arg->GetMetadata();
         CFunctionArg_SetValue(
             &c_arg,
-            reinterpret_cast<const char*>(data->Data()),
+            reinterpret_cast<const char *>(data->Data()),
             static_cast<int>(data->Size()),
-            metadata ? reinterpret_cast<const char*>(metadata->Data()) : nullptr,
+            metadata ? reinterpret_cast<const char *>(metadata->Data()) : nullptr,
             metadata ? static_cast<int>(metadata->Size()) : 0);
       }
       c_args.push_back(c_arg);
@@ -182,10 +182,11 @@ std::function<ray::Status(
     // CoreWorker::HandlePushTask before this callback runs. Normal tasks get
     // a null actor ID.
     std::string actor_id_binary;
-    const char* actor_id_data = nullptr;
+    const char *actor_id_data = nullptr;
     int actor_id_size = 0;
-    const ray::ActorID &current_actor_id =
-        ray::core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
+    const ray::ActorID &current_actor_id = ray::core::CoreWorkerProcess::GetCoreWorker()
+                                               .GetWorkerContext()
+                                               .GetCurrentActorID();
     if (!current_actor_id.IsNil()) {
       actor_id_binary = current_actor_id.Binary();
       actor_id_data = actor_id_binary.data();
@@ -195,21 +196,23 @@ std::function<ray::Status(
     // Log returns size before calling Go
     RAY_LOG(INFO) << "C++ calling GoExecuteTask: returns size=" << returns->size();
 
-    // Note: const_cast is necessary because Go exports functions with non-const parameters,
-    // but C++ code maintains const correctness. The Go function does not modify the data.
-    CSerializedObjectArray* c_results = GoExecuteTask(
-        static_cast<int>(task_type),
-        const_cast<char**>(func_desc_cstrs.data()),
-        static_cast<int>(func_desc_cstrs.size()),
-        c_args.data(),
-        static_cast<int>(c_args.size()),
-        static_cast<int>(returns->size()),
-        const_cast<char*>(actor_id_data),
-        actor_id_size);
+    // Note: const_cast is necessary because Go exports functions with non-const
+    // parameters, but C++ code maintains const correctness. The Go function does not
+    // modify the data.
+    CSerializedObjectArray *c_results =
+        GoExecuteTask(static_cast<int>(task_type),
+                      const_cast<char **>(func_desc_cstrs.data()),
+                      static_cast<int>(func_desc_cstrs.size()),
+                      c_args.data(),
+                      static_cast<int>(c_args.size()),
+                      static_cast<int>(returns->size()),
+                      const_cast<char *>(actor_id_data),
+                      actor_id_size);
 
     // Log c_results from GoExecuteTask
     RAY_LOG(INFO) << "C++ received c_results from GoExecuteTask: "
-                  << (c_results != nullptr ? "count=" + std::to_string(c_results->count) : "nullptr");
+                  << (c_results != nullptr ? "count=" + std::to_string(c_results->count)
+                                           : "nullptr");
 
     if (c_results == nullptr) {
       *application_error = "Task execution failed in Go runtime";
@@ -227,7 +230,8 @@ std::function<ray::Status(
       return ray::Status::OK();
     }
 
-    // Use RAII pointer for automatic cleanup (CSerializedObjectArrayPtr is defined in cgo_wrapper.h)
+    // Use RAII pointer for automatic cleanup (CSerializedObjectArrayPtr is defined in
+    // cgo_wrapper.h)
     auto result_ptr = CSerializedObjectArrayPtr(c_results);
 
     if (result_ptr->count > 0 && !returns->empty()) {
@@ -237,27 +241,29 @@ std::function<ray::Status(
         return ray::Status::Invalid("GoExecuteTask returned invalid result structure");
       }
 
-      for (int i = 0; i < result_ptr->count && i < static_cast<int>(returns->size()); i++) {
-        const CSerializedObject& c_obj = result_ptr->objects[i];
-        auto& result_id = (*returns)[i].first;
-        auto& result_ptr_obj = (*returns)[i].second;
+      for (int i = 0; i < result_ptr->count && i < static_cast<int>(returns->size());
+           i++) {
+        const CSerializedObject &c_obj = result_ptr->objects[i];
+        auto &result_id = (*returns)[i].first;
+        auto &result_ptr_obj = (*returns)[i].second;
 
         std::shared_ptr<ray::LocalMemoryBuffer> data_buffer;
         if (c_obj.data_size > 0 && c_obj.data != nullptr) {
           data_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-              reinterpret_cast<uint8_t*>(const_cast<char*>(c_obj.data)),
+              reinterpret_cast<uint8_t *>(const_cast<char *>(c_obj.data)),
               static_cast<size_t>(c_obj.data_size));
         }
 
-        // Copy the metadata into an owned buffer: the C array returned by GoExecuteTask is
-        // freed (CNativeCommon_FreeCSerializedObjectArray) as soon as this callback returns,
-        // while the return object stored by AllocateReturnObject must outlive it. Data is
-        // explicitly copied below, but metadata was not, leaving the stored return object
-        // referencing freed C memory (surfaced as garbage metadata on the driver side).
+        // Copy the metadata into an owned buffer: the C array returned by GoExecuteTask
+        // is freed (CNativeCommon_FreeCSerializedObjectArray) as soon as this callback
+        // returns, while the return object stored by AllocateReturnObject must outlive
+        // it. Data is explicitly copied below, but metadata was not, leaving the stored
+        // return object referencing freed C memory (surfaced as garbage metadata on the
+        // driver side).
         std::shared_ptr<ray::LocalMemoryBuffer> metadata_buffer;
         if (c_obj.metadata_size > 0 && c_obj.metadata != nullptr) {
           metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-              reinterpret_cast<uint8_t*>(const_cast<char*>(c_obj.metadata)),
+              reinterpret_cast<uint8_t *>(const_cast<char *>(c_obj.metadata)),
               static_cast<size_t>(c_obj.metadata_size),
               /*copy_data=*/true);
         }
