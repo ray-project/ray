@@ -349,6 +349,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       metrics_.placement_group_count_gauge);
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
+  // Actor initialization restores the references that pin operational job configs.
+  // Rebuild and trim finished-job history only after those references are available.
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
   InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,

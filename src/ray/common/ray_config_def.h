@@ -481,6 +481,12 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// cached actor exhausted its restart history; actors that never restarted
 /// are unchanged at ~600B-1.5KB.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of finished jobs retained in the GCS job table for observability.
+/// Finished jobs that are still referenced by actors are exempt from the limit until
+/// their final reference is released.
+/// JobTableData contains variable-sized job config, runtime environment, entrypoint,
+/// and user metadata. Its serialized and deserialized footprint is workload-dependent.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_job_cached_count, 10000)
 /// Maximum number of dead workers in GCS server memory cache.
 /// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
 /// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
