@@ -587,6 +587,13 @@ def _build_root(
         zip(meta.tasks["task_index"].astype(int).tolist(), meta.tasks.index.tolist())
     )
     if delta_timestamps:
+        unknown_keys = sorted(set(delta_timestamps) - set(meta.features))
+        if unknown_keys:
+            raise ValueError(
+                f"{root_uri!r}: delta_timestamps keys {unknown_keys} are not "
+                "dataset features."
+            )
+
         # Validate offsets align to the frame grid and convert seconds -> integer
         # frame offsets; both delegated to lerobot so semantics match LeRobotDataset.
         from lerobot.datasets.feature_utils import (
