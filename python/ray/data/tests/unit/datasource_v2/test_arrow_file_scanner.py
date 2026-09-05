@@ -9,7 +9,7 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     FileManifest,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -26,7 +26,7 @@ def test_prune_manifest_matching_no_file():
     )
     scanner = ParquetScanner(
         schema=pa.schema([("x", pa.int64())]),
-        partitioning=Partitioning("hive", base_dir="/root"),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir="/root"),
         partition_predicate=col("year") == "2029",
     )
 
