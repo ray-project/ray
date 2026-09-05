@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import pyarrow as pa
 
@@ -38,6 +38,15 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def synthesized_columns(self) -> Set[str]:
+        names = set()
+        if self.include_paths:
+            names.add(INCLUDE_PATHS_COLUMN_NAME)
+        if self.include_row_hash:
+            names.add(ROW_HASH_COLUMN_NAME)
+        return names
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check.

@@ -16,10 +16,14 @@ from ray.data._internal.logical.operators import (
     Filter,
     Limit,
     Project,
+    ReadFiles,
     Repartition,
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -1167,6 +1171,41 @@ class TestPushIntoBranchesBehavior:
         )
         expected = expected_single.union(expected_single)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+
+def test_filter_on_include_paths_column(ray_start_regular_shared, tmp_path):
+    """``path`` is synthesized after the read, so its filter can't be pushed."""
+    pq.write_table(pa.table({"x": [1, 2]}), tmp_path / "a.parquet")
+    pq.write_table(pa.table({"x": [3, 4]}), tmp_path / "b.parquet")
+    target = str(tmp_path / "a.parquet")
+
+    ds = ray.data.read_parquet(str(tmp_path), include_paths=True).filter(
+        expr=col("path") == target
+    )
+
+    assert ds.take_all() == [{"x": 1, "path": target}, {"x": 2, "path": target}]
+
+
+def test_filter_mixing_synthesized_and_data_column(ray_start_regular_shared, tmp_path):
+    """Only the ``path`` conjunct stays above the read; ``x`` still pushes down."""
+    pq.write_table(pa.table({"x": [1, 2]}), tmp_path / "a.parquet")
+    pq.write_table(pa.table({"x": [3, 4]}), tmp_path / "b.parquet")
+    target = str(tmp_path / "a.parquet")
+
+    ds = ray.data.read_parquet(str(tmp_path), include_paths=True).filter(
+        expr=(col("x") > 1) & (col("path") == target)
+    )
+
+    assert ds.take_all() == [{"x": 2, "path": target}]
+
+    # The residual ``Filter`` is only the synthesized conjunct -- ``x > 1``
+    # reached the scanner, so row-group pruning survives.
+    optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+    filters = get_operators_of_type(optimized_plan, Filter)
+    assert len(filters) == 1
+    assert get_column_references(filters[0].predicate_expr) == ["path"]
+    reads = get_operators_of_type(optimized_plan, ReadFiles)
+    assert get_column_references(reads[0].scanner.predicate) == ["x"]
 
 
 if __name__ == "__main__":

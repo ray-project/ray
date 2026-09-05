@@ -53,6 +53,15 @@ class ArrowFileScanner(
     ignore_prefixes: Optional[List[str]] = None
 
     @property
+    def synthesized_columns(self) -> Set[str]:
+        """Columns produced after the read, which PyArrow cannot bind.
+
+        A predicate naming one of these must stay as a ``Filter`` above the
+        read: the column does not exist in the file PyArrow scans.
+        """
+        return set()
+
+    @property
     def partition_columns(self) -> Set[str]:
         """Return the set of partition column names, or empty if unpartitioned."""
         if self.partitioning is None:
