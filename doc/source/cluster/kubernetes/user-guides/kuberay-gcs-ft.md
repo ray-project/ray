@@ -356,6 +356,55 @@ Note that Redis does this eviction and it doesn't guarantee that
 Ray won't use the deleted keys.
 ```
 
+## What happens when the Redis connection drops
+
+GCS reconnects in place. It does not exit and wait to be restarted, and the
+detached actors and job metadata it stored survive as long as Redis keeps the
+data.
+
+Where the primary moves during a failover, GCS follows it:
+
+* **Behind a proxy or Kubernetes Service.** The address GCS holds never
+  changes, so it reconnects to the same one once the proxy points at the
+  promoted node.
+* **Redis Sentinel.** GCS asks Sentinel for the primary again on each attempt,
+  so a promotion moves it to the new node.
+* **Redis Cluster reached directly.** There is no Sentinel to ask. GCS keeps
+  dialing the address it was given, so put a Service or proxy in front if the
+  primary can move.
+
+GCS still exits if Redis stays unreachable past the grace period below. That is
+deliberate: a head node that cannot reach its metadata store is not serving.
+
+### Tuning the reconnect
+
+Set these as environment variables on every node before `ray start`. Only the
+first is specific to reconnecting; the rest predate it and also govern the
+retry behavior of individual Redis commands.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long a command waits out a reconnect before it starts spending its retry budget. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
+| `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
+| `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
+| `RAY_redis_retry_multiplier` | `2` | Backoff growth. |
+| `RAY_redis_retry_max_ms` | `1000` | Backoff ceiling. |
+| `RAY_num_redis_request_retries` | `5` | Retries for a single command once the grace period has passed. |
+
+Whichever bound is smaller ends it: with `RAY_redis_db_connect_retries=3` and a
+60 second grace period, GCS exits after three failed attempts rather than
+waiting out the minute.
+
+Raise the grace period when a failover takes longer than a minute, which
+happens with a large Sentinel `down-after-milliseconds`:
+
+```sh
+export RAY_redis_reconnect_grace_period_ms=180000
+```
+
+The backoff variables are shared with the command retry path, so changing them
+affects both.
+
 ## Next steps
 
 * See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.

@@ -80,7 +80,7 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
       io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
 
-  // Mirrors SetDisconnectCallback() in redis_context.cc: the callbacks need a
+  // Mirrors SetConnectionCallbacks() in redis_context.cc: the callbacks need a
   // way back to the owning RedisAsyncContext to release the raw pointer.
   ac->data = &redis_async_context;
   redisAsyncSetConnectCallback(ac, ConnectCallback);
@@ -100,6 +100,94 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
                   .ok());
 
   io_service.run();
+}
+
+namespace {
+
+std::unique_ptr<redisAsyncContext, RedisContextDeleter> ConnectRaw(int port) {
+  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", port);
+  EXPECT_TRUE(ac != nullptr);
+  EXPECT_EQ(ac->err, 0);
+  return std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac,
+                                                                 RedisContextDeleter());
+}
+
+// Stand in for a real disconnect. On a dropped connection hiredis frees the
+// raw context itself (__redisAsyncDisconnect -> __redisAsyncFree) and then
+// invokes the disconnect callback, which releases our unique_ptr. Do both, in
+// that order, so the test neither double-frees nor leaks the context.
+void SimulateHiredisDisconnect(RedisAsyncContext &ctx) {
+  redisAsyncContext *raw = ctx.GetRawRedisAsyncContext();
+  ctx.ResetRawRedisAsyncContext();
+  redisAsyncFree(raw);
+}
+
+}  // namespace
+
+// A command issued after the raw context is gone must report Disconnected
+// rather than dereferencing the released pointer.
+TEST_F(RedisAsyncContextTest, TestCommandAfterResetRawContextIsDisconnected) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  ASSERT_TRUE(ctx.IsConnected());
+
+  SimulateHiredisDisconnect(ctx);
+  ASSERT_FALSE(ctx.IsConnected());
+
+  const char *argv[] = {"PING"};
+  const size_t argvlen[] = {4};
+  Status status = ctx.RedisAsyncCommandArgv(nullptr, nullptr, 1, argv, argvlen);
+  ASSERT_TRUE(status.IsDisconnected()) << status;
+}
+
+// Reset() must rebind the object to a fresh connection while keeping the
+// object's own address stable: in-flight RedisRequestContexts hold a raw
+// pointer to it.
+TEST_F(RedisAsyncContextTest, TestResetRebindsInPlace) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const RedisAsyncContext *address_before = &ctx;
+
+  SimulateHiredisDisconnect(ctx);
+  ASSERT_FALSE(ctx.IsConnected());
+
+  ctx.Reset(ConnectRaw(port));
+
+  // Don't compare against the pre-disconnect raw pointer: it has been freed,
+  // and the allocator is free to hand the same address back for the new one.
+  ASSERT_TRUE(ctx.IsConnected());
+  ASSERT_EQ(address_before, &ctx);
+
+  // The rebound context accepts commands again.
+  const char *argv[] = {"PING"};
+  const size_t argvlen[] = {4};
+  ASSERT_TRUE(ctx.RedisAsyncCommandArgv(nullptr, nullptr, 1, argv, argvlen).ok());
+}
+
+// The disconnect handler is what lets RedisContext learn about a dropped
+// connection and schedule a reconnect.
+TEST_F(RedisAsyncContextTest, TestDisconnectHandlerIsInvoked) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  int calls = 0;
+  ctx.SetDisconnectHandler([&calls] { ++calls; });
+
+  ctx.NotifyDisconnected();
+  ASSERT_EQ(calls, 1);
+}
+
+// With no handler set, notifying must be a no-op rather than a crash.
+TEST_F(RedisAsyncContextTest, TestDisconnectHandlerUnsetIsNoop) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+  ctx.NotifyDisconnected();
 }
 }  // namespace gcs
 }  // namespace ray
