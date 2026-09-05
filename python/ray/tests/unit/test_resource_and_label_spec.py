@@ -369,6 +369,35 @@ def test_resolve_handles_no_accelerators():
     assert spec.resolved()
 
 
+def test_user_configured_accelerator_warns_if_autodetection_finds_none():
+    manager = FakeAcceleratorManager("GPU", accelerator_type=None, num_accelerators=0)
+
+    with patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=manager,
+    ), patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["GPU"],
+    ), patch(
+        "ray._private.resource_and_label_spec.logger.warning"
+    ) as warning:
+        (
+            resolved_manager,
+            num_accelerators,
+        ) = ResourceAndLabelSpec._get_current_node_accelerator(2, {})
+
+    assert resolved_manager is manager
+    assert num_accelerators == 2
+    warning.assert_called_once_with(
+        "Ray was configured to use %s %s accelerator(s), but "
+        "auto-detection found none. Check that the accelerator "
+        "hardware is present and its driver is installed and "
+        "accessible to Ray.",
+        2,
+        "GPU",
+    )
+
+
 def test_label_spec_resolve_merged_env_labels(monkeypatch):
     """Validate that LABELS_ENVIRONMENT_VARIABLE is merged into final labels."""
     override_labels = {"autoscaler-override-label": "example"}
