@@ -30,22 +30,61 @@ This page is the generated field reference for the `ray.io/v1` custom resource d
 
 The fields are those of KubeRay v1.7.0. Fields added to KubeRay after that release don't appear here.
 
-
 ## Resource Types
 - [RayCluster](#raycluster)
 - [RayCronJob](#raycronjob)
 - [RayJob](#rayjob)
 - [RayService](#rayservice)
 
+## RayCluster
 
+RayCluster is the Schema for the RayClusters API
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `ray.io/v1` | | |
+| `kind` _string_ | `RayCluster` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[RayClusterSpec](#rayclusterspec)_ | Specification of the desired behavior of the RayCluster. |  |  |
+
+## RayCronJob
+
+RayCronJob is the Schema for the raycronjobs API
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `ray.io/v1` | | |
+| `kind` _string_ | `RayCronJob` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[RayCronJobSpec](#raycronjobspec)_ |  |  |  |
+
+## RayJob
+
+RayJob is the Schema for the rayjobs API
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `ray.io/v1` | | |
+| `kind` _string_ | `RayJob` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[RayJobSpec](#rayjobspec)_ |  |  |  |
+
+## RayService
+
+RayService is the Schema for the rayservices API
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `ray.io/v1` | | |
+| `kind` _string_ | `RayService` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[RayServiceSpec](#rayservicespec)_ |  |  |  |
 
 ## AuthMode
 
 _Underlying type:_ _string_
 
 AuthMode describes the authentication mode for the Ray cluster.
-
-
 
 _Appears in:_
 - [AuthOptions](#authoptions)
@@ -55,14 +94,9 @@ _Appears in:_
 | `disabled` | AuthModeDisabled disables authentication.<br /> |
 | `token` | AuthModeToken enables token-based authentication.<br /> |
 
-
 ## AuthOptions
 
-
-
 AuthOptions defines the authentication options for a RayCluster.
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -73,14 +107,9 @@ _Appears in:_
 | `secretName` _string_ | SecretName is the name of the Secret that contains the authentication token.<br />If set, KubeRay will skip generating a Secret object per RayCluster containing a token.<br />The Secret must have a data key `auth_token` that contains the value of the token. |  |  |
 | `mode` _[AuthMode](#authmode)_ | Mode specifies the authentication mode.<br />Supported values are "disabled" and "token".<br />Defaults to "token". |  | Enum: [disabled token] <br /> |
 
-
 ## AutoscalerOptions
 
-
-
 AutoscalerOptions specifies optional configuration for the Ray autoscaler.
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -100,12 +129,9 @@ _Appears in:_
 | `command` _string array_ | Optional list overwrite the default command of the autoscaler container. |  |  |
 | `args` _string array_ | Optional to overwrite the default args of the autoscaler container. |  |  |
 
-
 ## AutoscalerVersion
 
 _Underlying type:_ _string_
-
-
 
 _Validation:_
 - Enum: [v1 v2]
@@ -118,14 +144,9 @@ _Appears in:_
 | `v1` |  |
 | `v2` |  |
 
-
 ## ClusterUpgradeOptions
 
-
-
 These options are currently only supported for the IncrementalUpgrade type.
-
-
 
 _Appears in:_
 - [RayServiceUpgradeStrategy](#rayserviceupgradestrategy)
@@ -137,14 +158,9 @@ _Appears in:_
 | `intervalSeconds` _integer_ | The interval in seconds between transferring StepSize traffic from the old to new RayCluster. |  |  |
 | `gatewayClassName` _string_ | The name of the Gateway Class installed by the Kubernetes Cluster admin. |  |  |
 
-
 ## CollectorOptions
 
-
-
 CollectorOptions defines settings for the history server collector sidecar.
-
-
 
 _Appears in:_
 - [HistoryServerOptions](#historyserveroptions)
@@ -156,17 +172,12 @@ _Appears in:_
 | `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#resourcerequirements-v1-core)_ | Resources specifies computing resource requirements. |  |  |
 | `env` _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#envvar-v1-core) array_ | Env allows injecting custom environment variables into the collector container. |  |  |
 
-
 ## DeletionCondition
-
-
 
 DeletionCondition specifies the trigger conditions for a deletion action.
 Exactly one of JobStatus or JobDeploymentStatus must be specified:
   - JobStatus (application-level): Match the Ray job execution status.
   - JobDeploymentStatus (infrastructure-level): Match the RayJob deployment lifecycle status. This is particularly useful for cleaning up resources when Ray jobs fail to be submitted.
-
-
 
 _Appears in:_
 - [DeletionRule](#deletionrule)
@@ -175,15 +186,10 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `ttlSeconds` _integer_ | TTLSeconds is the time in seconds from when the JobStatus or JobDeploymentStatus<br />reaches the specified terminal state to when this deletion action should be triggered.<br />The value must be a non-negative integer. | 0 | Minimum: 0 <br /> |
 
-
 ## DeletionPolicy
-
-
 
 DeletionPolicy is the legacy single-stage deletion policy.
 Deprecated: This struct is part of the legacy API. Use DeletionRule for new configurations.
-
-
 
 _Appears in:_
 - [DeletionStrategy](#deletionstrategy)
@@ -192,14 +198,9 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `policy` _[DeletionPolicyType](#deletionpolicytype)_ | Policy is the action to take when the condition is met.<br />This field is logically required when using the legacy OnSuccess/OnFailure policies.<br />It is marked as '+optional' at the API level to allow the 'deletionRules' field to be used instead. |  | Enum: [DeleteCluster DeleteWorkers DeleteSelf DeleteNone] <br /> |
 
-
 ## DeletionPolicyType
 
 _Underlying type:_ _string_
-
-
-
-
 
 _Appears in:_
 - [DeletionPolicy](#deletionpolicy)
@@ -212,15 +213,10 @@ _Appears in:_
 | `DeleteSelf` |  |
 | `DeleteNone` |  |
 
-
 ## DeletionRule
-
-
 
 DeletionRule defines a single deletion action and its trigger condition.
 This is the new, recommended way to define deletion behavior.
-
-
 
 _Appears in:_
 - [DeletionStrategy](#deletionstrategy)
@@ -230,10 +226,7 @@ _Appears in:_
 | `policy` _[DeletionPolicyType](#deletionpolicytype)_ | Policy is the action to take when the condition is met. This field is required. |  | Enum: [DeleteCluster DeleteWorkers DeleteSelf DeleteNone] <br /> |
 | `condition` _[DeletionCondition](#deletioncondition)_ | The condition under which this deletion rule is triggered. This field is required. |  |  |
 
-
 ## DeletionStrategy
-
-
 
 DeletionStrategy configures automated cleanup after the RayJob reaches a terminal state.
 Two mutually exclusive styles are supported:
@@ -252,8 +245,6 @@ Validation:
   - Controller logic enforces rules vs shutdown exclusivity and TTL constraints.
   - onSuccess/onFailure are deprecated; migration to deletionRules is encouraged.
 
-
-
 _Appears in:_
 - [RayJobSpec](#rayjobspec)
 
@@ -262,9 +253,6 @@ _Appears in:_
 | `onSuccess` _[DeletionPolicy](#deletionpolicy)_ | OnSuccess is the deletion policy for a successful RayJob.<br />Deprecated: Use `deletionRules` instead for more flexible, multi-stage deletion strategies.<br />This field will be removed in release 1.6.0. |  |  |
 | `onFailure` _[DeletionPolicy](#deletionpolicy)_ | OnFailure is the deletion policy for a failed RayJob.<br />Deprecated: Use `deletionRules` instead for more flexible, multi-stage deletion strategies.<br />This field will be removed in release 1.6.0. |  |  |
 | `deletionRules` _[DeletionRule](#deletionrule) array_ | DeletionRules is a list of deletion rules, processed based on their trigger conditions.<br />While the rules can be used to define a sequence, if multiple rules are overdue (e.g., due to controller downtime),<br />the most impactful rule (e.g., DeleteSelf) will be executed first to prioritize resource cleanup. |  | MinItems: 1 <br /> |
-
-
-
 
 ## GCSStorageDeletionPolicy
 
@@ -284,10 +272,7 @@ _Appears in:_
 | `DeleteWithCluster` | DeleteWithClusterGCSStorageDeletionPolicy (the default) makes the<br />operator-managed PVC a child of the RayCluster via an ownerReference, so it<br />(and its RocksDB data) is garbage-collected together with the cluster.<br /> |
 | `Retain` | RetainGCSStorageDeletionPolicy keeps the operator-managed PVC (and its data)<br />after the owning RayCluster is deleted: the operator omits the ownerReference<br />so the PVC outlives the cluster. Recover the GCS state by pointing a new<br />cluster's ClaimName at the retained PVC.<br /> |
 
-
 ## GcsEmbeddedStorage
-
-
 
 GcsEmbeddedStorage configures the PVC backing the embedded RocksDB store.
 
@@ -295,8 +280,6 @@ RocksDB tolerates only a single writer at a time. The operator mounts the
 volume on the head Pod but does not itself enforce mutual exclusion, so when a
 volume can be attached to more than one Pod concurrently (see AccessModes) the
 caller is responsible for ensuring only one Ray head writes to it at a time.
-
-
 
 _Appears in:_
 - [GcsFaultToleranceOptions](#gcsfaulttoleranceoptions)
@@ -309,7 +292,6 @@ _Appears in:_
 | `accessModes` _[PersistentVolumeAccessMode](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#persistentvolumeaccessmode-v1-core) array_ | AccessModes for the operator-managed PVC. Defaults to [ReadWriteOnce].<br />Ignored when ClaimName is set.<br />ReadWriteOnce is the sane default for a standalone RayCluster (one head Pod<br />attaches at a time). ReadWriteMany is a valid choice when you need the volume<br />attached to multiple Pods concurrently (e.g. to overlap the old and new head<br />during a RayService upgrade); RocksDB still requires that only one of them<br />writes at a time, which you must coordinate externally. |  |  |
 | `subPath` _string_ | SubPath mounts a subdirectory of the volume instead of its root. |  |  |
 | `deletionPolicy` _[GCSStorageDeletionPolicy](#gcsstoragedeletionpolicy)_ | DeletionPolicy controls the lifecycle of the operator-managed PVC relative to<br />the owning RayCluster. Defaults to DeleteWithCluster. Ignored when ClaimName<br />is set (the operator never owns a bring-your-own PVC, so it is never deleted<br />or retained by the operator).<br />Recovery after Retain: a PVC left behind by a Retain delete can be recovered<br />either by pointing a new cluster's ClaimName at it, or by recreating a<br />RayCluster with the same name on the operator-managed path -- the operator<br />adopts the existing \{cluster\}-gcs-pvc and reuses its RocksDB state. To start<br />from a fresh store instead, delete the leftover PVC first. |  | Enum: [DeleteWithCluster Retain] <br /> |
-
 
 ## GcsFaultToleranceBackend
 
@@ -328,14 +310,9 @@ _Appears in:_
 | `redis` | GcsFTBackendRedis persists GCS metadata in an external Redis service.<br /> |
 | `rocksdb` | GcsFTBackendRocksDB persists GCS metadata in an embedded RocksDB store on a<br />persistent volume mounted on the head Pod.<br /> |
 
-
 ## GcsFaultToleranceOptions
 
-
-
 GcsFaultToleranceOptions contains configs for GCS FT
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -349,14 +326,9 @@ _Appears in:_
 | `redisAddress` _string_ | RedisAddress is the address of the external Redis service used when Backend<br />is "redis". It may alternatively be supplied via env vars/annotations. |  |  |
 | `storage` _[GcsEmbeddedStorage](#gcsembeddedstorage)_ | Storage configures the persistent volume backing the embedded RocksDB<br />store. Only used when Backend is "rocksdb". |  |  |
 
-
 ## HeadGroupSpec
 
-
-
 HeadGroupSpec are the spec for the head pod
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -372,14 +344,9 @@ _Appears in:_
 | `rayStartParams` _object (keys:string, values:string)_ | RayStartParams are the params of the start command: node-manager-port, object-store-memory, ... |  |  |
 | `serviceType` _[ServiceType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#servicetype-v1-core)_ | ServiceType is Kubernetes service type of the head service. it will be used by the workers to connect to the head pod |  |  |
 
-
 ## HistoryServerOptions
 
-
-
 HistoryServerOptions used for history server related configuration
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -388,14 +355,9 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `collectorOptions` _[CollectorOptions](#collectoroptions)_ | CollectorOptions used for collector sidecar configuration |  |  |
 
-
 ## IngressOptions
 
-
-
 IngressOptions defines the host, path, and TLS configuration for the ingress generated for the head group.
-
-
 
 _Appears in:_
 - [HeadGroupSpec](#headgroupspec)
@@ -407,12 +369,9 @@ _Appears in:_
 | `pathType` _[IngressPathType](#ingresspathtype)_ | PathType is the path matching mode applied to Path.<br />When unset, the operator defaults it to "Prefix", which works out of the box<br />without a rewrite-target annotation or controller-specific regex support. |  | Enum: [Exact Prefix ImplementationSpecific] <br /> |
 | `tls` _[IngressTLS](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#ingresstls-v1-networking) array_ | TLS configures TLS termination for the generated ingress. |  |  |
 
-
 ## IngressPathType
 
 _Underlying type:_ _string_
-
-
 
 _Validation:_
 - Enum: [Exact Prefix ImplementationSpecific]
@@ -426,16 +385,9 @@ _Appears in:_
 | `Prefix` |  |
 | `ImplementationSpecific` |  |
 
-
-
-
 ## JobSubmissionMode
 
 _Underlying type:_ _string_
-
-
-
-
 
 _Appears in:_
 - [RayJobSpec](#rayjobspec)
@@ -447,17 +399,12 @@ _Appears in:_
 | `InteractiveMode` |  |
 | `SidecarMode` |  |
 
-
 ## NetworkPolicyConfig
-
-
 
 NetworkPolicyConfig defines network isolation settings for Ray cluster.
 All modes permit intra-cluster pod-to-pod traffic.
 DNS egress is not included automatically; see NetworkPolicyRules.EgressRules
 for why it must be added under DenyAll/DenyAllEgress.
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -468,7 +415,6 @@ _Appears in:_
 | `head` _[NetworkPolicyRules](#networkpolicyrules)_ | Head specifies custom NetworkPolicy rules applied only to the head pod's policy.<br />The base head policy always allows intra-cluster traffic and (for K8sJobMode<br />RayJob-owned clusters) the submitter pod. Rules here are appended to those<br />base rules. Platforms that need operator dashboard access should add it here<br />(e.g. via a mutating webhook). |  |  |
 | `worker` _[NetworkPolicyRules](#networkpolicyrules)_ | Worker specifies custom NetworkPolicy rules applied only to worker pods' policy.<br />The base worker policy always allows intra-cluster traffic.<br />Rules here are appended to that base rule.<br />Acts as the default for all worker groups; see WorkerGroups for per-group overrides. |  |  |
 | `workerGroups` _[WorkerGroupNetworkPolicyRules](#workergroupnetworkpolicyrules) array_ | WorkerGroups specifies per-worker-group NetworkPolicy rules, keyed by group name.<br />If an entry exists for a worker group, it replaces (not merges with) Worker for<br />that group. Worker groups without an entry fall back to Worker. |  |  |
-
 
 ## NetworkPolicyMode
 
@@ -488,14 +434,9 @@ _Appears in:_
 | `DenyAllIngress` | NetworkPolicyDenyAllIngress denies all ingress traffic.<br /> |
 | `DenyAllEgress` | NetworkPolicyDenyAllEgress denies all egress traffic.<br /> |
 
-
 ## NetworkPolicyRules
 
-
-
 NetworkPolicyRules defines custom ingress and egress rules for a NetworkPolicy.
-
-
 
 _Appears in:_
 - [NetworkPolicyConfig](#networkpolicyconfig)
@@ -506,34 +447,9 @@ _Appears in:_
 | `ingressRules` _[NetworkPolicyIngressRule](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicyingressrule-v1-networking) array_ | IngressRules specifies custom ingress rules appended to the base policy.<br />Only meaningful when the mode includes ingress denial (DenyAll or DenyAllIngress). |  |  |
 | `egressRules` _[NetworkPolicyEgressRule](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicyegressrule-v1-networking) array_ | EgressRules specifies custom egress rules appended to the base policy.<br />Only meaningful when the mode includes egress denial (DenyAll or DenyAllEgress).<br />DNS egress is NOT added automatically: under DenyAll/DenyAllEgress you MUST<br />add a DNS rule here (e.g. to kube-system pods labeled k8s-app=kube-dns on<br />port 53), because Ray workers reach the head via its service FQDN and cannot<br />resolve it without DNS. See the network-policy-deny-all sample. |  |  |
 
-
-## RayCluster
-
-
-
-RayCluster is the Schema for the RayClusters API
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `ray.io/v1` | | |
-| `kind` _string_ | `RayCluster` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[RayClusterSpec](#rayclusterspec)_ | Specification of the desired behavior of the RayCluster. |  |  |
-
-
-
-
 ## RayClusterSpec
 
-
-
 RayClusterSpec defines the desired state of RayCluster
-
-
 
 _Appears in:_
 - [RayCluster](#raycluster)
@@ -557,14 +473,7 @@ _Appears in:_
 | `rayVersion` _string_ | RayVersion is used to determine the command for the Kubernetes Job managed by RayJob |  |  |
 | `workerGroupSpecs` _[WorkerGroupSpec](#workergroupspec) array_ | WorkerGroupSpecs are the specs for the worker pods |  |  |
 
-
 ## RayClusterUpgradeStrategy
-
-
-
-
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -573,12 +482,9 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `type` _[RayClusterUpgradeType](#rayclusterupgradetype)_ | Type represents the strategy used when upgrading the RayCluster Pods. Currently supports `Recreate` and `None`. |  | Enum: [Recreate None] <br /> |
 
-
 ## RayClusterUpgradeType
 
 _Underlying type:_ _string_
-
-
 
 _Validation:_
 - Enum: [Recreate None]
@@ -591,32 +497,7 @@ _Appears in:_
 | `Recreate` | During upgrade, Recreate strategy will delete all existing pods before creating new ones<br /> |
 | `None` | No new pod will be created while the strategy is set to None<br /> |
 
-
-## RayCronJob
-
-
-
-RayCronJob is the Schema for the raycronjobs API
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `ray.io/v1` | | |
-| `kind` _string_ | `RayCronJob` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[RayCronJobSpec](#raycronjobspec)_ |  |  |  |
-
-
 ## RayCronJobSpec
-
-
-
-
-
-
 
 _Appears in:_
 - [RayCronJob](#raycronjob)
@@ -628,32 +509,9 @@ _Appears in:_
 | `timeZone` _string_ | TimeZone is the time zone name for the given schedule. If not specified, default to the local time zone of the<br />Kuberay Operator. Empty string is not allowed.<br />The bundled version of the time zone database is used. |  | MinLength: 1 <br /> |
 | `suspend` _boolean_ | Suspend tells the controller to suspend the scheduling, it does not apply to<br />scheduled RayJob. |  |  |
 
-
-## RayJob
-
-
-
-RayJob is the Schema for the rayjobs API
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `ray.io/v1` | | |
-| `kind` _string_ | `RayJob` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[RayJobSpec](#rayjobspec)_ |  |  |  |
-
-
 ## RayJobSpec
 
-
-
 RayJobSpec defines the desired state of RayJob
-
-
 
 _Appears in:_
 - [RayCronJobSpec](#raycronjobspec)
@@ -682,40 +540,9 @@ _Appears in:_
 | `shutdownAfterJobFinishes` _boolean_ | ShutdownAfterJobFinishes will determine whether to delete the ray cluster once rayJob succeed or failed. |  |  |
 | `suspend` _boolean_ | suspend specifies whether the RayJob controller should create a RayCluster instance<br />If a job is applied with the suspend field set to true,<br />the RayCluster will not be created and will wait for the transition to false.<br />If the RayCluster is already created, it will be deleted.<br />In case of transition to false a new RayCluster will be created. |  |  |
 
-
-
-
-
-
-## RayService
-
-
-
-RayService is the Schema for the rayservices API
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `ray.io/v1` | | |
-| `kind` _string_ | `RayService` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[RayServiceSpec](#rayservicespec)_ |  |  |  |
-
-
-
-
-
-
 ## RayServiceSpec
 
-
-
 RayServiceSpec defines the desired state of RayService
-
-
 
 _Appears in:_
 - [RayService](#rayservice)
@@ -733,16 +560,7 @@ _Appears in:_
 | `excludeHeadPodFromServeSvc` _boolean_ | If the field is set to true, the value of the label `ray.io/serve` on the head Pod should always be false.<br />Therefore, the head Pod's endpoint will not be added to the Kubernetes Serve service. |  |  |
 | `suspend` _boolean_ | Suspend indicates whether the RayService should suspend its execution. When set to true,<br />all Kubernetes resources owned by the RayService controller will be deleted. Setting it<br />back to false will allow the RayService controller to recreate the resources. |  |  |
 
-
-
-
 ## RayServiceUpgradeStrategy
-
-
-
-
-
-
 
 _Appears in:_
 - [RayServiceSpec](#rayservicespec)
@@ -752,14 +570,9 @@ _Appears in:_
 | `type` _[RayServiceUpgradeType](#rayserviceupgradetype)_ | Type represents the strategy used when upgrading the RayService. Currently supports `NewCluster`, `NewClusterWithIncrementalUpgrade` and `None`. |  |  |
 | `clusterUpgradeOptions` _[ClusterUpgradeOptions](#clusterupgradeoptions)_ | ClusterUpgradeOptions defines the behavior of a NewClusterWithIncrementalUpgrade type.<br />RayServiceIncrementalUpgrade feature gate must be enabled to set ClusterUpgradeOptions. |  |  |
 
-
 ## RayServiceUpgradeType
 
 _Underlying type:_ _string_
-
-
-
-
 
 _Appears in:_
 - [RayServiceUpgradeStrategy](#rayserviceupgradestrategy)
@@ -770,14 +583,9 @@ _Appears in:_
 | `NewCluster` | During upgrade, NewCluster strategy will create new upgraded cluster and switch to it when it becomes ready<br /> |
 | `None` | No new cluster will be created while the strategy is set to None<br /> |
 
-
 ## RedisCredential
 
-
-
 RedisCredential is the redis username/password or a reference to the source containing the username/password
-
-
 
 _Appears in:_
 - [GcsFaultToleranceOptions](#gcsfaulttoleranceoptions)
@@ -787,14 +595,9 @@ _Appears in:_
 | `valueFrom` _[EnvVarSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#envvarsource-v1-core)_ |  |  |  |
 | `value` _string_ |  |  |  |
 
-
 ## ScaleStrategy
 
-
-
 ScaleStrategy to remove workers
-
-
 
 _Appears in:_
 - [WorkerGroupSpec](#workergroupspec)
@@ -803,14 +606,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `workersToDelete` _string array_ | WorkersToDelete workers to be deleted |  |  |
 
-
 ## SubmitterConfig
-
-
-
-
-
-
 
 _Appears in:_
 - [RayJobSpec](#rayjobspec)
@@ -819,18 +615,13 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `backoffLimit` _integer_ | BackoffLimit of the submitter. In K8sJobMode, this is the K8s Job backoffLimit.<br />In SidecarMode with SidecarSubmitterRestart enabled, this is the maximum container restart count. |  |  |
 
-
 ## TLSOptions
-
-
 
 TLSOptions configures TLS encryption for the RayCluster.
 When TLSOptions is nil or Enabled is nil/false, TLS is disabled.
 When Enabled is true, the operator uses cert-manager to automatically
 provision a full PKI (self-signed CA, head and worker leaf certificates)
 and keeps certificates up to date as pod IPs change during autoscaling.
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
@@ -839,12 +630,9 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `enabled` _boolean_ | Enabled controls whether mTLS is active for this RayCluster.<br />Defaults to false when omitted. Set to true to enable mTLS. |  |  |
 
-
 ## UpscalingMode
 
 _Underlying type:_ _string_
-
-
 
 _Validation:_
 - Enum: [Default Aggressive Conservative]
@@ -852,15 +640,9 @@ _Validation:_
 _Appears in:_
 - [AutoscalerOptions](#autoscaleroptions)
 
-
-
 ## WorkerGroupNetworkPolicyRules
 
-
-
 WorkerGroupNetworkPolicyRules is NetworkPolicyRules bound to one worker group.
-
-
 
 _Appears in:_
 - [NetworkPolicyConfig](#networkpolicyconfig)
@@ -871,14 +653,9 @@ _Appears in:_
 | `ingressRules` _[NetworkPolicyIngressRule](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicyingressrule-v1-networking) array_ | IngressRules specifies custom ingress rules appended to the base policy.<br />Only meaningful when the mode includes ingress denial (DenyAll or DenyAllIngress). |  |  |
 | `egressRules` _[NetworkPolicyEgressRule](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicyegressrule-v1-networking) array_ | EgressRules specifies custom egress rules appended to the base policy.<br />Only meaningful when the mode includes egress denial (DenyAll or DenyAllEgress).<br />DNS egress is NOT added automatically: under DenyAll/DenyAllEgress you MUST<br />add a DNS rule here (e.g. to kube-system pods labeled k8s-app=kube-dns on<br />port 53), because Ray workers reach the head via its service FQDN and cannot<br />resolve it without DNS. See the network-policy-deny-all sample. |  |  |
 
-
 ## WorkerGroupSpec
 
-
-
 WorkerGroupSpec are the specs for the worker pods
-
-
 
 _Appears in:_
 - [RayClusterSpec](#rayclusterspec)
