@@ -5,6 +5,12 @@ import os
 import pytest
 
 import ray
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT,
+    MCAPDatasource,
+    TimeRange,
+)
+from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -15,6 +21,18 @@ pytestmark = pytest.mark.skipif(
     not MCAP_AVAILABLE,
     reason="mcap module not available. Install with: pip install mcap",
 )
+
+
+def estimate_size(datasource: MCAPDatasource) -> int:
+    """Return a datasource's in-memory size estimate, asserting it is known.
+
+    ``estimate_inmemory_data_size`` is typed ``Optional[int]``: the base class
+    returns ``None`` when file sizes are unavailable. Every fixture here has
+    known sizes, so narrow once rather than at each comparison.
+    """
+    estimate = datasource.estimate_inmemory_data_size()
+    assert estimate is not None
+    return estimate
 
 
 def create_test_mcap_file(file_path: str, messages: list) -> None:
@@ -260,7 +278,7 @@ def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
     """Test validation of time range parameters."""
     # Start time >= end time
-    with pytest.raises(ValueError, match="start_time must be less than end_time"):
+    with pytest.raises(ValueError, match="must be less than"):
         ray.data.read_mcap(simple_mcap_file, time_range=(2000, 1000))
 
     # Negative times
@@ -386,6 +404,498 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+# A schema definition of the size real ROS 2 / Foxglove schemas reach. It is
+# registered once per file but, with `include_metadata`, materialized on every
+# row, which is what makes the in-memory size dwarf the on-disk size.
+LARGE_SCHEMA_DEFINITION = b"# msgdef\n" + b"uint8[] data\nstring format\n" * 100
+
+
+def create_binary_mcap_file(
+    file_path: str,
+    num_messages: int,
+    *,
+    topics: tuple = ("/camera/image",),
+    payload_size: int = 512,
+    use_statistics: bool = True,
+    descending: bool = False,
+) -> None:
+    """Create an MCAP file with compressible binary payloads.
+
+    Unlike `create_test_mcap_file`, this writes opaque binary messages against a
+    large schema, which is the shape of a real robotics recording: the chunks
+    compress well on disk while every row carries the schema in memory.
+
+    Args:
+        file_path: Where to write the file.
+        num_messages: Number of messages to write.
+        topics: Topics to round-robin the messages across.
+        payload_size: Size in bytes of each message payload.
+        use_statistics: Whether to write the summary Statistics record. When
+            False, the file carries no message count to estimate from.
+        descending: Write messages in descending log time, so that ascending
+            read order has to come from the reader rather than the file layout.
+    """
+    from mcap.writer import Writer
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream, use_statistics=use_statistics)
+        writer.start(profile="", library="ray-test")
+
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=LARGE_SCHEMA_DEFINITION,
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="cdr"
+            )
+            for topic in topics
+        }
+
+        indices = range(num_messages)
+        if descending:
+            indices = reversed(indices)
+        for i in indices:
+            log_time = 1000000000 + i * 33000000
+            writer.add_message(
+                channel_id=channels[topics[i % len(topics)]],
+                log_time=log_time,
+                publish_time=log_time,
+                data=bytes([i % 256]) * payload_size,
+                sequence=i,
+            )
+
+        writer.finish()
+
+
+def create_skewed_mcap_file(file_path: str) -> None:
+    """Create a file whose leading messages misrepresent the whole.
+
+    Two topics differing by orders of magnitude in message size and rate. The
+    first 100 messages by log time -- the estimator's sample window -- are half
+    large messages, while the file overall is 5% large. Extrapolating the
+    window's mean row size across the file's message count therefore overstates
+    the size by roughly an order of magnitude.
+    """
+    from mcap.writer import Writer
+
+    small_payload = b"s" * 100
+    large_payload = b"L" * 20000
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=LARGE_SCHEMA_DEFINITION,
+        )
+        small = writer.register_channel(
+            schema_id=schema_id, topic="/small", message_encoding="cdr"
+        )
+        large = writer.register_channel(
+            schema_id=schema_id, topic="/large", message_encoding="cdr"
+        )
+
+        log_time = 1000000000
+        # The sample window: alternating, so half of it is large messages.
+        for i in range(100):
+            channel, payload = (
+                (large, large_payload) if i % 2 else (small, small_payload)
+            )
+            writer.add_message(
+                channel_id=channel,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=i,
+            )
+            log_time += 1000000
+        # The rest of the file: small messages only, leaving 5% large overall.
+        for i in range(100, 1000):
+            writer.add_message(
+                channel_id=small,
+                log_time=log_time,
+                publish_time=log_time,
+                data=small_payload,
+                sequence=i,
+            )
+            log_time += 1000000
+
+        writer.finish()
+
+
+def create_episode_mcap_file(file_path: str) -> None:
+    """Create a video-dominated recording with light, high-rate state.
+
+    The shape of a robotics episode: a few camera topics carrying almost all of
+    the bytes as incompressible frames, alongside a fast proprioception topic
+    whose messages are tiny. Reading only the state topics selects a small
+    fraction of the file, and a one-second window selects 200 proprio messages
+    -- above the sampling cap, so the estimate has to be extrapolated rather
+    than measured outright.
+    """
+    from mcap.writer import Writer
+
+    duration_s, frame_bytes = 4, 8_000
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+
+        # A small schema definition, as a real recording carries: the file has
+        # to be dominated by camera *payload*, not by the schema each row
+        # repeats, or the state topics stop being light.
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo",
+            encoding="ros2msg",
+            data=b"uint8[] data\n",
+        )
+        cameras = [
+            writer.register_channel(
+                schema_id=schema_id,
+                topic=f"/cam{i}/compressed",
+                message_encoding="cdr",
+            )
+            for i in range(2)
+        ]
+        proprio = writer.register_channel(
+            schema_id=schema_id, topic="/proprio", message_encoding="cdr"
+        )
+
+        messages = []
+        for i in range(duration_s * 30):  # cameras at 30 Hz
+            log_time = int(i * 1e9 / 30)
+            for channel_id in cameras:
+                # Incompressible, so the chunks do not collapse on disk.
+                messages.append((log_time, channel_id, os.urandom(frame_bytes)))
+        for i in range(duration_s * 200):  # proprio at 200 Hz
+            messages.append((int(i * 1e9 / 200), proprio, b"p" * 100))
+
+        for sequence, (log_time, channel_id, data) in enumerate(sorted(messages)):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=data,
+                sequence=sequence,
+            )
+
+        writer.finish()
+
+
+@pytest.fixture
+def episode_mcap_file(tmp_path):
+    """Fixture providing a video-dominated recording with high-rate state."""
+    path = os.path.join(tmp_path, "episode.mcap")
+    create_episode_mcap_file(path)
+    return path
+
+
+@pytest.fixture
+def binary_mcap_file(tmp_path):
+    """Fixture providing an MCAP file with 360 binary messages."""
+    path = os.path.join(tmp_path, "binary.mcap")
+    create_binary_mcap_file(path, 360)
+    return path
+
+
+def test_estimate_inmemory_data_size_exceeds_on_disk_size(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """In-memory size estimates must not report the on-disk size.
+
+    `FileBasedDatasource` estimates in-memory size as the sum of the on-disk
+    file sizes. MCAP chunks are compressed and every row additionally carries
+    metadata that has no per-message on-disk equivalent, so that default
+    understates the materialized size by more than an order of magnitude. Ray
+    Data sizes both read parallelism and memory provisioning from this number.
+    """
+    on_disk_size = os.path.getsize(binary_mcap_file)
+    actual_size = ray.data.read_mcap(binary_mcap_file).materialize().size_bytes()
+
+    # Establish that on-disk size is not a usable proxy for this format.
+    assert actual_size > 10 * on_disk_size
+
+    estimate = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    assert 0.5 * actual_size <= estimate <= 2 * actual_size
+
+
+def test_estimate_inmemory_data_size_tracks_include_metadata(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """Dropping the metadata columns must shrink the estimate."""
+    with_metadata = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_metadata=True)
+    )
+    without_metadata = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_metadata=False)
+    )
+
+    assert without_metadata < with_metadata
+
+    actual = (
+        ray.data.read_mcap(binary_mcap_file, include_metadata=False)
+        .materialize()
+        .size_bytes()
+    )
+    assert 0.5 * actual <= without_metadata <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_respects_topic_filter(
+    ray_start_regular_shared, tmp_path
+):
+    """A topic filter must be reflected in the estimate."""
+    path = os.path.join(tmp_path, "multi_topic_binary.mcap")
+    create_binary_mcap_file(path, 300, topics=("/topic_a", "/topic_b", "/topic_c"))
+
+    unfiltered = estimate_size(MCAPDatasource(paths=[path]))
+    filtered = estimate_size(MCAPDatasource(paths=[path], topics={"/topic_a"}))
+
+    # One of three topics is selected, so the estimate should fall roughly
+    # threefold rather than staying flat.
+    assert filtered < unfiltered
+    assert 0.2 * unfiltered <= filtered <= 0.5 * unfiltered
+
+    actual = ray.data.read_mcap(path, topics={"/topic_a"}).materialize().size_bytes()
+    assert 0.5 * actual <= filtered <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_multiple_files(ray_start_regular_shared, tmp_path):
+    """The estimate must aggregate across files, including unsampled ones."""
+    paths = []
+    for i in range(12):
+        path = os.path.join(tmp_path, f"part_{i:02d}.mcap")
+        create_binary_mcap_file(path, 60)
+        paths.append(path)
+
+    estimate = estimate_size(MCAPDatasource(paths=paths))
+    actual = ray.data.read_mcap(paths).materialize().size_bytes()
+
+    assert 0.5 * actual <= estimate <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_without_statistics(
+    ray_start_regular_shared, tmp_path
+):
+    """A file with no summary statistics falls back instead of failing.
+
+    Message counts come from the MCAP summary, which is optional. Without it
+    the datasource must still return a usable overestimate.
+    """
+    path = os.path.join(tmp_path, "no_stats.mcap")
+    create_binary_mcap_file(path, 200, use_statistics=False)
+
+    estimate = estimate_size(MCAPDatasource(paths=[path]))
+
+    assert estimate == os.path.getsize(path) * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+
+def test_estimate_inmemory_data_size_sampling_disabled(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """`decoding_size_estimation=False` must skip sampling entirely."""
+    ctx = DataContext.get_current()
+    original = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = False
+    try:
+        estimate = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    finally:
+        ctx.decoding_size_estimation = original
+
+    on_disk_size = os.path.getsize(binary_mcap_file)
+    assert estimate == on_disk_size * MCAP_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+
+def test_estimate_inmemory_data_size_accounts_for_include_paths(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """`include_paths` adds a column downstream of `_read_stream`.
+
+    Sampling builds its block from `_read_stream`'s output, so it has to add
+    that column itself or the estimate misses it.
+    """
+    without_paths = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    with_paths = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], include_paths=True)
+    )
+
+    assert with_paths > without_paths
+
+    actual = (
+        ray.data.read_mcap(binary_mcap_file, include_paths=True)
+        .materialize()
+        .size_bytes()
+    )
+    assert 0.5 * actual <= with_paths <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_narrow_time_range(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """A `time_range` selecting a small slice must not estimate the whole file.
+
+    Message counts come from the MCAP summary, which cannot express a time
+    range. When sampling covers the whole selection the measured size is exact,
+    so the estimate has to track the filter rather than the file.
+    """
+    # `create_binary_mcap_file` writes log times at 1e9 + i * 33e6.
+    start = 1000000000
+    time_range = (start, start + 10 * 33000000)
+
+    unfiltered = estimate_size(MCAPDatasource(paths=[binary_mcap_file]))
+    filtered = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], time_range=TimeRange(*time_range))
+    )
+
+    ds = ray.data.read_mcap(binary_mcap_file, time_range=time_range).materialize()
+    actual = ds.size_bytes()
+
+    # 10 of 360 messages: the estimate must fall, not stay flat.
+    assert filtered < unfiltered / 10
+    assert 0.5 * actual <= filtered <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_filter_selecting_nothing(
+    ray_start_regular_shared, binary_mcap_file
+):
+    """A filter that selects no messages is a measurement, not a failure.
+
+    Sampling returns 0 for a file whose filter matches nothing. That is a real
+    result and must be distinguished from the `None` a failed sample returns:
+    treating it as a failure discards every sample and falls back to the
+    default ratio, overstating a read that returns no rows at all.
+    """
+    estimate = estimate_size(
+        MCAPDatasource(paths=[binary_mcap_file], topics={"/no_such_topic"})
+    )
+
+    # The measured zero is carried through rather than falling back to the
+    # default ratio. The ratio lower bound does not apply under a filter, so
+    # nothing selected estimates as nothing.
+    assert estimate == 0
+    assert ray.data.read_mcap(binary_mcap_file, topics={"/no_such_topic"}).count() == 0
+
+
+def test_estimate_inmemory_data_size_weights_channels_by_summary_counts(
+    ray_start_regular_shared, tmp_path
+):
+    """The sample window's topic mix must not drive the estimate.
+
+    Channels differ by orders of magnitude in message size, so extrapolating a
+    mixed sample by one message count makes the estimate depend on which topics
+    happen to fall in the window rather than on the file. The summary carries
+    exact per-channel counts; weighting by those removes the dependency.
+    """
+    path = os.path.join(tmp_path, "skewed.mcap")
+    create_skewed_mcap_file(path)
+
+    estimate = estimate_size(MCAPDatasource(paths=[path]))
+    actual = ray.data.read_mcap(path).materialize().size_bytes()
+
+    # Scaling the window's mean row size by the file's message count overstates
+    # this file by close to an order of magnitude, so this band is only
+    # reachable by weighting each channel separately.
+    assert 0.7 * actual <= estimate <= 1.5 * actual
+
+
+def test_estimate_inmemory_data_size_below_on_disk_size_under_filter(
+    ray_start_regular_shared, episode_mcap_file
+):
+    """A filter selecting a small part of a file must estimate below its size.
+
+    The encoding ratio is floored at 1 so that a decompressed file is never
+    reported as smaller than its compressed form. Under a filter the quantity
+    is not a decompression ratio -- it is selected bytes over *total* on-disk
+    bytes -- and on a video-dominated recording, reading only the state topics
+    is legitimately far below 1.
+    """
+    on_disk_size = os.path.getsize(episode_mcap_file)
+    estimate = estimate_size(
+        MCAPDatasource(paths=[episode_mcap_file], topics={"/proprio"})
+    )
+    actual = (
+        ray.data.read_mcap(episode_mcap_file, topics={"/proprio"})
+        .materialize()
+        .size_bytes()
+    )
+
+    # Flooring the ratio here would report the whole file.
+    assert estimate < on_disk_size
+    assert 0.5 * actual <= estimate <= 2 * actual
+
+
+def test_estimate_inmemory_data_size_time_window_above_sample_cap(
+    ray_start_regular_shared, episode_mcap_file
+):
+    """A time window wider than the sample cap must still track the window.
+
+    A one-second window selects 200 proprio messages, above
+    ``MCAP_ENCODING_RATIO_ESTIMATE_NUM_MESSAGES``, so sampling stops early and
+    the result is extrapolated. The summary cannot express a time range, so
+    without scaling by the window's share of the file's span the estimate is
+    the whole recording's worth of messages.
+    """
+    time_range = (0, 1_000_000_000)  # 1 s of a 4 s recording
+
+    unfiltered = estimate_size(
+        MCAPDatasource(paths=[episode_mcap_file], topics={"/proprio"})
+    )
+    windowed = estimate_size(
+        MCAPDatasource(
+            paths=[episode_mcap_file],
+            topics={"/proprio"},
+            time_range=TimeRange(*time_range),
+        )
+    )
+    actual = (
+        ray.data.read_mcap(
+            episode_mcap_file, topics={"/proprio"}, time_range=time_range
+        )
+        .materialize()
+        .size_bytes()
+    )
+
+    # A quarter of the recording, so roughly a quarter of the rows.
+    assert windowed < unfiltered / 2
+    assert 0.5 * actual <= windowed <= 2 * actual
+
+
+def test_read_mcap_orders_messages_by_log_time(ray_start_regular_shared, tmp_path):
+    """Messages must be returned in ascending log time order.
+
+    The file is written in descending order, so passing this requires the
+    reader's ordering rather than the file's layout.
+    """
+    path = os.path.join(tmp_path, "descending.mcap")
+    create_binary_mcap_file(path, 200, descending=True)
+
+    rows = ray.data.read_mcap(path).take_all()
+
+    assert len(rows) == 200
+    log_times = [row["log_time"] for row in rows]
+    assert log_times == sorted(log_times)
+    assert [row["sequence"] for row in rows] == list(range(200))
+
+
+def test_read_mcap_preserves_binary_payloads(ray_start_regular_shared, tmp_path):
+    """Non-JSON payloads must round-trip byte for byte.
+
+    A `cdr`-encoded message is opaque bytes; the JSON decoding path must not
+    alter it.
+    """
+    path = os.path.join(tmp_path, "payloads.mcap")
+    create_binary_mcap_file(path, 128, payload_size=256)
+
+    rows = ray.data.read_mcap(path).take_all()
+
+    assert len(rows) == 128
+    for i, row in enumerate(rows):
+        assert bytes(row["data"]) == bytes([i % 256]) * 256
 
 
 if __name__ == "__main__":
