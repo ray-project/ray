@@ -2,6 +2,7 @@ import itertools
 import uuid
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
+from ray.data._internal.execution.bundle_queue import EstimateBytes, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -134,6 +135,15 @@ def _plan_write_op_internal(
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
 
+    min_bytes_per_bundle = (
+        datasink.min_bytes_per_write if isinstance(datasink, Datasink) else None
+    )
+    ref_bundler = None
+    supports_fusion = True
+    if min_bytes_per_bundle is not None:
+        ref_bundler = RebundleQueue(EstimateBytes(min_bytes_per_bundle))
+        supports_fusion = False
+
     map_op = MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -144,6 +154,8 @@ def _plan_write_op_internal(
         map_task_kwargs={WRITE_UUID_KWARG_NAME: uuid.uuid4().hex},
         ray_remote_args=op.ray_remote_args,
         min_rows_per_bundle=op.min_rows_per_bundled_input,
+        ref_bundler=ref_bundler,
+        supports_fusion=supports_fusion,
         compute_strategy=op.compute,
         on_start=on_start,
     )
