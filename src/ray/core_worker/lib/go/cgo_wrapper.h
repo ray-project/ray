@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H
-#define RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H_
 
 #ifdef __cplusplus
 #include <cstdint>
@@ -21,6 +21,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/util/logging.h"
@@ -308,7 +309,8 @@ struct CgoDeleter {
  * @tparam FreeFunc Pointer to the C function that frees the structure.
  */
 template <typename T, void (*FreeFunc)(T *)>
-using CgoUniquePtr = std::unique_ptr<T, CgoDeleter<T, FreeFunc>>;
+using CgoUniquePtr =
+    std::unique_ptr<T, CgoDeleter<T, FreeFunc>>;  // NOLINT(build/include_what_you_use)
 
 /**
  * @brief Unique pointer for CByteArray with automatic memory management.
@@ -395,7 +397,7 @@ class CgoErrorHandler {
   template <typename Func>
   static int ExecuteInt(const char *func_name, Func &&func) {
     try {
-      return std::forward<Func>(func)();
+      return std::forward<Func>(func)();  // NOLINT(build/include_what_you_use)
     } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "CGO Error: " << func_name << " failed: " << e.what();
       return -1;
@@ -558,7 +560,8 @@ class CgoTypeConverter {
    * CNativeCommon_FreeCStringArray()), or nullptr if allocation fails or strings is
    * empty.
    */
-  static const char **ToCStringArray(const std::vector<std::string> &strings) {
+  static const char **ToCStringArray(
+      const std::vector<std::string> &strings) {  // NOLINT(build/include_what_you_use)
     if (strings.empty()) {
       return nullptr;
     }
@@ -592,4 +595,4 @@ class CgoTypeConverter {
 
 #endif  // __cplusplus
 
-#endif  // RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_CGO_WRAPPER_H_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H
-#define RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H_
 
 /**
  * @file go_heap_buffer.h
@@ -146,4 +146,4 @@ std::shared_ptr<GoHeapBuffer> AllocateGoHeapBuffer(const char *object_id_data,
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_GO_HEAP_BUFFER_H_

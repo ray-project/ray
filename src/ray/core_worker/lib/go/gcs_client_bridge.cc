@@ -14,7 +14,7 @@
 
 // src/ray/core_worker/lib/go/gcs_client_bridge.cc
 // GCS Client CGO bridge - main file: client create/destroy and base methods
-#include "gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
 
 #include <boost/asio/executor_work_guard.hpp>
 #include <cstdlib>
@@ -23,10 +23,11 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
-#include "gcs_client_internal.h"
-#include "gcs_client_utils.h"
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_client_internal.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 #include "ray/util/logging.h"
 #include "ray/util/raii.h"
 

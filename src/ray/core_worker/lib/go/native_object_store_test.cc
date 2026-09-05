@@ -16,11 +16,11 @@
 // This test file verifies basic functionality that can be tested without full
 // Ray infrastructure initialization.
 
-#include "native_object_store.h"
+#include "ray/core_worker/lib/go/native_object_store.h"
 
 #include <cstdlib>
 
-#include "cgo_wrapper.h"  // for CSerializedObjectArray definition
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
 
 // ============================================================================
 // Mock implementation of Go CGO callback functions
@@ -45,7 +45,8 @@ __attribute__((weak)) void *GoAllocateObject(const char *object_id_data,
                                              int data_size,
                                              const char *metadata,
                                              int metadata_size) {
-  GoObjectRefHandle *handle = (GoObjectRefHandle *)malloc(sizeof(GoObjectRefHandle));
+  GoObjectRefHandle *handle =
+      reinterpret_cast<GoObjectRefHandle *>(malloc(sizeof(GoObjectRefHandle)));
   if (handle) {
     handle->data_ptr = nullptr;
     handle->size = 0;
@@ -187,7 +188,7 @@ TEST_F(NativeObjectStoreCGOTest, FreeStringWithNullPointer) {
 TEST_F(NativeObjectStoreCGOTest, FreeStringWithValidPointer) {
   // Test: FreeString with valid pointer
   char *str = static_cast<char *>(malloc(20));
-  strcpy(str, "test_string");
+  memcpy(str, "test_string", sizeof("test_string"));
 
   EXPECT_NO_THROW(CObjectStore_FreeString(str));
 }

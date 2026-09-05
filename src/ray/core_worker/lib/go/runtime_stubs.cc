@@ -26,8 +26,8 @@
  * DO NOT use these stubs in production builds - they will cause runtime failures.
  */
 
-#include "cgo_wrapper.h"
-#include "native_task_executor.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/native_task_executor.h"
 #include "ray/util/logging.h"
 
 // ============================================================================

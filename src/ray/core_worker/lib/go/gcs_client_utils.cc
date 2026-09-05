@@ -14,10 +14,13 @@
 
 // src/ray/core_worker/lib/go/gcs_client_utils.cc
 // CGO bridge helper implementations
-#include "gcs_client_utils.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 // Helper: set an error message
 void set_error(char **error_out, const char *msg) {
@@ -25,7 +28,7 @@ void set_error(char **error_out, const char *msg) {
     size_t len = strlen(msg);
     *error_out = static_cast<char *>(malloc(len + 1));
     if (*error_out) {
-      strcpy(*error_out, msg);
+      snprintf(*error_out, len + 1, "%s", msg);
     }
   }
 }
@@ -104,7 +107,7 @@ bool allocate_string_array(const std::vector<std::string> &data,
       *string_out = nullptr;
       return false;
     }
-    strcpy((*string_out)[i], data[i].c_str());
+    snprintf((*string_out)[i], str_len + 1, "%s", data[i].c_str());
   }
 
   return true;

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H
-#define RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H_
 
 #include <memory>
 #include <stdexcept>
@@ -188,4 +188,4 @@ class CoreWorkerProviderRegistry {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_CORE_WORKER_PROVIDER_H_

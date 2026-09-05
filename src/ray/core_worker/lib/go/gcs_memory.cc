@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // src/ray/core_worker/lib/go/gcs_memory.cc
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 
 #include <cstdlib>
 

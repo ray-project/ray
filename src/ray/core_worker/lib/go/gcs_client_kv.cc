@@ -14,15 +14,16 @@
 
 // src/ray/core_worker/lib/go/gcs_client_kv.cc
 // GCS Client CGO bridge - KV operations
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "gcs_client_bridge.h"
-#include "gcs_client_internal.h"
-#include "gcs_client_utils.h"
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_internal.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 
 extern "C" {
@@ -161,7 +162,7 @@ int ray_gcs_client_kv_multi_get(CGcsClient *client,
       *sizes_out = nullptr;
       return -1;
     }
-    strcpy(key_arr[i], kv.first.c_str());
+    snprintf(key_arr[i], kv.first.size() + 1, "%s", kv.first.c_str());
 
     size_arr[i] = kv.second.size();
     if (size_arr[i] > 0) {

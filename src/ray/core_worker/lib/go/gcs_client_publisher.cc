@@ -14,9 +14,12 @@
 
 // src/ray/core_worker/lib/go/gcs_client_publisher.cc
 // GCS Client CGO bridge - Publisher operations
-#include "gcs_client_bridge.h"
-#include "gcs_client_internal.h"
-#include "gcs_client_utils.h"
+#include <string>
+#include <utility>
+
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_internal.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "src/ray/protobuf/logging.pb.h"
 

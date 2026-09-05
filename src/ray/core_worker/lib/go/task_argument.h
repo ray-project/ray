@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_
-#define RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_
 
 /**
  * @file task_argument.h
@@ -96,4 +96,4 @@ class TaskArgument {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_TASK_ARGUMENT_H_

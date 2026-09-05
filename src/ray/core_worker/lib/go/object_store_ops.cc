@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "object_store_ops.h"
+#include "ray/core_worker/lib/go/object_store_ops.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"

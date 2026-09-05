@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
-#define RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
 
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "object_store_provider.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/object_store_provider.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -180,4 +181,4 @@ class ObjectStoreOperations {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
-#define RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
@@ -111,4 +112,4 @@ class RuntimeOperations {
 
 }  // namespace ray::go
 
-#endif  // RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_OPS_H_

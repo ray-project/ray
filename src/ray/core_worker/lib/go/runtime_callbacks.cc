@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "runtime_callbacks.h"
+#include "ray/core_worker/lib/go/runtime_callbacks.h"
 
 #include <atomic>
 #include <functional>
@@ -22,11 +22,11 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "cgo_wrapper.h"
-#include "native_task_executor.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/native_task_executor.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 

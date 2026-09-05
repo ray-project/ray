@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_
-#define RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_
 
 /**
  * @file task_executor_ops.h
@@ -42,13 +42,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core_worker_provider.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/lib/go/core_worker_provider.h"
+#include "ray/core_worker/lib/go/task_argument.h"
 #include "src/ray/protobuf/common.pb.h"
-#include "task_argument.h"
 
 namespace ray {
 namespace go {
@@ -195,4 +195,4 @@ class TaskExecutorOperations {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_TASK_EXECUTOR_OPS_H_

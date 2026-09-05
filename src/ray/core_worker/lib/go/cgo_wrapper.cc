@@ -14,14 +14,15 @@
 
 // Implementation of CGO wrapper utilities - consolidated from native_common.cc
 
-#include "cgo_wrapper.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "ray/core_worker/lib/go/task_argument.h"
 #include "ray/util/logging.h"
-#include "task_argument.h"  // For TaskArgument class
 
 // ============================================================================
 // CFunctionArg Accessor Functions Implementation
