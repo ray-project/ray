@@ -476,6 +476,13 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
     "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
+# Clip the scale-driving request total's aggregation window to the most recent N s,
+# dropping a stale ramp transient (delays settling). Aggregate-mode only (no-op in the
+# default config); floored at 2x the metric record cadence. Default 12 s; 0 disables.
+RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S = get_env_float_non_negative(
+    "RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S", 12.0
+)
+
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
