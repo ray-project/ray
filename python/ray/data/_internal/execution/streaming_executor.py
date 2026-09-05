@@ -126,6 +126,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
         self._callbacks: List["ExecutionCallback"] = []
+        # Consumption/sink API that triggered this execution, stamped by the
+        # consuming Dataset/DataIterator method for usage collection
+        self._consumption_api = "unknown"
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
