@@ -52,7 +52,7 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles
+      --iter-bundles --min-total-worker-network-receive-gbps 50
 
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
@@ -83,6 +83,7 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles --memory 3650722201
+      --min-total-worker-network-receive-gbps 50
 
 - name: "read_images_fixed_size"
   python: "3.10"
@@ -95,6 +96,7 @@
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+      --min-total-worker-network-receive-gbps 50
 
 - name: read_tfrecords
   python: "3.10"
@@ -118,7 +120,7 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
-      --iter-bundles
+      --iter-bundles --min-total-worker-network-receive-gbps 50
 
 - name: "read_from_uris_fixed_size"
   python: "3.10"
