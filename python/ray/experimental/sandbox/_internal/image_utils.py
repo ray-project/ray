@@ -8,7 +8,6 @@ import re
 import shutil
 import tarfile
 import tempfile
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -363,39 +362,65 @@ def extract_tar_layer(
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 _KEEP_IMAGE_TARBALL_ENV = "RAY_SANDBOX_KEEP_IMAGE_TARBALL"
-_USERS_DIRNAME = ".users"
-# Images extracted more recently than this are never evicted: it covers the
-# window between a pull returning and its sandbox registering as a user.
-_EVICTION_GRACE_SEC = 600
+# Subdirectory of each cached image holding one marker file per live sandbox.
+_USERS_SUBDIR = ".users"
 
 
-def mark_image_in_use(image_dir: str, instance_id: str) -> None:
-    """Record that a live sandbox uses this cached image (blocks eviction).
+def image_cache_max_bytes(images_dir: str) -> int:
+    """Return the image cache size cap in bytes, or 0 for no cap.
+
+    ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES`` sets the cap explicitly; ``0``
+    disables eviction. Unset, the cap defaults to half of the filesystem
+    that holds ``images_dir``.
 
     Args:
-        image_dir: The image's cache directory.
-        instance_id: The sandbox instance using it.
+        images_dir: Root image cache directory.
+
+    Returns:
+        The cap in bytes; 0 disables eviction.
     """
+    raw = os.environ.get(_IMAGE_CACHE_MAX_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MAX_BYTES_ENV,
+                raw,
+            )
     try:
-        users_dir = os.path.join(image_dir, _USERS_DIRNAME)
-        os.makedirs(users_dir, exist_ok=True)
-        with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
-            pass
+        return shutil.disk_usage(images_dir).total // 2
+    except OSError:
+        return 0
+
+
+def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
+    """Record ``instance_id`` as a live user of the cached image.
+
+    Called by ``pull_and_extract_container_image`` while it holds the
+    image's lock, so eviction (which re-checks users under the same lock)
+    can never remove an image between its pull and its first use.
+    """
+    users_dir = os.path.join(image_dir, _USERS_SUBDIR)
+    os.makedirs(users_dir, exist_ok=True)
+    with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
+        pass
+
+
+def _release_image_use(image_dir: str, instance_id: str) -> None:
+    """Drop ``instance_id``'s in-use record; a no-op if it was never marked."""
+    try:
+        os.remove(os.path.join(image_dir, _USERS_SUBDIR, instance_id))
     except OSError:
         pass
 
 
-def release_image_use(image_dir: str, instance_id: str) -> None:
-    """Drop a sandbox's in-use record for a cached image.
-
-    Args:
-        image_dir: The image's cache directory.
-        instance_id: The sandbox instance releasing it.
-    """
+def _has_users(image_dir: str) -> bool:
     try:
-        os.remove(os.path.join(image_dir, _USERS_DIRNAME, instance_id))
+        return bool(os.listdir(os.path.join(image_dir, _USERS_SUBDIR)))
     except OSError:
-        pass
+        return False
 
 
 def _dir_size_bytes(path: str) -> int:
@@ -409,75 +434,96 @@ def _dir_size_bytes(path: str) -> int:
     return total
 
 
-def evict_images_over_cap(images_dir: str, max_bytes: int) -> None:
-    """Evict least-recently-extracted images until the cache fits the cap.
+def _file_size_bytes(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
 
-    Sandbox images are large (a rootfs per image), nodes cache every image
-    they ever ran, and nothing else reclaims the space — a long-lived node
-    eventually fills its disk, which takes down far more than sandboxes.
-    Called before each new pull when ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES``
-    is set.
 
-    Safety: only images with an ``.extracted`` marker, no live users
-    (``mark_image_in_use``), and whose per-image lock can be taken without
-    blocking are candidates; candidates are removed oldest-first.
+def evict_least_recently_used_images(
+    images_dir: str, max_bytes: int, keep: Optional[str] = None
+) -> None:
+    """Evict least-recently-extracted images until the cache fits ``max_bytes``.
+
+    Nodes cache every image they ever ran, so without a cap a long-lived
+    node eventually fills its disk. Candidates are fully extracted images
+    (``.extracted`` marker present) and orphan ``<name>.tar`` archives,
+    oldest first. An image is skipped when a live sandbox uses it, when its
+    per-image lock is held (a pull in progress), or when it is ``keep``. The
+    in-use check is repeated under the lock, which is also where pulls
+    register their users, so a marked image is never removed.
 
     Args:
         images_dir: Root image cache directory.
         max_bytes: The cache size cap in bytes.
+        keep: Sanitized name of an image that must survive this pass.
     """
     try:
         names = os.listdir(images_dir)
     except OSError:
         return
-    now = time.time()
-    entries = []
+    entries = []  # (mtime, name, image_dir or None, tar_path, size)
     for name in names:
-        img_dir = os.path.join(images_dir, name)
-        marker = os.path.join(img_dir, ".extracted")
+        path = os.path.join(images_dir, name)
+        if name.endswith(".tar") and os.path.isfile(path):
+            stem = name[: -len(".tar")]
+            if not os.path.isdir(os.path.join(images_dir, stem)):
+                # Orphan archive from the pre-opt-in default.
+                try:
+                    entries.append(
+                        (
+                            os.path.getmtime(path),
+                            stem,
+                            None,
+                            path,
+                            _file_size_bytes(path),
+                        )
+                    )
+                except OSError:
+                    pass
+            continue
+        marker = os.path.join(path, ".extracted")
         try:
-            if not (os.path.isdir(img_dir) and os.path.exists(marker)):
+            if not (os.path.isdir(path) and os.path.exists(marker)):
                 continue
-            marker_mtime = os.path.getmtime(marker)
+            mtime = os.path.getmtime(marker)
         except OSError:
-            # Concurrently deleted: skip it, keep evicting the rest.
-            continue
-        if now - marker_mtime < _EVICTION_GRACE_SEC:
-            # Freshly extracted: the puller may not have registered its
-            # sandbox as a user yet.
-            continue
-        entries.append((marker_mtime, name, img_dir))
+            continue  # Concurrently deleted; keep going.
+        tar_path = os.path.join(images_dir, f"{name}.tar")
+        size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
+        entries.append((mtime, name, path, tar_path, size))
 
-    total = sum(_dir_size_bytes(img_dir) for _, _, img_dir in entries)
-    for _, name, img_dir in sorted(entries):
+    total = sum(entry[-1] for entry in entries)
+    for _, name, img_dir, tar_path, size in sorted(entries):
         if total <= max_bytes:
             return
-        users_dir = os.path.join(img_dir, _USERS_DIRNAME)
-        try:
-            if os.path.isdir(users_dir) and os.listdir(users_dir):
-                continue
-        except OSError:
+        if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
         lock_path = os.path.join(images_dir, f"{name}.lock")
         try:
             with open(lock_path, "w", encoding="utf-8") as f_lock:
                 fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                size = _dir_size_bytes(img_dir)
-                shutil.rmtree(img_dir, ignore_errors=True)
-                tar_path = os.path.join(images_dir, f"{name}.tar")
-                if os.path.exists(tar_path):
-                    size += os.path.getsize(tar_path)
+                # A pull may have registered a user since the scan.
+                if img_dir is not None and _has_users(img_dir):
+                    continue
+                if img_dir is not None:
+                    shutil.rmtree(img_dir, ignore_errors=True)
+                try:
                     os.remove(tar_path)
-                total -= size
-                logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+                except OSError:
+                    pass
         except OSError:
-            continue
+            continue  # Locked by an in-progress pull; try the next one.
+        total -= size
+        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
     timeout_seconds: float = 120.0,
+    instance_id: Optional[str] = None,
 ) -> str:
     """Pull container image via Registry v2 HTTP API and extract rootfs into local directory.
 
@@ -485,6 +531,9 @@ def pull_and_extract_container_image(
         image: Container image name (e.g. 'python:3.10-slim') or path to local tar archive.
         images_dir: Root directory for caching container images.
         timeout_seconds: Network request timeout.
+        instance_id: When given, the sandbox instance is registered as a
+            user of the image under the image lock, so cache eviction
+            leaves the image alone until the instance releases it.
 
     Returns:
         Absolute directory path containing the extracted container filesystem.
@@ -496,13 +545,18 @@ def pull_and_extract_container_image(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
-    max_cache = int(os.environ.get(_IMAGE_CACHE_MAX_BYTES_ENV, "0") or "0")
-    if max_cache > 0:
-        evict_images_over_cap(images_dir, max_cache)
-
     safe_name = sanitize_image_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
+
+    max_cache = image_cache_max_bytes(images_dir)
+    if max_cache > 0:
+        evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+
+    def _finish() -> str:
+        if instance_id is not None:
+            _mark_image_in_use(target_dir, instance_id)
+        return target_dir
 
     with open(lock_path, "w", encoding="utf-8") as f_lock:
         try:
@@ -511,9 +565,9 @@ def pull_and_extract_container_image(
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
                 if os.path.isfile(image):
                     if os.path.getmtime(marker_path) >= os.path.getmtime(image):
-                        return target_dir
+                        return _finish()
                 else:
-                    return target_dir
+                    return _finish()
 
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
@@ -678,7 +732,7 @@ def pull_and_extract_container_image(
                 shutil.rmtree(target_dir, ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
 
-            return target_dir
+            return _finish()
         finally:
             try:
                 fcntl.flock(f_lock, fcntl.LOCK_UN)

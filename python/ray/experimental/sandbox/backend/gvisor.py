@@ -7,10 +7,6 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
-from ray.experimental.sandbox._internal.image_utils import (
-    mark_image_in_use,
-    release_image_use,
-)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -58,13 +54,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
-            self._image_manager.pull_image(
-                config.image, timeout_seconds=config.timeout_seconds
-            )
-            # Protect the cached image from eviction while this sandbox
+            # The instance id pins the image in the cache while this sandbox
             # lives (its extracted rootfs is the overlay lower layer).
-            mark_image_in_use(
-                self._image_manager.get_image_dir(config.image), sandbox_id
+            self._image_manager.pull_image(
+                config.image,
+                timeout_seconds=config.timeout_seconds,
+                instance_id=sandbox_id,
             )
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
@@ -90,10 +85,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
-            # No-op when the marker was never written.
-            release_image_use(
-                self._image_manager.get_image_dir(config.image), sandbox_id
-            )
+            self._image_manager.release_image(config.image, sandbox_id)
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
@@ -115,9 +107,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
             )
         except Exception:
-            release_image_use(
-                self._image_manager.get_image_dir(config.image), sandbox_id
-            )
+            self._image_manager.release_image(config.image, sandbox_id)
             raise
         run_args = self._runsc_base_args(config)
         if config.network:
@@ -187,10 +177,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             subprocess.run(del_args, capture_output=True)
             shutil.rmtree(root_dir, ignore_errors=True)
             # The sandbox never registered, so delete_sandbox will not run
-            # for it: drop the in-use marker here to keep the image evictable.
-            release_image_use(
-                self._image_manager.get_image_dir(config.image), sandbox_id
-            )
+            # for it: release the image here to keep it evictable.
+            self._image_manager.release_image(config.image, sandbox_id)
             raise
 
         self._sandbox_metadata[sandbox_id] = {
@@ -210,9 +198,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if meta:
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
-            release_image_use(
-                self._image_manager.get_image_dir(config.image), sandbox_id
-            )
             proc = meta.get("proc")
             stderr_file = meta.get("stderr_file")
 
@@ -241,6 +226,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             subprocess.run(del_args, capture_output=True)
 
             shutil.rmtree(root_dir, ignore_errors=True)
+            # Only now is the overlay's lower layer unused.
+            self._image_manager.release_image(config.image, sandbox_id)
 
     def exec_command(
         self,

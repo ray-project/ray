@@ -207,6 +207,66 @@ def test_pull_and_extract_local_tar(tmp_path):
     )
 
 
+def _write_sample_tar(path):
+    with tarfile.open(str(path), "w") as tar:
+        data = b"hello"
+        ti = tarfile.TarInfo("hello.txt")
+        ti.size = len(data)
+        tar.addfile(ti, io.BytesIO(data))
+
+
+def test_pull_pins_image_until_release(tmp_path, monkeypatch):
+    """A pull with an instance id survives eviction until the id is released."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        _release_image_use,
+        evict_least_recently_used_images,
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+
+    extracted_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-1"
+    )
+    assert os.path.exists(os.path.join(extracted_dir, ".users", "sb-1"))
+    # A cache hit re-pins for another instance.
+    pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-2"
+    )
+    assert os.path.exists(os.path.join(extracted_dir, ".users", "sb-2"))
+
+    evict_least_recently_used_images(str(images_dir), max_bytes=0)
+    assert os.path.exists(extracted_dir)
+
+    _release_image_use(extracted_dir, "sb-1")
+    _release_image_use(extracted_dir, "sb-2")
+    evict_least_recently_used_images(str(images_dir), max_bytes=0)
+    assert not os.path.exists(extracted_dir)
+
+
+def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch, caplog):
+    import shutil
+
+    from ray.experimental.sandbox._internal.image_utils import image_cache_max_bytes
+
+    monkeypatch.delenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", raising=False)
+    half_disk = shutil.disk_usage(str(tmp_path)).total // 2
+    assert image_cache_max_bytes(str(tmp_path)) == half_disk
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "12345")
+    assert image_cache_max_bytes(str(tmp_path)) == 12345
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    assert image_cache_max_bytes(str(tmp_path)) == 0
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "10G")
+    with caplog.at_level("WARNING"):
+        assert image_cache_max_bytes(str(tmp_path)) == half_disk
+    assert "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES" in caplog.text
+
+
 def test_pull_and_extract_remote_image(tmp_path, monkeypatch):
     images_dir = tmp_path / "images"
     monkeypatch.delenv("RAY_SANDBOX_KEEP_IMAGE_TARBALL", raising=False)
