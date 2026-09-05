@@ -20,7 +20,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     reorder_columns_by_schema,
 )
 from ray.data._internal.datasource.lance_utils import (
-    create_storage_options_provider,
+    get_lance_namespace_kwargs,
     get_or_create_namespace,
 )
 from ray.data._internal.savemode import SaveMode
@@ -189,12 +189,6 @@ def _write_fragment(
         DEFAULT_MAX_BYTES_PER_FILE if max_bytes_per_file is None else max_bytes_per_file
     )
 
-    storage_options_provider = create_storage_options_provider(
-        namespace_impl,
-        namespace_properties,
-        table_id,
-    )
-
     def _write_once():
         reader = pa.RecordBatchReader.from_batches(
             schema, record_batch_converter(stream_factory())
@@ -208,7 +202,12 @@ def _write_fragment(
             max_bytes_per_file=max_bytes_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
-            storage_options_provider=storage_options_provider,
+            **get_lance_namespace_kwargs(
+                write_fragments,
+                namespace_impl,
+                namespace_properties,
+                table_id,
+            ),
         )
 
     fragments = call_with_retry(_write_once, **retry_params)
@@ -269,7 +268,6 @@ class _BaseLanceDatasink(Datasink):
             self.uri = uri
             if ns_storage_options:
                 merged_storage_options.update(ns_storage_options)
-            self._has_namespace_storage_options = True
         else:
             self.table_id = None
             if uri is None:
@@ -277,24 +275,12 @@ class _BaseLanceDatasink(Datasink):
                     "Must provide either 'uri' or ('namespace_impl' and 'table_id')."
                 )
             self.uri = uri
-            self._has_namespace_storage_options = False
 
         self.schema = schema
         self.mode = mode
 
         self.read_version: Optional[int] = None
         self.storage_options = merged_storage_options
-
-    @property
-    def storage_options_provider(self):
-        """Lazily create storage options provider using namespace_impl/properties."""
-        if not self._has_namespace_storage_options:
-            return None
-        return create_storage_options_provider(
-            self._namespace_impl,
-            self._namespace_properties,
-            self.table_id,
-        )
 
     @property
     def supports_distributed_writes(self) -> bool:
@@ -304,15 +290,20 @@ class _BaseLanceDatasink(Datasink):
         """Open the Lance dataset at ``self.uri``.
 
         Raises whatever Lance raises if the dataset can't be opened (missing,
-        bad ``storage_options``, etc.). Opening natively honors
-        ``storage_options``/``storage_options_provider``.
+        bad ``storage_options``, etc.). Opening natively honors storage and
+        namespace options.
         """
         import lance
 
         return lance.LanceDataset(
             self.uri,
             storage_options=self.storage_options,
-            storage_options_provider=self.storage_options_provider,
+            **get_lance_namespace_kwargs(
+                lance.LanceDataset,
+                self._namespace_impl,
+                self._namespace_properties,
+                self.table_id,
+            ),
         )
 
     def _dataset_exists(self) -> bool:
@@ -403,7 +394,12 @@ class _BaseLanceDatasink(Datasink):
             op,
             read_version=self.read_version,
             storage_options=self.storage_options,
-            storage_options_provider=self.storage_options_provider,
+            **get_lance_namespace_kwargs(
+                lance.LanceDataset.commit,
+                self._namespace_impl,
+                self._namespace_properties,
+                self.table_id,
+            ),
         )
 
 
