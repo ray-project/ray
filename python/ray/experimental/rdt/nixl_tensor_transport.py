@@ -1,3 +1,4 @@
+import collections
 import functools
 import glob
 import logging
@@ -157,6 +158,9 @@ class NixlTensorTransport(TensorTransportManager):
         # LRU cache of remote agent names. When full, the least
         # recently used remote agent is evicted and remove_remote_agent is called.
         self._remote_agents: OrderedDict = OrderedDict()
+        # Tracks active in-flight transfers per remote agent to prevent tearing down agent connections mid-transfer (#65905).
+        self._inflight_transfers: Dict[str, int] = collections.defaultdict(int)
+        self._inflight_lock = threading.Lock()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -425,20 +429,29 @@ class NixlTensorTransport(TensorTransportManager):
             )
 
             # Nixl agent reuse is enabled.
-            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-                if remote_name in self._remote_agents:
-                    # If the remote agent metadata version is different from the cached one,
-                    # it means there was memory deregistered. We need to remove the remote agent
-                    # before adding it, because `nixlRemoteSection` currently does not support
-                    # updating descriptor list in such a case (there is potential memory overlap).
-                    if remote_agent_meta_version != self._remote_agents[remote_name]:
-                        nixl_agent.remove_remote_agent(remote_name)
-                    self._remote_agents.move_to_end(remote_name)
-                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
-                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
-                    nixl_agent.remove_remote_agent(evicted_agent_name)
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0 and remote_name:
+                with self._inflight_lock:
+                    if remote_name in self._remote_agents:
+                        # If the remote agent metadata version is different from the cached one,
+                        # it means there was memory deregistered. We need to remove the remote agent
+                        # before adding it, but ONLY if no active transfers are in-flight.
+                        if (
+                            remote_agent_meta_version
+                            != self._remote_agents[remote_name]
+                        ):
+                            if self._inflight_transfers[remote_name] == 0:
+                                nixl_agent.remove_remote_agent(remote_name)
+                        self._remote_agents.move_to_end(remote_name)
+                    elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                        evicted_agent_name, _ = self._remote_agents.popitem(
+                            last=False
+                        )
+                        if self._inflight_transfers[evicted_agent_name] == 0:
+                            nixl_agent.remove_remote_agent(evicted_agent_name)
 
-                self._remote_agents[remote_name] = remote_agent_meta_version
+                    self._remote_agents[remote_name] = remote_agent_meta_version
+                    # Increment in-flight transfer counter for this remote agent
+                    self._inflight_transfers[remote_name] += 1
 
             nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
@@ -554,6 +567,12 @@ class NixlTensorTransport(TensorTransportManager):
             self._aborted_transfer_obj_ids.discard(obj_id)
         if xfer_handle:
             nixl_agent.release_xfer_handle(xfer_handle)
+
+        if remote_name:
+            with self._inflight_lock:
+                if self._inflight_transfers[remote_name] > 0:
+                    self._inflight_transfers[remote_name] -= 1
+
         if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
             nixl_agent.remove_remote_agent(remote_name)
         if remove_tensor_descs:
