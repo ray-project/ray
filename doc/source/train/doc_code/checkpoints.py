@@ -249,12 +249,13 @@ class CustomRayTrainReportCallback(Callback):
 
             checkpoint = None
             global_rank = ray.train.get_context().get_world_rank() == 0
-            if global_rank == 0 and should_checkpoint:
+            if should_checkpoint:
                 # Save model checkpoint file to tmpdir
                 ckpt_path = os.path.join(tmpdir, "ckpt.pt")
                 trainer.save_checkpoint(ckpt_path, weights_only=False)
 
-                checkpoint = Checkpoint.from_directory(tmpdir)
+                if global_rank:
+                    checkpoint = Checkpoint.from_directory(tmpdir)
 
             # Report to train session
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
