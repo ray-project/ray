@@ -253,7 +253,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
-      if (node.GetLocalView().total != node.GetLocalView().GetAvailable()) {
+      if (!(node.GetLocalView().GetAvailableInstances() ==
+            NodeResourceInstanceSet(node.GetLocalView().total))) {
         return false;
       }
     }
@@ -302,16 +303,19 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                double available_cpu,
                                double total_cpu) {
     rpc::syncer::ResourceViewSyncMessage msg;
-    (*msg.mutable_resources_available())["CPU"] = available_cpu;
+    rpc::syncer::ResourceInstances cpu_inst;
+    cpu_inst.add_values(available_cpu);
+    (*msg.mutable_resources_available_instances())["CPU"] = cpu_inst;
     (*msg.mutable_resources_total())["CPU"] = total_cpu;
     gcs_resource_manager_->UpdateFromResourceView(node_id, msg);
   }
 
   double GcsAvailableCpu(const NodeID &node_id) {
-    return cluster_resource_scheduler_->GetClusterResourceManager()
-        .GetNodeResources(scheduling::NodeID(node_id.Binary()))
-        .GetAvailableSum(scheduling::ResourceID::CPU())
-        .Double();
+    auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
+                         .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                         .GetAvailableResourceMap();
+    auto it = resources.find("CPU");
+    return it != resources.end() ? it->second : 0.0;
   }
 
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,

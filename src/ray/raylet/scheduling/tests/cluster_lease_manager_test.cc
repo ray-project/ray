@@ -2397,8 +2397,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
   // ray.get() returns and worker1 acquires the CPU resource again
   ASSERT_TRUE(local_lease_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
   ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), 0);
-  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")),
-            -1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), -1);
   ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_1_aaa")), 1);
 
   auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678, clock_);
@@ -2407,8 +2406,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
       {{"CPU_group_aaa", 1.}, {"CPU_group_1_aaa", 1.}}, allocated_instances));
   worker3->SetAllocatedInstances(allocated_instances);
   ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_aaa")), -1);
-  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")),
-            -1);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_0_aaa")), -1);
   ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU_group_1_aaa")), 0);
 }
 

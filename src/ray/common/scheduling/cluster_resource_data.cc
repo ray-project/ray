@@ -68,7 +68,7 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
     if (cur_total == 0) {
       continue;
     }
-    auto cur_available = this->available.Get(ResourceID(i)).Double();
+    auto cur_available = this->available.Sum(ResourceID(i)).Double();
     float utilization = 1 - (cur_available / cur_total.Double());
     if (utilization > highest) {
       highest = utilization;
@@ -90,7 +90,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  return this->available >= resource_request.GetResourceSet();
+  return this->available.CanAllocate(resource_request.GetResourceSet());
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
@@ -168,32 +168,81 @@ std::string NodeResources::DebugString() const {
 std::string NodeResources::DictString() const { return DebugString(); }
 
 FixedPoint NodeResources::GetAvailableSum(scheduling::ResourceID resource_id) const {
-  return available.Get(resource_id);
+  return available.Sum(resource_id);
 }
 
 std::set<scheduling::ResourceID> NodeResources::GetAvailableResourceIds() const {
-  return available.ExplicitResourceIds();
+  std::set<scheduling::ResourceID> ids;
+  for (const auto &[id, _] : available.Resources()) {
+    ids.insert(id);
+  }
+  return ids;
 }
 
 void NodeResources::SubtractAvailableAndRemoveNegative(const ResourceSet &resource_set) {
-  available -= resource_set;
-  available.RemoveNegative();
+  for (const auto &[resource_id, demand] : resource_set.Resources()) {
+    if (available.Has(resource_id)) {
+      if (available.Sum(resource_id) <= demand) {
+        available.Remove(resource_id);
+      } else {
+        available.Subtract(resource_id, {demand}, /*allow_going_negative=*/false);
+      }
+    }
+  }
 }
 
 void NodeResources::SetAvailableResource(scheduling::ResourceID resource_id,
                                          FixedPoint value) {
-  available.Set(resource_id, value);
+  available.Set(resource_id, {value});
+}
+
+void NodeResources::SetAvailableInstances(scheduling::ResourceID resource_id,
+                                          std::vector<FixedPoint> instances) {
+  available.Set(resource_id, std::move(instances));
+}
+
+void NodeResources::AddAvailableInstances(scheduling::ResourceID resource_id,
+                                          const std::vector<FixedPoint> &instances) {
+  available.Add(resource_id, instances);
+}
+
+void NodeResources::RemoveAvailableResource(scheduling::ResourceID resource_id) {
+  available.Remove(resource_id);
+}
+
+bool NodeResources::HasAvailableResource(scheduling::ResourceID resource_id) const {
+  return available.Has(resource_id);
+}
+
+std::optional<std::vector<FixedPoint>> NodeResources::TryAllocateAvailable(
+    scheduling::ResourceID resource_id, FixedPoint demand) {
+  return available.TryAllocate(resource_id, demand);
+}
+
+void NodeResources::FreeAvailableInstances(scheduling::ResourceID resource_id,
+                                           const std::vector<FixedPoint> &instances) {
+  available.Free(resource_id, instances);
 }
 
 void NodeResources::SetAvailable(NodeResourceSet resource_set) {
-  available = std::move(resource_set);
+  available = NodeResourceInstanceSet(resource_set);
+}
+
+void NodeResources::SetAvailable(NodeResourceInstanceSet instances) {
+  available = std::move(instances);
 }
 
 absl::flat_hash_map<std::string, double> NodeResources::GetAvailableResourceMap() const {
-  return available.GetResourceMap();
+  return available.ToNodeResourceSet().GetResourceMap();
 }
 
-const NodeResourceSet &NodeResources::GetAvailable() const { return available; }
+NodeResourceSet NodeResources::GetAvailable() const {
+  return available.ToNodeResourceSet();
+}
+
+const NodeResourceInstanceSet &NodeResources::GetAvailableInstances() const {
+  return available;
+}
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
   return this->total == other.total && this->available == other.available;

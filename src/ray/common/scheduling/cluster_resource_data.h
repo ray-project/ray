@@ -341,11 +341,9 @@ class NodeResources {
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsAvailable(const ResourceRequest &resource_request,
                    bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   // Returns true if the node's labels satisfy the label selector requirement.
   bool HasRequiredLabels(const LabelSelector &label_selector) const;
@@ -364,23 +362,51 @@ class NodeResources {
   /// Get the set of resource IDs that have explicit available entries.
   std::set<scheduling::ResourceID> GetAvailableResourceIds() const;
 
-  /// Subtract resources from available, dropping any entry that goes negative.
+  /// Subtract resources from available, dropping any entry that goes to zero or below.
   void SubtractAvailableAndRemoveNegative(const ResourceSet &resource_set);
 
   /// Set a single resource's available to an explicit scalar value.
   void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
 
+  /// Set a single resource's available to explicit per-instance values.
+  void SetAvailableInstances(scheduling::ResourceID resource_id,
+                             std::vector<FixedPoint> instances);
+
+  /// Add per-instance values for a resource to available.
+  void AddAvailableInstances(scheduling::ResourceID resource_id,
+                             const std::vector<FixedPoint> &instances);
+
+  /// Remove a resource from available entirely.
+  void RemoveAvailableResource(scheduling::ResourceID resource_id);
+
+  /// Check whether a resource has an explicit entry in available.
+  bool HasAvailableResource(scheduling::ResourceID resource_id) const;
+
+  /// Try to allocate the given demand from a single resource's available instances.
+  std::optional<std::vector<FixedPoint>> TryAllocateAvailable(
+      scheduling::ResourceID resource_id, FixedPoint demand);
+
+  /// Return per-instance capacity back to available.
+  void FreeAvailableInstances(scheduling::ResourceID resource_id,
+                              const std::vector<FixedPoint> &instances);
+
   /// Replace the entire available field from a NodeResourceSet.
   void SetAvailable(NodeResourceSet resource_set);
+
+  /// Replace the entire available field from a NodeResourceInstanceSet.
+  void SetAvailable(NodeResourceInstanceSet instances);
 
   /// Return available resources as a name->value map.
   absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
 
-  /// Read-only access to the entire available resource set.
-  const NodeResourceSet &GetAvailable() const;
+  /// Return available resources as a NodeResourceSet (sum of per-instance values).
+  NodeResourceSet GetAvailable() const;
+
+  /// Read-only access to the per-instance available set.
+  const NodeResourceInstanceSet &GetAvailableInstances() const;
 
  private:
-  NodeResourceSet available;
+  NodeResourceInstanceSet available;
 };
 
 /// Total and available capacities of each resource instance.

@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
 
@@ -29,8 +30,7 @@ NodeResources CreateNodeResources(double available_cpu,
   NodeResources resources;
   resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
   resources.total.Set(ResourceID::CPU(), total_cpu);
-  resources.SetAvailableResource(scheduling::ResourceID("CUSTOM"),
-                                 available_custom_resource);
+  resources.SetAvailableResource(scheduling::ResourceID("CUSTOM"), available_custom_resource);
   resources.total.Set(scheduling::ResourceID("CUSTOM"), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;
   return resources;
@@ -67,7 +67,9 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
   // Prepare a sync message with updated totals/available, labels and flags.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 5.0});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(5.0);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
   payload.mutable_labels()->insert({"zone", "us-east-1a"});
   payload.set_object_pulls_queued(true);
   payload.set_idle_duration_ms(42);
@@ -118,10 +120,13 @@ TEST_F(ClusterResourceManagerTest, HasFeasibleResourcesTest) {
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false)));
-  manager->SubtractNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(
+      manager
+          ->SubtractNodeAvailableResources(
+              node0,
+              ResourceMapToResourceRequest({{"CPU", 1}},
+                                           /*requires_object_store_memory=*/false))
+          .has_value());
   // node0 has no available CPU resource but it's still feasible.
   ASSERT_TRUE(manager->HasFeasibleResources(
       node0,
@@ -168,23 +173,21 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 
-  manager->SubtractNodeAvailableResources(
+  auto allocation = manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
-  // Subtract again and make sure the available == 0.
-  manager->SubtractNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(allocation.has_value());
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
 
-  // Add resources back.
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
-  // Add again and make sure the available == 1 (<= total).
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
+  auto allocation2 = manager->SubtractNodeAvailableResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 1}},
+                                   /*requires_object_store_memory=*/false));
+  ASSERT_FALSE(allocation2.has_value());
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
+
+  manager->AddNodeAvailableResources(node0, allocation.value());
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 }
 
