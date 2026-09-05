@@ -3,13 +3,15 @@ import json
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray._common import cdi_lib
 from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
     BaseImageManager,
     ImageManager,
@@ -159,6 +161,84 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def test_create_oci_spec_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids with no generatable CDI spec for this node must fail loudly
+    with actionable guidance, not proceed silently."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "gate_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=None,
+    ):
+        with pytest.raises(SandboxCreationError, match="nvidia-ctk"):
+            mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
+
+
+def test_create_oci_spec_injects_cdi_devices_for_any_kind(tmp_path):
+    """create_oci_spec's CDI injection is generic across vendors — whether a
+    given kind is one a specific backend (e.g. gVisor/runsc) actually
+    supports is that backend's own concern (see
+    GVisorSandboxBackend._check_gpu_cdi_kind_supported), not this
+    backend-agnostic OCI-spec builder's."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_inject_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [{"name": "0", "containerEdits": {}}],
+        },
+    )
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        spec = mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
+        assert spec is not None
+
+
+def test_create_oci_spec_translates_cdi_error(tmp_path):
+    """cdi_lib.CDIError (e.g. a requested gpu_ids entry with no matching
+    CDI device) must surface as SandboxCreationError, not leak the
+    sandbox-agnostic CDIError past this module's translation boundary."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_error_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    # A spec with no devices at all: selecting id "0" has no match.
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        with pytest.raises(
+            SandboxCreationError, match="Failed to configure GPU access via CDI"
+        ):
+            mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):

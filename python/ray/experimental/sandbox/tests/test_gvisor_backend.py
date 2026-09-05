@@ -1,9 +1,11 @@
 import os
 import sys
+from unittest.mock import patch
 
 import pytest
 
 import ray
+from ray._common import cdi_lib
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
 from ray.experimental.sandbox.backend.base import SandboxStatus
@@ -63,6 +65,59 @@ def test_create_sandbox_helper():
     assert "Process isolation" in res.stdout
     assert res.duration_ms >= 0
     ray.get(sb.terminate.remote())
+
+
+def test_create_threads_num_gpus_into_actor_options():
+    """create()'s num_gpus must reach Sandbox.options() (Ray's own actor
+    scheduling), the same way cpu/memory already do -- otherwise a
+    caller's GPU request is silently dropped end-to-end: never seen by
+    Ray's scheduler, and Sandbox.__init__'s own gpu_ids auto-inherit
+    (ray.get_gpu_ids()) then just finds nothing, with no error telling
+    the caller why."""
+    captured_options = {}
+
+    class _FakeSandboxHandle:
+        def remote(self, *args, **kwargs):
+            return "sandbox-actor-handle"
+
+    def fake_options(**kwargs):
+        captured_options.update(kwargs)
+        return _FakeSandboxHandle()
+
+    with patch("ray.experimental.sandbox.Sandbox.options", side_effect=fake_options):
+        create("busybox:latest", num_gpus=2)
+
+    assert captured_options.get("num_gpus") == 2
+
+
+def test_create_num_gpus_reaches_real_ray_scheduling():
+    """Unlike the mocked test above, this spawns a real actor against a
+    fake-GPU cluster (ray.init(num_gpus=1) is a logical count, no real
+    GPU needed) to prove num_gpus reaches Ray's actual scheduler rather
+    than being silently dropped. Can't mock CDI here like the tests above
+    do -- create() spawns a separate worker process, and mock.patch only
+    patches this one -- so whether CDI resolution itself then succeeds
+    depends on the test machine (real GPU + nvidia-ctk, or neither).
+    Either way is accepted as proof gpu_ids reached Sandbox.__init__: a
+    resolved gpu_ids on success, or the same CDI-lookup failure as
+    test_gvisor_backend_gpu_ids_without_cdi_spec_raises. Only a silent
+    drop -- no error and no gpu_ids -- would indicate the bug this test
+    guards against."""
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_gpus=1)
+
+    try:
+        try:
+            actor = create("busybox:latest", num_gpus=1)
+            config = ray.get(actor.get_config.remote())
+            assert config.gpu_ids is not None
+            ray.get(actor.delete.remote())
+            ray.kill(actor)
+        except ray.exceptions.ActorDiedError as e:
+            assert "CDI" in str(e)
+    finally:
+        ray.shutdown()
 
 
 def test_gvisor_backend_container_image_support():
@@ -221,6 +276,68 @@ def test_gvisor_backend_ignore_cgroups_flag():
     finally:
         if orig_env is not None:
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
+
+
+def _gpu_sandbox_config():
+    # Represents a sandbox built inside an actor Ray assigned GPU "0" to --
+    # mocked so this doesn't depend on the test machine actually having a
+    # GPU (ambient absence/presence is fragile; see the module-level note
+    # on get_spec mocking below).
+    with patch("ray.get_gpu_ids", return_value=["0"]):
+        return GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", gpu_ids=["0"]
+        )
+
+
+def test_gvisor_backend_nvproxy_flag():
+    backend = GVisorSandboxBackend()
+    cfg_no_gpu = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    assert "--nvproxy" not in backend._runsc_base_args(cfg_no_gpu)
+
+    with patch(
+        "ray._common.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
+    ):
+        assert "--nvproxy" in backend._runsc_base_args(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_cdi_flags_are_kind_driven_not_hardcoded():
+    """The runsc flag selection isn't a blanket 'gpu_ids set -> --nvproxy':
+    it looks up the resolved CDI kind generically (see
+    gvisor._CDI_KIND_RUNSC_FLAGS), so a kind with no known runsc flag
+    requirement gets none, not --nvproxy by default."""
+    backend = GVisorSandboxBackend()
+    with patch(
+        "ray._common.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("acme.com/widget", {"devices": []}),
+    ):
+        assert "--nvproxy" not in backend._runsc_base_args(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_rejects_unsupported_gpu_cdi_kind():
+    """gpu_ids resolved to a CDI kind gVisor GPU passthrough has no known
+    runsc flag for (e.g. a hypothetical AMD device) must fail before any
+    sandbox state is created, rather than attempting unverified
+    passthrough."""
+    backend = GVisorSandboxBackend()
+    with patch(
+        "ray._common.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("amd.com/gpu", {"devices": []}),
+    ):
+        with pytest.raises(SandboxCreationError, match="amd.com/gpu"):
+            backend.create_sandbox(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_gpu_ids_without_cdi_spec_raises():
+    """When no CDI spec for this node's GPUs can be generated, a sandbox
+    requesting gpu_ids must fail loudly with a clear error. Mocks
+    get_spec directly rather than relying on the test machine happening
+    to have no nvidia-ctk on PATH — ambient absence is fragile if a CI
+    image ever ships nvidia-ctk for unrelated reasons."""
+    backend = GVisorSandboxBackend()
+    with patch("ray._common.cdi.get_spec", return_value=None):
+        with pytest.raises(SandboxCreationError, match="CDI"):
+            backend.create_sandbox(_gpu_sandbox_config())
 
 
 def test_string_exec_shell_configuration():

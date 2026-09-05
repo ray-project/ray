@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
 
+import ray
+
 # Sandbox network modes. All but "public" map directly to runsc --network;
 # "public" is host egress plus a generated, host-independent resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
@@ -118,6 +120,14 @@ class SandboxConfig:
             writable through the per-sandbox copy-on-write overlay: image
             content stays visible, sandboxes don't interfere with each
             other, and the base image is never modified.
+        gpu_ids: GPU device ids/UUIDs (same format as ``ray.get_gpu_ids()``)
+            to expose inside the sandbox via CDI (see :mod:`ray._common.cdi`,
+            generic across accelerator vendors). None (default) gives no GPU
+            access. Requires ``ray.get_gpu_ids()`` to be non-empty for the
+            calling actor/task (request GPUs via ``num_gpus=...`` so Ray
+            assigns some) — that's the only way to confirm a requested id
+            is actually this actor/task's to use; validated as a subset of
+            it, with no fallback if it's empty.
     """
 
     image: str
@@ -133,6 +143,7 @@ class SandboxConfig:
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
+    gpu_ids: Optional[List[str]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
@@ -158,6 +169,44 @@ class SandboxConfig:
             raise ValueError(
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
+            )
+        self._validate_gpu_ids()
+
+    def _validate_gpu_ids(self):
+        if self.gpu_ids is None:
+            return
+        if not isinstance(self.gpu_ids, list) or not self.gpu_ids:
+            raise ValueError(
+                "gpu_ids must be a non-empty list of device ids/UUIDs, "
+                f"got {self.gpu_ids!r}."
+            )
+        if not all(isinstance(g, str) and g for g in self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must contain only non-empty strings, got {self.gpu_ids!r}."
+            )
+
+        try:
+            assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
+        except Exception:
+            assigned_gpu_ids = []
+        if not assigned_gpu_ids:
+            # ray.get_gpu_ids() is Ray's own scheduler bookkeeping of what
+            # this actor/task was actually granted -- the only way to
+            # confirm a requested id is genuinely this actor/task's to
+            # use. No fallback: an empty result means Ray didn't assign
+            # this actor/task any GPUs (e.g. num_gpus wasn't requested).
+            raise ValueError(
+                "gpu_ids was requested, but ray.get_gpu_ids() returned no "
+                "GPUs for this actor or task. Request GPUs via "
+                "num_gpus=...; sandboxes can't be given GPU access "
+                "otherwise."
+            )
+        unassigned = [g for g in self.gpu_ids if g not in assigned_gpu_ids]
+        if unassigned:
+            raise ValueError(
+                f"gpu_ids {unassigned} are not among the GPUs Ray assigned "
+                f"to this actor/task ({assigned_gpu_ids}). A sandbox can "
+                "only access GPUs Ray scheduled to its owning actor or task."
             )
 
 
