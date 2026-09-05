@@ -64,6 +64,31 @@ to Actors, such as GPUs <actor-resource-guide>`.
   with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
       search.fit(digits.data, digits.target)
 
+Actor capacity
+--------------
+
+Supplying a capacity option lets the Ray backend manage the number of actors
+between ``min_size`` and ``max_size``. Calls without capacity options retain
+the previous fixed ``n_jobs`` scheduler. Set a lower ``min_size`` to let the
+backend release idle actors:
+
+.. code-block:: python
+
+  register_ray()
+  with joblib.parallel_backend(
+      'ray',
+      n_jobs=8,
+      min_size=1,
+      idle_timeout_s=60,
+      ray_remote_args=dict(num_cpus=1),
+  ):
+      search.fit(digits.data, digits.target)
+
+``n_jobs`` remains Joblib's concurrency ceiling, so ``max_size`` may lower but
+never raise it. The backend creates actors as work arrives and retires actors
+above ``min_size`` after ``idle_timeout_s``. Use ``ray_remote_args`` to specify
+the resources each actor should request from the Ray cluster.
+
 Run on a Cluster
 ----------------
 

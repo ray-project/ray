@@ -43,6 +43,34 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 
 .. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
+Actor capacity
+--------------
+
+Supplying a capacity option lets ``Pool`` manage its actor count between
+``min_size`` and ``max_size``. Without capacity options, ``Pool`` keeps the
+previous fixed scheduler and creates ``processes`` actors. Set a lower
+``min_size`` to release idle actors:
+
+.. code-block:: python
+
+  with Pool(
+      processes=64,
+      min_size=1,
+      idle_timeout_s=60,
+      ray_remote_args=dict(num_cpus=1),
+  ) as pool:
+      for result in pool.map(f, range(100)):
+          print(result)
+
+The pool creates actors as work arrives and retires actors above ``min_size``
+after ``idle_timeout_s``. Use ``ray_remote_args`` to specify CPUs, GPUs, or
+custom resources for each actor so pending actors can drive cluster autoscaling.
+
+For compatibility, a pool without capacity options continues to use the
+previous fixed-capacity scheduler. Non-default ``max_concurrency``,
+``max_restarts``, ``max_task_retries``, and ``get_if_exists`` options cannot be
+combined with adjustable capacity.
+
 Run on a Cluster
 ----------------
 
