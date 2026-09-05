@@ -325,10 +325,10 @@ def _preallocate_ray_worker_port_range():
     import psutil
 
     def acquire_lock(file_path):
-        mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC
+        mode = os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+        fd = -1
         try:
             fd = os.open(file_path, mode)
-            # The lock file must be readable / writable to all users.
             os.chmod(file_path, 0o0777)
             # Allow for retrying getting a file lock a maximum number of seconds
             max_lock_iter = 600
@@ -345,7 +345,8 @@ def _preallocate_ray_worker_port_range():
                 time.sleep(10)
             raise TimeoutError(f"Acquiring lock on file {file_path} timeout.")
         except Exception:
-            os.close(fd)
+            if fd >= 0:
+                os.close(fd)
 
     lock_file_path = "/tmp/ray_on_spark_worker_startup_barrier_lock.lock"
     try:
@@ -367,11 +368,12 @@ def _preallocate_ray_worker_port_range():
 
     try:
         port_alloc_file = "/tmp/ray_on_spark_worker_port_allocation.txt"
+        _nofollow = lambda p, f: os.open(p, f | os.O_NOFOLLOW)
 
         # NB: reading / writing `port_alloc_file` is protected by exclusive lock
         # on file `lock_file_path`
         if os.path.exists(port_alloc_file):
-            with open(port_alloc_file, mode="r") as fp:
+            with open(port_alloc_file, mode="r", opener=_nofollow) as fp:
                 port_alloc_data = fp.read()
             port_alloc_table = [
                 line.split(" ") for line in port_alloc_data.strip().split("\n")
@@ -382,9 +384,8 @@ def _preallocate_ray_worker_port_range():
             ]
         else:
             port_alloc_table = []
-            with open(port_alloc_file, mode="w"):
+            with open(port_alloc_file, mode="w", opener=_nofollow):
                 pass
-            # The port range allocation file must be readable / writable to all users.
             os.chmod(port_alloc_file, 0o0777)
 
         port_alloc_map = {
@@ -406,7 +407,7 @@ def _preallocate_ray_worker_port_range():
 
         port_alloc_map[os.getpid()] = new_slot_index
 
-        with open(port_alloc_file, mode="w") as fp:
+        with open(port_alloc_file, mode="w", opener=_nofollow) as fp:
             for pid, slot_index in port_alloc_map.items():
                 fp.write(f"{pid} {slot_index}\n")
 
@@ -591,7 +592,8 @@ def _setup_ray_cluster(
         # at a time. So acquiring a global file lock before setting up a new
         # Ray on spark global cluster.
         global_cluster_lock_fd = os.open(
-            "/tmp/ray_on_spark_global_cluster.lock", os.O_RDWR | os.O_CREAT | os.O_TRUNC
+            "/tmp/ray_on_spark_global_cluster.lock",
+            os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
         )
 
         try:
