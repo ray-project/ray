@@ -45,6 +45,9 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _add_openai_models_retrieve_route,
 )
+from ray.llm._internal.serve.engines.sglang.ray_metrics import (
+    configure_sglang_engine_metrics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,16 @@ class SGLangServer:
         self.engine_kwargs = llm_config.engine_kwargs
         self._is_paused = False
         self._sleeping_tags: set[str] = set()
+
+        # Route SGLang's engine metrics through ray.util.metrics via SGLang's
+        # ServerArgs.stat_loggers DI map, mirroring the vLLM backend's
+        # RayPrometheusStatLogger integration. Needs sglang >= 0.5.15; older
+        # versions log a warning and serve without engine metrics. Inject into a
+        # copy: stat_loggers holds class objects, which must not leak into
+        # llm_config.engine_kwargs where a later JSON dump would choke on them.
+        if self._llm_config.log_engine_metrics:
+            self.engine_kwargs = dict(self.engine_kwargs)
+            configure_sglang_engine_metrics(self.engine_kwargs)
 
         try:
             from sglang.srt.ray.engine import RayEngine as Engine
