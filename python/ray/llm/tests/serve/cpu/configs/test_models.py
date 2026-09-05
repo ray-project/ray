@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import pydantic
 import pytest
 
-from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
+    STREAMING_URI_SCHEMES,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
     CPUConfig,
@@ -22,6 +26,24 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
+
+_RESOLVE_TARGET = (
+    "ray.llm._internal.serve.engines.vllm.vllm_models.get_model_location_on_disk"
+)
+
+
+def _nothing_downloaded():
+    """Patch the disk lookup to behave as it does when nothing is cached.
+
+    `get_model_location_on_disk` returns its argument unchanged when it finds
+    no snapshot, which is what every streaming deployment sees.
+    """
+    return patch(_RESOLVE_TARGET, side_effect=lambda model_id: model_id)
+
+
+def _downloaded_at(local_path: str):
+    """Patch the disk lookup to behave as it does after a completed download."""
+    return patch(_RESOLVE_TARGET, return_value=local_path)
 
 
 class TestModelConfig:
@@ -177,17 +199,18 @@ class TestModelConfig:
             ),
         )
         old_engine_config = llm_config.get_engine_config()
-        old_engine_config.hf_model_id = "fake_hf_model_id"
+        old_engine_config.model_source = "fake_model_source"
         new_engine_config = llm_config.get_engine_config()
         assert new_engine_config is old_engine_config
+        assert new_engine_config.model_source == "fake_model_source"
 
-    def test_remote_model_source_uses_model_id_as_hf_model_id(self):
-        """A remote model_source must not leak its URI into hf_model_id.
+    def test_remote_model_source_is_mirrored_but_cached_under_model_id(self):
+        """A remote model_source is kept verbatim and cached under model_id.
 
-        Using the URI verbatim propagates the scheme and slashes into the HF
-        cache directory name (e.g. ``models--s3:----bucket--...``). The URI
-        should instead be carried by mirror_config while hf_model_id falls back
-        to the user-supplied model_id.
+        The URI must not name the cache directory -- it leaks its scheme and
+        slashes into it (``models--s3:----bucket--...``, #63363) -- but it must
+        stay reachable, because a streaming load format downloads nothing and
+        has no other address to give the engine.
         """
         bucket_uri = "s3://my-bucket/my-model"
         llm_config = LLMConfig(
@@ -197,12 +220,31 @@ class TestModelConfig:
             ),
         )
         engine_config = llm_config.get_engine_config()
-        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.model_source == bucket_uri
+        assert engine_config.cache_id == "llm_model_id"
         assert engine_config.mirror_config is not None
         assert engine_config.mirror_config.bucket_uri == bucket_uri
 
-    def test_hf_model_source_used_as_hf_model_id(self):
-        """A plain HuggingFace model_source is used directly as hf_model_id."""
+    @pytest.mark.parametrize(
+        "bucket_uri",
+        [
+            "s3://my-bucket/my-model",
+            "gs://my-bucket/my-model",
+            "abfss://container@account.dfs.core.windows.net/my-model",
+        ],
+    )
+    def test_cache_id_never_contains_uri_separators(self, bucket_uri):
+        """Regression guard for #63363, for every scheme we accept."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+        )
+        assert llm_config.get_engine_config().cache_id == "llm_model_id"
+
+    def test_hf_model_source_used_directly(self):
+        """A plain HuggingFace model_source is not mirrored."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
@@ -210,19 +252,162 @@ class TestModelConfig:
             ),
         )
         engine_config = llm_config.get_engine_config()
-        assert engine_config.hf_model_id == "facebook/opt-1.3b"
+        assert engine_config.model_source == "facebook/opt-1.3b"
+        assert engine_config.cache_id == "facebook/opt-1.3b"
         assert engine_config.mirror_config is None
+        assert engine_config.resolve_model_path() == "facebook/opt-1.3b"
+
+    def test_local_path_model_source_used_directly(self):
+        """A local path is handed to the engine unchanged."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="/mnt/models/opt-1.3b",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.mirror_config is None
+        assert engine_config.resolve_model_path() == "/mnt/models/opt-1.3b"
 
     def test_no_model_source_falls_back_to_model_id(self):
-        """With no model_source, hf_model_id falls back to model_id."""
+        """With no model_source, the model_id is the HuggingFace repo id."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
             ),
         )
         engine_config = llm_config.get_engine_config()
-        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.model_source == "llm_model_id"
+        assert engine_config.cache_id == "llm_model_id"
         assert engine_config.mirror_config is None
+        assert engine_config.resolve_model_path() == "llm_model_id"
+
+    @pytest.mark.parametrize("load_format", STREAMING_LOAD_FORMATS)
+    def test_streaming_load_format_streams_from_uri(self, load_format):
+        """Streaming formats skip the download, so the engine must get the URI.
+
+        This is the regression reported in #64978 and #65477: with nothing on
+        disk the engine was handed the ``model_id`` alias, which vLLM reports
+        as a missing HuggingFace repo.
+        """
+        bucket_uri = "s3://my-bucket/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+            engine_kwargs=dict(load_format=load_format),
+        )
+        engine_config = llm_config.get_engine_config()
+        with _nothing_downloaded():
+            assert engine_config.resolve_model_path() == bucket_uri
+            # The value that actually reaches vLLM.
+            assert engine_config.get_initialization_kwargs()["model"] == bucket_uri
+
+    @pytest.mark.parametrize("load_format", STREAMING_LOAD_FORMATS)
+    def test_streaming_load_format_prefers_a_downloaded_copy(self, load_format):
+        """A snapshot already on disk still wins over the URI."""
+        local_path = "/root/.cache/huggingface/hub/models--llm_model_id/snapshots/abc"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="s3://my-bucket/my-model",
+            ),
+            engine_kwargs=dict(load_format=load_format),
+        )
+        engine_config = llm_config.get_engine_config()
+        with _downloaded_at(local_path):
+            assert engine_config.resolve_model_path() == local_path
+            assert engine_config.get_initialization_kwargs()["model"] == local_path
+
+    def test_downloaded_mirror_resolves_to_local_path(self):
+        """The ordinary download path is unchanged: local snapshot wins."""
+        local_path = "/root/.cache/huggingface/hub/models--llm_model_id/snapshots/abc"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="s3://my-bucket/my-model",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        with _downloaded_at(local_path):
+            assert engine_config.get_initialization_kwargs()["model"] == local_path
+
+    def test_cloud_mirror_config_model_source_resolves_to_bucket_uri(self):
+        """An explicit CloudMirrorConfig behaves like a remote string source."""
+        bucket_uri = "s3://my-bucket/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=dict(bucket_uri=bucket_uri),
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.cache_id == "llm_model_id"
+        with _nothing_downloaded():
+            assert engine_config.resolve_model_path() == bucket_uri
+
+    def test_served_model_name_is_always_the_model_id(self):
+        """`model_id` names the model, `model_source` locates it.
+
+        Keeping those two mappings unconditional is the point of the split; see
+        the discussion on #64978.
+        """
+        bucket_uri = "s3://my-bucket/my-model"
+        for engine_kwargs in ({}, dict(load_format="runai_streamer")):
+            llm_config = LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="llm_model_id",
+                    model_source=bucket_uri,
+                ),
+                engine_kwargs=engine_kwargs,
+            )
+            engine_config = llm_config.get_engine_config()
+            with _nothing_downloaded():
+                kwargs = engine_config.get_initialization_kwargs()
+            assert kwargs["served_model_name"] == ["llm_model_id"]
+            assert kwargs["model"] == bucket_uri
+
+    def test_streaming_load_format_rejects_unstreamable_scheme(self):
+        """abfss:// can be downloaded but not streamed, so say so up front.
+
+        Without this the URI reaches vLLM, which reports it as a missing
+        HuggingFace repo -- an error that names the URI but not the cause.
+        """
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="abfss://container@account.dfs.core.windows.net/m",
+            ),
+            engine_kwargs=dict(load_format="runai_streamer"),
+        )
+        with pytest.raises(pydantic.ValidationError, match="do not support"):
+            llm_config.get_engine_config()
+
+    def test_non_streaming_load_format_allows_any_downloadable_scheme(self):
+        """The scheme check is scoped to streaming; downloads are unaffected."""
+        uri = "abfss://container@account.dfs.core.windows.net/m"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=uri,
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.mirror_config.bucket_uri == uri
+
+    @pytest.mark.parametrize("scheme", STREAMING_URI_SCHEMES)
+    def test_streaming_load_format_accepts_streamable_schemes(self, scheme):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=f"{scheme}my-bucket/my-model",
+            ),
+            engine_kwargs=dict(load_format="runai_streamer"),
+        )
+        engine_config = llm_config.get_engine_config()
+        with _nothing_downloaded():
+            assert engine_config.resolve_model_path() == f"{scheme}my-bucket/my-model"
 
     def test_experimental_configs(self):
         """Test that `experimental_configs` can be used."""

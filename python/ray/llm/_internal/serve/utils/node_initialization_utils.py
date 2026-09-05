@@ -20,19 +20,16 @@ def initialize_remote_node(llm_config: LLMConfig) -> Optional[str]:
     callback = llm_config.get_or_create_callback()
     engine_config = llm_config.get_engine_config()
 
-    local_path = download_model_files(
-        model_id=engine_config.actual_hf_model_id,
+    # The engine config is not updated with the result: `resolve_model_path()`
+    # reads this node's disk on demand, so the download only has to happen, not
+    # be recorded. The return value is used to check that every node agrees.
+    return download_model_files(
+        model_id=engine_config.cache_id,
         mirror_config=engine_config.mirror_config,
         download_model=callback.ctx.worker_node_download_model,
         download_extra_files=True,
         callback=callback,
     )
-
-    # Validate that the binary exists
-    if local_path and local_path != engine_config.actual_hf_model_id:
-        engine_config.hf_model_id = local_path
-
-    return local_path
 
 
 async def initialize_node(llm_config: LLMConfig):
@@ -72,4 +69,3 @@ async def initialize_node(llm_config: LLMConfig):
     assert (
         len(set(paths)) == 1
     ), "Paths returned from download_model_files are not the same"
-    llm_config.get_engine_config().hf_model_id = paths[0]

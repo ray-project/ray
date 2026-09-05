@@ -9,6 +9,11 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
+from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
+    STREAMING_URI_SCHEMES,
+    get_model_location_on_disk,
+)
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
@@ -53,8 +58,14 @@ class VLLMEngineConfig(BaseModelExtended):
     model_id: str = Field(
         description="The identifier for the model. This is the id that will be used to query the model.",
     )
-    hf_model_id: Optional[str] = Field(
-        None, description="The Hugging Face model identifier."
+    model_source: Optional[str] = Field(
+        None,
+        description=(
+            "Where the weights come from: a HuggingFace repo id, a local path, "
+            "or a remote URI. Set once from the user's config and never "
+            "rewritten; call `resolve_model_path()` for the path to hand to "
+            "the engine."
+        ),
     )
     mirror_config: Optional[CloudMirrorConfig] = Field(
         None,
@@ -117,13 +128,76 @@ class VLLMEngineConfig(BaseModelExtended):
             self._accelerator = GPUAccelerator()
         return self
 
+    @model_validator(mode="after")
+    def _validate_streaming_scheme(self):
+        """Reject a streaming load_format aimed at a scheme it cannot read.
+
+        Ray downloads from more schemes than the streamers can stream from.
+        Without this check the URI reaches vLLM, which reports it as a missing
+        HuggingFace repo -- an error that quotes the URI but not the problem.
+        """
+        load_format = self.engine_kwargs.get("load_format")
+        if load_format not in STREAMING_LOAD_FORMATS:
+            return self
+
+        source = (
+            self.mirror_config.bucket_uri
+            if self.mirror_config is not None
+            else self.model_source
+        )
+        if not source or not is_remote_path(source):
+            return self
+
+        if not source.startswith(STREAMING_URI_SCHEMES):
+            raise ValueError(
+                f"load_format={load_format!r} streams the weights directly out "
+                f"of object storage, but model_source {source!r} uses a scheme "
+                f"its readers do not support (supported: "
+                f"{', '.join(STREAMING_URI_SCHEMES)}). Either point "
+                f"model_source at a supported scheme, or drop load_format so "
+                f"Ray downloads the weights before the engine starts."
+            )
+        return self
+
     @property
     def accelerator(self) -> AcceleratorBackend:
         return self._accelerator
 
     @property
-    def actual_hf_model_id(self) -> str:
-        return self.hf_model_id or self.model_id
+    def cache_id(self) -> str:
+        """Identifier naming this model's local cache directory and download lock.
+
+        A mirrored model is cached under `model_id` rather than under its source
+        URI, because a URI leaks its scheme and slashes into the directory name
+        (`models--s3:----bucket--...`).
+        """
+        if self.mirror_config is not None:
+            return self.model_id
+        return self.model_source or self.model_id
+
+    def resolve_model_path(self) -> str:
+        """The path to hand the engine as `model`, resolved against this node.
+
+        This is a pure read. It never writes back to the config, so every caller
+        on every node gets an answer that matches that node's disk and there is
+        no ordering requirement between resolving and downloading.
+
+        For a mirrored model that means the local snapshot once the weights are
+        downloaded, and the source URI until then. Streaming load formats depend
+        on the latter: they deliberately skip the download
+        (`NodeModelDownloadable.NONE`) so the engine can read the weights
+        straight out of object storage.
+        """
+        if self.mirror_config is None:
+            # Not mirrored: a HuggingFace repo id or a local path, either of
+            # which the engine consumes directly (and caches itself, for HF).
+            return self.model_source or self.model_id
+
+        local_path = get_model_location_on_disk(self.cache_id)
+        if local_path != self.cache_id:
+            return local_path
+
+        return self.mirror_config.bucket_uri or self.model_source or self.model_id
 
     @property
     def trust_remote_code(self) -> bool:
@@ -141,7 +215,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 "model or served_model_name is not allowed in engine_kwargs when using Ray Serve LLM. Please use `model_loading_config` in LLMConfig instead."
             )
 
-        engine_kwargs["model"] = self.actual_hf_model_id
+        engine_kwargs["model"] = self.resolve_model_path()
         engine_kwargs["served_model_name"] = [self.model_id]
 
         # Handle distributed_executor_backend based on backend type
@@ -188,25 +262,23 @@ class VLLMEngineConfig(BaseModelExtended):
     def from_llm_config(cls, llm_config: LLMConfig) -> "VLLMEngineConfig":
         """Converts the LLMConfig to a VLLMEngineConfig."""
         # Set up the model downloading configuration.
-        hf_model_id, mirror_config = None, None
-        if llm_config.model_loading_config.model_source is None:
-            hf_model_id = llm_config.model_id
-        elif isinstance(llm_config.model_loading_config.model_source, str):
-            model_source = llm_config.model_loading_config.model_source
-            if is_remote_path(model_source):
-                # Remote URIs (s3://, gs://, …) are download addresses,
-                # not HuggingFace IDs.  Using the URI verbatim as
-                # hf_model_id propagates the scheme and slashes into the
-                # cache directory name (``models--s3:----bucket--…``).
-                # Use the user-supplied model_id as the identifier and
-                # treat the URI as a bucket mirror instead.
-                hf_model_id = llm_config.model_id
-                mirror_config = CloudMirrorConfig(bucket_uri=model_source)
-            else:
-                hf_model_id = model_source
+        #
+        # `model_source` records where the weights live and is never rewritten.
+        # `mirror_config` records that they have to be copied down from cloud
+        # storage first, which is also what makes `cache_id` fall back to
+        # `model_id` so the cache directory is not named after a URI.
+        source = llm_config.model_loading_config.model_source
+        model_source, mirror_config = None, None
+        if source is None:
+            model_source = llm_config.model_id
+        elif isinstance(source, str):
+            model_source = source
+            if is_remote_path(source):
+                mirror_config = CloudMirrorConfig(bucket_uri=source)
         else:
             # If it's a CloudMirrorConfig (or subtype)
-            mirror_config = llm_config.model_loading_config.model_source
+            mirror_config = source
+            model_source = source.bucket_uri
 
         all_engine_kwargs = llm_config.engine_kwargs.copy()
         engine_kwargs = {}
@@ -232,7 +304,7 @@ class VLLMEngineConfig(BaseModelExtended):
         placement_group_config = llm_config.placement_group_config
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
-            hf_model_id=hf_model_id,
+            model_source=model_source,
             mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
             accelerator_config=llm_config.accelerator_config,

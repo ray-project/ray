@@ -21,6 +21,16 @@ logger = get_logger(__name__)
 
 STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
 
+# Object-store schemes the streaming loaders above can read directly.
+#
+# This is deliberately narrower than `is_remote_path`: Ray's downloader also
+# handles abfss:// and azure://, but the streamers cannot read them, and a
+# streaming deployment pointed at one of those otherwise reaches vLLM as a
+# model identifier and is reported as a missing HuggingFace repo. Adding a
+# scheme to `is_remote_path` does not make it streamable -- add it here only
+# once vLLM's `is_runai_obj_uri` accepts it too.
+STREAMING_URI_SCHEMES = ("s3://", "gs://")
+
 
 class NodeModelDownloadable(enum.Enum):
     """Defines which files to download from cloud storage."""

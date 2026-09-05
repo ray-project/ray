@@ -581,12 +581,11 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        # Note (genesu): This is important that we cache the engine config as the
-        # `hf_model_id` attribute on the engine config will be set based on whether
-        #  the model is downloaded from a remote storage and will be set to the
-        #  local path of the model. This is important for vLLM not going to Hugging
-        #  Face to download the model again after it's already downloaded during node
-        #  initialization step.
+        # The engine config is cached so that everything derived from it during
+        # startup -- the placement group, the callback instance -- is shared
+        # rather than rebuilt on each call. It carries no resolved model path to
+        # preserve: `VLLMEngineConfig.resolve_model_path()` reads the node's
+        # disk on demand.
         if self._engine_config:
             return self._engine_config
 
