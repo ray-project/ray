@@ -209,10 +209,16 @@ def _upload_to_fs_path(
     """
 
     if not exclude:
-        # TODO(justinvyu): uploading a single file doesn't work
-        # (since we always create a directory at fs_path)
-        _create_directory(fs=fs, fs_path=fs_path)
-        _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        if os.path.isfile(local_path):
+            # Upload a single file to `fs_path` (a file path), creating only its
+            # parent directory — mirroring `_download_from_fs_path`.
+            parent = os.path.dirname(fs_path)
+            if parent:
+                _create_directory(fs=fs, fs_path=parent)
+            _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        else:
+            _create_directory(fs=fs, fs_path=fs_path)
+            _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
 
     _upload_to_uri_with_exclude_fsspec(
