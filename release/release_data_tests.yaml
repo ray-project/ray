@@ -8,6 +8,7 @@
   cluster:
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         # Fail the test if a worker OOMs
@@ -335,6 +336,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -374,6 +376,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -401,6 +404,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -426,6 +430,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -453,6 +458,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -552,6 +558,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -581,6 +588,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -617,6 +625,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         # Preserve the default verbose stats for resource manager.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
@@ -943,6 +952,7 @@
     byod:
       type: gpu
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
         # Preserve DEFAULTS' runtime_env (setting runtime_env here replaces,
         # doesn't merge).
@@ -1261,6 +1271,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1284,6 +1295,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1303,6 +1315,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1330,6 +1343,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
         - RAYTEST_FAIL_ON_DEAD_NODES=0
@@ -1412,6 +1426,7 @@
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
@@ -1455,6 +1470,7 @@
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
@@ -1487,6 +1503,7 @@
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
@@ -1565,6 +1582,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         # DEFAULTS restated (runtime_env lists replace, not merge) plus the
         # v2 inlining threshold.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -1610,6 +1628,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1631,6 +1650,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1669,6 +1689,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -1732,6 +1753,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_local_gc_min_interval_s=1000000
         - RAY_health_check_period_ms=10000
         - RAY_health_check_timeout_ms=100000
         - RAY_health_check_failure_threshold=10
