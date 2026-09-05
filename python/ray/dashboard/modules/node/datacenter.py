@@ -127,9 +127,12 @@ class DataOrganizer:
 
     @classmethod
     async def get_node_info(cls, node_id, get_summary=False):
+        node = DataSource.nodes.get(node_id)
+        if node is None:
+            return None
+
         node_physical_stats = dict(DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
-        node = DataSource.nodes.get(node_id, {})
 
         if get_summary:
             node_physical_stats.pop("workers", None)
