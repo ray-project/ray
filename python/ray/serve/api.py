@@ -122,6 +122,10 @@ def start(
           running in this Ray cluster.
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
+
+    Raises:
+        RayServeConfigException: If Serve is already running and this call asks to
+          change ``proxy_location``, ``http_options``, or ``grpc_options``.
     """
     _private_api.serve_start(
         http_options=http_options,
@@ -848,8 +852,9 @@ def _run_many(
         )
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
+        # Placement is left unset so it resolves to the default (EveryNode) rather
+        # than requesting a change to an already-running instance's placement.
         client = _private_api.serve_start(
-            proxy_location=ProxyLocation.EveryNode,
             global_logging_config=None,
             controller_options=controller_options,
         )

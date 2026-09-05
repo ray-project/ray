@@ -28,7 +28,7 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs,
@@ -65,8 +65,19 @@ class ServeControllerClient:
     ):
         self._controller: ServeController = controller
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
-        self._root_url = ray.get(controller.get_root_url.remote())
+        # Fixed for the controller's lifetime, so fetched once, in one batch.
+        configs = ray.get(
+            [
+                controller.get_http_config.remote(),
+                controller.get_grpc_config.remote(),
+                controller.get_requested_proxy_location.remote(),
+                controller.get_root_url.remote(),
+            ]
+        )
+        self._http_config: HTTPOptions = configs[0]
+        self._grpc_config: gRPCOptions = configs[1]
+        self._requested_proxy_location: ProxyLocation = configs[2]
+        self._root_url = configs[3]
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -79,6 +90,14 @@ class ServeControllerClient:
     @property
     def http_config(self):
         return self._http_config
+
+    @property
+    def grpc_config(self):
+        return self._grpc_config
+
+    @property
+    def requested_proxy_location(self):
+        return self._requested_proxy_location
 
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))

@@ -178,6 +178,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.grpc_util.RayServegRPCContext
    serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
+   serve.exceptions.RayServeConfigException
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
@@ -199,6 +200,8 @@ The Serve REST API is exposed at the same port as the Ray dashboard. The dashboa
 ### `PUT "/api/serve/applications/"`
 
 Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
+
+`proxy_location`, `http_options`, and `grpc_options` are global to the cluster and fixed when Serve starts. If Serve is already running and the config sets any of them to a different value, Serve rejects the whole request with a `400` that names each field and deploys no applications. Omitting a field isn't a request to change it.
 
 **Example Request**:
 

@@ -5,6 +5,7 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_urls
+from ray.serve.exceptions import RayServeConfigException
 
 
 def test_get_application_urls(serve_instance):
@@ -59,6 +60,25 @@ def test_get_application_urls_with_route_prefix(serve_instance):
     assert get_application_urls("gRPC", app_name="app1", use_localhost=False) == [
         f"{node_ip}:9000"
     ]
+
+
+def test_start_rejects_changed_global_config(serve_instance):
+    """Cluster-global config is fixed at startup, so a change must fail loudly."""
+    serve.start()  # Nothing requested.
+    serve.start(http_options={"host": "0.0.0.0"})  # Matches the running config.
+
+    with pytest.raises(
+        RayServeConfigException, match=r"http_options\.port: 8000 -> 8001"
+    ):
+        serve.start(http_options={"port": 8001})
+
+    with pytest.raises(RayServeConfigException, match="proxy_location"):
+        serve.start(proxy_location="EveryNode")
+
+    with pytest.raises(
+        RayServeConfigException, match=r"grpc_options\.port: 9000 -> 9001"
+    ):
+        serve.start(grpc_options={"port": 9001})
 
 
 if __name__ == "__main__":

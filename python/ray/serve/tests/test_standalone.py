@@ -4,7 +4,6 @@ requires a shared Serve instance.
 """
 
 import asyncio
-import logging
 import os
 import random
 import shutil
@@ -41,6 +40,7 @@ from ray.serve.config import (
     ProxyLocation,
 )
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
 from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
@@ -387,13 +387,16 @@ def test_checkpoint_isolation_namespace(ray_shutdown):
 
     address = info["address"]
 
+    # Neither driver requests a port: Serve's controller lives in the fixed
+    # SERVE_NAMESPACE, so both drivers share one instance no matter which Ray
+    # namespace they connect under, and a second port here would be a change to it.
     driver_template = """
 import ray
 from ray import serve
 
 ray.init(address="{address}", namespace="{namespace}")
 
-serve.start(http_options={{"port": {port}}})
+serve.start()
 
 @serve.deployment
 class A:
@@ -402,40 +405,27 @@ class A:
 serve.run(A.bind())"""
 
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace1", port=8000)
+        driver_template.format(address=address, namespace="test_namespace1")
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+        driver_template.format(address=address, namespace="test_namespace2")
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(
-    ray_shutdown, propagate_logs, caplog
-):
-    logger = logging.getLogger("ray.serve")
-    caplog.set_level(logging.WARNING, logger="ray.serve")
-
-    warning_msg = []
-
-    class WarningHandler(logging.Handler):
-        def emit(self, record):
-            warning_msg.append(self.format(record))
-
-    logger.addHandler(WarningHandler())
-
+def test_serve_start_different_http_options_raises(ray_shutdown):
+    """HTTP config is fixed at controller startup, so a change must fail loudly."""
     ray.init(namespace="serve-test")
     serve.start()
 
     # create a different config
     test_http = dict(host="127.1.1.8", port=_get_random_port())
 
-    serve.start(http_options=test_http)
+    with pytest.raises(RayServeConfigException) as exc:
+        serve.start(http_options=test_http)
 
-    for test_config, msg in zip([["host", "port"]], warning_msg):
-        for test_msg in test_config:
-            if "Autoscaling metrics pusher thread" in msg:
-                continue
-            assert test_msg in msg
+    message = str(exc.value)
+    assert "http_options.host" in message
+    assert "http_options.port" in message
 
 
 def test_recovering_controller_no_redeploy():
