@@ -198,8 +198,14 @@ class IQLConfig(MARWILConfig):
 
     @override(MARWILConfig)
     def validate(self) -> None:
-        # Call super's validation method.
-        super().validate()
+        # IQL uses beta as an inverse temperature (paper default: 3.0),
+        # not as a [0, 1] weight like MARWIL. Bypass the parent's cap.
+        saved_beta = self.beta
+        self.beta = 0.5
+        try:
+            super().validate()
+        finally:
+            self.beta = saved_beta
 
         # Ensure hyperparameters are meaningful.
         if self.beta <= 0.0:

@@ -73,7 +73,7 @@ class IQLLearner(DQNLearner):
         # Add the expectile to the mapping.
         self.expectile[module_id] = self._get_tensor_variable(
             # Note, we want to train with a certain expectile.
-            [self.config.get_config_for_module(module_id).beta],
+            [self.config.get_config_for_module(module_id).expectile],
             trainable=False,
         )
         # Add the temperature to the mapping.
