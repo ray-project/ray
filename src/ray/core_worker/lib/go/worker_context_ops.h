@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H
-#define RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H_
 
 #include <memory>
 #include <string>
 
-#include "core_worker_provider.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/lib/go/core_worker_provider.h"
 
 namespace ray {
 namespace go {
@@ -132,7 +132,7 @@ class WorkerContextOperations {
   std::string GetNamespace() {
     // Note: GetNamespace() is not available in WorkerContext,
     // so we return an empty string for now.
-    // TODO: Implement proper namespace support if needed.
+    // TODO(daiping8): Implement proper namespace support if needed.
     return "";
   }
 
@@ -149,4 +149,4 @@ class WorkerContextOperations {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H_

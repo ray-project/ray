@@ -13,14 +13,15 @@
 // limitations under the License.
 
 // src/ray/core_worker/lib/go/gcs_client_bridge_test.cc
-#include "gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
 
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <iostream>
 #include <string>
 
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 
 // Test 1: verify the header compiles and includes correctly
 TEST(GcsClientBridgeTest, HeaderCompiles) {
@@ -57,7 +58,7 @@ TEST(GcsClientBridgeTest, MemoryFree) {
   char *test_str = static_cast<char *>(malloc(10));
   ASSERT_NE(test_str, nullptr);
 
-  strcpy(test_str, "test");
+  memcpy(test_str, "test", sizeof("test"));
   ASSERT_EQ(strlen(test_str), 4);
 
   ray_gcs_free_memory(test_str);
@@ -78,8 +79,8 @@ TEST(GcsClientBridgeTest, StringArrayFree) {
   ASSERT_NE(arr[0], nullptr);
   ASSERT_NE(arr[1], nullptr);
 
-  strcpy(arr[0], "str1");
-  strcpy(arr[1], "str2");
+  memcpy(arr[0], "str1", sizeof("str1"));
+  memcpy(arr[1], "str2", sizeof("str2"));
 
   ray_gcs_free_string_array(arr, 2);
   // Must not access after free

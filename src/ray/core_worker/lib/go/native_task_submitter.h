@@ -16,10 +16,10 @@
 // This file provides C wrappers for CoreWorker TaskSubmitter to enable CGO binding.
 // Pattern: Similar to io_ray_runtime_task_NativeTaskSubmitter.h in Java runtime.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H
-#define RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H_
 
-#include "cgo_wrapper.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -135,4 +135,4 @@ int CNativeTaskSubmitter_GetActor(const char *name,
 }  // extern "C"
 #endif
 
-#endif  // RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_SUBMITTER_H_

@@ -16,13 +16,14 @@
 // GCS Client CGO bridge - PlacementGroups operations
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "gcs_client_bridge.h"
-#include "gcs_client_internal.h"
-#include "gcs_client_utils.h"
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_internal.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/global_state_accessor.h"
 

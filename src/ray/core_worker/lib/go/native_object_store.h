@@ -16,8 +16,8 @@
 // This file provides C wrappers for CoreWorker ObjectStore to enable CGO binding.
 // Pattern: Similar to io_ray_runtime_object_NativeObjectStore.h in Java runtime.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H
-#define RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H_
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -259,4 +259,4 @@ void CObjectStore_FreeString(char *str);
 }  // extern "C"
 #endif
 
-#endif  // RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_OBJECT_STORE_H_

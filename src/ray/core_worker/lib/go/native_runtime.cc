@@ -16,7 +16,7 @@
 // This file contains only C interface functions and type conversions.
 // All business logic is delegated to RuntimeOperations.
 
-#include "native_runtime.h"
+#include "ray/core_worker/lib/go/native_runtime.h"
 
 #include <cstdio>
 #include <mutex>
@@ -24,11 +24,11 @@
 #include <vector>
 
 #include "absl/strings/escaping.h"
-#include "cgo_wrapper.h"
-#include "go_heap_buffer.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/go_heap_buffer.h"
+#include "ray/core_worker/lib/go/runtime_ops.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
-#include "runtime_ops.h"
 
 namespace ray::go {
 

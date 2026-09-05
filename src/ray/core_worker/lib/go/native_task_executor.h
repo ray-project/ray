@@ -16,10 +16,10 @@
 // This file provides C wrappers for CoreWorker TaskExecutor to enable CGO binding.
 // Pattern: Similar to io_ray_runtime_task_NativeTaskExecutor.h in Java runtime.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H
-#define RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H_
 
-#include "cgo_wrapper.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -142,4 +142,4 @@ CSerializedObjectArray *CNativeTaskExecutor_ExecuteActorTask(
 }  // extern "C"
 #endif
 
-#endif  // RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_TASK_EXECUTOR_H_

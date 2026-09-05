@@ -19,15 +19,19 @@
 // - Business logic (worker_context_ops.h): Pure C++ operations
 // - CoreWorker access (core_worker_provider.h): Dependency injection
 
-#include "native_worker_context.h"
+#include "ray/core_worker/lib/go/native_worker_context.h"
 
 #include <mutex>
+#include <string>
 #include <thread>
 
-#include "cgo_wrapper.h"
-#include "worker_context_ops.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/worker_context_ops.h"
 
-using namespace ray::go;
+using ray::go::CByteArrayPtr;
+using ray::go::CgoErrorHandler;
+using ray::go::CgoTypeConverter;
+using ray::go::WorkerContextOperations;
 
 // ============================================================================
 // Thread-local and cached data

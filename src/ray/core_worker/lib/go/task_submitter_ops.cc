@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "task_submitter_ops.h"
+#include "ray/core_worker/lib/go/task_submitter_ops.h"
 
+#include <memory>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/util/logging.h"
@@ -260,8 +264,7 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
                                          false,  // enable_task_events
                                          {},     // serialized_dag
                                          {},     // serialized_actor_data
-                                         {}      // extension_data
-  );
+                                         {});    // extension_data
 }
 
 ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildSchedulingStrategy(

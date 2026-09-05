@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "runtime_ops.h"
+#include "ray/core_worker/lib/go/runtime_ops.h"
 
 #include <atomic>
 #include <cstdio>  // for sprintf, fflush
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "go_heap_buffer.h"
-#include "native_runtime.h"
-#include "native_task_executor.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/go_heap_buffer.h"
+#include "ray/core_worker/lib/go/native_runtime.h"
+#include "ray/core_worker/lib/go/native_task_executor.h"
+#include "ray/core_worker/lib/go/runtime_callbacks.h"
 #include "ray/util/logging.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/time.h"
-#include "runtime_callbacks.h"
 
 namespace ray::go {
 

@@ -16,9 +16,9 @@
 
 #include <cstring>
 
-#include "gcs_client_bridge.h"
-#include "gcs_client_internal.h"
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
+#include "ray/core_worker/lib/go/gcs_client_internal.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 
 // Tests the retained log-batch publish path (ray_gcs_client_publisher_publish_log_batch)
 // error handling. Real publishing requires a live GCS cluster, so only the reachable

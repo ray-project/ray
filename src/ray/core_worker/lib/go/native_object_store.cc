@@ -16,7 +16,7 @@
 // This file contains only C interface functions and type conversions.
 // All business logic is delegated to ObjectStoreOperations.
 
-#include "native_object_store.h"
+#include "ray/core_worker/lib/go/native_object_store.h"
 
 #include <cstring>
 #include <iomanip>
@@ -25,11 +25,14 @@
 #include <string>
 #include <vector>
 
-#include "cgo_wrapper.h"
-#include "object_store_ops.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/object_store_ops.h"
 #include "ray/util/logging.h"
 
 // Use nlohmann::json for type-safe JSON construction
+#include <unordered_map>
+#include <utility>
+
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
 

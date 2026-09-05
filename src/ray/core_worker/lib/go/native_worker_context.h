@@ -16,10 +16,10 @@
 // This file provides C wrappers for CoreWorker WorkerContext to enable CGO binding.
 // Pattern: Similar to io_ray_runtime_context_NativeWorkerContext.h in Java runtime.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H
-#define RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H_
 
-#include "cgo_wrapper.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,4 +113,4 @@ CByteArray *CNativeWorkerContext_GetCurrentNodeID();
 }  // extern "C"
 #endif
 
-#endif  // RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_NATIVE_WORKER_CONTEXT_H_

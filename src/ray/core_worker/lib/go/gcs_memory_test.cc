@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_memory.h"
+#include "ray/core_worker/lib/go/gcs_memory.h"
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <cstring>
 
 // Test freeing a single memory block
@@ -50,9 +51,10 @@ TEST(GcsMemoryTest, FreeStringArray) {
 
   // Allocate each string
   for (int i = 0; i < count; i++) {
-    arr[i] = static_cast<char *>(malloc(10));
+    constexpr int kBufLen = 10;
+    arr[i] = static_cast<char *>(malloc(kBufLen));
     ASSERT_NE(arr[i], nullptr);
-    snprintf(arr[i], 10, "str%d", i);
+    snprintf(arr[i], kBufLen, "str%d", i);
   }
 
   // Free the string array

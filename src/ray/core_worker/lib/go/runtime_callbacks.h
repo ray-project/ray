@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H
-#define RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H_
 
 #include <functional>
 #include <memory>
@@ -21,10 +21,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cgo_wrapper.h"
-#include "native_task_executor.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/native_task_executor.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -86,4 +86,4 @@ CreateTaskExecutionCallback();
 
 }  // namespace ray::go
 
-#endif  // RAY_CORE_WORKER_LIB_GO_GO_CALLBACKS_H
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_RUNTIME_CALLBACKS_H_

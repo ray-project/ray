@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "task_executor_ops.h"
+#include "ray/core_worker/lib/go/task_executor_ops.h"
+
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "ray/common/buffer.h"

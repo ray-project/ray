@@ -17,7 +17,7 @@
 // native_runtime.cc for better modularity and maintainability.
 // Pattern: Similar to io_ray_runtime_task_NativeTaskExecutor.cc in Java runtime.
 
-#include "native_task_executor.h"
+#include "ray/core_worker/lib/go/native_task_executor.h"
 
 #include <atomic>
 #include <cstring>
@@ -25,7 +25,6 @@
 #include <string>
 #include <vector>
 
-#include "cgo_wrapper.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_common.h"
@@ -34,9 +33,10 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
+#include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/task_argument.h"
+#include "ray/core_worker/lib/go/task_executor_ops.h"
 #include "ray/util/logging.h"
-#include "task_argument.h"
-#include "task_executor_ops.h"
 
 // ============================================================================
 // Global State

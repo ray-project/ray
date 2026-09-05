@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "go_heap_buffer.h"
+#include "ray/core_worker/lib/go/go_heap_buffer.h"
 
 extern "C" {
-#include "native_runtime.h"
+#include "ray/core_worker/lib/go/native_runtime.h"
 }
+
+#include <memory>
 
 #include "ray/util/logging.h"
 

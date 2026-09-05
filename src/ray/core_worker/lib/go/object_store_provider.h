@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_
-#define RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_
+#ifndef SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_
+#define SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
@@ -86,4 +86,4 @@ class MockObjectStoreProvider : public IObjectStoreProvider {
 }  // namespace go
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_
+#endif  // SRC_RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_PROVIDER_H_

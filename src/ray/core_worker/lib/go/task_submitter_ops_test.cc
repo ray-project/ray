@@ -16,7 +16,7 @@
 // These tests use MockCoreWorkerProvider to test the business logic without
 // requiring a full Ray infrastructure setup.
 
-#include "task_submitter_ops.h"
+#include "ray/core_worker/lib/go/task_submitter_ops.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,11 +25,11 @@
 #include <string>
 #include <vector>
 
-#include "core_worker_provider.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/lib/go/core_worker_provider.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -134,7 +134,7 @@ namespace {
 // doesn't work because CoreWorker methods are not virtual and weak symbols don't
 // override class methods.
 //
-// TODO: Revisit when a better mocking strategy is available, such as:
+// TODO(daiping8): Revisit when a better mocking strategy is available, such as:
 // 1. Making CoreWorker methods virtual and creating a mock subclass
 // 2. Injecting an interface for CoreWorker operations
 // 3. Creating a minimal CoreWorker with mocked dependencies (see core_worker_test.cc)
@@ -152,7 +152,7 @@ namespace {
 // doesn't work because CoreWorker methods are not virtual and weak symbols don't
 // override class methods.
 //
-// TODO: Revisit when a better mocking strategy is available, such as:
+// TODO(daiping8): Revisit when a better mocking strategy is available, such as:
 // 1. Making CoreWorker methods virtual and creating a mock subclass
 // 2. Injecting an interface for CoreWorker operations
 // 3. Creating a minimal CoreWorker with mocked dependencies (see core_worker_test.cc)
