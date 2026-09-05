@@ -81,18 +81,13 @@ def _validate_external_url(url: str) -> None:
     for _family, _type, _proto, _canonname, sockaddr in addr_infos:
         ip = ipaddress.ip_address(sockaddr[0])
 
-        if (
+        always_blocked = (
             ip.is_loopback
             or ip.is_link_local
             or ip.is_reserved
             or ip.is_multicast
-            or getattr(ip, "is_unspecified", False)
-        ):
-            raise ValueError(
-                f"External URL {url!r} resolves to "
-                f"IP address {ip}, which is "
-                f"blocked to prevent SSRF attacks."
-            )
+            or ip.is_unspecified
+        )
 
         if ip.is_private and not allow_private:
             raise ValueError(
@@ -100,6 +95,12 @@ def _validate_external_url(url: str) -> None:
                 f"IP address {ip}, which is blocked to prevent "
                 f"SSRF attacks. If you are using Databricks VPC "
                 f"PrivateLink, set RAY_DATABRICKS_ALLOW_PRIVATE_IPS=1."
+            )
+        if always_blocked or (not ip.is_global and not ip.is_private):
+            raise ValueError(
+                f"External URL {url!r} resolves to "
+                f"IP address {ip}, which is "
+                f"blocked to prevent SSRF attacks."
             )
 
 
@@ -261,9 +262,7 @@ class DatabricksUCDatasource(Datasource):
                         headers=None,
                         allow_redirects=False,
                     )
-                    if raw_response.is_redirect or (
-                        300 <= raw_response.status_code < 400
-                    ):
+                    if 300 <= raw_response.status_code < 400:
                         raise ValueError(
                             f"HTTP redirects are not allowed for external data "
                             f"fetching to prevent SSRF. "

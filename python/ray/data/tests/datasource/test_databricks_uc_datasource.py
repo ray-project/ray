@@ -770,6 +770,17 @@ class TestSSRFValidation:
         ):
             _validate_external_url("https://multicast.example.com/data")
 
+    def test_shared_address_space_ip_rejected(self):
+        """Test that CGNAT/shared-address-space IPs are blocked."""
+        with (
+            mock.patch(
+                "socket.getaddrinfo",
+                return_value=self._make_addrinfo("100.100.100.200"),
+            ),
+            pytest.raises(ValueError, match="prevent SSRF attacks"),
+        ):
+            _validate_external_url("https://metadata.example.com/data")
+
     def test_private_ip_rejected(self):
         """Test that private IPs (RFC 1918) are blocked by default."""
         with (
@@ -940,7 +951,7 @@ class TestSSRFValidation:
                 )
             if "valid.example.com" in url:
                 # The actual read request. Return a redirect response.
-                m = mock.Mock(status_code=302, is_redirect=True)
+                m = mock.Mock(status_code=302)
                 m.raise_for_status = mock.Mock()
                 return m
 
@@ -1010,13 +1021,13 @@ class TestSSRFValidation:
                 )
             if "valid.example.com" in url:
                 # Return a 403 Forbidden
-                m = mock.Mock(status_code=403, is_redirect=False)
+                m = mock.Mock(status_code=403)
                 m.raise_for_status.side_effect = requests.exceptions.HTTPError(
                     "403 Forbidden"
                 )
                 return m
 
-            return mock.Mock(status_code=200, is_redirect=False)
+            return mock.Mock(status_code=200)
 
         requests_mocker["get"].side_effect = get_side_effect
 
