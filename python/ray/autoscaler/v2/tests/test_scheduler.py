@@ -3509,6 +3509,36 @@ def test_ippr_max_limits_affect_new_node_capacity_2():
 class TestSchedulerPerformanceOptimizations:
     """Tests for large-cluster performance optimizations."""
 
+    def test_precompute_serializes_once_per_unique_request(self, monkeypatch):
+        """The same request object repeated count times should be serialized once."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 10,
+        )
+        # Patch after sched_request: group_by_count inside it serializes each
+        # request legitimately, which would skew the count below.
+        calls = 0
+        serialized_ids = set()
+        orig = ResourceRequest.SerializeToString
+
+        def counting_serialize(self, deterministic=None):
+            nonlocal calls
+            calls += 1
+            serialized_ids.add(id(self))
+            return orig(self, deterministic=deterministic)
+
+        monkeypatch.setattr(ResourceRequest, "SerializeToString", counting_serialize)
+        ResourceDemandScheduler(event_logger).schedule(request)
+        assert calls == 1 and len(serialized_ids) == 1
+
     def test_quick_reject_skips_exhausted_nodes(self):
         """Nodes with no available resources should be skipped without deepcopy."""
         node_type_configs = {

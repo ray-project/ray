@@ -1729,7 +1729,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         # calls inside the per-node try_schedule loop.
         shape_keys = {}
         for r in requests_to_sched:
-            shape_keys[id(r)] = r.SerializeToString(deterministic=True)
+            # Skip re-serializing the same object, e.g. from [r.request] * r.count.
+            if id(r) not in shape_keys:
+                shape_keys[id(r)] = r.SerializeToString(deterministic=True)
 
         # Precompute the minimum resource demand across all requests for quick
         # feasibility pre-checks.
