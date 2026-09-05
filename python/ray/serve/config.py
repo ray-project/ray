@@ -613,6 +613,8 @@ class AutoscalingConfig(BaseModel):
     `advanced autoscaling guide <https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html>`_.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
