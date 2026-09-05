@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
@@ -47,6 +47,77 @@ _SUPPORTED_SCHEMA_MODES = {"merge", "error"}
 _gcs_env_lock = threading.Lock()
 
 
+def _nested_schema_additions(
+    existing_field: "pa.Field",
+    incoming_field: "pa.Field",
+    *,
+    path: Optional[str] = None,
+) -> Tuple[Optional["pa.Field"], List[str]]:
+    """Build a schema patch for fields added below an existing nested field.
+
+    ``DeltaTable.alter.add_columns`` merges a partial struct/array/map field
+    into the existing field. The patch therefore contains only new descendants,
+    with each new field made nullable so rows written before the evolution
+    remain valid.
+    """
+    import pyarrow as pa
+
+    path = path or incoming_field.name
+    existing_type = existing_field.type
+    incoming_type = incoming_field.type
+
+    if pa.types.is_struct(existing_type) and pa.types.is_struct(incoming_type):
+        existing_children = {field.name: field for field in existing_type}
+        patch_children = []
+        added_paths = []
+        for incoming_child in incoming_type:
+            child_path = f"{path}.{incoming_child.name}"
+            existing_child = existing_children.get(incoming_child.name)
+            if existing_child is None:
+                patch_children.append(incoming_child.with_nullable(True))
+                added_paths.append(child_path)
+                continue
+
+            child_patch, child_paths = _nested_schema_additions(
+                existing_child,
+                incoming_child,
+                path=child_path,
+            )
+            if child_patch is not None:
+                patch_children.append(child_patch)
+                added_paths.extend(child_paths)
+
+        if not patch_children:
+            return None, []
+        patch_type = pa.struct(patch_children)
+    elif pa.types.is_list(existing_type) and pa.types.is_list(incoming_type):
+        value_patch, added_paths = _nested_schema_additions(
+            existing_type.value_field,
+            incoming_type.value_field,
+            path=f"{path}[]",
+        )
+        if value_patch is None:
+            return None, []
+        patch_type = pa.list_(value_patch)
+    elif pa.types.is_map(existing_type) and pa.types.is_map(incoming_type):
+        item_patch, added_paths = _nested_schema_additions(
+            existing_type.item_field,
+            incoming_type.item_field,
+            path=f"{path}{{}}",
+        )
+        if item_patch is None:
+            return None, []
+        patch_type = pa.map_(
+            incoming_type.key_type,
+            item_patch,
+            keys_sorted=incoming_type.keys_sorted,
+        )
+    else:
+        return None, []
+
+    return existing_field.with_type(patch_type), added_paths
+
+
 @dataclass
 class DeltaWriteResult:
     """Result returned from each worker's ``write`` task.
@@ -70,9 +141,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     ``SaveMode.OVERWRITE``.
 
     Schema evolution on APPEND (``schema_mode``):
-        A column present in the incoming data but not in the table is either
-        added (``"merge"``, the default) or rejected (``"error"``). A column
-        both schemas have with an incompatible type always raises.
+        A field present in the incoming data but not in the table is either
+        added (``"merge"``, the default) or rejected (``"error"``). This
+        includes fields nested inside structs, arrays, and maps. A field both
+        schemas have with an incompatible type always raises.
 
         The schema is evolved in ``on_write_complete``, immediately before the
         data commit, so a failure anywhere earlier leaves the table's schema
@@ -124,25 +196,25 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 ``user_storage_options`` (the latter winning).
             schema_mode: How an ``APPEND`` reconciles its incoming schema
                 against an existing table's schema, when the incoming data
-                has a column the table doesn't. Has no effect on
+                has a top-level or nested field the table doesn't. Has no effect on
                 ``OVERWRITE`` (which always replaces the table's schema
                 wholesale) or on a brand-new table (nothing to reconcile
                 against yet). One of:
 
-                * ``"merge"`` (default): add the new column(s) to the table
+                * ``"merge"`` (default): add the new field(s) to the table
                   before committing, as an ``ALTER TABLE ADD COLUMN``-style
-                  operation. New columns are always added as nullable --
+                  operation. New fields are always added as nullable --
                   every row already in the table has no value for a
-                  brand-new column, so a non-nullable declaration would make
+                  brand-new field, so a non-nullable declaration would make
                   the schema self-contradictory.
                 * ``"error"``: reject the write with a clear ``ValueError``
                   instead of evolving the schema. Nothing about the table
                   changes.
 
-                Either way, a column both schemas already have, but with an
+                Either way, a field both schemas already have, but with an
                 incompatible type, always raises -- schema evolution here
-                only ever *adds* columns, it never changes an existing
-                column's type.
+                only ever *adds* fields, it never changes an existing
+                field's type.
             user_storage_options: The exact storage_options the caller passed to
                 :meth:`Dataset.write_delta` directly, before any catalog-resolved
                 defaults were merged in. Kept separately so a credential refresh
@@ -611,10 +683,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         """Reconcile ``schema`` (the schema being committed) against ``dt``'s
         current table schema, per ``self._schema_mode``.
 
-        A column in ``schema`` that ``dt`` doesn't have is either added to the
+        A field in ``schema`` that ``dt`` doesn't have is either added to the
         table (``schema_mode="merge"``) or rejected (``schema_mode="error"``).
-        A column both schemas have with an incompatible type always raises,
-        regardless of ``schema_mode`` -- only adding columns is ever safe to
+        A field both schemas have with an incompatible type always raises,
+        regardless of ``schema_mode`` -- only adding fields is ever safe to
         do automatically.
 
         Returns the ``DeltaTable`` to commit against: ``dt`` itself, or a
@@ -624,8 +696,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         existing_schema = pa.schema(dt.schema().to_arrow())
 
-        # Check types before evolving, so a write that both adds a column and
-        # conflicts on an existing one fails without having already committed
+        # Check types before evolving, so a write that both adds a field and
+        # conflicts with an existing one fails without having already committed
         # the (permanent) schema change.
         #
         # ``unify_schemas`` reports an incompatibility as ArrowTypeError or
@@ -640,47 +712,61 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Cannot write to Delta table '{self._path}': the incoming "
                 f"data's schema is not compatible with the table's existing "
                 f"schema ({e}). schema_mode={self._schema_mode!r} only "
-                "supports adding new columns, not changing an existing "
-                "column's type."
+                "supports adding new fields, not changing an existing "
+                "field's type."
             ) from e
 
         # Walk the incoming schema's field order, not a set difference: set
         # iteration order for strings is hash-randomized per process, which
         # would make the table's final column order vary between runs.
         existing_names = set(existing_schema.names)
-        new_fields = [
-            schema.field(name) for name in schema.names if name not in existing_names
-        ]
+        new_fields = []
+        new_field_paths = []
+        for name in schema.names:
+            incoming_field = schema.field(name)
+            if name not in existing_names:
+                # Existing rows have no value for a new top-level field.
+                new_fields.append(incoming_field.with_nullable(True))
+                new_field_paths.append(name)
+                continue
+
+            nested_patch, nested_paths = _nested_schema_additions(
+                existing_schema.field(name),
+                incoming_field,
+            )
+            if nested_patch is not None:
+                new_fields.append(nested_patch)
+                new_field_paths.extend(nested_paths)
+
         if new_fields:
             if self._schema_mode == "error":
                 raise ValueError(
-                    f"Cannot write to Delta table '{self._path}': column(s) "
-                    f"{[f.name for f in new_fields]} are not present in the "
+                    f"Cannot write to Delta table '{self._path}': field(s) "
+                    f"{new_field_paths} are not present in the "
                     "table's existing schema. Pass schema_mode='merge' "
-                    "(the default) to add new columns automatically, or "
+                    "(the default) to add new fields automatically, or "
                     "remove them from the incoming data."
                 )
-            dt = self._evolve_schema_for_new_columns(dt, new_fields)
+            dt = self._evolve_schema_for_new_fields(dt, new_fields)
 
         return dt
 
-    def _evolve_schema_for_new_columns(
+    def _evolve_schema_for_new_fields(
         self, dt: "DeltaTable", new_fields: List["pa.Field"]
     ) -> "DeltaTable":
         """Add ``new_fields`` to the table's schema in their own transaction
         and return a reloaded ``DeltaTable``.
 
-        New columns are forced nullable: rows already in the table have no
-        value for them, and ``alter.add_columns`` won't reject a non-nullable
-        field on its own. ``alter.add_columns`` is also the only API that
-        actually evolves the schema -- passing a wider ``schema=`` to the
-        data-commit calls is silently ignored.
+        ``new_fields`` are already prepared as nullable top-level fields or
+        partial nested patches whose new descendants are nullable. This keeps
+        rows already in the table valid. ``alter.add_columns`` is also the only
+        API that actually evolves the schema -- passing a wider ``schema=`` to
+        the data-commit calls is silently ignored.
         """
         import pyarrow as pa
         from deltalake import DeltaTable, Schema as DeltaSchema
 
-        nullable_fields = [f.with_nullable(True) for f in new_fields]
-        delta_schema = DeltaSchema.from_arrow(pa.schema(nullable_fields))
+        delta_schema = DeltaSchema.from_arrow(pa.schema(new_fields))
         dt.alter.add_columns(delta_schema.fields)
         return DeltaTable(self._path, storage_options=self._storage_options)
 
