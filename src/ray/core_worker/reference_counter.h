@@ -50,7 +50,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
       std::function<void(const ObjectID &object_id,
-                         const absl::flat_hash_set<NodeID> &locations)>
+                         absl::flat_hash_set<NodeID> locations)>
           free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
@@ -536,9 +536,51 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Work that must be executed outside mutex_ after OnObjectOutOfScopeOrFreed
+  /// collects the data under the lock.
+  struct DeferredOOSWork {
+    ObjectID object_id;
+    absl::flat_hash_set<NodeID> locations;
+    std::vector<std::function<void(const ObjectID &)>> callbacks;
+  };
+
+  /// RAII guard that acquires mutex_ and, on destruction, swaps out any
+  /// deferred OOS work, releases the lock, then executes the work (callbacks
+  /// + gRPC frees) outside the lock. Use this instead of absl::MutexLock in
+  /// methods that may trigger OnObjectOutOfScopeOrFreed.
+  class ABSL_SCOPED_LOCKABLE MutexLockWithOOSDrain {
+   public:
+    explicit MutexLockWithOOSDrain(ReferenceCounter &rc)
+        ABSL_EXCLUSIVE_LOCK_FUNCTION(rc.mutex_)
+        : rc_(rc) {
+      rc_.mutex_.Lock();
+      rc_.oos_drain_active_ = true;
+    }
+
+    ~MutexLockWithOOSDrain() ABSL_UNLOCK_FUNCTION() {
+      work_.swap(rc_.deferred_oos_work_);
+      rc_.oos_drain_active_ = false;
+      rc_.mutex_.Unlock();
+      rc_.ExecuteDeferredOOSWork(work_);
+    }
+
+    MutexLockWithOOSDrain(const MutexLockWithOOSDrain &) = delete;
+    MutexLockWithOOSDrain &operator=(const MutexLockWithOOSDrain &) = delete;
+
+   private:
+    ReferenceCounter &rc_;
+    std::vector<DeferredOOSWork> work_;
+  };
+
   /// This should be called whenever the object is out of scope or manually freed.
+  /// Collects deferred work (gRPC frees, callbacks) into deferred_oos_work_
+  /// to be swapped out and executed outside the lock.
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Execute deferred OOS work (gRPC frees, callbacks).
+  /// Called with work already swapped out from deferred_oos_work_ under mutex_.
+  void ExecuteDeferredOOSWork(std::vector<DeferredOOSWork> &work);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -784,8 +826,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Called to send free local object RPCs to all raylets that hold a copy of
   /// the object.
   const std::function<void(const ObjectID &object_id,
-                           const absl::flat_hash_set<NodeID> &locations)>
+                           absl::flat_hash_set<NodeID> locations)>
       free_object_on_nodes_async_;
+
+  /// Work collected by OnObjectOutOfScopeOrFreed under mutex_. Callers
+  /// swap this out before releasing the lock and pass it to
+  /// ExecuteDeferredOOSWork().
+  std::vector<DeferredOOSWork> deferred_oos_work_ ABSL_GUARDED_BY(mutex_);
+
+  /// Whether mutex_ is held by a MutexLockWithOOSDrain rather than a plain
+  /// absl::MutexLock. A bool suffices because absl mutexes are not reentrant,
+  /// so the guard never nests.
+  bool oos_drain_active_ ABSL_GUARDED_BY(mutex_) = false;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

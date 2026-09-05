@@ -634,6 +634,36 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_TRUE(*out_of_scope);
 }
 
+// Tests that AddBorrowedObject runs out-of-scope callbacks before returning.
+// Leaving them queued for an unrelated later caller to drain would delay the
+// plasma release the callback performs.
+TEST_F(ReferenceCountTest, TestAddBorrowedObjectRunsOutOfScopeCallback) {
+  ObjectID id = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  auto out_of_scope = std::make_shared<bool>(false);
+  auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
+
+  // add_local_ref=false leaves the reference at refcount 0, the state
+  // AddBorrowedObject deletes on.
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/false);
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
+  ASSERT_FALSE(*out_of_scope);
+
+  ASSERT_TRUE(rc->AddBorrowedObject(id, ObjectID::Nil(), address));
+
+  // Fired by the call above, not by some later drain.
+  ASSERT_TRUE(*out_of_scope);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+}
+
 // Tests call site tracking and ability to update object size.
 TEST_F(ReferenceCountTest, TestReferenceStats) {
   ObjectID id1 = ObjectID::FromRandom();
