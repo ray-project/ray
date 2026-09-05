@@ -181,24 +181,36 @@ def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, An
     return normalized_kwargs
 
 
+def _resolve_hf_model_id_from_mirror(engine_config: "VLLMEngineConfig") -> None:
+    """Resolve hf_model_id to a local path or, for streaming load formats
+    that skip local download, the mirror's URI."""
+    if not engine_config.mirror_config:
+        return
+
+    from ray.llm._internal.common.utils.download_utils import (
+        STREAMING_LOAD_FORMATS,
+        get_model_location_on_disk,
+    )
+
+    local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+    if local_path and local_path != engine_config.actual_hf_model_id:
+        engine_config.hf_model_id = local_path
+        logger.info(f"Resolved model from mirror to local path: {local_path}")
+    elif engine_config.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS:
+        engine_config.hf_model_id = engine_config.mirror_config.bucket_uri
+        logger.info(
+            f"Streaming load format; using mirror URI: "
+            f"{engine_config.mirror_config.bucket_uri}"
+        )
+
+
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
     *,
     device_type: Optional[str] = None,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
-
-    # Resolve to local cache path if model was downloaded from S3/GCS mirror
-    # Only do this if mirror_config was specified (intentional S3/GCS download)
-    if engine_config.mirror_config:
-        from ray.llm._internal.common.utils.download_utils import (
-            get_model_location_on_disk,
-        )
-
-        local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
-        if local_path and local_path != engine_config.actual_hf_model_id:
-            engine_config.hf_model_id = local_path
-            logger.info(f"Resolved model from mirror to local path: {local_path}")
+    _resolve_hf_model_id_from_mirror(engine_config)
 
     from vllm.usage.usage_lib import UsageContext
 

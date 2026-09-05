@@ -201,6 +201,81 @@ class TestModelConfig:
         assert engine_config.mirror_config is not None
         assert engine_config.mirror_config.bucket_uri == bucket_uri
 
+    def test_streaming_load_format_falls_back_to_mirror_uri(self):
+        """Streaming load formats skip local download, so hf_model_id
+        falls back to mirror_config.bucket_uri instead of the alias."""
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+            _resolve_hf_model_id_from_mirror,
+        )
+
+        bucket_uri = "s3://my-bucket/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="qwen-0.5b",
+                model_source=bucket_uri,
+            ),
+            engine_kwargs=dict(load_format="runai_streamer"),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "qwen-0.5b"
+
+        with patch(
+            "ray.llm._internal.common.utils.download_utils.get_model_location_on_disk",
+            side_effect=lambda model_id: model_id,
+        ):
+            _resolve_hf_model_id_from_mirror(engine_config)
+
+        assert engine_config.hf_model_id == bucket_uri
+
+    def test_streaming_load_format_prefers_local_path_if_already_downloaded(self):
+        """If a local path IS resolved, it should still win over the mirror
+        URI fallback."""
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+            _resolve_hf_model_id_from_mirror,
+        )
+
+        local_path = "/tmp/fake/local/model/path"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="qwen-0.5b",
+                model_source="s3://my-bucket/my-model",
+            ),
+            engine_kwargs=dict(load_format="runai_streamer"),
+        )
+        engine_config = llm_config.get_engine_config()
+
+        with patch(
+            "ray.llm._internal.common.utils.download_utils.get_model_location_on_disk",
+            return_value=local_path,
+        ):
+            _resolve_hf_model_id_from_mirror(engine_config)
+
+        assert engine_config.hf_model_id == local_path
+
+    def test_non_streaming_load_format_unaffected_by_mirror_fallback(self):
+        """Without a streaming load_format, if nothing was downloaded yet,
+        hf_model_id stays as the alias -- the new fallback must not kick in
+        outside the streaming-format case."""
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+            _resolve_hf_model_id_from_mirror,
+        )
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="qwen-0.5b",
+                model_source="s3://my-bucket/my-model",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+
+        with patch(
+            "ray.llm._internal.common.utils.download_utils.get_model_location_on_disk",
+            side_effect=lambda model_id: model_id,
+        ):
+            _resolve_hf_model_id_from_mirror(engine_config)
+
+        assert engine_config.hf_model_id == "qwen-0.5b"
+
     def test_hf_model_source_used_as_hf_model_id(self):
         """A plain HuggingFace model_source is used directly as hf_model_id."""
         llm_config = LLMConfig(
