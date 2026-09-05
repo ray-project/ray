@@ -26,6 +26,7 @@ from ray._common.test_utils import (
 )
 from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
@@ -1162,7 +1163,9 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         yield
         await asyncio.sleep(100)
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, TaskCancelledError):
+        # A cancelled task surfaces as TaskCancelledError on an in-flight
+        # `.remote()` await, which is not an asyncio.CancelledError.
         cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
