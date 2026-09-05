@@ -242,6 +242,12 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
                 "runtime_env['uv']['packages'] must be of type list, "
                 f"got: {type(uv['packages'])}"
             )
+        for idx, package in enumerate(uv["packages"]):
+            if not isinstance(package, str):
+                raise TypeError(
+                    "runtime_env['uv']['packages'] must be of type list[str] "
+                    f"got {type(package)} for {idx}-th item."
+                )
     else:
         raise TypeError(
             "runtime_env['uv'] must be of type " f"List[str], or dict, got {type(uv)}"
