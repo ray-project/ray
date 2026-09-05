@@ -1,11 +1,11 @@
 import os
 import sys
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray._private.accelerators import HPUAcceleratorManager, hpu
+from ray._private.test_utils import mock_accelerator_detection
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -13,33 +13,23 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more hpus are configured than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
-    with pytest.raises(ValueError):
+    with mock_accelerator_detection(HPUAcceleratorManager), pytest.raises(ValueError):
         ray.init(resources={"HPU": 4})
 
 
-@patch(
-    "ray._private.accelerators.HPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=4,
-)
-def test_auto_detected_more_than_visible(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
-):
+def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     # Test more hpus are detected than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert ray.available_resources()["HPU"] == 3
+    with mock_accelerator_detection(HPUAcceleratorManager, num_accelerators=4):
+        ray.init()
+        assert ray.available_resources()["HPU"] == 3
 
 
-@patch(
-    "ray._private.accelerators.HPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=2,
-)
-def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
+def test_auto_detect_resources(shutdown_only):
     # Test that ray node resources are filled with auto detected count.
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert ray.available_resources()["HPU"] == 2
+    with mock_accelerator_detection(HPUAcceleratorManager, num_accelerators=2):
+        ray.init()
+        assert ray.available_resources()["HPU"] == 2
 
 
 def test_get_current_process_visible_accelerator_ids():
