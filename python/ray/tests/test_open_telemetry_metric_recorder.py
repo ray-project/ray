@@ -376,6 +376,82 @@ def test_record_histogram_aggregated_batch(
     mock_logger_warning.assert_not_called()
 
 
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_record_histogram_aggregated_batch_with_foreign_buckets(
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+):
+    """
+    A metric name is registered once per node, but several processes may emit it with
+    different bucket bounds (e.g. two vLLM engines with different max_model_len).
+    Data points reported with bounds other than the registered ones must still be
+    recorded, using the reporter's own bounds to reconstruct the observations.
+    """
+    mock_meter = MagicMock()
+    real_histogram = NoOpHistogram(name="test_histogram")
+    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_histogram_metric(
+        name="test_histogram",
+        description="Test Histogram",
+        buckets=[1.0, 10.0, 100.0],
+    )
+
+    # Reported with 5 buckets instead of the 4 the instrument was registered with.
+    recorder.record_histogram_aggregated_batch(
+        name="test_histogram",
+        data_points=[
+            {
+                "tags": {"model_name": "b"},
+                "bucket_counts": [1, 0, 2, 0, 1],
+                "bucket_boundaries": [1.0, 10.0, 100.0, 1000.0],
+            }
+        ],
+    )
+
+    assert mock_histogram.record.call_count == 4
+    recorded = [call.args[0] for call in mock_histogram.record.call_args_list]
+    assert recorded == pytest.approx([0.5, 55.0, 55.0, 2000.0])
+    mock_logger_warning.assert_not_called()
+
+
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_record_histogram_aggregated_batch_bucket_count_mismatch(
+    mock_get_meter, mock_set_meter_provider, mock_logger_warning
+):
+    """A data point that omits its bounds and disagrees with the registered ones is
+    skipped with a warning instead of raising."""
+    mock_meter = MagicMock()
+    real_histogram = NoOpHistogram(name="test_histogram")
+    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_histogram_metric(
+        name="test_histogram",
+        description="Test Histogram",
+        buckets=[1.0, 10.0, 100.0],
+    )
+
+    recorder.record_histogram_aggregated_batch(
+        name="test_histogram",
+        data_points=[
+            {"tags": {"model_name": "a"}, "bucket_counts": [1, 2]},
+            {"tags": {"model_name": "b"}, "bucket_counts": [1, 0, 0, 0]},
+        ],
+    )
+
+    assert mock_histogram.record.call_count == 1
+    mock_logger_warning.assert_called_once()
+
+
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 @pytest.mark.parametrize(
