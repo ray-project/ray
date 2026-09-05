@@ -45,6 +45,7 @@ user-guides/reduce-image-pull-latency
 user-guides/uv
 user-guides/kuberay-dashboard
 user-guides/resource-isolation-with-writable-cgroups
+user-guides/resource-isolation-with-writable-cgroups-nri
 user-guides/kuberay-history-server
 user-guides/k8s-events
 user-guides/rayjob-sidecar-submitter-restart
@@ -87,6 +88,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-uv`
 * {ref}`kuberay-dashboard`
 * {ref}`resource-isolation-with-writable-cgroups`
+* [Resource Isolation with Writable Cgroups via an NRI Plugin](user-guides/resource-isolation-with-writable-cgroups-nri.md)
 * {ref}`kuberay-history-server`
 * {ref}`kuberay-k8s-events`
 * {ref}`kuberay-rayjob-sidecar-submitter-restart`
