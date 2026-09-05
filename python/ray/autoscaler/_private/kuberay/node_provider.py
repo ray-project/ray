@@ -169,8 +169,21 @@ def idle_terminate_patch(should_idle_terminate: bool) -> Dict[str, Any]:
     return {"spec": {"idleTerminate": should_idle_terminate}}
 
 
-def finalizer_patch(finalizers: List[str]) -> Dict[str, Any]:
-    return {"metadata": {"finalizers": finalizers}}
+def finalizer_patch(
+    finalizer: str, finalizers: Optional[List[str]]
+) -> List[Dict[str, Any]]:
+    if finalizers:
+        path = "/metadata/finalizers/-"
+        value = finalizer
+    else:
+        path = "/metadata/finalizers"
+        value = [finalizer]
+
+    return add_patch(path, value)
+
+
+def add_patch(path: str, value: Any) -> List[Dict[str, Any]]:
+    return [{"op": "add", "path": path, "value": value}]
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str]:

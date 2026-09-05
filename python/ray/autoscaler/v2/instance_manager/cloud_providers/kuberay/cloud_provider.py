@@ -740,11 +740,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             # using a read-modify-write to preserve existing finalizers.
             finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
             if NO_DRIVER_TIMEOUT_FINALIZER not in finalizers:
-                finalizers.append(NO_DRIVER_TIMEOUT_FINALIZER)
-                payload = finalizer_patch(finalizers)
+                # metadata.finalizers is an array so we use add-patch to append NO_DRIVER_TIMEOUT_FINALIZER
+                payload = finalizer_patch(NO_DRIVER_TIMEOUT_FINALIZER, finalizers)
                 try:
                     patched_raycluster = self._k8s_api_client.patch(
-                        path, payload, content_type="application/merge-patch+json"
+                        path, payload, content_type="application/json-patch+json"
                     )
 
                     if NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
