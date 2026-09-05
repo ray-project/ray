@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Logical memory in bytes to pass to the read.",
     )
+    parser.add_argument(
+        "--min-total-worker-network-receive-gbps",
+        type=float,
+        default=None,
+        help="Fail if the workers receive less than this many Gbps in total, on average.",
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
@@ -71,7 +77,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    benchmark = Benchmark(
+        min_total_worker_network_receive_gbps=(
+            args.min_total_worker_network_receive_gbps
+        )
+    )
 
     def benchmark_fn():
         read_fn = get_read_fn(args)

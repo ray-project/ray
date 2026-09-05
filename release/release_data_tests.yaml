@@ -45,14 +45,14 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles
+      --iter-bundles --min-total-worker-network-receive-gbps 50
 
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
@@ -70,7 +70,7 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
@@ -83,18 +83,20 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles --memory 3650722201
+      --min-total-worker-network-receive-gbps 50
 
 - name: "read_images_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+      --min-total-worker-network-receive-gbps 50
 
 - name: read_tfrecords
   python: "3.10"
@@ -112,18 +114,19 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
+    cluster_compute: read_benchmark_compute.yaml
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
-      --iter-bundles
+      --iter-bundles --min-total-worker-network-receive-gbps 50
 
 - name: "read_from_uris_fixed_size"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 5400
