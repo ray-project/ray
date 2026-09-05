@@ -3800,7 +3800,19 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    worker_context_->MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    if (worker_context_->MaybeInitializeJobInfo(job_id,
+                                                request.task_spec().job_config())) {
+      // Take job config setting for lineage pinning if provided
+      const bool cluster_lineage_pinning_enabled =
+          RayConfig::instance().lineage_pinning_enabled();
+      const std::optional<bool> job_enable_object_reconstruction_or =
+          worker_context_->GetEnableObjectReconstruction();
+      const bool lineage_reconstruction_enabled =
+          job_enable_object_reconstruction_or.has_value()
+              ? job_enable_object_reconstruction_or.value()
+              : cluster_lineage_pinning_enabled;
+      reference_counter_->SetLineagePinningEnabled(lineage_reconstruction_enabled);
+    }
     task_counter_.SetJobId(job_id);
   }
 

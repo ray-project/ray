@@ -192,19 +192,26 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    if (!current_job_id_.IsNil() && job_config_.has_value()) {
-      RAY_CHECK(current_job_id_ == job_id);
-      return;
-    }
-  }
   absl::WriterMutexLock lock(&mutex_);
+  if (!current_job_id_.IsNil() && job_config_.has_value()) {
+    RAY_CHECK(current_job_id_ == job_id);
+    return false;
+  }
+
   current_job_id_ = job_id;
   job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
+  return true;
+}
+
+std::optional<bool> WorkerContext::GetEnableObjectReconstruction() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  if (!job_config_.has_value() || !job_config_->has_enable_object_reconstruction()) {
+    return std::nullopt;
+  }
+  return job_config_->enable_object_reconstruction();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {

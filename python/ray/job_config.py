@@ -41,6 +41,10 @@ class JobConfig:
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
             See :ref:`actor lifetimes <actor-lifetimes>` for more details.
+        enable_object_reconstruction: Whether objects owned by this job's
+            workers can be reconstructed from lineage when lost. If unset,
+            the cluster-level ``lineage_pinning_enabled`` system config
+            applies.
         _py_driver_sys_path: A list of directories that specify the search path
             for python workers.
     """
@@ -54,6 +58,7 @@ class JobConfig:
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
+        enable_object_reconstruction: Optional[bool] = None,
         _py_driver_sys_path: Optional[List[str]] = None,
     ):
         #: The jvm options for java workers of the job.
@@ -75,6 +80,7 @@ class JobConfig:
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
+        self.enable_object_reconstruction = enable_object_reconstruction
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
@@ -247,6 +253,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            if self.enable_object_reconstruction is not None:
+                pb.enable_object_reconstruction = self.enable_object_reconstruction
             if self.py_logging_config:
                 pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
@@ -288,6 +296,9 @@ class JobConfig:
             runtime_env=job_config_json.get("runtime_env", None),
             metadata=job_config_json.get("metadata", None),
             ray_namespace=job_config_json.get("ray_namespace", None),
+            enable_object_reconstruction=job_config_json.get(
+                "enable_object_reconstruction", None
+            ),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
         )

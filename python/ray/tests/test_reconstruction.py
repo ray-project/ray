@@ -179,6 +179,55 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
             ray.get(obj)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Very flaky on Windows due to memory usage."
+)
+@pytest.mark.parametrize("job_reconstruction_enabled", [False, True])
+def test_job_config_reconstruction(
+    config, ray_start_cluster, job_reconstruction_enabled
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, _system_config=config)
+    ray.init(
+        address=cluster.address,
+        job_config=ray.job_config.JobConfig(
+            enable_object_reconstruction=job_reconstruction_enabled
+        ),
+    )
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return x.size
+
+    obj = large_object.options(resources={"node1": 1}).remote()
+    assert (
+        ray.get(dependent_task.options(resources={"node1": 1}).remote(obj)) == 10**7
+    )
+
+    # Explicitly kill the node holding the object to test reconstruction is
+    # enabled/disabled.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+
+    if job_reconstruction_enabled:
+        assert ray.get(dependent_task.remote(obj)) == 10**7
+        assert ray.get(obj).size == 10**7
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj))
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj)
+
+
 # TODO(swang): Add a test to check for ObjectReconstructionFailedError if we
 # fail to reconstruct a ray.put object.
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")

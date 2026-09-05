@@ -470,6 +470,10 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
   // Python logging configurations that will be passed to Ray tasks/actors.
   bytes serialized_py_logging_config = 9;
+  // Whether objects owned by this job's workers can be reconstructed from
+  // lineage when lost. When unset, the cluster-level system config
+  // `lineage_pinning_enabled` applies.
+  optional bool enable_object_reconstruction = 10;
 }
 
 message StreamingGeneratorReturnIdInfo {
