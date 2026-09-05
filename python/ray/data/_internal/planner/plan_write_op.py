@@ -69,7 +69,6 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
 
     return BlockMapTransformFn(
         fn,
-        is_udf=False,
         disable_block_shaping=True,
     )
 
@@ -119,7 +118,6 @@ def _plan_write_op_internal(
     pre_transforms = pre_transformations or []
     write_transform = BlockMapTransformFn(
         write_fn,
-        is_udf=False,
         # NOTE: No need for block-shaping
         disable_block_shaping=True,
     )

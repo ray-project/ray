@@ -505,7 +505,7 @@ def op_two_block():
         "size_bytes": [100, 50],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
-        "udf_time": [1.1, 1.7],
+        "block_transform_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -520,7 +520,7 @@ def op_two_block():
             end_time_s=start_time_s + block_params["wall_time"][i],
             wall_time_s=block_params["wall_time"][i],
             cpu_time_s=block_params["cpu_time"][i],
-            udf_time_s=block_params["udf_time"][i],
+            block_transform_time_s=block_params["block_transform_time"][i],
             node_id=block_params["node_id"][i],
             task_idx=block_params["task_idx"][i],
         )

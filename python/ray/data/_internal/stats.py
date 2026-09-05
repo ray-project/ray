@@ -1705,7 +1705,14 @@ class OperatorStatsSummary:
     block_execution_summary_str: str
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
-    udf_time: Optional[StatsSummary] = None
+    # Time in the map transform chain. The four fields below decompose it.
+    block_transform_time: Optional[StatsSummary] = None
+    # Time turning input blocks into the batches or rows the transforms consume.
+    input_prep_time: Optional[StatsSummary] = None
+    # Time inside the stage bodies themselves, Ray Data's as well as yours.
+    function_body_time: Optional[StatsSummary] = None
+    # Time assembling transform output back into blocks.
+    output_build_time: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1753,7 +1760,10 @@ class OperatorStatsSummary:
         # Single pass over block_stats to collect all metrics.
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
-        udf_time_acc: _StatsAccumulator = _StatsAccumulator()
+        block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
+        input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
+        function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1774,8 +1784,14 @@ class OperatorStatsSummary:
                     wall_time_acc.add(es.wall_time_s)
                 if es.cpu_time_s is not None:
                     cpu_time_acc.add(es.cpu_time_s)
-                if es.udf_time_s is not None:
-                    udf_time_acc.add(es.udf_time_s)
+                if es.block_transform_time_s is not None:
+                    block_transform_time_acc.add(es.block_transform_time_s)
+                if es.input_prep_time_s is not None:
+                    input_prep_time_acc.add(es.input_prep_time_s)
+                if es.function_body_time_s is not None:
+                    function_body_time_acc.add(es.function_body_time_s)
+                if es.output_build_time_s is not None:
+                    output_build_time_acc.add(es.output_build_time_s)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1818,7 +1834,16 @@ class OperatorStatsSummary:
         # Execution stats.
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
-        udf_stats = udf_time_acc.get()
+        block_transform_stats = block_transform_time_acc.get()
+        # A chain that measured only its total leaves the phase accumulators
+        # empty. Report that as None rather than a zero-valued summary, so a
+        # consumer can tell "not measured" from "measured as zero" -- the phases
+        # are absent for row-based transforms unless
+        # `DataContext.accurate_map_phase_timing` is set.
+        phases_measured = input_prep_time_acc.count > 0
+        input_prep_stats = input_prep_time_acc.get() if phases_measured else None
+        function_body_stats = function_body_time_acc.get() if phases_measured else None
+        output_build_stats = output_build_time_acc.get() if phases_measured else None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1844,7 +1869,10 @@ class OperatorStatsSummary:
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
-            udf_time=udf_stats,
+            block_transform_time=block_transform_stats,
+            input_prep_time=input_prep_stats,
+            function_body_time=function_body_stats,
+            output_build_time=output_build_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1881,14 +1909,36 @@ class OperatorStatsSummary:
                 fmt(self.cpu_time.sum),
             )
 
-        if self.udf_time:
+        if self.block_transform_time:
             out += indent
-            out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(self.udf_time.min),
-                fmt(self.udf_time.max),
-                fmt(self.udf_time.mean),
-                fmt(self.udf_time.sum),
+            out += "* Block transform time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(self.block_transform_time.min),
+                fmt(self.block_transform_time.max),
+                fmt(self.block_transform_time.mean),
+                fmt(self.block_transform_time.sum),
             )
+            # Breakdown of the line above, in execution order; these sum to
+            # it. Verbose-only, like `extra_metrics` -- the figures are on the
+            # summary either way.
+            breakdown = [
+                ("Input prep", self.input_prep_time),
+                ("Function body", self.function_body_time),
+                ("Output block build", self.output_build_time),
+            ]
+            if DataContext.get_current().verbose_stats_logs and any(
+                s is not None for _, s in breakdown
+            ):
+                for label, stats in breakdown:
+                    if stats is None:
+                        continue
+                    out += indent
+                    out += "\t* {}: {} min, {} max, {} mean, {} total\n".format(
+                        label,
+                        fmt(stats.min),
+                        fmt(stats.max),
+                        fmt(stats.mean),
+                        fmt(stats.sum),
+                    )
 
         if self.output_num_rows:
             out += indent
