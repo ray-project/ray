@@ -41,6 +41,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
+    BackpressureStats,
     DatasetStats,
     DatasetStatsSummary,
     IterationStage,
@@ -170,6 +171,27 @@ def find_stats_summary_in_parents(
     raise AssertionError(
         f"No stats summary found matching pattern '{name_pattern}' in parents chain"
     )
+
+
+def test_backpressure_stats_render_once_for_multiple_suboperators():
+    """Test that physical-operator backpressure is rendered once for fused suboperators."""
+    stats = DatasetStats(
+        metadata={
+            "Map": [],
+            "Filter": [],
+        },
+        parent=None,
+        base_name="Map->Filter",
+    )
+    stats.backpressure_stats = BackpressureStats(
+        task_submission_policy="MockPolicy1",
+        task_output_policy="MockPolicy2",
+    )
+
+    summary_str = stats.to_summary().to_string()
+
+    assert summary_str.count("Backpressured: tasks(MockPolicy1)") == 1
+    assert summary_str.count("Backpressured: outputs(MockPolicy2)") == 1
 
 
 @pytest.mark.skipif(

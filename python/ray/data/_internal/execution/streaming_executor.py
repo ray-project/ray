@@ -56,7 +56,12 @@ from ray.data._internal.operator_schema_exporter import (
     get_operator_schema_exporter,
 )
 from ray.data._internal.progress import get_progress_manager
-from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.stats import (
+    BackpressureStats,
+    DatasetStats,
+    Timer,
+    _StatsManager,
+)
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
@@ -485,6 +490,14 @@ class StreamingExecutor(Executor, threading.Thread):
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
+            stats.backpressure_stats = BackpressureStats(
+                task_submission_policy=getattr(
+                    op, "_task_submission_backpressure_policy", None
+                ),
+                task_output_policy=getattr(
+                    op, "_task_output_backpressure_policy", None
+                ),
+            )
         # Always assign a ``Timer`` so downstream consumers can call
         # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
         # unconditionally. When ``_initial_stats`` is absent we hand
