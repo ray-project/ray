@@ -1,0 +1,66 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# The worker package implements the Plugin mode of the Ray worker process:
+# worker.go loads the go_runtime.so shared library via the Go plugin API.
+# This mirrors the Java runtime, where System.load() loads
+# libcore_worker_library_java.so.
+go_library(
+    name = "worker",
+    srcs = [
+        "ray_config.go",
+        "ray_constants.go",
+        "worker.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/worker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/errors",
+        "//go/internal/gcs/native",
+        "//go/internal/runtime/base",
+        "//go/internal/runtime/cgo",
+        "//go/internal/runtime/native",
+        "//go/internal/runtime/serializer",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/proto",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+# worker package unit tests (pure unit, no live cluster required)
+go_test(
+    name = "worker_test",
+    srcs = [
+        "ray_config_test.go",
+        "worker_test.go",
+    ],
+    embed = [":worker"],
+    importpath = "github.com/ray-project/ray/go/internal/worker",
+    deps = [
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)

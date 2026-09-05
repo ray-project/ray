@@ -1,0 +1,66 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# main native library (includes benchmark)
+go_library(
+    name = "native",
+    srcs = [
+        "async.go",
+        "autoscaler_cgo.go",
+        "client_cgo.go",
+        "client_cgo_benchmark.go",
+        "nodes_cgo.go",
+        "publisher_cgo.go",
+    ],
+    cdeps = ["//src/ray/core_worker/lib/go:gcs_client_bridge"],
+    cgo = True,
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+# Publisher CGO unit test: exercises the compile-time boundaries of the
+# retained log-batch publish path (NewLogBatchPublisher type assertion and
+# PublishLogBatch error handling) without requiring a live GCS cluster.
+go_test(
+    name = "publisher_cgo_test",
+    srcs = ["publisher_cgo_test.go"],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    deps = [
+        "//go/pkg/gcs",
+    ],
+)
+
+# Benchmark tests - run with go test -bench=. -run=^$
+# Note: benchmark files belong to package native, not package main, so they must be go_test not go_binary
+go_test(
+    name = "benchmarks",
+    srcs = ["client_cgo_benchmark.go"],
+    cgo = True,
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    tags = ["benchmark"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+    ],
+)

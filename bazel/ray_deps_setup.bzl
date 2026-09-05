@@ -473,6 +473,47 @@ def ray_deps_setup():
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
 
+    # Go language runtime support (Ray Go Runtime).
+    # These are NEW declarations only; all pre-existing repositories above
+    # keep their original auto_http_archive / git_repository declarations.
+    auto_http_archive(
+        name = "io_bazel_rules_go",
+        sha256 = "f2d15bea3e241aa0e3a90fb17a82e6a8ab12214789f6aeddd53b8d04316d2b7c",
+        url = "https://github.com/bazel-contrib/rules_go/releases/download/v0.54.0/rules_go-v0.54.0.zip",
+        strip_prefix = None,
+        patches = [
+            "@io_ray//thirdparty/patches:rules_go-sdk.patch",
+            "@io_ray//thirdparty/patches:rules_go-pack.patch",
+        ],
+    )
+
+    auto_http_archive(
+        name = "bazel_gazelle",
+        patches = [
+            "@io_ray//thirdparty/patches:bazel_gazelle.patch",
+        ],
+        sha256 = "75df288c4b31c81eb50f51e2e14f4763cb7548daae126817247064637fd9ea62",
+        urls = [
+            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.36.0/bazel-gazelle-v0.36.0.tar.gz",
+        ],
+        strip_prefix = None,
+    )
+
+    auto_http_archive(
+        name = "rules_proto",
+        sha256 = "6fb6767d1bef535310547e03247f7518b03487740c11b6c6adb7952033fe1295",
+        url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
+    )
+
+    auto_http_archive(
+        name = "bazel_features",
+        sha256 = "0f23d75c7623d6dba1fd30513a94860447de87c8824570521fcc966eda3151c2",
+        url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.4.1/bazel_features-v1.4.1.tar.gz",
+        # The release tarball's top-level directory drops the leading "v";
+        # auto-deduction from the URL filename would keep it.
+        strip_prefix = "bazel_features-1.4.1",
+    )
+
     auto_http_archive(
         name = "jemalloc",
         url = "https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2",

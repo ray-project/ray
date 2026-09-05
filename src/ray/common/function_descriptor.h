@@ -274,6 +274,93 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::CppFunctionDescriptor *typed_message_;
 };
 
+class GoFunctionDescriptor : public FunctionDescriptorInterface {
+ public:
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit GoFunctionDescriptor(rpc::FunctionDescriptor message)
+      : FunctionDescriptorInterface(std::move(message)) {
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kGoFunctionDescriptor);
+    typed_message_ = &(message_->go_function_descriptor());
+  }
+
+  virtual size_t Hash() const {
+    return std::hash<int>()(ray::FunctionDescriptorType::kGoFunctionDescriptor) ^
+           std::hash<std::string>()(typed_message_->module_name()) ^
+           std::hash<std::string>()(typed_message_->package_path()) ^
+           std::hash<std::string>()(typed_message_->function_name()) ^
+           std::hash<std::string>()(typed_message_->method_name());
+  }
+
+  inline bool operator==(const GoFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->ModuleName() == other.ModuleName() &&
+           this->PackagePath() == other.PackagePath() &&
+           this->FunctionName() == other.FunctionName() &&
+           this->MethodName() == other.MethodName();
+  }
+
+  inline bool operator!=(const GoFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
+  virtual std::string ToString() const {
+    return absl::StrFormat(
+        "{type=GoFunctionDescriptor, module_name=%s, package_path=%s, function_name=%s, "
+        "method_name=%s}",
+        typed_message_->module_name(),
+        typed_message_->package_path(),
+        typed_message_->function_name(),
+        typed_message_->method_name());
+  }
+
+  virtual std::string CallString() const {
+    const std::string &function_name = typed_message_->function_name();
+    const std::string &method_name = typed_message_->method_name();
+    if (method_name.empty()) {
+      return function_name;
+    } else {
+      return function_name + "." + method_name;
+    }
+  }
+
+  virtual std::string DefaultTaskName() const {
+    const std::string &function_name = typed_message_->function_name();
+    const std::string &method_name = typed_message_->method_name();
+    if (method_name.empty()) {
+      return function_name;
+    } else {
+      return function_name + "." + method_name;
+    }
+  }
+
+  virtual std::string ClassName() const {
+    // For Go, the "class name" is the function name for actor methods
+    const std::string &function_name = typed_message_->function_name();
+    const std::string &method_name = typed_message_->method_name();
+    if (!method_name.empty()) {
+      return function_name;  // Actor type name
+    }
+    return "";
+  }
+
+  const std::string &ModuleName() const { return typed_message_->module_name(); }
+
+  const std::string &PackagePath() const { return typed_message_->package_path(); }
+
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
+
+  const std::string &MethodName() const { return typed_message_->method_name(); }
+
+ private:
+  const rpc::GoFunctionDescriptor *typed_message_;
+};
+
 typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
@@ -299,6 +386,9 @@ inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor 
   case ray::FunctionDescriptorType::kCppFunctionDescriptor:
     return static_cast<const CppFunctionDescriptor &>(*left) ==
            static_cast<const CppFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kGoFunctionDescriptor:
+    return static_cast<const GoFunctionDescriptor &>(*left) ==
+           static_cast<const GoFunctionDescriptor &>(*right);
   default:
     RAY_LOG(FATAL) << "Unknown function descriptor type: " << left->Type();
     return false;
@@ -338,6 +428,14 @@ class FunctionDescriptorBuilder {
   static FunctionDescriptor BuildCpp(const std::string &function_name,
                                      const std::string &caller = "",
                                      const std::string &class_name = "");
+
+  /// Build a GoFunctionDescriptor.
+  ///
+  /// \return a ray::GoFunctionDescriptor
+  static FunctionDescriptor BuildGo(const std::string &module_name,
+                                    const std::string &package_path,
+                                    const std::string &function_name,
+                                    const std::string &method_name);
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///

@@ -124,7 +124,7 @@ ERROR_TYPE = [
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
-LANGUAGE = ["PYTHON", "JAVA", "CPP"]
+LANGUAGE = ["PYTHON", "JAVA", "CPP", "GO"]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
