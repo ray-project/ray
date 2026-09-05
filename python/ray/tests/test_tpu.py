@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -6,10 +7,13 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_tpu_num_slices_for_workers,
+    get_tpu_worker_resources,
 )
 
 
@@ -2708,6 +2712,140 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+@pytest.mark.parametrize(
+    "accel_type,visible_chips,env_override,expected_ids",
+    [
+        # Single-core and Megacore TPUs -> returns chips as-is (1 resource per chip)
+        ("v6e-4", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v5litepod-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v4-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        ("v5p-8", "0,1,2,3", None, ["0", "1", "2", "3"]),
+        # Dual-device TPUs (v7x / tpu7x) -> expands chips to logical devices
+        ("v7x-16", "0,1,2,3", None, ["0", "1", "2", "3", "4", "5", "6", "7"]),
+        ("tpu7x-16", "0,1,2,3", None, ["0", "1", "2", "3", "4", "5", "6", "7"]),
+        # Partial chip masks on dual-device TPUs
+        ("v7x-16", "2,3", None, ["4", "5", "6", "7"]),
+        # Explicit RAY_TPU_RESOURCE_PER_CHIP override
+        ("v6e-4", "0,1", "2", ["0", "1", "2", "3"]),
+    ],
+)
+def test_tpu_visible_accelerator_ids_expansion(
+    monkeypatch, accel_type, visible_chips, env_override, expected_ids
+):
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", accel_type)
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", visible_chips)
+    if env_override is not None:
+        monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, env_override)
+    else:
+        monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+
+    assert (
+        TPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+        == expected_ids
+    )
+
+
+@pytest.mark.parametrize(
+    "logical_devices, expected_chips, expected_bounds, clears_bounds",
+    [
+        # Single-device worker allocations across each of the 4 physical chips (2 devices per chip)
+        (["0"], "0", "1,1,1", False),
+        (["1"], "0", "1,1,1", False),
+        (["2"], "1", "1,1,1", False),
+        (["3"], "1", "1,1,1", False),
+        (["4"], "2", "1,1,1", False),
+        (["5"], "2", "1,1,1", False),
+        (["6"], "3", "1,1,1", False),
+        (["7"], "3", "1,1,1", False),
+        # 2 logical devices on same physical chip (chip 0)
+        (["0", "1"], "0", "1,1,1", False),
+        # 4 logical devices across 2 physical chips (chips 0 and 1)
+        (["0", "1", "2", "3"], "0,1", "1,2,1", False),
+        # Unknown / non-numeric IDs preserved safely
+        (["0", "unknown"], "0,unknown", "1,2,1", False),
+        # Full-node allocation: all 8 logical devices across all 4 physical chips
+        (
+            ["0", "1", "2", "3", "4", "5", "6", "7"],
+            "0,1,2,3",
+            None,
+            True,
+        ),
+    ],
+)
+def test_tpu_set_visible_accelerator_ids_dual_device(
+    monkeypatch, logical_devices, expected_chips, expected_bounds, clears_bounds
+):
+    """Test set_current_process_visible_accelerator_ids mapping on dual-device TPUs (v7x)."""
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v7x-16")
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 4
+    )
+
+    TPUAcceleratorManager.set_current_process_visible_accelerator_ids(logical_devices)
+
+    if clears_bounds:
+        assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") is None
+        assert os.environ.get("TPU_HOST_BOUNDS") is None
+    else:
+        assert os.environ.get("TPU_VISIBLE_CHIPS") == expected_chips
+        assert os.environ.get("TPU_CHIPS_PER_HOST_BOUNDS") == expected_bounds
+
+    monkeypatch.delenv("TPU_VISIBLE_CHIPS", raising=False)
+    monkeypatch.delenv("TPU_CHIPS_PER_HOST_BOUNDS", raising=False)
+    monkeypatch.delenv("TPU_HOST_BOUNDS", raising=False)
+
+
+def test_util_tpu_resources_per_chip_scaling(monkeypatch):
+    """Test that util.tpu helpers correctly support tpu_resource_per_chip scaling for v7x."""
+    monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+
+    # Legacy / default behavior without override (4 TPU resources per slice)
+    workers, res = get_tpu_worker_resources("2x2x1", "v7x")
+    assert res.get("TPU") == 4
+
+    # Explicit tpu_resource_per_chip parameter (4 chips * 2 = 8 TPU resources per slice)
+    workers, res = get_tpu_worker_resources("2x2x1", "v7x", tpu_resource_per_chip=2)
+    assert res.get("TPU") == 8
+
+    # Explicit RAY_TPU_RESOURCE_PER_CHIP environment variable override
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    workers, res = get_tpu_worker_resources("2x2x1", "v7x")
+    assert res.get("TPU") == 8
+    assert get_tpu_num_slices_for_workers("2x2x1", "v7x", num_workers=1) == 1
+
+
+def test_v7x_multi_host_and_multi_slice_resources_per_chip_2():
+    """Test multi-host (2x2x2) and multi-slice worker resource calculation with tpu_resource_per_chip=2."""
+    # Single-host 2x2x1 (4 chips -> 8 TPUs with tpu_resource_per_chip=2)
+    workers, res = get_tpu_worker_resources(
+        "2x2x1", "v7x", tpu_resource_per_chip=2, num_slices=2
+    )
+    assert workers == 2
+    assert res.get("TPU") == 8
+
+    # Multi-host 2x2x2 (8 chips across 2 hosts -> 2 workers each requesting 8 TPUs)
+    workers, res = get_tpu_worker_resources(
+        "2x2x2", "v7x", tpu_resource_per_chip=2, num_slices=1
+    )
+    assert workers == 2
+    assert res.get("TPU") == 8
+
+    # Multi-host 2x2x2 with 2 slices -> 4 workers each requesting 8 TPUs
+    workers, res = get_tpu_worker_resources(
+        "2x2x2", "v7x", tpu_resource_per_chip=2, num_slices=2
+    )
+    assert workers == 4
+    assert res.get("TPU") == 8
+
+    # Slice count calculation with num_workers
+    assert (
+        get_tpu_num_slices_for_workers(
+            "2x2x2", "v7x", num_workers=4, tpu_resource_per_chip=2
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":
