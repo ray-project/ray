@@ -141,10 +141,14 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
-                # If this hyperparameter started out as an integer (ex: `batch_size`),
-                # convert the new value back
-                new_config[key] = int(new_config[key])
+            if isinstance(config[key], bool):
+                # Keep as bool, let `resample_probability` flip it and ignore
+                # `perturbation_factor`
+                new_config[key] = bool(new_config[key])
+            elif isinstance(config[key], int):
+                # If this parameter started out as an integer (e.g. `batch_size`),
+                # round before converting the new value back.
+                new_config[key] = int(round(new_config[key]))
         else:
             raise ValueError(
                 f"Unsupported hyperparameter distribution type: {type(distribution)}"
