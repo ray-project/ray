@@ -2,6 +2,7 @@ from typing import Generator
 
 import ray
 from ray import ObjectRef
+from ray.types import ObjectRef as PublicObjectRef
 
 ray.init()
 
@@ -37,6 +38,16 @@ def func(a: "ObjectRef[str]"):
 print(f.remote(1))
 object_ref_str = f.remote(1)
 object_ref_int = int_task.remote()
+
+# Make sure remote results are compatible with the public ObjectRef type.
+public_object_ref_int: PublicObjectRef[int] = int_task.remote()
+
+
+def consume_public_object_ref(ref: PublicObjectRef[int]) -> None:
+    pass
+
+
+consume_public_object_ref(int_task.remote())
 
 # Make sure the ObjectRef[T] variant of function arg is checked
 print(g.remote(object_ref_str))
