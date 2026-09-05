@@ -11,10 +11,7 @@ daft
 sentence-transformers
 grpcio
 jupytext
-# Excluded on 3.11: every langchain-text-splitters release needs a
-# langchain-core requiring jsonpatch>=1.33, and
-# requirements_compiled_py3.11.txt pins jsonpatch 1.32.
-langchain-text-splitters; python_version >= "3.12"
+langchain-text-splitters
 
 #vllm==0.21.0 # cuda-tile doesn't have a python 3.14 wheel (21st May)
 cupy-cuda12x

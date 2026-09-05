@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
---find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.10.0+cpu.html
 
 about-time==4.2.1
     # via alive-progress
@@ -927,7 +927,7 @@ joserfc==1.5.0
     # via moto
 json5==0.14.0
     # via jupyterlab-server
-jsonpatch==1.32
+jsonpatch==1.33
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2359,7 +2359,7 @@ toolz==1.1.0
     #   dask
     #   distributed
     #   partd
-torch==2.9.0
+torch==2.10.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2398,7 +2398,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.24.0
+torchvision==0.25.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt

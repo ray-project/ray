@@ -46,8 +46,8 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-triton==3.5.0
-torch==2.9.0
+triton==3.6.0
+torch==2.10.0
 torchaudio
 torchmetrics
 torchtext
