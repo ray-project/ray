@@ -25,15 +25,7 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
-        # Narrowing the top-level `exclude` above (so the `vale` hook can see
-        # doc/source/data prose) also exposed those files to this hook for the
-        # first time, which would rewrite 17 unrelated files. Keep them exempt
-        # here so enabling Vale stays a config-only change, and clean the
-        # whitespace up in its own PR.
-        exclude: ^doc/source/data/
       - id: end-of-file-fixer
-        # Same reason as trailing-whitespace above.
-        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
