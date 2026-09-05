@@ -1471,6 +1471,46 @@ class TestAssignRequest:
         [
             {
                 "enable_strict_max_ongoing_requests": True,
+                "enable_queue_len_cache": True,
+            },
+        ],
+        indirect=True,
+    )
+    async def test_done_callback_actor_unavailable_invalidates_cache(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A replica result done-callback that yields ActorUnavailableError
+        should invalidate the router's queue-length cache for that replica."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(
+                r1_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+        replica_result = await router.assign_request(dummy_request_metadata())
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 5
+
+        replica_result.fire_done_callbacks(
+            result=ActorUnavailableError(
+                error_message="unavailable",
+                actor_id=None,
+            )
+        )
+        await asyncio.sleep(0)
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) is None
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {
+                "enable_strict_max_ongoing_requests": True,
             },
         ],
         indirect=True,
