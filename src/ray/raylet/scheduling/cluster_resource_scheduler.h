@@ -97,7 +97,7 @@ class ClusterResourceScheduler {
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of
   ///  scheduling decision.
-  ///  \param is_infeasible[out]: It is set
+  ///  \param[out] is_infeasible: It is set
   ///  true if the task is not schedulable because it is infeasible.
   ///
   ///  \return empty string, if no node can schedule the current request; otherwise,
@@ -181,10 +181,10 @@ class ClusterResourceScheduler {
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: True if we want to avoid local node.
   ///  \param preferred_node_id: The node where the task is preferred to be placed.
-  ///  \param violations[out]: The number of soft constraint violations associated
+  ///  \param[out] violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
+  ///  \param[out] is_infeasible: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,

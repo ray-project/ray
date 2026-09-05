@@ -245,7 +245,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Get the Plasma Store Usage.
   ///
-  /// \param output[out] memory usage from the plasma store
+  /// \param[out] output memory usage from the plasma store
   /// \return error status if unable to get response from the plasma store
   Status GetPlasmaUsage(std::string &output);
 
@@ -336,7 +336,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
-  /// Read the next index of a ObjectRefStream of generator_id.
+  /// Read the next index of an ObjectRefStream of generator_id.
   /// This API always return immediately.
   ///
   /// \param[in] generator_id The object ref id of the streaming
@@ -369,11 +369,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
-  /// Read the next index of a ObjectRefStream of generator_id without
+  /// Read the next index of an ObjectRefStream of generator_id without
   /// consuming an index.
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index and if the object is already ready
+  /// \return An object reference of the next index and if the object is already ready
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
@@ -1483,7 +1483,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Add task log info for a task when it starts executing.
   ///
-  /// It's an no-op in local mode.
+  /// It's a no-op in local mode.
   ///
   /// \param stdout_path Path to stdout log file.
   /// \param stderr_path Path to stderr log file.
@@ -1498,7 +1498,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Add task log info for a task when it finishes executing.
   ///
-  /// It's an no-op in local mode.
+  /// It's a no-op in local mode.
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
@@ -1672,22 +1672,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Execute a task.
   ///
-  /// \param task_spec[in] Task specification.
-  /// \param resource_ids[in] Resource IDs of resources assigned to this
+  /// \param[in] task_spec Task specification.
+  /// \param[in] resource_ids Resource IDs of resources assigned to this
   /// worker. If nullopt, reuse the previously assigned resources.
-  /// \param return_objects[out] Result objects that should be returned
+  /// \param[out] return_objects Result objects that should be returned
   /// to the caller.
-  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
+  /// \param[out] dynamic_return_objects Result objects whose ObjectRefs were dynamically
   /// allocated during task execution by using a generator. The language-level ObjectRefs
   /// should be returned inside the statically allocated return_objects.
-  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
+  /// \param[out] borrowed_refs Refs that this task (or a nested task) was or is still
   /// borrowing. This includes all objects whose IDs we passed to the task in its
   /// arguments and recursively, any object IDs that were contained in those objects.
-  /// \param is_retryable_error[out] Whether the task failed with a retryable
+  /// \param[out] is_retryable_error Whether the task failed with a retryable
   /// error.
-  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
-  /// process if one has been set. \param application_error[out] The error message if the
-  /// task failed during execution or cancelled. \return Status.
+  /// \param[out] actor_repr_name The user-specified repr name for the actor in this
+  /// process if one has been set.
+  /// \param[out] application_error The error message if the task failed during execution
+  /// or was cancelled.
+  /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1730,16 +1732,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// being borrowed by this process. The IDs should be unpinned once the task
   /// completes.
   ///
-  /// \param spec[in] task Task specification.
-  /// \param args[out] args Argument data as RayObjects.
-  /// \param args[out] arg_reference_ids ObjectIDs corresponding to each by
+  /// \param[in] task Task specification.
+  /// \param[out] args Argument data as RayObjects.
+  /// \param[out] arg_refs ObjectIDs corresponding to each by
   ///                  reference argument. The length of this vector will be
   ///                  the same as args, and by value arguments will have
   ///                  ObjectID::Nil().
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
+  /// \param[out] pinned_ids ObjectIDs that should be unpinned once the
   ///                  task completes execution.  This vector will be populated
   ///                  with all argument IDs that were passed by reference and
   ///                  any ObjectIDs that were included in the task spec's

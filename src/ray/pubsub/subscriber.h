@@ -136,8 +136,8 @@ class SubscriberChannel {
 
  protected:
   /// Invoke the publisher failure callback to the designated IO service for the given key
-  /// id. \return Return true if the given key id needs to be unsubscribed. False
-  /// otherwise.
+  /// id.
+  /// \return True if the given key id needs to be unsubscribed, and false otherwise.
   bool HandlePublisherFailureInternal(const rpc::Address &publisher_address,
                                       const std::string &key_id,
                                       const Status &status);

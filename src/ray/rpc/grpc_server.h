@@ -82,7 +82,7 @@ namespace rpc {
 
 class GrpcService;
 
-/// Class that represents an gRPC server.
+/// Class that represents a gRPC server.
 ///
 /// A `GrpcServer` listens on a specific port. It owns
 /// 1) a `ServerCompletionQueue` that is used for polling events from gRPC,
@@ -99,7 +99,8 @@ class GrpcServer {
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
-  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// interfaces.
+  /// \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
   /// \param[in] auth_token Authentication token that clients must present when making
   /// RPCs to the server. If nullptr, no authentication token is required.
