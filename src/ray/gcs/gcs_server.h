@@ -28,6 +28,7 @@
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/gcs_leader_gated_handlers.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_table_storage.h"
@@ -73,6 +74,10 @@ struct GcsServerConfig {
   // This includes the config list of raylet.
   std::string raylet_config_list;
   std::string session_name;
+  // Whether GCS active-passive leader election is enabled. When true, the GCS
+  // server boots as passive and its mutating RPCs are gated until it is promoted
+  // to the active leader. Defaults to false (single active GCS, legacy behavior).
+  bool ray_leader_elect_enabled = false;
 };
 
 class GcsNodeManager;
@@ -123,6 +128,9 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+  /// Check if this GCS server instance is currently the active leader.
+  bool IsLeader() const { return is_leader_.load(); }
+
   /// Retrieve cluster ID
   const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
@@ -146,7 +154,25 @@ class GcsServer {
   }
 
  protected:
+  // Builds the leader-gated handler to pass to a GrpcService's RegisterService.
+  // Given the real handler, returns a `GatedT` proxy that forwards each RPC only
+  // when IsLeader() is true and otherwise rejects it (see GatedT for per-RPC
+  // policy). With leader election off IsLeader() is always true, so this is a
+  // transparent pass-through.
+  template <typename GatedT, typename RealHandlerT, typename... ExtraArgs>
+  typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
+                                          RealHandlerT &real_handler,
+                                          ExtraArgs &&...extra) {
+    slot = std::make_unique<GatedT>(
+        real_handler, [this]() { return IsLeader(); }, std::forward<ExtraArgs>(extra)...);
+    return *slot;
+  }
+
   void DoStart(const GcsInitData &gcs_init_data);
+
+  /// Register all GCS gRPC services on rpc_server_ in one place, so each service's
+  /// gated-vs-exempt status is explicit and a new service must be added here.
+  void RegisterRpcServices();
 
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
@@ -291,6 +317,27 @@ class GcsServer {
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
+  // Leader-gated proxy handlers. Each wraps the real service handler and, on a
+  // passive GCS, rejects that service's mutating RPCs. They are owned here so they
+  // outlive the GrpcServices that reference them. See RegisterRpcServices().
+  std::unique_ptr<LeaderGatedNodeInfoHandler> gated_node_info_handler_;
+  std::unique_ptr<LeaderGatedActorInfoHandler> gated_actor_info_handler_;
+  std::unique_ptr<LeaderGatedJobInfoHandler> gated_job_info_handler_;
+  std::unique_ptr<LeaderGatedPlacementGroupInfoHandler>
+      gated_placement_group_info_handler_;
+  std::unique_ptr<LeaderGatedAutoscalerStateHandler> gated_autoscaler_state_handler_;
+  std::unique_ptr<LeaderGatedInternalKVHandler> gated_internal_kv_handler_;
+  std::unique_ptr<LeaderGatedNodeResourceInfoHandler> gated_node_resource_info_handler_;
+  std::unique_ptr<LeaderGatedWorkerInfoHandler> gated_worker_info_handler_;
+  std::unique_ptr<LeaderGatedTaskInfoHandler> gated_task_info_handler_;
+  std::unique_ptr<LeaderGatedRuntimeEnvHandler> gated_runtime_env_handler_;
+  std::unique_ptr<LeaderGatedControlPlanePubSubHandler>
+      gated_control_plane_pubsub_handler_;
+  std::unique_ptr<LeaderGatedObservabilityPubSubHandler>
+      gated_observability_pubsub_handler_;
+  std::unique_ptr<LeaderGatedRayEventExportHandler> gated_ray_event_export_handler_;
+  std::unique_ptr<LeaderGatedRaySyncerHandler> gated_ray_syncer_handler_;
+
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
@@ -317,6 +364,11 @@ class GcsServer {
   /// GCS service state flag, which is used for unit tests.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  /// Whether this GCS is currently the active leader. Initialized from
+  /// config_.ray_leader_elect_enabled: leader election disabled => always leader
+  /// (legacy behavior); enabled => starts passive until promoted (promotion wired
+  /// up in a later PR).
+  std::atomic<bool> is_leader_;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.

@@ -173,7 +173,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
-      is_stopped_(false) {
+      is_stopped_(false),
+      // Leader election disabled => always the leader (legacy single-GCS behavior).
+      // Enabled => start passive; promotion to leader is wired up in a later PR.
+      is_leader_(!config.ray_leader_elect_enabled) {
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
@@ -358,6 +361,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsResourceLoadPuller();
   InitUsageStatsClient();
 
+  // Register all gRPC services centrally, after every manager/handler is built.
+  RegisterRpcServices();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -388,6 +394,91 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   }
 
   is_started_ = true;
+}
+
+void GcsServer::RegisterRpcServices() {
+  const int64_t max_rpcs = RayConfig::instance().gcs_max_active_rpcs_per_handler();
+
+  // Leader-gated services: MaybeGate() wraps each handler so a passive GCS
+  // rejects mutating RPCs with Status::GcsPassive() while forwarding bootstrap/
+  // read RPCs. When leader election is off, IsLeader() is always true and every
+  // RPC is forwarded unchanged. Per-RPC gated/allowed status lives in
+  // gcs_leader_gated_handlers.h.
+  rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
+      io_context_provider_.GetIOContext<GcsNodeManager>(),
+      MaybeGate(gated_node_info_handler_,
+                *gcs_node_manager_,
+                std::function<void(const rpc::GcsNodeInfo &)>(
+                    [this](const rpc::GcsNodeInfo &node_info) {
+                      gcs_node_manager_->CachePassiveLocalNode(node_info);
+                    })),
+      max_rpcs));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::NodeResourceInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_node_resource_info_handler_, *gcs_resource_manager_),
+      max_rpcs));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_job_info_handler_, *gcs_job_manager_),
+      max_rpcs));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_actor_info_handler_, *gcs_actor_manager_),
+      max_rpcs));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_placement_group_info_handler_, *gcs_placement_group_manager_),
+      max_rpcs));
+
+  rpc_server_.RegisterService(
+      std::make_unique<rpc::InternalKVGrpcService>(
+          io_context_provider_.GetIOContext<GcsInternalKVManager>(),
+          MaybeGate(gated_internal_kv_handler_, *kv_manager_),
+          /*max_active_rpcs_per_handler_=*/-1),
+      false /* token_auth */);
+
+  // Long-poll pubsub services: no active-RPC limit.
+  rpc_server_.RegisterService(std::make_unique<rpc::ControlPlanePubSubGrpcService>(
+      io_context_provider_.GetIOContext<pubsub::GcsPublisher>(),
+      MaybeGate(gated_control_plane_pubsub_handler_, *pubsub_handler_),
+      /*max_active_rpcs_per_handler_=*/-1));
+  rpc_server_.RegisterService(std::make_unique<rpc::ObservabilityPubSubGrpcService>(
+      io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>(),
+      MaybeGate(gated_observability_pubsub_handler_, *observability_pubsub_handler_),
+      /*max_active_rpcs_per_handler_=*/-1));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::RuntimeEnvGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_runtime_env_handler_, *runtime_env_handler_),
+      /*max_active_rpcs_per_handler=*/-1));
+
+  rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      MaybeGate(gated_worker_info_handler_, *gcs_worker_manager_),
+      max_rpcs));
+
+  rpc_server_.RegisterService(
+      std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
+          io_context_provider_.GetDefaultIOContext(),
+          MaybeGate(gated_autoscaler_state_handler_, *gcs_autoscaler_state_manager_),
+          max_rpcs));
+
+  {
+    auto &task_io = io_context_provider_.GetIOContext<GcsTaskManager>();
+    rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
+        task_io, MaybeGate(gated_task_info_handler_, *gcs_task_manager_), max_rpcs));
+    rpc_server_.RegisterService(std::make_unique<rpc::events::RayEventExportGrpcService>(
+        task_io,
+        MaybeGate(gated_ray_event_export_handler_, *gcs_task_manager_),
+        max_rpcs));
+  }
+
+  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerGrpcService>(
+      MaybeGate(gated_ray_syncer_handler_, *ray_syncer_service_)));
 }
 
 void GcsServer::Stop() {
@@ -437,13 +528,11 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       *ray_event_recorder_,
       config_.session_name,
       observability_publisher_.get(),
-      clock_);
+      clock_,
+      [this]() { return IsLeader(); });
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
-  rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
-      io_context_provider_.GetIOContext<GcsNodeManager>(),
-      *gcs_node_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
@@ -512,10 +601,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
-  rpc_server_.RegisterService(std::make_unique<rpc::NodeResourceInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *gcs_resource_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsResourceLoadPuller() {
@@ -589,11 +675,7 @@ void GcsServer::InitGcsJobManager(
                                       job_duration_in_seconds_gauge,
                                       clock_);
   gcs_job_manager_->Initialize(gcs_init_data);
-
-  rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *gcs_job_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsActorManager(
@@ -649,10 +731,7 @@ void GcsServer::InitGcsActorManager(
       clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
-  rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *gcs_actor_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsPlacementGroupManager(
@@ -685,10 +764,7 @@ void GcsServer::InitGcsPlacementGroupManager(
       clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
-  rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *gcs_placement_group_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 GcsServer::StorageType GcsServer::GetStorageType() const {
@@ -746,8 +822,10 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
-      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
+  // Create the stream handler here alongside the syncer; RegisterRpcServices()
+  // only wraps it in the leader-gating proxy and registers it.
+  ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(
+      *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
 }
 
 void GcsServer::InitFunctionManager() {
@@ -824,12 +902,7 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::InternalKVGrpcService>(
-          io_context_provider_.GetIOContext<GcsInternalKVManager>(),
-          *kv_manager_,
-          /*max_active_rpcs_per_handler_=*/-1),
-      false /* token_auth */);
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitPubSubHandler() {
@@ -837,15 +910,10 @@ void GcsServer::InitPubSubHandler() {
   pubsub_handler_ =
       std::make_unique<ControlPlanePubSubHandler>(io_context, *gcs_publisher_);
 
-  // This service is used to handle long poll requests, so we don't limit active RPCs.
-  rpc_server_.RegisterService(std::make_unique<rpc::ControlPlanePubSubGrpcService>(
-      io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
-
   auto &obs_io = io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>();
   observability_pubsub_handler_ =
       std::make_unique<ObservabilityPubSubHandler>(obs_io, *observability_publisher_);
-  rpc_server_.RegisterService(std::make_unique<rpc::ObservabilityPubSubGrpcService>(
-      obs_io, *observability_pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitRuntimeEnvManager() {
@@ -886,10 +954,7 @@ void GcsServer::InitRuntimeEnvManager() {
                              std::move(task),
                              std::chrono::milliseconds(delay_ms));
       });
-  rpc_server_.RegisterService(std::make_unique<rpc::RuntimeEnvGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *runtime_env_handler_,
-      /*max_active_rpcs_per_handler=*/-1));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
@@ -899,10 +964,7 @@ void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
                                          *gcs_publisher_,
                                          *ray_event_recorder_,
                                          config_.session_name);
-  rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(),
-      *gcs_worker_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
   // No-op unless dead worker entries survived a GCS restart (Redis FT).
   gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
 }
@@ -952,11 +1014,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       observability_publisher_.get(),
       clock_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
-  rpc_server_.RegisterService(
-      std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
-          io_context_provider_.GetDefaultIOContext(),
-          *gcs_autoscaler_state_manager_,
-          RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InitGcsTaskManager(
@@ -970,15 +1028,7 @@ void GcsServer::InitGcsTaskManager(
                                        task_events_reported_gauge,
                                        task_events_dropped_gauge,
                                        task_events_stored_gauge);
-  // Register service.
-  rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
-      io_context,
-      *gcs_task_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
-  rpc_server_.RegisterService(std::make_unique<rpc::events::RayEventExportGrpcService>(
-      io_context,
-      *gcs_task_manager_,
-      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // Service registration is centralized in RegisterRpcServices().
 }
 
 void GcsServer::InstallEventListeners() {
