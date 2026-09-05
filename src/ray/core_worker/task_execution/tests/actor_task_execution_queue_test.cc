@@ -673,6 +673,97 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   queue.Stop();
 }
 
+// Stop() cancels the queued retry while its args-ready callback stays registered with
+// the waiter, so the callback runs after the entry is gone and must find nothing. The
+// stale-entry version instead recorded a task event for it.
+TEST(OrderedActorTaskExecutionQueueTest, TestRetryArgsReadyAfterStop) {
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  int n_accept = 0;
+  int n_reject = 0;
+  auto execute_task = [&n_accept](TaskToExecute &task) { n_accept++; };
+  auto cancel_task = [&n_reject](const TaskToExecute &task, const Status &status) {
+    n_reject++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
+
+  auto retry_spec = CreateActorTaskSpec(0, /*is_retry=*/true, /*dependency=*/true);
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(retry_spec));
+  ASSERT_EQ(n_accept, 0);
+
+  queue.Stop();
+  ASSERT_EQ(n_reject, 1);
+
+  const size_t events_before_args_ready = task_event_buffer.task_events.size();
+  waiter.Complete(0);
+
+  ASSERT_EQ(task_event_buffer.task_events.size(), events_before_args_ready);
+  ASSERT_EQ(n_accept, 0);
+}
+
+// Two retries wait for their args at once and become ready in reverse order. Each
+// callback must resolve its own task, not whichever retry is at the head of the list.
+TEST(OrderedActorTaskExecutionQueueTest, TestConcurrentRetryArgsReadyOutOfOrder) {
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::vector<int64_t> accept_seq_nos;
+  std::atomic<int> n_accept = 0;
+  auto execute_task = [&accept_seq_nos, &n_accept](TaskToExecute &task) {
+    accept_seq_nos.push_back(task.TaskSpec().ConcurrencyGroupSequenceNumber());
+    n_accept++;
+  };
+  auto cancel_task = [](const TaskToExecute &, const Status &) { FAIL(); };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
+
+  // CreateActorTaskSpec leaves the task id nil, and the retries share an attempt
+  // number, so give them distinct ids to tell the two attempts apart.
+  JobID job_id = JobID::FromInt(1);
+  for (int64_t seq_no : {0, 1}) {
+    auto spec = CreateActorTaskSpec(seq_no, /*is_retry=*/true, /*dependency=*/true);
+    spec.GetMutableMessage().set_task_id(TaskID::FromRandom(job_id).Binary());
+    EnqueueWithFetch(queue, waiter, seq_no, -1, MakeTaskToExecute(spec));
+  }
+  ASSERT_EQ(n_accept, 0);
+
+  waiter.Complete(1);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 1; }, 1000));
+  waiter.Complete(0);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+
+  pool_manager->GetDefaultExecutor()->Join();
+  ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{1, 0}));
+
+  queue.Stop();
+}
+
 TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   // Test that tasks in different concurrency groups are sequenced independently.
   // group "b" tasks should execute even when group "a" is waiting for a missing seq_no.
