@@ -15,6 +15,7 @@ py_test(
     ],
     data = [
         "//:.rayciversion",
+        "//.buildkite:doc.rules.txt",
         "//.buildkite:test.rules.txt",
         "//doc:doc_source_modules",
         "//doc:source/_ext/api_sidebar.py",
