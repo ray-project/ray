@@ -243,9 +243,9 @@ def test_upload_single_file(fs_type, tmp_path):
     _upload_to_fs_path(local_path=str(local_file), fs=fs, fs_path=fs_path)
 
     file_info = fs.get_file_info(fs_path)
-    assert file_info.type == pyarrow.fs.FileType.File, (
-        f"Expected a file at {fs_path}, got {file_info.type}"
-    )
+    assert (
+        file_info.type == pyarrow.fs.FileType.File
+    ), f"Expected a file at {fs_path}, got {file_info.type}"
 
     if fs_type == "local":
         with open(fs_path) as f:
