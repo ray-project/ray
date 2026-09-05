@@ -16,7 +16,6 @@ package api
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"runtime"
 	"sync"
@@ -107,22 +106,29 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 	objectIDForFinalizer := *objectID
 
 	// Use shared helper to set finalizer
-	setupObjectRefFinalizer(ref, objectIDForFinalizer, "FINALIZER")
+	setupObjectRefFinalizer(ref, objectIDForFinalizer)
 
 	return ref, nil
 }
 
 // PutWithOwner puts an object into the object store with a specific owner.
 //
+// Note: owned-object registration is not yet wired through the CGO object
+// store bridge, so a non-nil owner is rejected rather than silently dropped.
+// The object behaves as a regular (self-owned) object.
+//
 // Parameters:
 //   - value: the value to put
-//   - owner: the owner of the object
+//   - owner: the owner of the object (must be nil for now)
 //
 // Returns:
 //   - *ObjectRef[T]: a reference to the put object
 //   - error: any error encountered during the put operation
 func PutWithOwner[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
-	return Put(value, owner)
+	if owner != nil {
+		return nil, fmt.Errorf("PutWithOwner: owned-object registration is not supported yet; owner must be nil")
+	}
+	return Put(value, nil)
 }
 
 // Get fetches the object from the object store.
@@ -361,11 +367,8 @@ func WaitWithFetchLocal[T any](refs []*ObjectRef[T], numReturns int, timeoutMs i
 // Parameters:
 //   - ref: The ObjectRef to set finalizer on
 //   - objectIDForFinalizer: The ObjectID to use for cleanup (captured to avoid corruption)
-//   - logPrefix: Prefix for debug logging (e.g., "FINALIZER-call" or "FINALIZER")
-func setupObjectRefFinalizer[T any](ref *ObjectRef[T], objectIDForFinalizer ids.ObjectID, logPrefix string) {
+func setupObjectRefFinalizer[T any](ref *ObjectRef[T], objectIDForFinalizer ids.ObjectID) {
 	runtime.SetFinalizer(ref, func(r *ObjectRef[T]) {
-		fmt.Fprintf(os.Stderr, "[%s] ObjectRef finalizer called for objectID=%s\n", logPrefix, objectIDForFinalizer.Hex())
-
 		// Acquire read lock on finalizerMu - this blocks if shutdown is running.
 		// This guarantees shutdown is either not started or complete, never
 		// in-progress, matching the previous finalizer ordering.
@@ -500,7 +503,7 @@ func createObjectRefWithFinalizer[T any](returnID ids.ObjectID, objectType strin
 	objectIDForFinalizer := returnID
 
 	// Use shared helper to set finalizer
-	setupObjectRefFinalizer(ref, objectIDForFinalizer, "FINALIZER-call")
+	setupObjectRefFinalizer(ref, objectIDForFinalizer)
 
 	return ref, nil
 }

@@ -27,11 +27,11 @@ extern "C" {
 
 // CTaskOptions contains task submission options.
 typedef struct {
-  const char* resources;         // Resource requirements (e.g., "CPU:2.0,GPU:1.0")
-  int max_retries;               // Maximum number of retries for failed tasks
-  const char* runtime_env;       // Serialized runtime environment
+  const char *resources;    // Resource requirements (e.g., "CPU:2.0,GPU:1.0")
+  int max_retries;          // Maximum number of retries for failed tasks
+  const char *runtime_env;  // Serialized runtime environment
   // PlacementGroup fields
-  const char* placement_group_id;  // PlacementGroup ID binary data (hex string)
+  const char *placement_group_id;  // PlacementGroup ID binary data (hex string)
   int placement_group_id_size;     // Size of placement group ID in bytes
   int bundle_index;                // Bundle index within placement group (-1 if not used)
 } CTaskOptions;
@@ -40,12 +40,12 @@ typedef struct {
 // Note: This struct is used to simplify the C interface.
 // The C++ ActorCreationOptions has const members and is constructed from this struct.
 typedef struct {
-  int max_restarts;              // Maximum number of actor restarts
-  int max_task_retries;          // Maximum number of task retries
-  const char* resources;         // Resource requirements (e.g., "CPU:2.0,GPU:1.0")
-  const char* name;              // Actor name (optional)
-  const char* namespace_;        // Namespace for actor (optional)
-  const char* runtime_env;       // Serialized runtime environment
+  int max_restarts;         // Maximum number of actor restarts
+  int max_task_retries;     // Maximum number of task retries
+  const char *resources;    // Resource requirements (e.g., "CPU:2.0,GPU:1.0")
+  const char *name;         // Actor name (optional)
+  const char *namespace_;   // Namespace for actor (optional)
+  const char *runtime_env;  // Serialized runtime environment
 } CActorCreationOptions;
 
 // ============================================================================
@@ -65,13 +65,12 @@ typedef struct {
 // Returns:
 //   CObjectIdArray* containing return object IDs, or NULL on failure.
 //   Caller is responsible for freeing the returned CObjectIdArray.
-CObjectIdArray* CNativeTaskSubmitter_SubmitTask(
-    const char** function_descriptor,
-    int function_descriptor_count,
-    const CFunctionArg* args,
-    int args_count,
-    int num_returns,
-    const CTaskOptions* options);
+CObjectIdArray *CNativeTaskSubmitter_SubmitTask(const char **function_descriptor,
+                                                int function_descriptor_count,
+                                                const CFunctionArg *args,
+                                                int args_count,
+                                                int num_returns,
+                                                const CTaskOptions *options);
 
 // CNativeTaskSubmitter_CreateActor creates a new actor.
 //
@@ -85,12 +84,11 @@ CObjectIdArray* CNativeTaskSubmitter_SubmitTask(
 // Returns:
 //   CByteArray* containing actor ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray.
-CByteArray* CNativeTaskSubmitter_CreateActor(
-    const char** function_descriptor,
-    int function_descriptor_count,
-    const CFunctionArg* args,
-    int args_count,
-    const CActorCreationOptions* options);
+CByteArray *CNativeTaskSubmitter_CreateActor(const char **function_descriptor,
+                                             int function_descriptor_count,
+                                             const CFunctionArg *args,
+                                             int args_count,
+                                             const CActorCreationOptions *options);
 
 // CNativeTaskSubmitter_SubmitActorTask submits a task to an actor.
 //
@@ -107,33 +105,31 @@ CByteArray* CNativeTaskSubmitter_CreateActor(
 // Returns:
 //   CObjectIdArray* containing return object IDs, or NULL on failure.
 //   Caller is responsible for freeing the returned CObjectIdArray.
-CObjectIdArray* CNativeTaskSubmitter_SubmitActorTask(
-    const char* actor_id_data,
-    int actor_id_size,
-    const char** function_descriptor,
-    int function_descriptor_count,
-    const CFunctionArg* args,
-    int args_count,
-    int num_returns,
-    const CTaskOptions* options);
+CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(const char *actor_id_data,
+                                                     int actor_id_size,
+                                                     const char **function_descriptor,
+                                                     int function_descriptor_count,
+                                                     const CFunctionArg *args,
+                                                     int args_count,
+                                                     int num_returns,
+                                                     const CTaskOptions *options);
 
 // CNativeTaskSubmitter_GetActor retrieves a named actor by name and namespace.
 //
 // Parameters:
 //   name - The name of the actor
 //   namespace - The namespace of the actor (can be NULL for default namespace)
-//   actor_id_out - Output parameter: pointer to CByteArray* containing actor ID binary data
-//   error_out - Output parameter: pointer to error message string (NULL on success)
+//   actor_id_out - Output parameter: pointer to CByteArray* containing actor ID binary
+//   data error_out - Output parameter: pointer to error message string (NULL on success)
 //
 // Returns:
 //   1 on success, 0 on failure.
 //   On success, *actor_id_out points to allocated CByteArray (caller must free).
 //   On failure, *error_out points to error message (caller must free).
-int CNativeTaskSubmitter_GetActor(
-    const char* name,
-    const char* namespace_,
-    CByteArray** actor_id_out,
-    char** error_out);
+int CNativeTaskSubmitter_GetActor(const char *name,
+                                  const char *namespace_,
+                                  CByteArray **actor_id_out,
+                                  char **error_out);
 
 #ifdef __cplusplus
 }  // extern "C"

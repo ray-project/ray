@@ -17,19 +17,18 @@
 // All business logic is delegated to RuntimeOperations.
 
 #include "native_runtime.h"
-#include "runtime_ops.h"
-#include "go_heap_buffer.h"
-#include "cgo_wrapper.h"
 
-#include "ray/util/logging.h"
-#include "ray/util/time.h"
-
-#include <string>
-#include <mutex>
 #include <cstdio>
+#include <mutex>
+#include <string>
 #include <vector>
 
 #include "absl/strings/escaping.h"
+#include "cgo_wrapper.h"
+#include "go_heap_buffer.h"
+#include "ray/util/logging.h"
+#include "ray/util/time.h"
+#include "runtime_ops.h"
 
 namespace ray::go {
 
@@ -37,15 +36,14 @@ namespace ray::go {
 // CGO Boundary Layer - C Interface Functions
 // ============================================================================
 
-extern "C" CNativeRuntime* CNativeRuntime_Initialize(
-    const CNativeRuntimeInitializeOptions* opts) {
+extern "C" CNativeRuntime *CNativeRuntime_Initialize(
+    const CNativeRuntimeInitializeOptions *opts) {
   return ray::go::CgoErrorHandler::Execute(
-      "CNativeRuntime_Initialize",
-      [&]() -> CNativeRuntime* {
+      "CNativeRuntime_Initialize", [&]() -> CNativeRuntime * {
         if (opts == nullptr) {
           throw std::invalid_argument("opts is null");
         }
-        RAY_LOG(INFO) << "[CNativeRuntime_Initialize] gcs_address=" 
+        RAY_LOG(INFO) << "[CNativeRuntime_Initialize] gcs_address="
                       << (opts->gcs_address != nullptr ? opts->gcs_address : "(null)")
                       << ", enable_logging=" << opts->enable_logging;
         // Convert C options to C++ options
@@ -56,7 +54,8 @@ extern "C" CNativeRuntime* CNativeRuntime_Initialize(
         options.driver_name = CNativeCommon_ConvertToString(opts->driver_name);
         options.store_socket = CNativeCommon_ConvertToString(opts->store_socket);
         options.raylet_socket = CNativeCommon_ConvertToString(opts->raylet_socket);
-        options.job_id = ray::JobID::FromHex(CNativeCommon_ConvertToString(opts->job_id_hex));
+        options.job_id =
+            ray::JobID::FromHex(CNativeCommon_ConvertToString(opts->job_id_hex));
         options.gcs_address = CNativeCommon_ConvertToString(opts->gcs_address);
         options.cluster_id = CNativeCommon_ConvertToString(opts->cluster_id_hex);
         options.log_dir = CNativeCommon_ConvertToString(opts->log_dir);
@@ -65,9 +64,11 @@ extern "C" CNativeRuntime* CNativeRuntime_Initialize(
         // Go passes JobConfig as base64-encoded protobuf.
         // Decode it to raw protobuf bytes so node_manager.cc can parse it directly.
         {
-          std::string base64_job_config = CNativeCommon_ConvertToString(opts->job_config_serialized);
+          std::string base64_job_config =
+              CNativeCommon_ConvertToString(opts->job_config_serialized);
           std::string decoded_job_config;
-          if (!base64_job_config.empty() && absl::Base64Unescape(base64_job_config, &decoded_job_config)) {
+          if (!base64_job_config.empty() &&
+              absl::Base64Unescape(base64_job_config, &decoded_job_config)) {
             options.serialized_job_config = decoded_job_config;
             RAY_LOG(INFO) << "JobConfig base64 decoded successfully, decoded size="
                           << decoded_job_config.size();
@@ -84,13 +85,15 @@ extern "C" CNativeRuntime* CNativeRuntime_Initialize(
         options.runtime_env_hash = opts->runtime_env_hash;
         options.enable_logging = opts->enable_logging;
 
-        // Note: Logging has been initialized, so we can use RAY_LOG for structured logging
-        RAY_LOG(DEBUG) << "CNativeRuntime_Initialize: calling RuntimeOperations::Initialize, "
-                       << "worker_type=" << static_cast<int>(options.worker_type)
-                       << ", gcs_address=" << options.gcs_address
-                       << ", job_id=" << options.job_id.Hex()
-                       << ", cluster_id=" << options.cluster_id
-                       << ", serialized_job_config='" << options.serialized_job_config << "'";
+        // Note: Logging has been initialized, so we can use RAY_LOG for structured
+        // logging
+        RAY_LOG(DEBUG)
+            << "CNativeRuntime_Initialize: calling RuntimeOperations::Initialize, "
+            << "worker_type=" << static_cast<int>(options.worker_type)
+            << ", gcs_address=" << options.gcs_address
+            << ", job_id=" << options.job_id.Hex()
+            << ", cluster_id=" << options.cluster_id << ", serialized_job_config='"
+            << options.serialized_job_config << "'";
 
         // Initialize runtime
         ray::go::RuntimeOperations::GetInstance().Initialize(options);
@@ -98,24 +101,20 @@ extern "C" CNativeRuntime* CNativeRuntime_Initialize(
         RAY_LOG(INFO) << "CNativeRuntime_Initialize: SUCCESS";
 
         // Return opaque handle
-        return reinterpret_cast<CNativeRuntime*>(1);
+        return reinterpret_cast<CNativeRuntime *>(1);
       });
 }
 
 extern "C" void CNativeRuntime_Shutdown() {
-  ray::go::CgoErrorHandler::ExecuteVoid(
-      "CNativeRuntime_Shutdown",
-      []() {
-        ray::go::RuntimeOperations::GetInstance().Shutdown();
-      });
+  ray::go::CgoErrorHandler::ExecuteVoid("CNativeRuntime_Shutdown", []() {
+    ray::go::RuntimeOperations::GetInstance().Shutdown();
+  });
 }
 
 extern "C" void CNativeRuntime_RunTaskExecutionLoop() {
-  ray::go::CgoErrorHandler::ExecuteVoid(
-      "CNativeRuntime_RunTaskExecutionLoop",
-      []() {
-        ray::go::RuntimeOperations::GetInstance().RunTaskExecutionLoop();
-        _Exit(0);
-      });
+  ray::go::CgoErrorHandler::ExecuteVoid("CNativeRuntime_RunTaskExecutionLoop", []() {
+    ray::go::RuntimeOperations::GetInstance().RunTaskExecutionLoop();
+    _Exit(0);
+  });
 }
 }  // namespace ray::go

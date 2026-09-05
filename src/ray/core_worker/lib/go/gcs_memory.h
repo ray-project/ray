@@ -20,11 +20,20 @@
 extern "C" {
 #endif
 
-// Free a C++-allocated memory block - Go must call this when done
-void ray_gcs_free_memory(void* ptr);
+/**
+ * @brief Frees a C++-allocated memory block. Go must call this when done.
+ *
+ * @param ptr Pointer previously returned by a GCS accessor allocation.
+ */
+void ray_gcs_free_memory(void *ptr);
 
-// Free a string array (each element plus the array itself)
-void ray_gcs_free_string_array(char** arr, int count);
+/**
+ * @brief Frees a string array (each element plus the array itself).
+ *
+ * @param arr Array previously returned by a GCS accessor.
+ * @param count Number of elements in the array.
+ */
+void ray_gcs_free_string_array(char **arr, int count);
 
 #ifdef __cplusplus
 }

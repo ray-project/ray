@@ -34,7 +34,7 @@ class IObjectStoreProvider {
    * @return Reference to CoreWorker
    * @throws std::runtime_error if not initialized
    */
-  virtual core::CoreWorker& GetCoreWorker() = 0;
+  virtual core::CoreWorker &GetCoreWorker() = 0;
 
   /**
    * Check if the provider is initialized.
@@ -49,7 +49,7 @@ class IObjectStoreProvider {
  */
 class DefaultObjectStoreProvider : public IObjectStoreProvider {
  public:
-  core::CoreWorker& GetCoreWorker() override {
+  core::CoreWorker &GetCoreWorker() override {
     return ray::core::CoreWorkerProcess::GetCoreWorker();
   }
 
@@ -68,23 +68,19 @@ class MockObjectStoreProvider : public IObjectStoreProvider {
    * Set the mock CoreWorker instance.
    * @param worker Pointer to mock CoreWorker (must outlive the provider)
    */
-  void SetCoreWorker(core::CoreWorker* worker) {
-    mock_worker_ = worker;
-  }
+  void SetCoreWorker(core::CoreWorker *worker) { mock_worker_ = worker; }
 
-  core::CoreWorker& GetCoreWorker() override {
+  core::CoreWorker &GetCoreWorker() override {
     if (!mock_worker_) {
       throw std::runtime_error("Mock CoreWorker not set");
     }
     return *mock_worker_;
   }
 
-  bool IsInitialized() const override {
-    return mock_worker_ != nullptr;
-  }
+  bool IsInitialized() const override { return mock_worker_ != nullptr; }
 
  private:
-  core::CoreWorker* mock_worker_ = nullptr;
+  core::CoreWorker *mock_worker_ = nullptr;
 };
 
 }  // namespace go

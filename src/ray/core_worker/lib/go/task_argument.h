@@ -70,9 +70,9 @@ class TaskArgument {
    * @return Unique pointer to TaskArgument
    */
   static std::unique_ptr<TaskArgument> ByReference(
-      const ray::ObjectID& object_id,
-      const ray::rpc::Address& owner_address = ray::rpc::Address(),
-      const std::string& call_site = "");
+      const ray::ObjectID &object_id,
+      const ray::rpc::Address &owner_address = ray::rpc::Address(),
+      const std::string &call_site = "");
 
   /**
    * @brief Convert to Ray TaskArg

@@ -16,28 +16,29 @@
 // GCS Client internal struct definitions - for internal implementation only
 #pragma once
 
-#include <string>
 #include <memory>
+#include <string>
 #include <thread>
+
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/global_state_accessor.h"
-#include "ray/asio/instrumented_io_context.h"
 
 // Internal CGO bridge struct - not exposed to the Go layer
 struct CGcsClient {
-    std::string address;
-    std::string cluster_id_hex;
-    int64_t timeout_ms;
+  std::string address;
+  std::string cluster_id_hex;
+  int64_t timeout_ms;
 
-    // The actual GCS client (accesses real GCS KV storage via InternalKV())
-    std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+  // The actual GCS client (accesses real GCS KV storage via InternalKV())
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-    // GlobalStateAccessor for synchronous access to GCS data
-    std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor;
+  // GlobalStateAccessor for synchronous access to GCS data
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor;
 
-    // io_service lifetime management: promoted to a member to avoid dangling references
-    std::unique_ptr<instrumented_io_context> io_service;
+  // io_service lifetime management: promoted to a member to avoid dangling references
+  std::unique_ptr<instrumented_io_context> io_service;
 
-    // io_service background thread
-    std::unique_ptr<std::thread> io_thread;
+  // io_service background thread
+  std::unique_ptr<std::thread> io_thread;
 };

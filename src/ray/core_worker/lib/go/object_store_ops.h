@@ -15,13 +15,12 @@
 #ifndef RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
 #define RAY_CORE_WORKER_LIB_GO_OBJECT_STORE_OPS_H_
 
-#include "object_store_provider.h"
-
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "object_store_provider.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
@@ -50,7 +49,7 @@ class ObjectStoreOperations {
    * Get singleton instance.
    * @return Reference to singleton instance
    */
-  static ObjectStoreOperations& GetInstance();
+  static ObjectStoreOperations &GetInstance();
 
   /**
    * Set the CoreWorker provider for dependency injection.
@@ -62,7 +61,7 @@ class ObjectStoreOperations {
    * Get the current CoreWorker provider.
    * @return Reference to IObjectStoreProvider
    */
-  static IObjectStoreProvider& GetCoreWorkerProvider();
+  static IObjectStoreProvider &GetCoreWorkerProvider();
 
   // ============================================================================
   // Business Logic Methods
@@ -74,7 +73,7 @@ class ObjectStoreOperations {
    * @return ObjectID of the stored object
    * @throws std::exception on failure
    */
-  ray::ObjectID Put(const std::shared_ptr<ray::RayObject>& object);
+  ray::ObjectID Put(const std::shared_ptr<ray::RayObject> &object);
 
   /**
    * Put an object into the object store with a specific ID.
@@ -82,7 +81,8 @@ class ObjectStoreOperations {
    * @param object The RayObject to store
    * @throws std::exception on failure
    */
-  void PutWithID(const ray::ObjectID& object_id, const std::shared_ptr<ray::RayObject>& object);
+  void PutWithID(const ray::ObjectID &object_id,
+                 const std::shared_ptr<ray::RayObject> &object);
 
   /**
    * Get objects from the object store.
@@ -91,8 +91,8 @@ class ObjectStoreOperations {
    * @return Vector of RayObjects
    * @throws std::exception on failure
    */
-  std::vector<std::shared_ptr<ray::RayObject>> Get(
-      const std::vector<ray::ObjectID>& ids, int64_t timeout_ms);
+  std::vector<std::shared_ptr<ray::RayObject>> Get(const std::vector<ray::ObjectID> &ids,
+                                                   int64_t timeout_ms);
 
   /**
    * Wait for objects to be ready.
@@ -103,8 +103,10 @@ class ObjectStoreOperations {
    * @return Vector of booleans indicating readiness
    * @throws std::exception on failure
    */
-  std::vector<bool> Wait(const std::vector<ray::ObjectID>& ids, int num_objects,
-                         int64_t timeout_ms, bool fetch_local);
+  std::vector<bool> Wait(const std::vector<ray::ObjectID> &ids,
+                         int num_objects,
+                         int64_t timeout_ms,
+                         bool fetch_local);
 
   /**
    * Delete objects from the object store.
@@ -112,21 +114,21 @@ class ObjectStoreOperations {
    * @param local_only Whether to delete only locally
    * @throws std::exception on failure
    */
-  void Delete(const std::vector<ray::ObjectID>& ids, bool local_only);
+  void Delete(const std::vector<ray::ObjectID> &ids, bool local_only);
 
   /**
    * Add a local reference to an object.
    * @param object_id The ObjectID to reference
    * @throws std::exception on failure
    */
-  void AddLocalReference(const ray::ObjectID& object_id);
+  void AddLocalReference(const ray::ObjectID &object_id);
 
   /**
    * Remove a local reference from an object.
    * @param object_id The ObjectID to dereference
    * @throws std::exception on failure
    */
-  void RemoveLocalReference(const ray::ObjectID& object_id);
+  void RemoveLocalReference(const ray::ObjectID &object_id);
 
   /**
    * Get all reference counts.
@@ -141,7 +143,7 @@ class ObjectStoreOperations {
    * @return Owner address
    * @throws std::exception on failure
    */
-  ray::rpc::Address GetOwnerAddress(const ray::ObjectID& object_id);
+  ray::rpc::Address GetOwnerAddress(const ray::ObjectID &object_id);
 
   /**
    * Get ownership information for an object.
@@ -149,7 +151,7 @@ class ObjectStoreOperations {
    * @return Serialized ownership metadata
    * @throws std::exception on failure
    */
-  std::string GetOwnershipInfo(const ray::ObjectID& object_id);
+  std::string GetOwnershipInfo(const ray::ObjectID &object_id);
 
   /**
    * Register ownership information and resolve a future.
@@ -158,10 +160,9 @@ class ObjectStoreOperations {
    * @param owner_address The owner address
    * @throws std::exception on failure
    */
-  void RegisterOwnershipInfoAndResolveFuture(
-      const ray::ObjectID& object_id,
-      const ray::ObjectID& outer_object_id,
-      const ray::rpc::Address& owner_address);
+  void RegisterOwnershipInfoAndResolveFuture(const ray::ObjectID &object_id,
+                                             const ray::ObjectID &outer_object_id,
+                                             const ray::rpc::Address &owner_address);
 
  private:
   ObjectStoreOperations() = default;
@@ -171,7 +172,7 @@ class ObjectStoreOperations {
    * @return Reference to CoreWorker
    * @throws std::runtime_error if not initialized
    */
-  core::CoreWorker& GetCoreWorker() const {
+  core::CoreWorker &GetCoreWorker() const {
     return GetCoreWorkerProvider().GetCoreWorker();
   }
 };

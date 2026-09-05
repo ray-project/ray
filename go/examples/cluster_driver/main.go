@@ -24,6 +24,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -40,7 +42,14 @@ func main() {
 	}
 	jobID := os.Getenv("RAY_JOB_ID")
 	if jobID == "" {
-		jobID = "01000000"
+		// A fresh job ID per run avoids reusing a cached GCS JobConfig /
+		// code_search_path from a previous run of this example.
+		var id [4]byte
+		if _, err := rand.Read(id[:]); err != nil {
+			fmt.Fprintf(os.Stderr, "GENERATE JOB ID FAILED: %v\n", err)
+			os.Exit(1)
+		}
+		jobID = hex.EncodeToString(id[:])
 	}
 	funcSo := os.Getenv("RAY_GO_USERFUNC_SO")
 	if funcSo == "" {

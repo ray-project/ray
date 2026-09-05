@@ -41,9 +41,9 @@ namespace ray {
 namespace go {
 
 struct GoObjectRefHandle {
-  void* data_ptr;
+  void *data_ptr;
   size_t size;
-  void* ref_handle;
+  void *ref_handle;
 };
 
 /**
@@ -73,7 +73,7 @@ class GoHeapBuffer : public ray::Buffer {
    * @param handle Go-side reference handle (must not be null)
    * @throws std::runtime_error if handle is null
    */
-  explicit GoHeapBuffer(GoObjectRefHandle* handle);
+  explicit GoHeapBuffer(GoObjectRefHandle *handle);
 
   /**
    * @brief Destructor - notifies Go to release the reference
@@ -85,18 +85,18 @@ class GoHeapBuffer : public ray::Buffer {
   ~GoHeapBuffer() noexcept override;
 
   // Disable copy constructor and assignment operator
-  GoHeapBuffer(const GoHeapBuffer&) = delete;
-  GoHeapBuffer& operator=(const GoHeapBuffer&) = delete;
+  GoHeapBuffer(const GoHeapBuffer &) = delete;
+  GoHeapBuffer &operator=(const GoHeapBuffer &) = delete;
 
   // Enable move semantics
-  GoHeapBuffer(GoHeapBuffer&& other) noexcept;
-  GoHeapBuffer& operator=(GoHeapBuffer&& other) noexcept;
+  GoHeapBuffer(GoHeapBuffer &&other) noexcept;
+  GoHeapBuffer &operator=(GoHeapBuffer &&other) noexcept;
 
   /**
    * @brief Get the data pointer
    * @return Pointer to the data (owned by Go)
    */
-  uint8_t* Data() const override;
+  uint8_t *Data() const override;
 
   /**
    * @brief Get the size of the buffer
@@ -117,8 +117,8 @@ class GoHeapBuffer : public ray::Buffer {
   bool IsPlasmaBuffer() const override;
 
  private:
-  GoObjectRefHandle* handle_;  // Go-side reference handle
-  const void* data_;           // Data pointer (owned by Go)
+  GoObjectRefHandle *handle_;  // Go-side reference handle
+  const void *data_;           // Data pointer (owned by Go)
   size_t size_;                // Data size in bytes
 };
 
@@ -136,13 +136,12 @@ class GoHeapBuffer : public ray::Buffer {
  * @param metadata_size Metadata size
  * @return std::shared_ptr<GoHeapBuffer> The allocated buffer, or nullptr on failure
  */
-std::shared_ptr<GoHeapBuffer> AllocateGoHeapBuffer(
-    const char* object_id_data,
-    int object_id_size,
-    const char* data_ptr,
-    int data_size,
-    const char* metadata_ptr,
-    int metadata_size);
+std::shared_ptr<GoHeapBuffer> AllocateGoHeapBuffer(const char *object_id_data,
+                                                   int object_id_size,
+                                                   const char *data_ptr,
+                                                   int data_size,
+                                                   const char *metadata_ptr,
+                                                   int metadata_size);
 
 }  // namespace go
 }  // namespace ray

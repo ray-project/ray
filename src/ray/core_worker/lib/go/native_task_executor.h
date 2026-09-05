@@ -25,7 +25,8 @@
 extern "C" {
 #endif
 
-// Note: CSerializedObject, CSerializedObjectArray, and CFunctionArg are defined in cgo_wrapper.h
+// Note: CSerializedObject, CSerializedObjectArray, and CFunctionArg are defined in
+// cgo_wrapper.h
 
 // GoTaskExecutorCallback is the function pointer type for Go task executor callback.
 // This callback is registered by Go runtime and called by C++ when a task is received.
@@ -43,15 +44,14 @@ extern "C" {
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-typedef CSerializedObjectArray* (*GoTaskExecutorCallback)(
-    int task_type,
-    char** function_descriptor,
-    int function_descriptor_count,
-    CFunctionArg* args,
-    int args_count,
-    int num_returns,
-    char* actor_id_data,
-    int actor_id_size);
+typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int task_type,
+                                                          char **function_descriptor,
+                                                          int function_descriptor_count,
+                                                          CFunctionArg *args,
+                                                          int args_count,
+                                                          int num_returns,
+                                                          char *actor_id_data,
+                                                          int actor_id_size);
 
 // ============================================================================
 // TaskExecutor Functions
@@ -73,15 +73,14 @@ typedef CSerializedObjectArray* (*GoTaskExecutorCallback)(
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray* GoExecuteTask(
-    int task_type,
-    char** function_descriptor,
-    int function_descriptor_count,
-    CFunctionArg* args,
-    int args_count,
-    int num_returns,
-    char* actor_id_data,
-    int actor_id_size);
+CSerializedObjectArray *GoExecuteTask(int task_type,
+                                      char **function_descriptor,
+                                      int function_descriptor_count,
+                                      CFunctionArg *args,
+                                      int args_count,
+                                      int num_returns,
+                                      char *actor_id_data,
+                                      int actor_id_size);
 
 // RegisterGoTaskExecutorCallback registers the Go task executor callback with C++.
 // This is a wrapper function that calls CNativeTaskExecutor_RegisterCallback with
@@ -110,12 +109,11 @@ void CNativeTaskExecutor_RegisterCallback(GoTaskExecutorCallback callback);
 // Returns:
 //   CSerializedObjectArray* containing execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray* CNativeTaskExecutor_Execute(
-    const char** function_descriptor,
-    int function_descriptor_count,
-    const CFunctionArg* args,
-    int args_count,
-    int num_returns);
+CSerializedObjectArray *CNativeTaskExecutor_Execute(const char **function_descriptor,
+                                                    int function_descriptor_count,
+                                                    const CFunctionArg *args,
+                                                    int args_count,
+                                                    int num_returns);
 
 // CNativeTaskExecutor_ExecuteActorTask executes an actor task.
 //
@@ -131,12 +129,12 @@ CSerializedObjectArray* CNativeTaskExecutor_Execute(
 // Returns:
 //   CSerializedObjectArray* containing execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray* CNativeTaskExecutor_ExecuteActorTask(
-    const char* actor_id_data,
+CSerializedObjectArray *CNativeTaskExecutor_ExecuteActorTask(
+    const char *actor_id_data,
     int actor_id_size,
-    const char** function_descriptor,
+    const char **function_descriptor,
     int function_descriptor_count,
-    const CFunctionArg* args,
+    const CFunctionArg *args,
     int args_count,
     int num_returns);
 

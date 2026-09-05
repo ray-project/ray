@@ -28,7 +28,6 @@
 
 #include "cgo_wrapper.h"
 #include "native_task_executor.h"
-
 #include "ray/util/logging.h"
 
 // ============================================================================
@@ -49,13 +48,12 @@
  * @param owner_worker_id_size - Owner worker ID size
  * @return Minimal valid handle (nullptr is acceptable for stub)
  */
-extern "C" void* GoAllocateObject(
-    const char* object_id_data,
-    int object_id_size,
-    const char* owner_ip_address,
-    int owner_port,
-    const char* owner_worker_id_data,
-    int owner_worker_id_size) {
+extern "C" void *GoAllocateObject(const char *object_id_data,
+                                  int object_id_size,
+                                  const char *owner_ip_address,
+                                  int owner_port,
+                                  const char *owner_worker_id_data,
+                                  int owner_worker_id_size) {
   RAY_LOG(DEBUG) << "GoAllocateObject called (stub - returning minimal handle)";
   // Return nullptr as minimal valid handle for stub
   return nullptr;
@@ -69,7 +67,7 @@ extern "C" void* GoAllocateObject(
  *
  * @param handle - Opaque handle to release
  */
-extern "C" void GoReleaseObjectRef(void* handle) {
+extern "C" void GoReleaseObjectRef(void *handle) {
   RAY_LOG(DEBUG) << "GoReleaseObjectRef called (stub - no-op)";
   // No-op: Go runtime not available
 }

@@ -34,21 +34,21 @@ extern "C" {
 // Returns:
 //   CByteArray* containing worker ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetCurrentWorkerId();
+CByteArray *CNativeWorkerContext_GetCurrentWorkerId();
 
 // CNativeWorkerContext_GetCurrentJobID returns the current job ID.
 //
 // Returns:
 //   CByteArray* containing job ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetCurrentJobID();
+CByteArray *CNativeWorkerContext_GetCurrentJobID();
 
 // CNativeWorkerContext_GetCurrentActorID returns the current actor ID.
 //
 // Returns:
 //   CByteArray* containing actor ID binary data, or NULL if not an actor.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetCurrentActorID();
+CByteArray *CNativeWorkerContext_GetCurrentActorID();
 
 // CNativeWorkerContext_GetCurrentTaskType returns the current task type.
 //
@@ -69,22 +69,24 @@ bool CNativeWorkerContext_IsCurrentTaskSet();
 // Returns:
 //   CByteArray* containing task ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetCurrentTaskID();
+CByteArray *CNativeWorkerContext_GetCurrentTaskID();
 
 // CNativeWorkerContext_GetRpcAddress returns the RPC address of the worker.
 //
 // Returns:
 //   CByteArray* containing serialized rpc::Address, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetRpcAddress();
+CByteArray *CNativeWorkerContext_GetRpcAddress();
 
-// CNativeWorkerContext_GetSerializedRuntimeEnv returns the serialized runtime environment.
+// CNativeWorkerContext_GetSerializedRuntimeEnv returns the serialized runtime
+// environment.
 //
 // Returns:
 //   C string containing serialized runtime environment, or NULL on error.
 //   The returned string is statically allocated and should NOT be freed by caller.
-//   Use CNativeWorkerContext_HasLastError() to distinguish between empty string and error.
-const char* CNativeWorkerContext_GetSerializedRuntimeEnv();
+//   Use CNativeWorkerContext_HasLastError() to distinguish between empty string and
+//   error.
+const char *CNativeWorkerContext_GetSerializedRuntimeEnv();
 
 // CNativeWorkerContext_HasLastError returns true if the last operation failed.
 //
@@ -98,14 +100,14 @@ bool CNativeWorkerContext_HasLastError();
 // Returns:
 //   C string containing namespace, or NULL on failure.
 //   The returned string is statically allocated and should NOT be freed by caller.
-const char* CNativeWorkerContext_GetNamespace();
+const char *CNativeWorkerContext_GetNamespace();
 
 // CNativeWorkerContext_GetCurrentNodeID returns the current node ID.
 //
 // Returns:
 //   CByteArray* containing node ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray and its data.
-CByteArray* CNativeWorkerContext_GetCurrentNodeID();
+CByteArray *CNativeWorkerContext_GetCurrentNodeID();
 
 #ifdef __cplusplus
 }  // extern "C"

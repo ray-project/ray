@@ -36,15 +36,15 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
+#include "core_worker_provider.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/common.h"
-#include "core_worker_provider.h"
+#include "ray/core_worker/core_worker.h"
 #include "task_argument.h"
 
 namespace ray {
@@ -74,8 +74,6 @@ struct ActorCreateOptions {
   std::string serialized_runtime_env_info;
 };
 
-
-
 /**
  * @brief Business logic operations for task submission
  *
@@ -92,7 +90,7 @@ class TaskSubmitterOperations {
    * @brief Get singleton instance
    * @return Reference to singleton instance
    */
-  static TaskSubmitterOperations& GetInstance();
+  static TaskSubmitterOperations &GetInstance();
 
   /**
    * @brief Set the CoreWorker provider
@@ -108,7 +106,7 @@ class TaskSubmitterOperations {
    * @brief Get the current CoreWorker provider
    * @return Reference to current provider
    */
-  static ICoreWorkerProvider& GetCoreWorkerProvider();
+  static ICoreWorkerProvider &GetCoreWorkerProvider();
 
   /**
    * @brief Submit a remote task
@@ -120,9 +118,9 @@ class TaskSubmitterOperations {
    * @throws std::exception on error
    */
   std::vector<ray::rpc::ObjectReference> SubmitTask(
-      const std::vector<std::string>& function_descriptor,
-      const std::vector<std::unique_ptr<TaskArgument>>& args,
-      const TaskSubmitOptions& options);
+      const std::vector<std::string> &function_descriptor,
+      const std::vector<std::unique_ptr<TaskArgument>> &args,
+      const TaskSubmitOptions &options);
 
   /**
    * @brief Create an actor
@@ -133,10 +131,9 @@ class TaskSubmitterOperations {
    * @return Created ActorID
    * @throws std::exception on error
    */
-  ray::ActorID CreateActor(
-      const std::vector<std::string>& function_descriptor,
-      const std::vector<std::unique_ptr<TaskArgument>>& args,
-      const ActorCreateOptions& options);
+  ray::ActorID CreateActor(const std::vector<std::string> &function_descriptor,
+                           const std::vector<std::unique_ptr<TaskArgument>> &args,
+                           const ActorCreateOptions &options);
 
   /**
    * @brief Submit a task to an actor
@@ -149,10 +146,10 @@ class TaskSubmitterOperations {
    * @throws std::exception on error
    */
   std::vector<ray::rpc::ObjectReference> SubmitActorTask(
-      const ray::ActorID& actor_id,
-      const std::vector<std::string>& function_descriptor,
-      const std::vector<std::unique_ptr<TaskArgument>>& args,
-      const TaskSubmitOptions& options);
+      const ray::ActorID &actor_id,
+      const std::vector<std::string> &function_descriptor,
+      const std::vector<std::unique_ptr<TaskArgument>> &args,
+      const TaskSubmitOptions &options);
 
   /**
    * @brief Parse resources string to map
@@ -161,7 +158,7 @@ class TaskSubmitterOperations {
    * @return Resource map
    */
   static std::unordered_map<std::string, double> ParseResources(
-      const std::string& resources_str);
+      const std::string &resources_str);
 
   /**
    * @brief Convert hex string to binary
@@ -170,50 +167,49 @@ class TaskSubmitterOperations {
    * @return Binary string
    * @throws std::invalid_argument on invalid hex
    */
-  static std::string HexToBinary(const std::string& hex_str);
+  static std::string HexToBinary(const std::string &hex_str);
 
  private:
   TaskSubmitterOperations() = default;
   ~TaskSubmitterOperations() = default;
 
   // Non-copyable
-  TaskSubmitterOperations(const TaskSubmitterOperations&) = delete;
-  TaskSubmitterOperations& operator=(const TaskSubmitterOperations&) = delete;
+  TaskSubmitterOperations(const TaskSubmitterOperations &) = delete;
+  TaskSubmitterOperations &operator=(const TaskSubmitterOperations &) = delete;
 
   /**
    * @brief Build RayFunction from descriptor
    */
   ray::core::RayFunction BuildRayFunction(
-      const std::vector<std::string>& descriptor) const;
+      const std::vector<std::string> &descriptor) const;
 
   /**
    * @brief Convert TaskArgument vector to Ray TaskArg vector
    */
   std::vector<std::unique_ptr<ray::TaskArg>> ConvertTaskArgs(
-      const std::vector<std::unique_ptr<TaskArgument>>& args) const;
+      const std::vector<std::unique_ptr<TaskArgument>> &args) const;
 
   /**
    * @brief Build TaskOptions from options
    */
-  ray::core::TaskOptions BuildTaskOptions(
-      const TaskSubmitOptions& options) const;
+  ray::core::TaskOptions BuildTaskOptions(const TaskSubmitOptions &options) const;
 
   /**
    * @brief Build ActorCreationOptions from options
    */
   ray::core::ActorCreationOptions BuildActorOptions(
-      const ActorCreateOptions& options) const;
+      const ActorCreateOptions &options) const;
 
   /**
    * @brief Build SchedulingStrategy from placement group info
    */
-  ray::rpc::SchedulingStrategy BuildSchedulingStrategy(
-      const std::string& pg_id_hex, int bundle_index) const;
+  ray::rpc::SchedulingStrategy BuildSchedulingStrategy(const std::string &pg_id_hex,
+                                                       int bundle_index) const;
 
   /**
    * @brief Get CoreWorker from provider
    */
-  ray::core::CoreWorker& GetCoreWorker() const {
+  ray::core::CoreWorker &GetCoreWorker() const {
     return GetCoreWorkerProvider().GetCoreWorker();
   }
 };

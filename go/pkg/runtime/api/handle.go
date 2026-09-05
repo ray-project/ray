@@ -168,6 +168,11 @@ var finalizerMu sync.RWMutex
 //	// Or use deprecated getHandle() for internal APIs
 //	handle := getHandle() // panics if not initialized
 func getHandle() contract.RuntimeHandle {
+	// Mirror tryGetHandle: currentHandle survives Shutdown, so initialized
+	// is the authoritative post-shutdown guard.
+	if !initialized.Load() {
+		panic("Ray runtime not initialized. Call api.Init() or api.InitWithOptions() first.")
+	}
 	h := currentHandle.Load()
 	if h == nil {
 		panic("Ray runtime not initialized. Call api.Init() or api.InitWithOptions() first.")
@@ -187,6 +192,13 @@ func getHandle() contract.RuntimeHandle {
 //	    return nil, fmt.Errorf("runtime not initialized: call api.Init() first")
 //	}
 func tryGetHandle() (contract.RuntimeHandle, bool) {
+	// currentHandle is never cleared (atomic.Value cannot store nil), so it
+	// stays visible after Shutdown. initialized is the authoritative guard:
+	// without this check, post-shutdown calls would reach the destroyed
+	// C++ CoreWorker.
+	if !initialized.Load() {
+		return nil, false
+	}
 	h := currentHandle.Load()
 	if h == nil {
 		return nil, false

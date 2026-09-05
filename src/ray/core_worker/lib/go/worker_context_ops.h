@@ -15,13 +15,14 @@
 #ifndef RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H
 #define RAY_CORE_WORKER_LIB_GO_WORKER_CONTEXT_OPS_H
 
-#include <string>
 #include <memory>
+#include <string>
+
+#include "core_worker_provider.h"
 #include "ray/common/id.h"
+#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/common.h"
-#include "core_worker_provider.h"
 
 namespace ray {
 namespace go {
@@ -43,8 +44,7 @@ class WorkerContextOperations {
    */
   explicit WorkerContextOperations(
       std::shared_ptr<ICoreWorkerProvider> provider = nullptr)
-      : provider_(provider ? provider :
-                  std::make_shared<DefaultCoreWorkerProvider>()) {}
+      : provider_(provider ? provider : std::make_shared<DefaultCoreWorkerProvider>()) {}
 
   /**
    * @brief Get the current worker ID.
@@ -140,9 +140,7 @@ class WorkerContextOperations {
    * @brief Get the current node ID.
    * @return NodeID of the current node.
    */
-  NodeID GetCurrentNodeId() {
-    return provider_->GetCoreWorker().GetCurrentNodeId();
-  }
+  NodeID GetCurrentNodeId() { return provider_->GetCoreWorker().GetCurrentNodeId(); }
 
  private:
   std::shared_ptr<ICoreWorkerProvider> provider_;

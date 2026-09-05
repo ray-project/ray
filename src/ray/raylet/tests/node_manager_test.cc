@@ -771,25 +771,24 @@ TEST_F(NodeManagerTest, TestReRegisteredWorkerClearsFailedWorkersCache) {
       RAY_CHECK(false) << "Unexpected connection error: " << error.message();
     };
     local_stream_socket socket(io_service_);
-    auto client =
-        ClientConnection::Create(std::move(noop_message_handler),
-                                 std::move(connection_error_handler),
-                                 std::move(socket),
-                                 "worker",
-                                 {});
+    auto client = ClientConnection::Create(std::move(noop_message_handler),
+                                           std::move(connection_error_handler),
+                                           std::move(socket),
+                                           "worker",
+                                           {});
 
     flatbuffers::FlatBufferBuilder fbb;
-    auto message = protocol::CreateRegisterClientRequest(
-        fbb,
-        static_cast<int>(rpc::WorkerType::WORKER),
-        flatbuf::to_flatbuf(fbb, worker_id),
-        getpid(),
-        flatbuf::to_flatbuf(fbb, JobID::FromInt(1)),
-        /*runtime_env_hash=*/0,
-        Language::PYTHON,
-        fbb.CreateString("127.0.0.1"),
-        /*port=*/0,
-        fbb.CreateString(""));
+    auto message =
+        protocol::CreateRegisterClientRequest(fbb,
+                                              static_cast<int>(rpc::WorkerType::WORKER),
+                                              flatbuf::to_flatbuf(fbb, worker_id),
+                                              getpid(),
+                                              flatbuf::to_flatbuf(fbb, JobID::FromInt(1)),
+                                              /*runtime_env_hash=*/0,
+                                              Language::PYTHON,
+                                              fbb.CreateString("127.0.0.1"),
+                                              /*port=*/0,
+                                              fbb.CreateString(""));
     fbb.Finish(message);
     // The re-registration must reach the worker pool.
     EXPECT_CALL(mock_worker_pool_, RegisterWorker(_, _, _)).Times(1);
@@ -806,10 +805,10 @@ TEST_F(NodeManagerTest, TestReRegisteredWorkerClearsFailedWorkersCache) {
     PopWorkerCallback pop_worker_callback;
     EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
     EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-        .WillOnce([&](const LeaseSpecification &lease_spec,
-                      const PopWorkerCallback &callback) {
-          pop_worker_callback = callback;
-        });
+        .WillOnce(
+            [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+              pop_worker_callback = callback;
+            });
 
     std::promise<Status> promise;
     node_manager_->HandleRequestWorkerLease(
@@ -818,8 +817,7 @@ TEST_F(NodeManagerTest, TestReRegisteredWorkerClearsFailedWorkersCache) {
         [&](Status status, std::function<void()> success, std::function<void()> failure) {
           promise.set_value(status);
         });
-    const auto worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+    const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
     pop_worker_callback(worker, PopWorkerStatus::OK, "");
     EXPECT_TRUE(promise.get_future().get().ok());
     ASSERT_FALSE(reply.canceled());
