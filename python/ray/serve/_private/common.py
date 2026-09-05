@@ -989,14 +989,9 @@ class HandleMetricReport:
         handle_source: Describes what kind of entity holds this
             deployment handle: a Serve proxy, a Serve replica, or
             unknown.
-        aggregated_queued_requests: average number of queued requests at the
-            handle over the past look_back_period_s seconds.
         queued_requests: list of values of queued requests at the
             handle over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
-        aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the handle for each replica. Replica keys
-            use ReplicaID.to_full_id_str() for efficient controller-side lookups.
         metrics: A map of metric name to the list of values running at that handle for each replica
             over the past look_back_period_s seconds. Replica keys use to_full_id_str().
             This is a list because we take multiple measurements over time.
@@ -1007,11 +1002,7 @@ class HandleMetricReport:
     handle_id: str
     actor_id: str
     handle_source: DeploymentHandleSource
-    aggregated_queued_requests: float
     queued_requests: TimeSeries
-    aggregated_metrics: Dict[
-        str, Dict[str, float]
-    ]  # replica key = ReplicaID.to_full_id_str()
     metrics: Dict[
         str, Dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
@@ -1019,10 +1010,12 @@ class HandleMetricReport:
 
     @property
     def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.aggregated_queued_requests + sum(
-            self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
-        )
+        """Peak queued + running requests over this handle's reported window, summed
+        per series so it over-states any single instant. Diagnostic only: it gates and
+        labels the log line emitted when a handle's metrics are dropped."""
+        running = self.metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        series = [self.queued_requests, *running]
+        return sum(max(point.value for point in s) for s in series if s)
 
     @property
     def is_serve_component_source(self) -> bool:
@@ -1045,8 +1038,6 @@ class ReplicaMetricReport:
 
     Args:
         replica_id: The replica ID of the replica.
-        aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the replica.
         metrics: A map of metric name to the list of values running at that replica
             over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
@@ -1054,7 +1045,6 @@ class ReplicaMetricReport:
     """
 
     replica_id: ReplicaID
-    aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
 

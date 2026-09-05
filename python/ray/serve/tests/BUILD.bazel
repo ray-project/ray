@@ -34,23 +34,13 @@ py_test_module_list(
 py_test_module_list_with_env_variants(
     size = "medium",
     env_variants = {
-        "metr_agg_at_controller": {
+        "metr_collect_on_replica": {
             "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
                 "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
                 "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
             },
-            "name_suffix": "_metr_agg_at_controller",
-        },
-        "metr_agg_at_replicas": {
-            "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "0",
-                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
-                "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
-            },
-            "name_suffix": "_metr_agg_at_replicas",
+            "name_suffix": "_metr_collect_on_replica",
         },
     },
     files = [
@@ -383,6 +373,35 @@ py_test_module_list(
     ],
 )
 
+# Cover replica-side collection for `num_replicas="auto"`, whose looser upscaling
+# assertion is unreachable under the collect-on-handle default.
+py_test_module_list(
+    size = "medium",
+    args = [
+        "-k",
+        "test_num_replicas_auto_basic",
+    ],
+    data = glob(["test_config_files/**/*"]),
+    env = {
+        "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+    },
+    files = [
+        "test_deploy_app_2.py",
+    ],
+    name_suffix = "_metr_collect_on_replica",
+    tags = [
+        "exclusive",
+        "team:serve",
+        "use_all_core_windows",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Run the controller metric high-cardinality opt-out test with the flag disabled.
 py_test_module_list(
     size = "medium",
@@ -558,30 +577,21 @@ py_test(
 
 # Test autoscaling with different metric collection configurations
 AUTOSCALING_METRIC_ENV_VARIANTS = {
-    "metr_disab": {
+    "metr_collect_on_replica": {
         "env": {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
-        "name_suffix": "_metr_disab",
+        "name_suffix": "_metr_collect_on_replica",
     },
-    "metr_agg_at_controller": {
+    "metr_collect_on_handle": {
         "env": {
-            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
+            "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
-        "name_suffix": "_metr_agg_at_controller",
-    },
-    "metr_agg_at_controller_and_replicas": {
-        "env": {
-            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
-            "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-            # Make sure queued metrics are cleared out quickly.
-            "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
-        },
-        "name_suffix": "_metr_agg_at_controller_and_replicas",
+        "name_suffix": "_metr_collect_on_handle",
     },
 }
 
