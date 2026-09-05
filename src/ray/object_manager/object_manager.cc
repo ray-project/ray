@@ -111,7 +111,7 @@ ObjectManager::ObjectManager(
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
   auto object_is_local = [this](const ObjectID &object_id) {
-    return local_objects_.count(object_id) != 0;
+    return local_plasma_objects_.count(object_id) != 0;
   };
   auto send_pull_request = [this](const std::vector<ObjectID> &object_ids,
                                   const NodeID &client_id) {
@@ -179,8 +179,8 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
   const ObjectID &object_id = object_info.object_id;
   RAY_LOG(DEBUG) << "Object added " << object_id;
-  RAY_CHECK(local_objects_.count(object_id) == 0);
-  local_objects_[object_id].object_info = object_info;
+  RAY_CHECK(local_plasma_objects_.count(object_id) == 0);
+  local_plasma_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
@@ -205,12 +205,12 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
 }
 
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
-  auto it = local_objects_.find(object_id);
-  RAY_CHECK(it != local_objects_.end());
+  auto it = local_plasma_objects_.find(object_id);
+  RAY_CHECK(it != local_plasma_objects_.end());
   auto object_info = it->second.object_info;
-  local_objects_.erase(it);
+  local_plasma_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
-  RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
+  RAY_CHECK(!local_plasma_objects_.empty() || used_memory_ == 0);
   object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
@@ -369,9 +369,9 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "Push object on " << self_node_id_ << " to " << node_id << " of object";
-  // ObjectManager's local_objects_ is only a lagging mirror of plasma, so use it as
-  // a hint and let PushFromPlasma's read decide (false = not actually resident).
-  const bool in_plasma_mirror = local_objects_.count(object_id) != 0;
+  // ObjectManager's local_plasma_objects_ is only a lagging mirror of plasma, so use it
+  // as a hint and let PushFromPlasma's read decide (false = not actually resident).
+  const bool in_plasma_mirror = local_plasma_objects_.count(object_id) != 0;
   if (in_plasma_mirror && PushFromPlasma(object_id, node_id)) {
     return;
   }
@@ -421,7 +421,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 }
 
 bool ObjectManager::PushFromPlasma(const ObjectID &object_id, const NodeID &node_id) {
-  const ObjectInfo &object_info = local_objects_[object_id].object_info;
+  const ObjectInfo &object_info = local_plasma_objects_[object_id].object_info;
   uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
 
@@ -435,7 +435,7 @@ bool ObjectManager::PushFromPlasma(const ObjectID &object_id, const NodeID &node
       buffer_pool_.CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
-    // Stale mirror: ObjectManager's local_objects_ said resident but the copy was
+    // Stale mirror: ObjectManager's local_plasma_objects_ said resident but the copy was
     // already evicted.
     return false;
   }
@@ -453,8 +453,8 @@ bool ObjectManager::PushFromPlasma(const ObjectID &object_id, const NodeID &node
                      << ", actual metadata size: " << object_reader->GetMetadataSize()
                      << ". This is likely due to a race condition."
                      << " We will update the object size and proceed sending the object.";
-    local_objects_[object_id].object_info.data_size = 0;
-    local_objects_[object_id].object_info.metadata_size = 1;
+    local_plasma_objects_[object_id].object_info.data_size = 0;
+    local_plasma_objects_[object_id].object_info.metadata_size = 1;
   }
 
   PushObjectInternal(object_id,
@@ -722,7 +722,7 @@ void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
     const WorkerID &worker_id) const {
-  return GetLocalObjectsFilteredBy(local_objects_,
+  return GetLocalObjectsFilteredBy(local_plasma_objects_,
                                    [&worker_id](const LocalObjectInfo &info) {
                                      return info.object_info.owner_worker_id == worker_id;
                                    });
@@ -730,7 +730,7 @@ std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
     const NodeID &node_id) const {
-  return GetLocalObjectsFilteredBy(local_objects_,
+  return GetLocalObjectsFilteredBy(local_plasma_objects_,
                                    [&node_id](const LocalObjectInfo &info) {
                                      return info.object_info.owner_node_id == node_id;
                                    });
@@ -739,7 +739,7 @@ std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
-  result << "\n- num local objects: " << local_objects_.size();
+  result << "\n- num local plasma objects: " << local_plasma_objects_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num object pull requests: " << pull_manager_->NumObjectPullRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
@@ -770,7 +770,7 @@ void ObjectManager::RecordMetrics() {
       used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
   object_store_fallback_memory_gauge_.Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  object_store_local_objects_gauge_.Record(local_objects_.size());
+  object_store_local_objects_gauge_.Record(local_plasma_objects_.size());
   object_manager_pull_requests_gauge_.Record(pull_manager_->NumObjectPullRequests());
 
   object_manager_bytes_gauge_.Record(num_bytes_pushed_from_plasma_,
@@ -794,7 +794,7 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_fallback(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats->set_object_store_bytes_avail(config_.object_store_memory);
-  stats->set_num_local_objects(local_objects_.size());
+  stats->set_num_local_objects(local_plasma_objects_.size());
   stats->set_cumulative_created_objects(
       plasma::plasma_store_runner->GetCumulativeCreatedObjects());
   stats->set_cumulative_created_bytes(
