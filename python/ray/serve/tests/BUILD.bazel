@@ -34,23 +34,13 @@ py_test_module_list(
 py_test_module_list_with_env_variants(
     size = "medium",
     env_variants = {
-        "metr_agg_at_controller": {
+        "metr_collect_on_replica": {
             "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
                 "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
                 "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
                 "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
             },
-            "name_suffix": "_metr_agg_at_controller",
-        },
-        "metr_agg_at_replicas": {
-            "env": {
-                "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "0",
-                "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-                "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR": "0.001",
-                "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S": "3",
-            },
-            "name_suffix": "_metr_agg_at_replicas",
+            "name_suffix": "_metr_collect_on_replica",
         },
     },
     files = [
@@ -566,22 +556,24 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
         },
         "name_suffix": "_metr_disab",
     },
-    "metr_agg_at_controller": {
+    "metr_collect_on_handle": {
         "env": {
-            "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
-        "name_suffix": "_metr_agg_at_controller",
+        "name_suffix": "_metr_collect_on_handle",
     },
-    "metr_agg_at_controller_and_replicas": {
+    # Aggregate-at-controller is required for the columnar arrays to actually be
+    # read; without it the controller reconstructs and takes the object path.
+    "metr_columnar": {
         "env": {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
-            "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+            # Gate defaults to 64 replicas; these tests run far below that.
+            "RAY_SERVE_COLUMNAR_METRICS_MIN_REPLICAS": "2",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
-        "name_suffix": "_metr_agg_at_controller_and_replicas",
+        "name_suffix": "_metr_columnar",
     },
 }
 

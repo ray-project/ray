@@ -5,6 +5,7 @@ import pickle
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -21,6 +22,7 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -385,60 +387,94 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
+    def _record_metrics_delay(
+        self,
+        timestamp: float,
+        deployment_id: DeploymentID,
+        histogram: metrics.Histogram,
+        record_delay: Callable[[float], None],
+    ) -> None:
+        """Report ingest delay. A histogram lets Prometheus aggregate reports from all
+        sources of a deployment, so the per-source tag is omitted to bound cardinality."""
+        delay_ms = (time.time() - timestamp) * 1000
+        histogram.observe(
+            delay_ms,
+            tags={
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+            },
+        )
+        record_delay(delay_ms)
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        _ingest_start = time.time()
         if isinstance(replica_metric_report, bytes):
+            _decompress_start = time.time()
             replica_metric_report = decompress_metric_report(replica_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.time() - _decompress_start) * 1000
+            )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
-        latency = time.time() - replica_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = replica_metric_report.replica_id.deployment_id.name
-        application = replica_metric_report.replica_id.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all replicas of a deployment, so we omit the
-        # per-replica tag to keep cardinality bounded.
-        self.replica_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            replica_metric_report.timestamp,
+            replica_metric_report.replica_id.deployment_id,
+            self.replica_metrics_delay_histogram,
+            self._health_metrics_tracker.record_replica_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
+        )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.time() - _ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        _ingest_start = time.time()
         if isinstance(handle_metric_report, bytes):
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                if not autoscaling_metrics_codec.can_decode_columnar():
+                    # Wire-detect works without numpy but decoding does not.
+                    autoscaling_metrics_codec.warn_columnar_undecodable_once()
+                    return
+                _decode_start = time.time()
+                d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
+                self._health_metrics_tracker.record_decompress(
+                    (time.time() - _decode_start) * 1000
+                )
+                self._record_metrics_delay(
+                    d["timestamp"],
+                    d["deployment_id"],
+                    self.handle_metrics_delay_histogram,
+                    self._health_metrics_tracker.record_handle_metrics_delay,
+                )
+                self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                self._health_metrics_tracker.record_handle_ingest(
+                    (time.time() - _ingest_start) * 1000
+                )
+                return
+            _decompress_start = time.time()
             handle_metric_report = decompress_metric_report(handle_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.time() - _decompress_start) * 1000
+            )
         # Decompression (above) always yields a HandleMetricReport.
         handle_metric_report = cast(HandleMetricReport, handle_metric_report)
-        latency = time.time() - handle_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = handle_metric_report.deployment_id.name
-        application = handle_metric_report.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all handles of a deployment, so we omit the
-        # per-handle tag to keep cardinality bounded.
-        self.handle_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            handle_metric_report.timestamp,
+            handle_metric_report.deployment_id,
+            self.handle_metrics_delay_histogram,
+            self._health_metrics_tracker.record_handle_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
+        )
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.time() - _ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_async_inference_task_queue(

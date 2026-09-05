@@ -4841,13 +4841,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -4863,7 +4856,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
@@ -5035,13 +5027,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 2
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5057,7 +5042,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 2},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 2)]
                     },
@@ -5134,13 +5118,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 1
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5156,7 +5133,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
                     },
@@ -5246,13 +5222,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 1
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5268,7 +5237,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
                     },
@@ -5367,8 +5335,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
-            aggregated_queued_requests=1,
-            aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
         )
@@ -5487,8 +5453,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
-            aggregated_queued_requests=1,
-            aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
         )
@@ -5564,12 +5528,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
@@ -5679,12 +5637,6 @@ class TestAutoscaling:
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
@@ -5810,13 +5762,6 @@ class TestAutoscaling:
                 actor_id="test_actor",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5832,7 +5777,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
@@ -5876,13 +5820,6 @@ class TestAutoscaling:
                 actor_id="test_actor",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5898,7 +5835,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
