@@ -40,6 +40,13 @@ jupytext==1.15.2
 # Pin urllib to avoid downstream ssl incompatibility issues
 urllib3 < 1.27
 
+# setup.py declares setup_requires=["cython >= 3.0.12", ...], and the doc CI steps
+# that pip-install Ray from the checkout (lint.sh api_annotations / api_policy_check)
+# otherwise have setuptools fetch it from an index at runtime. Preinstalling a
+# satisfying version makes fetch_build_eggs a no-op, so those steps never touch
+# the network. Matches setup.py's floor.
+cython==3.0.12
+
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
 click==8.1.7
