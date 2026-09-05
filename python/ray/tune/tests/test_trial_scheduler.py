@@ -175,6 +175,46 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(runner, t3, result(2, 260)), TrialScheduler.STOP
         )
 
+    def testMedianStoppingSparseReportsAreNotSamples(self):
+        # A trial that reported nothing inside [grace_period, time] has no running mean there:
+        # `np.mean` of the empty window is nan, which made the median nan and stopped every trial.
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=10,
+            min_samples_required=1,
+        )
+        runner = mock_tune_controller()
+        sparse = Trial(MOCK_TRAINABLE_NAME)
+        rule.on_trial_result(runner, sparse, result(5, 0))
+        rule.on_trial_complete(runner, sparse, result(100, 0))
+
+        best = Trial(MOCK_TRAINABLE_NAME)
+        # `sparse` is the only other trial beyond t=10 and it never reported inside [10, 10],
+        # so there is no sample to compare against and the best trial must keep running.
+        self.assertEqual(
+            rule.on_trial_result(runner, best, result(10, 1000)), TrialScheduler.CONTINUE
+        )
+
+    def testMedianStoppingNanReportsAreNotSamples(self):
+        # Same shape via a nan metric (issue #24809): the offending trial is excluded instead of
+        # making the median nan.
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1,
+        )
+        runner = mock_tune_controller()
+        poisoned = Trial(MOCK_TRAINABLE_NAME)
+        rule.on_trial_result(runner, poisoned, result(1, float("nan")))
+        rule.on_trial_complete(runner, poisoned, result(2, float("nan")))
+
+        best = Trial(MOCK_TRAINABLE_NAME)
+        self.assertEqual(
+            rule.on_trial_result(runner, best, result(2, 1000)), TrialScheduler.CONTINUE
+        )
+
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
