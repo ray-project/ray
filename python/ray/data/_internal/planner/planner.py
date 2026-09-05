@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
+    from ray.data.checkpoint import CheckpointConfig
+
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -279,14 +281,28 @@ class Planner:
 
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
+                data_file_dir,
+                data_file_fs,
             )
 
             callbacks.append(checkpoint_callback)
 
+            if (
+                getattr(checkpoint_config, "has_generated_id_column", False)
+                and data_file_dir is not None
+            ):
+                # The id_column path cleans up pending checkpoints (and their
+                # partially written data files) inside checkpoint load, which
+                # the generated-ID path doesn't plan. Clean here instead so a
+                # retry after a mid-write crash doesn't leave stale output.
+                self._clean_pending_checkpoints(
+                    checkpoint_config, logical_plan.context, data_file_dir, data_file_fs
+                )
+
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
+                checkpoint_config, data_file_dir, data_file_fs
             )
 
         elif checkpoint_config is not None:
@@ -364,13 +380,19 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
+        data_file_dir=None,
+        data_file_filesystem=None,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
         Subclasses can override this to use a different callback implementation.
+        The data-file location lets the generated-ID path clean up pending
+        checkpoints before loading.
         """
         return LoadCheckpointCallback(
             checkpoint_config,
+            data_file_dir=data_file_dir,
+            data_file_filesystem=data_file_filesystem,
         )
 
     @staticmethod
@@ -387,11 +409,37 @@ class Planner:
                 return datasink.unresolved_path, datasink.filesystem
         return None, None
 
+    @staticmethod
+    def _clean_pending_checkpoints(
+        checkpoint_config: "CheckpointConfig",
+        data_context: DataContext,
+        data_file_dir: str,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> None:
+        """Delete pending checkpoints and their partially written data files."""
+        # Lazy import: ``checkpoint_filter`` participates in an import cycle
+        # with ``ray.data.context``.
+        from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
+
+        manager_cls = (
+            checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
+        )
+        manager = manager_cls(checkpoint_config, data_context)
+        manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+
     def _get_plan_fns_for_checkpointing(
         self,
+        checkpoint_config: "CheckpointConfig",
         data_file_dir: Optional[str] = None,
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        if getattr(checkpoint_config, "has_generated_id_column", False):
+            # Generated struct IDs can't go through the numpy-based
+            # checkpoint filter, so only the write side is planned: a rerun
+            # re-reads every row (at-least-once) instead of restoring.
+            # Restore routing for generated IDs is planned via ListFiles once
+            # the row-group skip machinery exists.
+            return {Write: plan_write_op_with_checkpoint_writer}
         plan_fns = {
             Read: partial(
                 plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem

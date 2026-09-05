@@ -2,6 +2,7 @@ import csv
 import os
 import random
 from typing import List, Literal, Union
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -36,6 +37,7 @@ from ray.data._internal.planner.checkpoint.plan_write_op import (
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
+    GeneratedIdColumnCheckpointManager,
     IdColumnCheckpointManager,
     NumpyArrayBasedCheckpointFilter,
 )
@@ -43,9 +45,22 @@ from ray.data.checkpoint.checkpoint_writer import (
     PENDING_CHECKPOINT_SUFFIX,
     BatchBasedCheckpointWriter,
 )
+from ray.data.checkpoint.generated_id import (
+    CHECKPOINTED_FILE_COLUMN_NAME,
+    CHECKPOINTED_FILE_FRAGMENTS_COLUMN_NAME,
+    CHECKPOINTED_FILE_FRAGMENTS_TYPE,
+    CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA,
+    exclude_checkpointed_rows,
+    get_checkpoint_fragments_info_for_file,
+    get_generated_id_column,
+    index_checkpointed_fragments,
+    is_file_fragments_fully_checkpointed,
+    parse_checkpointed_fragment_info,
+)
 from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
     InvalidCheckpointingConfig,
+    is_generated_id_checkpoint,
 )
 from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
@@ -185,6 +200,38 @@ class TestCheckpointConfig:
             match="Checkpoint ID column",
         ):
             CheckpointConfig(id_column, local_path)
+
+    def test_id_column_and_generated_id_column_mutually_exclusive(self, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Cannot specify both",
+        ):
+            CheckpointConfig(ID_COL, local_path, generated_id_column="generated_id_col")
+
+    def test_id_column_or_generated_id_column_required(self, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Either `id_column` or `generated_id_column`",
+        ):
+            CheckpointConfig(checkpoint_path=local_path)
+
+    def test_generated_id_column_aliases_id_column(self, local_path):
+        """Downstream code (write 2PC, filters) keys off ``id_column``, so a
+        generated-ID config must expose the generated name there too."""
+        config = CheckpointConfig(
+            checkpoint_path=local_path, generated_id_column="generated_id_col"
+        )
+        assert config.id_column == "generated_id_col"
+        assert config.generated_id_column == "generated_id_col"
+        assert config.has_generated_id_column
+        assert is_generated_id_checkpoint(config)
+
+    def test_id_column_config_is_not_generated_id(self, local_path):
+        config = CheckpointConfig(ID_COL, local_path)
+        assert config.generated_id_column is None
+        assert not config.has_generated_id_column
+        assert not is_generated_id_checkpoint(config)
+        assert not is_generated_id_checkpoint(None)
 
     def test_override_backend_emits_deprecation_warning(self):
         with pytest.warns(FutureWarning, match="deprecated"):
@@ -327,6 +374,102 @@ class TestCheckpointConfig:
                 match="`checkpoint_filter_cls` must be a concrete class",
             ):
                 CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
+
+
+def _collect_physical_op_names(physical_plan) -> List[str]:
+    names = []
+    to_visit = [physical_plan.dag]
+    while to_visit:
+        op = to_visit.pop()
+        names.append(op.name)
+        to_visit.extend(op.input_dependencies)
+    return names
+
+
+def test_generated_id_rerun_rereads_all_rows(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Generated struct IDs can't go through the numpy-based restore path, so
+    only the write side is planned: a rerun that finds committed checkpoint
+    files must re-read every row (at-least-once) instead of crashing during
+    checkpoint load."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        # Keep the committed checkpoint so the second run sees it.
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(os.path.join(tmp_path, "out1"))
+
+    committed = [
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    ]
+    assert committed, "first run should have committed checkpoint files"
+
+    # No filter op is planned for generated IDs; the checkpoint is only written.
+    ds = ray.data.read_parquet(f_dir)
+    write_op = Write(
+        ParquetDatasink(os.path.join(tmp_path, "unused")),
+        input_dependencies=[ds._logical_plan.dag],
+    )
+    physical_plan, _ = get_execution_plan(LogicalPlan(write_op, ctx))
+    assert not any(
+        "CheckpointFilter" in name for name in _collect_physical_op_names(physical_plan)
+    )
+
+    # The rerun must complete and rewrite every input row.
+    out2 = os.path.join(tmp_path, "out2")
+    ray.data.read_parquet(f_dir).write_parquet(out2)
+    result = pq.read_table(out2)
+    assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_generated_id_pending_cleanup_before_rerun(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Pending-checkpoint cleanup doesn't depend on the ID type: a generated-ID
+    rerun after a mid-write crash must delete leftover pending checkpoints and
+    their partially written data files before writing again."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    out = os.path.join(tmp_path, "out")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+    committed_before = {
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    }
+    assert committed_before
+
+    # Simulate a crashed run: a pending checkpoint whose 2PC never committed,
+    # plus the matching partially written data file.
+    stale_base = "crashed_write_0000"
+    pq.write_table(
+        pa.table({"generated_id_col": ["fake"]}),
+        os.path.join(ckpt_path, f"{stale_base}{PENDING_CHECKPOINT_SUFFIX}.parquet"),
+    )
+    stale_data_file = os.path.join(out, f"{stale_base}.parquet")
+    pq.write_table(pa.table({ID_COL: [-1]}), stale_data_file)
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+
+    remaining = os.listdir(ckpt_path)
+    assert not any(PENDING_CHECKPOINT_SUFFIX in f for f in remaining)
+    assert committed_before <= set(remaining)
+    assert not os.path.exists(stale_data_file)
 
 
 @pytest.mark.parametrize(
@@ -2164,6 +2307,257 @@ def test_clean_pending_checkpoints_no_pending(ray_start_10_cpus_shared, fs, base
 
     # Data file should still exist (no pending checkpoints means nothing to clean)
     assert fs.get_file_info(data_file).type != FileType.NotFound
+
+
+def _make_file_fragments_scalar(fragments: list) -> pa.StructScalar:
+    """Build one file's CHECKPOINTED_FILE_FRAGMENTS_TYPE struct scalar.
+
+    Args:
+        fragments: List of ``(fragment_id, num_rows, committed_row_ids)``.
+            A fragment whose committed rows cover ``num_rows`` is stored the
+            compact way (empty mask list).
+
+    Returns:
+        The file's struct scalar.
+    """
+    fragment_entries = []
+    num_fully = 0
+    for fragment_id, num_rows, committed_row_ids in fragments:
+        fully = len(committed_row_ids) == num_rows
+        num_fully += fully
+        fragment_entries.append(
+            {
+                "fragment_id": fragment_id,
+                "num_rows": num_rows,
+                "num_checkpointed_rows": len(committed_row_ids),
+                "checkpointed_row_ids": (
+                    []
+                    if fully
+                    else [i in set(committed_row_ids) for i in range(num_rows)]
+                ),
+            }
+        )
+    value = {
+        "num_fragments": len(fragments),
+        "fully_checkpointed": num_fully == len(fragments),
+        "fragments": fragment_entries,
+    }
+    return pa.array([value], type=CHECKPOINTED_FILE_FRAGMENTS_TYPE)[0]
+
+
+def _mock_fragment(path: str, row_group_num_rows: int) -> MagicMock:
+    fragment = MagicMock()
+    fragment.path = path
+    row_group = MagicMock()
+    row_group.num_rows = row_group_num_rows
+    fragment.metadata.row_group.return_value = row_group
+    return fragment
+
+
+class TestGeneratedIdFragmentParsing:
+    """Unit tests for the compact-representation parse/exclude helpers."""
+
+    def test_parse_fully_checkpointed_row_group(self):
+        scalar = _make_file_fragments_scalar([(0, 3, [0, 1, 2])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, scalar)
+        assert info.fully_checkpointed
+        assert info.checkpointed_row_count == 3
+        assert len(info.checkpointed_row_ids) == 0
+
+    def test_parse_partially_checkpointed_row_group(self):
+        scalar = _make_file_fragments_scalar([(1, 4, [0, 2])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 4), 1, scalar)
+        assert not info.fully_checkpointed
+        assert info.checkpointed_row_count == 2
+        assert info.checkpointed_row_ids.to_pylist() == [True, False, True, False]
+
+    def test_parse_row_group_without_checkpoint_entry(self):
+        # Row group 1 has an entry; row group 0 doesn't.
+        scalar = _make_file_fragments_scalar([(1, 4, [0])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, scalar)
+        assert not info.fully_checkpointed
+        assert info.checkpointed_row_count == 0
+        assert info.checkpointed_row_ids is None
+
+    def test_parse_never_seen_file(self):
+        null_scalar = pa.array([None], type=CHECKPOINTED_FILE_FRAGMENTS_TYPE)[0]
+        for scalar in (None, null_scalar):
+            info = parse_checkpointed_fragment_info(_mock_fragment("f", 5), 0, scalar)
+            assert not info.fully_checkpointed
+            assert info.checkpointed_row_ids is None
+            assert info.num_rows == 5
+
+    def test_parse_num_rows_mismatch_raises(self):
+        scalar = _make_file_fragments_scalar([(0, 4, [0])])
+        # On-disk row group has 3 rows but the checkpoint recorded 4.
+        with pytest.raises(AssertionError, match="does not match"):
+            parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, scalar)
+
+    def test_exclude_nothing_checkpointed(self):
+        table = pa.table({"x": [1, 2, 3]})
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, None)
+        assert exclude_checkpointed_rows(table, info, 0, 3) is table
+
+    def test_exclude_fully_checkpointed(self):
+        table = pa.table({"x": [1, 2, 3]})
+        scalar = _make_file_fragments_scalar([(0, 3, [0, 1, 2])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, scalar)
+        assert exclude_checkpointed_rows(table, info, 0, 3).num_rows == 0
+
+    def test_exclude_partial_with_batch_offsets(self):
+        # Row group of 6 rows, rows 1 and 4 committed, read in two batches.
+        scalar = _make_file_fragments_scalar([(0, 6, [1, 4])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 6), 0, scalar)
+
+        batch1 = pa.table({"x": [0, 1, 2]})
+        assert exclude_checkpointed_rows(batch1, info, 0, 3)["x"].to_pylist() == [0, 2]
+        batch2 = pa.table({"x": [3, 4, 5]})
+        assert exclude_checkpointed_rows(batch2, info, 3, 3)["x"].to_pylist() == [3, 5]
+
+    def test_exclude_out_of_bounds_batch_raises(self):
+        scalar = _make_file_fragments_scalar([(0, 3, [0])])
+        info = parse_checkpointed_fragment_info(_mock_fragment("f", 3), 0, scalar)
+        with pytest.raises(AssertionError, match="greater than the length"):
+            exclude_checkpointed_rows(pa.table({"x": [1, 2]}), info, 2, 2)
+
+    def test_index_and_lookup_by_file(self):
+        table = pa.table(
+            {
+                CHECKPOINTED_FILE_COLUMN_NAME: ["/data/a.parquet", "/data/b.parquet"],
+                CHECKPOINTED_FILE_FRAGMENTS_COLUMN_NAME: pa.array(
+                    [
+                        _make_file_fragments_scalar([(0, 2, [0, 1])]).as_py(),
+                        _make_file_fragments_scalar([(0, 2, [0])]).as_py(),
+                    ],
+                    type=CHECKPOINTED_FILE_FRAGMENTS_TYPE,
+                ),
+            },
+            schema=CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA,
+        )
+        by_path = index_checkpointed_fragments(table)
+        assert by_path == {"/data/a.parquet": 0, "/data/b.parquet": 1}
+
+        info_a = get_checkpoint_fragments_info_for_file(
+            table, "/data/a.parquet", by_path
+        )
+        assert is_file_fragments_fully_checkpointed(info_a)
+        info_b = get_checkpoint_fragments_info_for_file(
+            table, "/data/b.parquet", by_path
+        )
+        assert not is_file_fragments_fully_checkpointed(info_b)
+
+        info_missing = get_checkpoint_fragments_info_for_file(
+            table, "/data/missing.parquet", by_path
+        )
+        assert info_missing.checkpointed_file_fragments is None
+
+        assert index_checkpointed_fragments(None) == {}
+        assert index_checkpointed_fragments(pa.table({})) == {}
+
+
+def _write_generated_id_checkpoint_file(
+    checkpoint_dir: str,
+    file_name: str,
+    committed: list,
+):
+    """Write one committed checkpoint parquet holding raw struct IDs.
+
+    Args:
+        checkpoint_dir: Directory to write the checkpoint file into.
+        file_name: Name of the checkpoint parquet file.
+        committed: List of ``(path, row_group_idx, num_row_groups,
+            rg_num_rows, row_ids)`` entries.
+    """
+    id_arrays = []
+    for path, row_group_idx, num_row_groups, rg_num_rows, row_ids in committed:
+        full = get_generated_id_column(
+            path=path,
+            row_group_idx=row_group_idx,
+            num_row_groups=num_row_groups,
+            total_num_rows=rg_num_rows,
+            current_row_offset=0,
+            current_num_rows=rg_num_rows,
+        )
+        id_arrays.append(full.take(pa.array(row_ids, type=pa.int32())))
+    ids = pa.concat_arrays(id_arrays)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    pq.write_table(
+        pa.table({GENERATED_ID_TEST_COL: ids}),
+        os.path.join(checkpoint_dir, file_name),
+    )
+
+
+GENERATED_ID_TEST_COL = "__gen_id"
+
+
+def test_generated_id_checkpoint_compaction(tmp_path):
+    """End-to-end: raw committed struct IDs compact into one row per file."""
+    checkpoint_dir = str(tmp_path / "ckpt")
+    config = CheckpointConfig(
+        generated_id_column=GENERATED_ID_TEST_COL, checkpoint_path=checkpoint_dir
+    )
+
+    # File a: 2 row groups (3 rows each), both fully committed.
+    # File b: 2 row groups, group 0 partial (row 1 of 3), group 1 untouched.
+    # File c: never committed (absent).
+    _write_generated_id_checkpoint_file(
+        checkpoint_dir,
+        "task1.parquet",
+        [
+            ("/data/a.parquet", 0, 2, 3, [0, 1, 2]),
+            ("/data/b.parquet", 0, 2, 3, [1]),
+        ],
+    )
+    _write_generated_id_checkpoint_file(
+        checkpoint_dir,
+        "task2.parquet",
+        [("/data/a.parquet", 1, 2, 3, [0, 1, 2])],
+    )
+
+    manager = GeneratedIdColumnCheckpointManager(
+        checkpoint_config=config, data_context=DataContext.get_current()
+    )
+    block = ray.get(manager.load_checkpoint_as_block())
+    table = pa.table(block)
+
+    assert table.schema == CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA
+    # One row per file, sorted by path; never-seen file c is absent.
+    assert table[CHECKPOINTED_FILE_COLUMN_NAME].to_pylist() == [
+        "/data/a.parquet",
+        "/data/b.parquet",
+    ]
+
+    by_path = index_checkpointed_fragments(table)
+    info_a = get_checkpoint_fragments_info_for_file(table, "/data/a.parquet", by_path)
+    assert is_file_fragments_fully_checkpointed(info_a)
+
+    info_b = get_checkpoint_fragments_info_for_file(table, "/data/b.parquet", by_path)
+    assert not is_file_fragments_fully_checkpointed(info_b)
+    parsed = parse_checkpointed_fragment_info(
+        _mock_fragment("/data/b.parquet", 3), 0, info_b.checkpointed_file_fragments
+    )
+    assert not parsed.fully_checkpointed
+    assert parsed.checkpointed_row_ids.to_pylist() == [False, True, False]
+    # Row group 1 of file b was never committed.
+    parsed_untouched = parse_checkpointed_fragment_info(
+        _mock_fragment("/data/b.parquet", 3), 1, info_b.checkpointed_file_fragments
+    )
+    assert parsed_untouched.checkpointed_row_ids is None
+
+
+def test_generated_id_checkpoint_load_empty(tmp_path):
+    """An empty or missing checkpoint dir loads as an empty sentinel block."""
+    checkpoint_dir = str(tmp_path / "ckpt")
+    os.makedirs(checkpoint_dir)
+    config = CheckpointConfig(
+        generated_id_column=GENERATED_ID_TEST_COL, checkpoint_path=checkpoint_dir
+    )
+    manager = GeneratedIdColumnCheckpointManager(
+        checkpoint_config=config, data_context=DataContext.get_current()
+    )
+    block = ray.get(manager.load_checkpoint_as_block())
+    assert pa.table(block).num_rows == 0
+    assert index_checkpointed_fragments(block) == {}
 
 
 if __name__ == "__main__":
