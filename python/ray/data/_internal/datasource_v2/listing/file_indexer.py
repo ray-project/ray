@@ -19,7 +19,13 @@ from ray.data._internal.datasource_v2.listing.indexing_utils import (
     _get_path_contents,
 )
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
-from ray.data.block import BlockColumn
+from ray.data.block import Block, BlockColumn
+from ray.data.checkpoint.generated_id import (
+    CheckpointFragmentsInfo,
+    get_checkpoint_fragments_info_for_file,
+    index_checkpointed_fragments,
+    is_file_fragments_fully_checkpointed,
+)
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
@@ -49,6 +55,7 @@ class FileIndexer(ABC):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        checkpoint_ids: Optional[Block] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -69,6 +76,11 @@ class FileIndexer(ABC):
                 :meth:`list_file_infos` is never shuffled.
             execution_idx: Execution index used with ``shuffle_config`` to
                 derive a per-execution seed.
+            checkpoint_ids: Compact generated-ID checkpoint block
+                (``CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA``). When
+                set, fully-checkpointed files are dropped before chunking
+                and every emitted manifest carries the per-file checkpoint
+                struct column.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -239,6 +251,7 @@ class NonSamplingFileIndexer(FileIndexer):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        checkpoint_ids: Optional[Block] = None,
     ) -> Iterable[FileManifest]:
         # This per-file listing path ignores predicate/limit/projected_columns;
         # they're consumed by metadata-aware indexers (e.g. the footer indexer).
@@ -253,7 +266,9 @@ class NonSamplingFileIndexer(FileIndexer):
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
         )
-        yield from self._process_file_infos_to_manifests(file_infos)
+        yield from self._process_file_infos_to_manifests(
+            file_infos, checkpoint_ids=checkpoint_ids
+        )
 
     def _iter_file_infos_for_list(
         self,
@@ -445,12 +460,17 @@ class NonSamplingFileIndexer(FileIndexer):
     def _process_file_infos_to_manifests(
         self,
         file_infos: Iterable[FileInfo],
+        checkpoint_ids: Optional[Block] = None,
     ) -> Iterable[FileManifest]:
         # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
-        # by ``list_file_infos``; this method only chunks them into manifests.
+        # by ``list_file_infos``; this method only chunks them into manifests —
+        # and, when a checkpoint block is given, drops fully-checkpointed files
+        # before chunking and stamps the per-file checkpoint struct on every row.
+        checkpointed_fragments_by_path = index_checkpointed_fragments(checkpoint_ids)
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
+        running_checkpoint_infos: List[Optional[CheckpointFragmentsInfo]] = []
         manifests_count = 0
         chunks_count = 0
 
@@ -458,6 +478,18 @@ class NonSamplingFileIndexer(FileIndexer):
             # ``list_file_infos`` already dropped zero/None-size files.
             assert file_info.size is not None
             path, file_size = file_info.path, file_info.size
+
+            checkpoint_info: Optional[CheckpointFragmentsInfo] = None
+            if checkpoint_ids is not None:
+                checkpoint_info = get_checkpoint_fragments_info_for_file(
+                    checkpoint_ids, path, checkpointed_fragments_by_path
+                )
+                if (
+                    checkpoint_info.checkpointed_file_fragments is not None
+                    and is_file_fragments_fully_checkpointed(checkpoint_info)
+                ):
+                    logger.debug("Skipping fully checkpointed file: %r", path)
+                    continue
 
             # Drive the chunker once per file; emit one manifest row per chunk.
             # ``chunk_metadata`` is ``None`` for whole-file chunks (the default
@@ -469,6 +501,7 @@ class NonSamplingFileIndexer(FileIndexer):
                 running_paths.append(path)
                 running_file_sizes.append(chunk_size)
                 running_chunk_metadatas.append(chunk_metadata)
+                running_checkpoint_infos.append(checkpoint_info)
                 chunks_count += 1
 
                 if len(running_paths) >= self._max_paths_per_output:
@@ -477,10 +510,16 @@ class NonSamplingFileIndexer(FileIndexer):
                         paths=running_paths,
                         sizes=running_file_sizes,
                         chunk_metadatas=running_chunk_metadatas,
+                        checkpoint_file_fragments=(
+                            running_checkpoint_infos
+                            if checkpoint_ids is not None
+                            else None
+                        ),
                     )
                     running_paths = []
                     running_file_sizes = []
                     running_chunk_metadatas = []
+                    running_checkpoint_infos = []
 
         if running_paths:
             manifests_count += 1
@@ -488,6 +527,9 @@ class NonSamplingFileIndexer(FileIndexer):
                 paths=running_paths,
                 sizes=running_file_sizes,
                 chunk_metadatas=running_chunk_metadatas,
+                checkpoint_file_fragments=(
+                    running_checkpoint_infos if checkpoint_ids is not None else None
+                ),
             )
 
         logger.debug(

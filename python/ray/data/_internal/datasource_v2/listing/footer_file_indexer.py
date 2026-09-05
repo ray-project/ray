@@ -18,6 +18,12 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     FileManifest,
 )
 from ray.data._internal.datasource_v2.listing.footer_reader import FooterReaderActor
+from ray.data.block import Block
+from ray.data.checkpoint.generated_id import (
+    get_checkpoint_fragments_info_for_file,
+    index_checkpointed_fragments,
+    is_file_fragments_fully_checkpointed,
+)
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -27,6 +33,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
     from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
     from ray.data.block import BlockColumn
+    from ray.data.checkpoint.generated_id import CheckpointFragmentsInfo
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
 
@@ -54,13 +61,20 @@ _DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
 # as a ``FilePartitioner``; see ``ParquetDatasourceV2.get_file_partitioner``.
 
 
-def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
+def _file_chunks_to_manifest(
+    file_chunks: FileChunks,
+    checkpoint_info: Optional["CheckpointFragmentsInfo"] = None,
+    include_checkpoint_column: bool = False,
+) -> FileManifest:
     """One listing row per row-group run of a file.
 
     The row carries the run's exact footer stats, so a downstream partitioner
     can group runs into read units -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
-    listing discovers, the partitioner groups.
+    listing discovers, the partitioner groups. With
+    ``include_checkpoint_column``, every row is also stamped with the file's
+    compact checkpoint struct (``checkpoint_info``; None for a never-seen
+    file).
     """
     n = len(file_chunks.row_groups)
     return FileManifest.construct_manifest(
@@ -78,6 +92,9 @@ def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
             )
             for rg in file_chunks.row_groups
         ],
+        checkpoint_file_fragments=(
+            [checkpoint_info] * n if include_checkpoint_column else None
+        ),
     )
 
 
@@ -164,6 +181,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        checkpoint_ids: Optional[Block] = None,
     ) -> Iterable[FileManifest]:
         file_infos = self._iter_file_infos_for_list(
             paths,
@@ -173,6 +191,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
         )
+        checkpointed_fragments_by_path = index_checkpointed_fragments(checkpoint_ids)
+        if checkpoint_ids is not None:
+            # Drop fully-checkpointed files before footer reads — their
+            # footers never need to be fetched on resume.
+            file_infos = self._drop_fully_checkpointed_files(
+                file_infos, checkpoint_ids, checkpointed_fragments_by_path
+            )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
@@ -190,13 +215,36 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         try:
             yield from self._read_footers(
-                actors, file_infos, limit, preserve_order=preserve_order
+                actors,
+                file_infos,
+                limit,
+                preserve_order=preserve_order,
+                checkpoint_ids=checkpoint_ids,
+                checkpointed_fragments_by_path=checkpointed_fragments_by_path,
             )
         finally:
             for actor in actors:
                 # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
                 # pyrefly: ignore[bad-argument-type]
                 ray.kill(actor)
+
+    @staticmethod
+    def _drop_fully_checkpointed_files(
+        file_infos: "Iterable[FileInfo]",
+        checkpoint_ids: Block,
+        checkpointed_fragments_by_path: dict,
+    ) -> "Iterator[FileInfo]":
+        for file_info in file_infos:
+            checkpoint_info = get_checkpoint_fragments_info_for_file(
+                checkpoint_ids, file_info.path, checkpointed_fragments_by_path
+            )
+            if (
+                checkpoint_info.checkpointed_file_fragments is not None
+                and is_file_fragments_fully_checkpointed(checkpoint_info)
+            ):
+                logger.debug("Skipping fully checkpointed file: %r", file_info.path)
+                continue
+            yield file_info
 
     def _read_footers(
         self,
@@ -205,6 +253,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         limit: Optional[int],
         *,
         preserve_order: bool = False,
+        checkpoint_ids: Optional[Block] = None,
+        checkpointed_fragments_by_path: Optional[dict] = None,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -242,7 +292,20 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
                 for file_chunks in ray.get(ref):
-                    yield _file_chunks_to_manifest(file_chunks)
+                    checkpoint_info = None
+                    if checkpoint_ids is not None:
+                        # Fully-checkpointed files were dropped pre-footer;
+                        # what's left is stamped for reader-side skipping.
+                        checkpoint_info = get_checkpoint_fragments_info_for_file(
+                            checkpoint_ids,
+                            file_chunks.path,
+                            checkpointed_fragments_by_path,
+                        )
+                    yield _file_chunks_to_manifest(
+                        file_chunks,
+                        checkpoint_info=checkpoint_info,
+                        include_checkpoint_column=checkpoint_ids is not None,
+                    )
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
                         # stopping can never under-deliver under a filter.

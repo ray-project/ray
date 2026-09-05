@@ -1,6 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
@@ -18,6 +19,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
+    _with_io_retry,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
@@ -34,8 +36,16 @@ from ray.data._internal.datasource_v2.readers.supports_metadata import (
     SupportsMetadata,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import MiB
+from ray.data._internal.util import MiB, iterate_with_retry
 from ray.data.block import BlockMetadata
+from ray.data.checkpoint.generated_id import (
+    CheckpointedFragmentInfo,
+    exclude_checkpointed_rows,
+    get_generated_id_column,
+    get_generated_id_column_name,
+    parse_checkpointed_fragment_info,
+)
+from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -335,7 +345,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, int]]:
+    ) -> List[Tuple]:
         """Fan file fragments into read-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
@@ -348,34 +358,114 @@ class ParquetFileReader(FileReader, SupportsMetadata):
           (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via
           :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_row_group_ids`.
-          When ``include_row_hash`` is on it fans out one sub-fragment per row
-          group, each paired with its cumulative pre-filter row offset, so the
-          downstream ``_compute_row_hashes`` call keeps hashes unique across
-          sub-fragments that share ``fragment.path``.
+          When ``include_row_hash`` or a generated ID column is on it fans
+          out one sub-fragment per row group, each paired with its cumulative
+          pre-filter row offset. For row hashes this keeps
+          ``_compute_row_hashes`` keys unique across sub-fragments that share
+          ``fragment.path``; for generated IDs it establishes the
+          one-row-group-per-fragment invariant
+          :meth:`_read_fragments_sequential` relies on to derive stable
+          ``(file, row group, row)`` identifiers.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
         itself — multiple manifest rows can share a single path with
         different row-group sets.
+
+        With a generated ID column, elements are widened to
+        ``(fragment, file_row_offset, Optional[CheckpointedFragmentInfo])``:
+        each row-group sub-fragment is resolved against the manifest's
+        compact checkpoint struct, fully-checkpointed row groups are dropped
+        here (never scanned), and partially-checkpointed ones carry their
+        info for row filtering in :meth:`_read_fragments_sequential`. The
+        base class never sees the 3-tuples — the override consumes them.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
+
+        generated_id_column = self._generated_id_column
+        if generated_id_column is not None:
+            self._validate_generated_id_column(path_to_fragment)
+
+        checkpoint_column = (
+            manifest.file_fragments_checkpoint
+            if generated_id_column is not None
+            else None
+        )
+
+        split_per_row_group = self._include_row_hash or generated_id_column is not None
         fragments: List[Tuple[pds.Fragment, int]] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+        for row_idx, (path, chunk_metadata) in enumerate(
+            zip(manifest.paths, manifest.file_chunk_metadatas)
+        ):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
-                fragments.append((fragment, 0))
-            else:
-                fragments.extend(
-                    _fragments_from_row_group_ids(
-                        fragment,
-                        chunk_metadata["row_group_ids"],
-                        per_row_group_offsets=self._include_row_hash,
+                if split_per_row_group:
+                    num_row_groups = _with_io_retry(
+                        lambda: fragment.metadata.num_row_groups,
+                        f"read parquet metadata for {fragment.path}",
                     )
+                    sub_fragments = _fragments_from_row_group_ids(
+                        fragment,
+                        range(num_row_groups),
+                        per_row_group_offsets=True,
+                    )
+                else:
+                    sub_fragments = [(fragment, 0)]
+            else:
+                sub_fragments = _fragments_from_row_group_ids(
+                    fragment,
+                    chunk_metadata["row_group_ids"],
+                    per_row_group_offsets=split_per_row_group,
                 )
+
+            if generated_id_column is None:
+                fragments.extend(sub_fragments)
+                continue
+
+            checkpoint_scalar = (
+                checkpoint_column[row_idx] if checkpoint_column is not None else None
+            )
+            fragments.extend(
+                self._attach_checkpoint_infos(sub_fragments, checkpoint_scalar)
+            )
         return fragments
+
+    def _attach_checkpoint_infos(
+        self,
+        sub_fragments: List[Tuple[pds.ParquetFileFragment, int]],
+        checkpoint_scalar: Optional[pa.StructScalar],
+    ) -> List[Tuple[pds.ParquetFileFragment, int, Optional[CheckpointedFragmentInfo]]]:
+        """Widen row-group sub-fragments with their checkpoint state.
+
+        Fully-checkpointed row groups are dropped (never scanned). Row groups
+        with no checkpointed rows carry ``None`` so the read path skips the
+        filtering work entirely.
+        """
+        result = []
+        for sub_fragment, offset in sub_fragments:
+            info: Optional[CheckpointedFragmentInfo] = None
+            if checkpoint_scalar is not None and checkpoint_scalar.is_valid:
+                assert (
+                    sub_fragment.row_groups is not None
+                    and len(sub_fragment.row_groups) == 1
+                )
+                info = parse_checkpointed_fragment_info(
+                    sub_fragment, sub_fragment.row_groups[0].id, checkpoint_scalar
+                )
+                if info.fully_checkpointed:
+                    logger.debug(
+                        "Skipping fully checkpointed row group %d of %r",
+                        info.row_group_idx,
+                        sub_fragment.path,
+                    )
+                    continue
+                if info.checkpointed_row_count == 0:
+                    info = None
+            result.append((sub_fragment, offset, info))
+        return result
 
     @override
     def _iter_fragment_tables(
@@ -636,3 +726,122 @@ class ParquetFileReader(FileReader, SupportsMetadata):
     @override
     def get_target_metadata_batch_size(self) -> Optional[int]:
         return self._COUNT_ROWS_BATCH_SIZE
+
+    @property
+    def _generated_id_column(self) -> Optional[str]:
+        """Name of the checkpointing-generated ID column, if configured."""
+        return get_generated_id_column_name()
+
+    def _validate_generated_id_column(
+        self, path_to_fragment: Dict[str, pds.ParquetFileFragment]
+    ) -> None:
+        """Raise if the configured generated ID column already exists on-disk.
+
+        The generated ID column is synthesized by the reader; a physical
+        column with the same name would be silently shadowed, so fail fast.
+        Checked once per read against a single fragment — ``FileReader.read``
+        builds the dataset with a unified schema, so one file is
+        representative.
+        """
+        generated_id_column = self._generated_id_column
+        if not path_to_fragment:
+            return
+        first_fragment = next(iter(path_to_fragment.values()))
+        physical_schema = _with_io_retry(
+            lambda: first_fragment.physical_schema,
+            f"read physical schema for {first_fragment.path}",
+        )
+        if physical_schema.get_field_index(generated_id_column) >= 0:
+            raise ValueError(
+                f"generated_id_column='{generated_id_column}' conflicts with an "
+                "existing column in the dataset. Choose a name that doesn't "
+                "collide with any input column."
+            )
+
+    @override
+    def _read_fragments_sequential(
+        self,
+        fragments_with_offsets: Iterator[Tuple],
+        scanner_kwargs: dict,
+    ) -> Iterator[Tuple[pa.Table, str, int]]:
+        """Read fragments in order, attaching generated row IDs when configured.
+
+        Without a generated ID column this delegates to the base
+        implementation. With one, elements are the widened
+        ``(fragment, file_row_offset, checkpoint_info)`` tuples from
+        :meth:`_get_fragments_to_read`: every fragment carries exactly one
+        row group, each batch gains a struct ID column identifying
+        ``(file, row group, row)``, and — when the row group is partially
+        checkpointed — already-committed rows are dropped *after* the IDs
+        are attached, so ``row_id`` assignment is independent of resume
+        state. ``in_group_offset`` counts pre-filter rows so ``row_id``
+        continues across batches; the yielded offset keeps the base
+        method's post-filter file-row-offset semantics for row hashing.
+        """
+        generated_id_column = self._generated_id_column
+        if generated_id_column is None:
+            yield from super()._read_fragments_sequential(
+                fragments_with_offsets, scanner_kwargs
+            )
+            return
+
+        ctx = DataContext.get_current()
+        for fragment, file_row_offset, checkpoint_info in fragments_with_offsets:
+            assert fragment.row_groups is not None and len(fragment.row_groups) == 1, (
+                "generated_id_column requires one row group per fragment, "
+                f"got {fragment.row_groups!r} for {fragment.path}"
+            )
+            row_group_idx = fragment.row_groups[0].id
+            fragment_metadata = _with_io_retry(
+                lambda: fragment.metadata,
+                f"read parquet metadata for {fragment.path}",
+            )
+            num_row_groups = fragment_metadata.num_row_groups
+            rg_num_rows = fragment_metadata.row_group(row_group_idx).num_rows
+            in_group_offset = 0
+            hash_offset = file_row_offset
+            for table in iterate_with_retry(
+                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                f"read fragment {fragment.path}",
+                match=ctx.retried_io_errors,
+            ):
+                if table.num_rows == 0:
+                    continue
+                batch_num_rows_pre_filtering = table.num_rows
+                table = table.append_column(
+                    generated_id_column,
+                    get_generated_id_column(
+                        path=fragment.path,
+                        row_group_idx=row_group_idx,
+                        num_row_groups=num_row_groups,
+                        total_num_rows=rg_num_rows,
+                        current_row_offset=in_group_offset,
+                        current_num_rows=batch_num_rows_pre_filtering,
+                    ),
+                )
+                prev_in_group_offset = in_group_offset
+                in_group_offset += batch_num_rows_pre_filtering
+
+                if checkpoint_info is not None:
+                    assert not checkpoint_info.fully_checkpointed, (
+                        "Fully-checkpointed row groups should have been "
+                        "dropped in _get_fragments_to_read"
+                    )
+                    table = exclude_checkpointed_rows(
+                        table=table,
+                        checkpointed_fragment_info=checkpoint_info,
+                        current_row_offset=prev_in_group_offset,
+                        current_num_rows=batch_num_rows_pre_filtering,
+                    )
+                    if table.num_rows < batch_num_rows_pre_filtering:
+                        logger.debug(
+                            "Excluded %d checkpointed rows from %r row group %d",
+                            batch_num_rows_pre_filtering - table.num_rows,
+                            fragment.path,
+                            row_group_idx,
+                        )
+                    if table.num_rows == 0:
+                        continue
+
+                yield table, fragment.path, hash_offset
+                hash_offset += table.num_rows
