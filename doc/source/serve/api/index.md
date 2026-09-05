@@ -531,6 +531,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
+   serve.llm.SGLangServer
    serve.llm.deployment.PDDecodeServer
    serve.llm.deployment.PDPrefillServer
    serve.llm.deployment.DPServer
