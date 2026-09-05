@@ -35,6 +35,10 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.util import _is_local_scheme
+from ray.data.checkpoint.generated_id import (
+    GENERATED_ID_COLUMN_TYPE,
+    get_generated_id_column_name,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -334,6 +338,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
                 schema = schema.append(pa.field("row_hash", pa.uint64()))
             elif schema.field(idx).type != pa.uint64():
                 schema = schema.set(idx, pa.field("row_hash", pa.uint64()))
+
+        generated_id = get_generated_id_column_name()
+        if generated_id and schema.get_field_index(generated_id) == -1:
+            # Synthesized post-read for generated-ID checkpointing; a
+            # colliding on-disk column is rejected at read time.
+            schema = schema.append(pa.field(generated_id, GENERATED_ID_COLUMN_TYPE))
 
         check_for_legacy_tensor_type(schema)
         return schema

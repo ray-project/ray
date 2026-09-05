@@ -16,6 +16,7 @@ from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.block import Block
+from ray.data.checkpoint.generated_id import CHECKPOINTED_IDS_KWARG_NAME
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -55,7 +56,7 @@ def _build_pruners(
 
 def list_files_for_each_block(
     blocks: Iterable[Block],
-    _: TaskContext,
+    ctx: TaskContext,
     *,
     indexer: "FileIndexer",
     filesystem: "FileSystem",
@@ -86,8 +87,14 @@ def list_files_for_each_block(
     after path discovery and before metadata fetch. Listing still runs as a
     single task when shuffle is requested so the indexer sees the full file
     set.
+
+    Generated-ID checkpointing injects the compact checkpoint block lazily
+    via ``ctx.kwargs`` (see ``plan_list_files_op_with_checkpoint_filter``);
+    the indexer uses it to drop fully-checkpointed files and stamp the
+    per-file checkpoint struct onto manifest rows.
     """
     pruners = _build_pruners(file_extensions, partition_filter)
+    checkpoint_ids = ctx.kwargs.get(CHECKPOINTED_IDS_KWARG_NAME)
     for block in blocks:
         for manifest in indexer.list_files(
             block[PATH_COLUMN_NAME],
@@ -99,6 +106,7 @@ def list_files_for_each_block(
             projected_columns=projected_columns,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
+            checkpoint_ids=checkpoint_ids,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
