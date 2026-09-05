@@ -42,6 +42,12 @@ SKIP_COMMAND_FAILURES = False
 # which metrics and logs of the job to look at.
 DEBUG_SESSION_QUERY = "Why did this job fail?"
 
+# run_release_test.sh names a file here and prints it under its own buildkite
+# group once the test is over. Writing the analysis there instead of logging it
+# inline keeps it out of the middle of the reporting output, where it competes
+# with the other reporters and the traceback.
+ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
+
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
 # from the people who know what actually broke.
@@ -123,7 +129,23 @@ class ObservabilityAgentReporter(Reporter):
         summary = (query_result.get("analysis") or {}).get("summary")
         slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
 
-        message = f"Observability agent analysis of job {job_id}:\n{summary}"
+        # Whatever the agent leaves out is called out in the message rather
+        # than left blank: the group is the prominent part of the step, so a
+        # response that came back empty has to say so there, not only in an
+        # error line buried in the reporting output above.
+        message = f"Observability agent analysis of job {job_id}:"
+        if summary:
+            message += f"\n{summary}"
+        else:
+            logger.error(
+                f"Observability agent response for job {job_id} carries no "
+                f"summary; debug session {debug_session_id}"
+            )
+            message += (
+                f"\n>>> The agent returned no summary for this job."
+                f"\n>>> Debug session: {debug_session_id}"
+            )
+
         if slack_thread:
             message += (
                 f"\n{FEEDBACK_REMINDER}"
@@ -135,7 +157,43 @@ class ObservabilityAgentReporter(Reporter):
                 "thread; the full report and its feedback buttons cannot be "
                 "linked from here"
             )
-        logger.info(message)
+            message += (
+                "\n>>> The agent returned no slack thread, so the full report"
+                "\n>>> and its feedback buttons cannot be reached from here."
+            )
+
+        analysis_file = self._write_analysis(message)
+        if analysis_file:
+            logger.info(
+                f"Observability agent analysis of job {job_id} written to "
+                f"{analysis_file}; it is printed at the end of this step"
+            )
+        else:
+            logger.info(message)
+
+    def _write_analysis(self, message: str) -> Optional[str]:
+        """Write the message to the file the test harness prints, if configured.
+
+        Returns the path written to, or None when no file is configured or the
+        write failed, in which case the caller logs the message inline instead.
+        """
+        analysis_file = os.environ.get(ANALYSIS_FILE_ENV)
+        if not analysis_file:
+            return None
+
+        try:
+            # The agent writes prose, so the summary carries non-ascii
+            # characters; the encoding cannot be left to the container locale.
+            with open(analysis_file, "wt", encoding="utf-8") as fp:
+                fp.write(f"{message}\n")
+        except Exception as e:
+            logger.warning(
+                f"Could not write the observability agent analysis to "
+                f"{analysis_file}: {e}"
+            )
+            return None
+
+        return analysis_file
 
     def _create_debug_session(self, job_id: str) -> str:
         """Create a debug session for the job and return its id."""
