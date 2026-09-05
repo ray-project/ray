@@ -20,6 +20,39 @@ def disconnect_task_and_event() -> Tuple[asyncio.Event, asyncio.Task]:
 
 @pytest.mark.asyncio
 class TestUnary:
+    async def test_timeout_cleans_up_local_result_task(self):
+        active_waiters = 0
+        response_cancelled = False
+        response_finished = asyncio.Event()
+
+        class Response:
+            def cancelled(self):
+                return response_cancelled
+
+            def cancel(self):
+                nonlocal response_cancelled
+                response_cancelled = True
+
+            def __await__(self):
+                async def wait_for_response():
+                    nonlocal active_waiters
+                    active_waiters += 1
+                    try:
+                        await response_finished.wait()
+                    finally:
+                        active_waiters -= 1
+
+                return wait_for_response().__await__()
+
+        response = Response()
+        gen = ProxyResponseGenerator(response, timeout_s=0.001)
+
+        with pytest.raises(TimeoutError):
+            await gen.__anext__()
+
+        assert response_cancelled
+        assert active_waiters == 0
+
     async def test_basic(self, serve_instance):
         @serve.deployment
         class D:
