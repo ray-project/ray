@@ -5,10 +5,12 @@ import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from contextlib import nullcontext
+from typing import Any, Callable, ContextManager, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
+    image_cache_context,
     pull_and_extract_container_image,
     sanitize_image_name,
 )
@@ -48,6 +50,10 @@ class BaseImageManager(ABC):
     (such as working directory and environment variables), and generating standard OCI
     runtime specifications (bundles) for sandbox execution backends.
     """
+
+    def image_cache_context(self, image: str) -> ContextManager[None]:
+        """Protect an image from eviction during sandbox creation, if needed."""
+        return nullcontext()
 
     @abstractmethod
     def pull_image(
@@ -217,6 +223,10 @@ class ImageManager(BaseImageManager):
 
     def __init__(self, images_dir: str = DEFAULT_IMAGES_DIR):
         self._images_dir = images_dir
+
+    def image_cache_context(self, image: str) -> ContextManager[None]:
+        """Protect the cache until the new sandbox is visible to runsc list."""
+        return image_cache_context(self._images_dir, image)
 
     @property
     def images_dir(self) -> str:

@@ -241,6 +241,12 @@ ray.get(sb.delete.remote())
 
 Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and caches it for reuse by subsequent sandboxes on that node using the same image. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem.
 
+### Bound the image cache
+
+The cache defaults to half of the filesystem that holds it. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a limit in bytes, or set it to `0` to disable eviction. Before a pull, Ray evicts the least recently used images when the cache exceeds this limit. Images used by containers listed by `runsc list` are protected. Cleanup waits for a later pull if another pull or sandbox startup is in progress, and is skipped if container state cannot be read.
+
+This is a best-effort limit: a new pull or images in use can take the cache over the limit. Image sizes are measured once at extraction and saved for subsequent cleanup passes. Ray no longer creates an additional uncompressed tar archive of each image.
+
 ### Route Docker Hub pulls through a mirror
 
 Because image pulls are anonymous, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.

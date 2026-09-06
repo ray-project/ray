@@ -6,19 +6,23 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import BinaryIO, Dict, Optional, Tuple, Union
+from contextlib import contextmanager
+from typing import BinaryIO, Dict, Iterator, Optional, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
+# Must match the root used for every sandbox runsc invocation.
+RUNSC_ROOT = "/tmp/runsc"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
 
 
@@ -360,6 +364,116 @@ def extract_tar_layer(
             pass
 
 
+def _evict_unused_images(images_dir: str, keep: str) -> None:
+    """Trim the cache using saved sizes, while holding its exclusive lock."""
+    max_bytes = shutil.disk_usage(images_dir).total // 2
+    raw = os.environ.get("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "")
+    if raw.strip():
+        try:
+            max_bytes = int(raw)
+        except ValueError:
+            logger.warning("Ignoring invalid RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES=%r", raw)
+    if max_bytes <= 0:
+        return
+
+    entries = []
+    with os.scandir(images_dir) as cached:
+        for entry in cached:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            try:
+                marker = os.path.join(entry.path, ".extracted")
+                with open(marker, encoding="utf-8") as f:
+                    size = int(f.read())
+                mtime = os.path.getmtime(marker)
+            except (OSError, ValueError):
+                # Skip images without a valid saved size.
+                continue
+            if size >= 0:
+                entries.append((mtime, entry.name, entry.path, size))
+
+    total = sum(size for _, _, _, size in entries)
+    if total <= max_bytes:
+        return
+
+    result = subprocess.run(
+        ["runsc", "--root", RUNSC_ROOT, "list", "--format=json"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    # runsc emits null when there are no containers. Protect every listed
+    # container, including ones that have been created but not started yet.
+    containers = json.loads(result.stdout)
+    if containers is None:
+        containers = []
+    if not isinstance(containers, list):
+        raise ValueError("Expected a list of runsc containers")
+    in_use = set()
+    for container in containers:
+        bundle = container["bundle"]
+        with open(os.path.join(bundle, "config.json"), encoding="utf-8") as f:
+            rootfs = json.load(f)["root"]["path"]
+        in_use.add(os.path.realpath(os.path.join(bundle, rootfs)))
+
+    for _, name, path, size in sorted(entries):
+        if total <= max_bytes:
+            break
+        if name == keep:
+            continue
+        if os.path.realpath(os.path.join(path, "rootfs")) in in_use:
+            continue
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            logger.warning(
+                "Failed to evict cached sandbox image %s", path, exc_info=True
+            )
+            continue
+        total -= size
+        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+
+
+@contextmanager
+def image_cache_context(images_dir: str, image: str) -> Iterator[None]:
+    """Try eviction, then protect pulls and container startup with a shared lock.
+
+    Concurrent pulls/startups may proceed together. Eviction only runs when
+    none are in progress; after startup, runsc list identifies images in use.
+    Closing the lock releases it even if startup fails or the process exits.
+    """
+    os.makedirs(images_dir, mode=0o777, exist_ok=True)
+    with open(os.path.join(images_dir, ".cache.lock"), "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            try:
+                _evict_unused_images(images_dir, sanitize_image_name(image))
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                TypeError,
+                subprocess.SubprocessError,
+            ):
+                # If container state cannot be read, leave the cache intact.
+                logger.warning("Skipping sandbox image eviction", exc_info=True)
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        yield
+
+
+def _dir_size_bytes(path: str) -> int:
+    """Measure extracted file sizes once, without following image symlinks."""
+    return sum(
+        os.lstat(os.path.join(directory, name)).st_size
+        for directory, _, files in os.walk(path)
+        for name in files
+    )
+
+
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
@@ -386,15 +500,19 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    with image_cache_context(images_dir, image), open(
+        lock_path, "w", encoding="utf-8"
+    ) as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
             marker_path = os.path.join(target_dir, ".extracted")
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
                 if os.path.isfile(image):
                     if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                        os.utime(marker_path, None)
                         return target_dir
                 else:
+                    os.utime(marker_path, None)
                     return target_dir
 
             tmp_extract_dir = os.path.join(
@@ -405,8 +523,6 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
 
-            tar_path = os.path.join(images_dir, f"{safe_name}.tar")
-
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
@@ -415,15 +531,6 @@ def pull_and_extract_container_image(
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
                         f"Failed to extract local image archive '{image}': {err}"
-                    ) from err
-            elif os.path.isfile(tar_path):
-                try:
-                    with open(tar_path, "rb") as f:
-                        extract_tar_layer(f, tmp_extract_dir)
-                except Exception as err:
-                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
-                    raise SandboxCreationError(
-                        f"Failed to extract cached image archive '{tar_path}': {err}"
                     ) from err
             else:
                 if (
@@ -531,26 +638,19 @@ def pull_and_extract_container_image(
                                 tmp_blob_file.seek(0)
                                 extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
 
-                    with tarfile.open(tar_path, "w") as tar:
-                        tar.add(tmp_extract_dir, arcname=".")
-
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
-                    if os.path.exists(tar_path):
-                        try:
-                            os.remove(tar_path)
-                        except OSError:
-                            pass
                     if isinstance(err, SandboxCreationError):
                         raise
                     raise SandboxCreationError(
                         f"Failed to pull and extract container image '{image}': {err}"
                     ) from err
 
+            size = _dir_size_bytes(tmp_extract_dir)
             with open(
                 os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
             ) as f_mark:
-                f_mark.write("ok")
+                f_mark.write(str(size))
 
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir, ignore_errors=True)

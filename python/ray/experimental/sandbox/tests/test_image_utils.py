@@ -217,7 +217,7 @@ def test_pull_and_extract_remote_image(tmp_path):
     assert os.path.exists(
         os.path.join(extracted_dir, "rootfs", "bin", "sh")
     ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
-    assert os.path.exists(str(images_dir / "busybox_latest.tar"))
+    assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 
 def test_pull_and_extract_docker_io_prefixed_image(tmp_path):

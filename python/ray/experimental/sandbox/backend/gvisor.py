@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.image_utils import RUNSC_ROOT
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -23,10 +24,6 @@ from ray.experimental.sandbox.exceptions import (
 from ray.experimental.sandbox.image_manager import BaseImageManager
 
 logger = logging.getLogger(__name__)
-
-# Directory where runsc keeps container state. Every runsc invocation for a
-# sandbox must agree on this, otherwise the container cannot be looked up.
-_RUNSC_ROOT = "/tmp/runsc"
 
 # Directory to store sandbox states, container images and overlay filesystem.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
@@ -47,6 +44,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
 
+        with self._image_manager.image_cache_context(config.image):
+            return self._create_sandbox(config)
+
+    def _create_sandbox(self, config: SandboxConfig) -> str:
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
@@ -354,7 +355,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
         ):
             args.append("--ignore-cgroups")
-        args.extend(["--root", _RUNSC_ROOT])
+        args.extend(["--root", RUNSC_ROOT])
         return args
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
