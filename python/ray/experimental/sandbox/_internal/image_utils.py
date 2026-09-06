@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import BinaryIO, Dict, Iterator, Optional, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -364,7 +364,7 @@ def extract_tar_layer(
             pass
 
 
-def _evict_unused_images(images_dir: str, keep: str) -> None:
+def _evict_unused_images(images_dir: str) -> None:
     """Trim the cache using saved sizes, while holding its exclusive lock."""
     max_bytes = shutil.disk_usage(images_dir).total // 2
     raw = os.environ.get("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "")
@@ -396,66 +396,90 @@ def _evict_unused_images(images_dir: str, keep: str) -> None:
     if total <= max_bytes:
         return
 
-    result = subprocess.run(
-        ["runsc", "--root", RUNSC_ROOT, "list", "--format=json"],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=10,
-    )
-    # runsc emits null when there are no containers. Protect every listed
-    # container, including ones that have been created but not started yet.
-    containers = json.loads(result.stdout)
-    if containers is None:
-        containers = []
-    if not isinstance(containers, list):
-        raise ValueError("Expected a list of runsc containers")
-    in_use = set()
-    for container in containers:
-        bundle = container["bundle"]
-        with open(os.path.join(bundle, "config.json"), encoding="utf-8") as f:
-            rootfs = json.load(f)["root"]["path"]
-        in_use.add(os.path.realpath(os.path.join(bundle, rootfs)))
-
-    for _, name, path, size in sorted(entries):
-        if total <= max_bytes:
-            break
-        if name == keep:
-            continue
-        if os.path.realpath(os.path.join(path, "rootfs")) in in_use:
-            continue
-        try:
-            shutil.rmtree(path)
-        except OSError:
-            logger.warning(
-                "Failed to evict cached sandbox image %s", path, exc_info=True
+    with ExitStack() as locks:
+        candidates = []
+        for _, name, path, size in entries:
+            lock = locks.enter_context(
+                open(os.path.join(images_dir, f"{name}.startup.lock"), "a")
             )
-            continue
-        total -= size
-        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                lock.close()
+                continue
+            # A pull may have completed since the scan. Refresh its saved
+            # size and recency while holding the startup lock.
+            marker = os.path.join(path, ".extracted")
+            with open(marker, encoding="utf-8") as f:
+                current_size = int(f.read())
+            total += current_size - size
+            candidates.append((os.path.getmtime(marker), name, path, current_size))
+
+        if not candidates or total <= max_bytes:
+            return
+
+        # Lock all candidates before taking one gVisor snapshot, and hold
+        # their locks through deletion so new startups cannot race it.
+        result = subprocess.run(
+            ["runsc", "--root", RUNSC_ROOT, "list", "--format=json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        # runsc emits null when there are no containers. Protect every listed
+        # container, including ones that have been created but not started yet.
+        containers = json.loads(result.stdout)
+        if containers is None:
+            containers = []
+        if not isinstance(containers, list):
+            raise ValueError("Expected a list of runsc containers")
+        in_use = set()
+        for container in containers:
+            bundle = container["bundle"]
+            with open(os.path.join(bundle, "config.json"), encoding="utf-8") as f:
+                rootfs = json.load(f)["root"]["path"]
+            in_use.add(os.path.realpath(os.path.join(bundle, rootfs)))
+
+        for _, name, path, size in sorted(candidates):
+            if total <= max_bytes:
+                break
+            if os.path.realpath(os.path.join(path, "rootfs")) in in_use:
+                continue
+            try:
+                shutil.rmtree(path)
+            except OSError:
+                logger.warning(
+                    "Failed to evict cached sandbox image %s", path, exc_info=True
+                )
+                continue
+            total -= size
+            logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
 @contextmanager
 def image_cache_context(images_dir: str, image: str) -> Iterator[None]:
-    """Try eviction, then protect pulls and container startup with a shared lock.
+    """Protect this image's pull and startup with a shared startup lock.
 
-    Concurrent pulls/startups may proceed together. Eviction only runs when
-    none are in progress; after startup, runsc list identifies images in use.
-    Closing the lock releases it even if startup fails or the process exits.
+    Eviction passes are serialized by .cache.lock and skip images whose
+    startup locks are held. After startup, runsc list identifies images in
+    use. Closing a lock releases it even if startup fails or the process exits.
     """
     os.makedirs(images_dir, mode=0o777, exist_ok=True)
-    with open(os.path.join(images_dir, ".cache.lock"), "a") as lock:
+    name = sanitize_image_name(image)
+    with open(os.path.join(images_dir, f"{name}.startup.lock"), "a") as startup_lock:
+        fcntl.flock(startup_lock, fcntl.LOCK_SH)
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            pass
-        else:
-            try:
-                _evict_unused_images(images_dir, sanitize_image_name(image))
-            except Exception:
-                # Best-effort eviction must not prevent sandbox creation.
-                logger.warning("Skipping sandbox image eviction", exc_info=True)
-        fcntl.flock(lock, fcntl.LOCK_SH)
+            with open(os.path.join(images_dir, ".cache.lock"), "a") as cache_lock:
+                try:
+                    fcntl.flock(cache_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    _evict_unused_images(images_dir)
+        except Exception:
+            # Best-effort eviction must not prevent sandbox creation.
+            logger.warning("Skipping sandbox image eviction", exc_info=True)
         yield
 
 
@@ -641,14 +665,13 @@ def pull_and_extract_container_image(
                     ) from err
 
             size = _dir_size_bytes(tmp_extract_dir)
-            with open(
-                os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
-            ) as f_mark:
-                f_mark.write(str(size))
-
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir, ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
+            # Only publish the marker at the final path, whose startup lock
+            # we hold. Temporary directories must not become eviction candidates.
+            with open(marker_path, "w", encoding="utf-8") as f_mark:
+                f_mark.write(str(size))
 
             return target_dir
         finally:

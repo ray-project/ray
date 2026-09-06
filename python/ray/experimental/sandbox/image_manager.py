@@ -225,7 +225,7 @@ class ImageManager(BaseImageManager):
         self._images_dir = images_dir
 
     def image_cache_context(self, image: str) -> ContextManager[None]:
-        """Protect the cache until the new sandbox is visible to runsc list."""
+        """Protect this image until the new sandbox is visible to runsc list."""
         return image_cache_context(self._images_dir, image)
 
     @property

@@ -1,3 +1,4 @@
+import fcntl
 import io
 import json
 import os
@@ -31,6 +32,15 @@ def _local_tar(path, data=b"hello"):
         archive.addfile(member, io.BytesIO(data))
 
 
+def _assert_lock_held(path, shared=False):
+    with open(path, "a") as lock:
+        if shared:
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        operation = fcntl.LOCK_EX if shared else fcntl.LOCK_SH
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(lock, operation | fcntl.LOCK_NB)
+
+
 @pytest.fixture
 def runsc_list(monkeypatch):
     run = MagicMock(return_value=subprocess.CompletedProcess([], 0, "null"))
@@ -60,6 +70,22 @@ def test_eviction_uses_runsc_bundles(
     runsc_list.return_value.stdout = json.dumps(
         [{"id": "sandbox", "bundle": str(bundle), "status": status}]
     )
+
+    def list_containers(*args, **kwargs):
+        # The entire candidate set must be locked before reading gVisor
+        # state, including candidates that turn out to be in use.
+        for name in ("old", "busy", "newer", "newest"):
+            _assert_lock_held(images_dir / f"{name}.startup.lock")
+        return runsc_list.return_value
+
+    runsc_list.side_effect = list_containers
+    rmtree = image_utils.shutil.rmtree
+
+    def remove_image(path):
+        _assert_lock_held(f"{path}.startup.lock")
+        rmtree(path)
+
+    monkeypatch.setattr(image_utils.shutil, "rmtree", remove_image)
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "300")
     with patch.object(
         image_utils.os, "walk", side_effect=AssertionError("size rescan")
@@ -103,6 +129,10 @@ def test_eviction_preserves_images_when_state_is_unavailable(
     with image_utils.image_cache_context(str(tmp_path), "other"):
         pass
     assert image.exists()
+    # A failed pass must release both the eviction and candidate locks.
+    for name in (".cache.lock", "image.startup.lock"):
+        with open(tmp_path / name, "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 @pytest.mark.parametrize("raw", [None, "", "invalid", "0", "-1", "200"])
@@ -165,13 +195,23 @@ def test_startup_lock_protects_image_and_releases_on_exit(
     monkeypatch.setattr(
         "ray.experimental.sandbox.backend.gvisor.shutil.which", lambda _: "runsc"
     )
+    extract = image_utils.extract_tar_layer
+
+    def extract_image(*args):
+        _assert_lock_held(images_dir / "sample.startup.lock", shared=True)
+        extract(*args)
+
+    monkeypatch.setattr(image_utils, "extract_tar_layer", extract_image)
 
     def start(config):
         manager.pull_image(config.image)
-        # A competing pull must not evict an image before runsc sees it.
+        _assert_lock_held(images_dir / "sample.startup.lock", shared=True)
+        unused = _cached_image(images_dir, "unused")
+        # A competing pull can evict other images while this one starts.
         with image_utils.image_cache_context(str(images_dir), "competing"):
             assert manager.is_image_extracted(config.image)
-        runsc_list.assert_not_called()
+            assert not unused.exists()
+        runsc_list.assert_called_once()
         if fail_startup:
             raise RuntimeError("startup failed")
         return "sandbox"
@@ -185,10 +225,81 @@ def test_startup_lock_protects_image_and_releases_on_exit(
         assert backend.create_sandbox(config) == "sandbox"
 
     # Once the context exits, an unreferenced image can be reclaimed.
+    runsc_list.reset_mock()
     with image_utils.image_cache_context(str(images_dir), "other"):
         pass
     assert not manager.is_image_extracted(str(archive))
     runsc_list.assert_called_once()
+
+
+def test_eviction_serializes_passes_without_blocking_other_startups(
+    tmp_path, runsc_list
+):
+    image = _cached_image(tmp_path, "image")
+
+    def list_containers(*args, **kwargs):
+        _assert_lock_held(tmp_path / ".cache.lock")
+        _assert_lock_held(tmp_path / "image.startup.lock")
+        # Another image can start while this pass holds the cache lock.
+        # Its attempt at eviction must skip the already-running pass.
+        with image_utils.image_cache_context(str(tmp_path), "new"):
+            _assert_lock_held(tmp_path / "new.startup.lock", shared=True)
+            with image_utils.image_cache_context(str(tmp_path), "new"):
+                assert image.exists()
+        return runsc_list.return_value
+
+    runsc_list.side_effect = list_containers
+    with image_utils.image_cache_context(str(tmp_path), "other"):
+        pass
+    assert not image.exists()
+    runsc_list.assert_called_once()
+
+
+def test_eviction_during_image_publication(tmp_path, monkeypatch, runsc_list):
+    archive = tmp_path / "sample.tar"
+    _local_tar(archive)
+    images_dir = tmp_path / "images"
+    replace = os.replace
+
+    def publish_image(source, destination):
+        unused = _cached_image(images_dir, "unused")
+        with image_utils.image_cache_context(str(images_dir), "competing"):
+            assert not unused.exists()
+            assert os.path.isdir(source)
+        replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", publish_image)
+    manager = ImageManager(str(images_dir))
+    manager.pull_image(str(archive))
+    assert manager.is_image_extracted(str(archive))
+    assert (images_dir / "sample" / ".extracted").read_text() == "5"
+    runsc_list.assert_called_once()
+
+
+@pytest.mark.parametrize("updated_size", [50, 100])
+def test_eviction_refreshes_metadata_after_locking(
+    tmp_path, monkeypatch, runsc_list, updated_size
+):
+    old = _cached_image(tmp_path, "old")
+    new = _cached_image(tmp_path, "new", mtime=2)
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "150")
+    flock = fcntl.flock
+
+    def lock_image(lock, operation):
+        if lock.name == str(tmp_path / "old.startup.lock"):
+            # A pull completed between the scan and taking the startup lock.
+            marker = old / ".extracted"
+            marker.write_text(str(updated_size))
+            os.utime(marker, (3, 3))
+        flock(lock, operation)
+
+    monkeypatch.setattr(fcntl, "flock", lock_image)
+    with image_utils.image_cache_context(str(tmp_path), "other"):
+        pass
+    assert old.exists()
+    assert new.exists() == (updated_size == 50)
+    if updated_size == 50:
+        runsc_list.assert_not_called()
 
 
 if __name__ == "__main__":
