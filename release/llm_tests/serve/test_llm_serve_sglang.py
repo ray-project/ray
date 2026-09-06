@@ -1,6 +1,10 @@
+import asyncio
 import concurrent.futures
+import os
 import re
 import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -44,6 +48,12 @@ def _shutdown_and_wait_for_gpu_clear(baseline_mb: float) -> None:
 @pytest.fixture(scope="module")
 def sglang_client():
     """Start an SGLang server once for all tests in this module."""
+    from torch_memory_saver import configure_subprocess
+
+    # Ray launches scheduler actors outside the engine's subprocess context.
+    with configure_subprocess():
+        memory_saver_env = {"LD_PRELOAD": os.environ["LD_PRELOAD"]}
+
     llm_config = LLMConfig(
         model_loading_config={
             "model_id": RAY_MODEL_ID,
@@ -56,10 +66,13 @@ def sglang_client():
             }
         },
         server_cls=SGLangServer,
+        runtime_env={"env_vars": memory_saver_env},
         engine_kwargs={
             "model_path": MODEL_ID,
             "tp_size": 1,
             "mem_fraction_static": 0.8,
+            "enable_memory_saver": True,
+            "enable_weights_cpu_backup": True,
         },
     )
 
@@ -256,7 +269,11 @@ async def test_sglang_pause_resume_modes(sglang_client):
 
 
 @pytest.mark.asyncio
-async def test_sglang_sleep_wakeup(sglang_client):
+@pytest.mark.parametrize("sleep_kwargs", [{}, {"tags": None}, {"tags": []}])
+@pytest.mark.parametrize("wakeup_kwargs", [{}, {"tags": None}, {"tags": []}])
+async def test_sglang_sleep_wakeup(
+    sglang_client, sleep_kwargs, wakeup_kwargs, record_property
+):
     """Verify sleep/wakeup lifecycle: GPU memory released then restored."""
     handle = _get_llm_handle()
 
@@ -267,18 +284,33 @@ async def test_sglang_sleep_wakeup(sglang_client):
     assert resp.choices[0].text is not None
 
     # Sleep (release all GPU memory).
-    await handle.sleep.remote()
+    awake_memory_mb = get_total_gpu_memory_mb()
+    record_property("awake_memory_mb", awake_memory_mb)
+    await handle.sleep.remote(**sleep_kwargs)
     assert await handle.is_sleeping.remote() is True
+    wait_for_condition(
+        lambda: get_total_gpu_memory_mb() < awake_memory_mb - 256,
+        timeout=30,
+    )
+    sleeping_memory_mb = get_total_gpu_memory_mb()
+    record_property("sleeping_memory_mb", sleeping_memory_mb)
 
     # Wakeup and confirm state clears.
-    await handle.wakeup.remote()
+    await handle.wakeup.remote(**wakeup_kwargs)
     assert await handle.is_sleeping.remote() is False
+    wait_for_condition(
+        lambda: get_total_gpu_memory_mb() > sleeping_memory_mb + 256,
+        timeout=30,
+    )
+    record_property("restored_memory_mb", get_total_gpu_memory_mb())
 
     # Inference must work again after wakeup.
-    resp = sglang_client.completions.create(
+    resumed_resp = sglang_client.completions.create(
         model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
     )
-    assert resp.choices[0].text is not None
+    record_property("before_sleep_text", resp.choices[0].text)
+    record_property("after_wakeup_text", resumed_resp.choices[0].text)
+    assert resumed_resp.choices[0].text == resp.choices[0].text
 
 
 @pytest.mark.asyncio
@@ -680,6 +712,132 @@ class TestSGLangProtocolDecoupling:
         from ray.llm._internal.serve.core.configs.openai_api_models import ScoreRequest
 
         assert issubclass(ScoreRequest, ScoringRequest)
+
+
+class TestSGLangSleepState:
+    """Ray-side state contracts with real SGLang request types, without a GPU.
+
+    Keep these in the SGLang release suite, whose image installs SGLang. The
+    tokenizer manager is mocked; actual offload/restore is exercised above.
+    """
+
+    @pytest.fixture
+    def server(self):
+        server = SGLangServer.__new__(SGLangServer)
+        server._sleeping_tags = set()
+        server.engine = SimpleNamespace(
+            tokenizer_manager=SimpleNamespace(
+                release_memory_occupation=AsyncMock(),
+                resume_memory_occupation=AsyncMock(),
+            )
+        )
+        return server
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("sleep_kwargs", [{}, {"tags": None}, {"tags": []}])
+    @pytest.mark.parametrize("wakeup_kwargs", [{}, {"tags": None}, {"tags": []}])
+    async def test_all_tags(self, server, sleep_kwargs, wakeup_kwargs):
+        assert await server.is_sleeping() is False
+        await server.sleep(**sleep_kwargs)
+        assert server._sleeping_tags == {"weights", "kv_cache", "cuda_graph"}
+        assert await server.is_sleeping() is True
+
+        manager = server.engine.tokenizer_manager
+        manager.release_memory_occupation.assert_awaited_once()
+        release_args = manager.release_memory_occupation.await_args.args
+        assert release_args[0].tags == sleep_kwargs.get("tags")
+        assert release_args[1] is None
+
+        await server.wakeup(**wakeup_kwargs)
+        manager.resume_memory_occupation.assert_awaited_once()
+        resume_args = manager.resume_memory_occupation.await_args.args
+        assert resume_args[0].tags == wakeup_kwargs.get("tags")
+        assert resume_args[1] is None
+        assert await server.is_sleeping() is False
+        assert server._sleeping_tags == set()
+
+    @pytest.mark.asyncio
+    async def test_selective_wakeup_retains_other_tags(self, server):
+        await server.sleep(tags=["weights", "kv_cache"])
+        await server.sleep(tags=["cuda_graph"])
+        assert server._sleeping_tags == {"weights", "kv_cache", "cuda_graph"}
+
+        for tag, remaining in [
+            ("weights", {"kv_cache", "cuda_graph"}),
+            ("cuda_graph", {"kv_cache"}),
+            ("kv_cache", set()),
+        ]:
+            await server.wakeup(tags=[tag])
+            assert server._sleeping_tags == remaining
+            assert await server.is_sleeping() is bool(remaining)
+            (
+                request,
+                context,
+            ) = server.engine.tokenizer_manager.resume_memory_occupation.await_args.args
+            assert request.tags == [tag]
+            assert context is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operation", ["sleep", "wakeup"])
+    @pytest.mark.parametrize("tags", [None, [], ["weights"]])
+    @pytest.mark.parametrize("error_type", [RuntimeError, asyncio.CancelledError])
+    async def test_failed_operation_preserves_state(
+        self, server, operation, tags, error_type
+    ):
+        initial = {"kv_cache"} if operation == "sleep" else {"weights", "kv_cache"}
+        server._sleeping_tags = initial.copy()
+        manager = server.engine.tokenizer_manager
+        rpc = (
+            manager.release_memory_occupation
+            if operation == "sleep"
+            else manager.resume_memory_occupation
+        )
+        rpc.side_effect = error_type("backend did not acknowledge")
+
+        with pytest.raises(error_type, match="backend did not acknowledge"):
+            await getattr(server, operation)(tags=tags)
+
+        rpc.assert_awaited_once()
+        assert server._sleeping_tags == initial
+        assert await server.is_sleeping() is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operation", ["sleep", "wakeup"])
+    async def test_state_changes_only_after_acknowledgement(self, server, operation):
+        initial = (
+            set() if operation == "sleep" else {"weights", "kv_cache", "cuda_graph"}
+        )
+        expected = (
+            {"weights", "kv_cache", "cuda_graph"} if operation == "sleep" else set()
+        )
+        server._sleeping_tags = initial.copy()
+        entered = asyncio.Event()
+        acknowledged = asyncio.Event()
+
+        async def control_rpc(*args):
+            entered.set()
+            await acknowledged.wait()
+
+        manager = server.engine.tokenizer_manager
+        rpc = (
+            manager.release_memory_occupation
+            if operation == "sleep"
+            else manager.resume_memory_occupation
+        )
+        rpc.side_effect = control_rpc
+        task = asyncio.create_task(getattr(server, operation)(tags=[]))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            assert server._sleeping_tags == initial
+            assert await server.is_sleeping() is bool(initial)
+            assert not task.done()
+            acknowledged.set()
+            await asyncio.wait_for(task, timeout=5)
+            assert server._sleeping_tags == expected
+            assert await server.is_sleeping() is bool(expected)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 if __name__ == "__main__":
