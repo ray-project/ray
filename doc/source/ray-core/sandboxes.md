@@ -245,7 +245,7 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 The cache defaults to half of the filesystem that holds it. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a limit in bytes, or set it to `0` to disable eviction. Before a pull, Ray evicts the least recently used images when the cache exceeds this limit. Images used by containers listed by `runsc list` are protected. Cleanup waits for a later pull if another pull or sandbox startup is in progress, and is skipped if container state cannot be read.
 
-This is a best-effort limit: a new pull or images in use can take the cache over the limit. Image sizes are measured once at extraction and saved for subsequent cleanup passes. Ray no longer creates an additional uncompressed tar archive of each image.
+This is a best-effort limit: a new pull or images in use can take the cache over the limit.
 
 ### Route Docker Hub pulls through a mirror
 
