@@ -452,14 +452,8 @@ def image_cache_context(images_dir: str, image: str) -> Iterator[None]:
         else:
             try:
                 _evict_unused_images(images_dir, sanitize_image_name(image))
-            except (
-                OSError,
-                ValueError,
-                KeyError,
-                TypeError,
-                subprocess.SubprocessError,
-            ):
-                # If container state cannot be read, leave the cache intact.
+            except Exception:
+                # Best-effort eviction must not prevent sandbox creation.
                 logger.warning("Skipping sandbox image eviction", exc_info=True)
         fcntl.flock(lock, fcntl.LOCK_SH)
         yield
