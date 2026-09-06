@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Hugging Face Accelerate training on Ray Train, including Accelerate configuration and migration off AccelerateTrainer.
+
 .. _train-hf-accelerate:
 
 Get Started with Distributed Training using Hugging Face Accelerate

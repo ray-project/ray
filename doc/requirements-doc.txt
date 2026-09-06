@@ -1,7 +1,13 @@
 # Production requirements. This is what readthedocs.com picks up
 
-# Required to build the docs on 3.12 due to pkg_resources deprecation
-setuptools==80.9.0
+# Declared explicitly because Python 3.12 and later no longer ship setuptools.
+# Pinned and kept in sync with the deplock so deplock regeneration is
+# deterministic and Dependabot keeps proposing bumps. The old <82 ceiling is
+# gone: it existed only because sphinxcontrib-redoc imported pkg_resources at
+# module load and setuptools 82.0.0 removed it, and that extension was replaced
+# with sphinxcontrib-openapi (which needs neither). The pin is now free to track
+# current setuptools; bump it deliberately rather than removing it.
+setuptools==84.0.0
 
 # Syntax highlighting
 Pygments==2.18.0
@@ -11,10 +17,8 @@ sphinx==8.2.3
 sphinx-click==5.1.0
 sphinx-copybutton==0.5.2
 sphinxemoji>=0.3.2
-sphinx-jsonschema==1.19.2
-sphinx-llms-txt==0.7.1
 sphinx-sitemap==2.9.0
-sphinxcontrib-redoc==1.6.0
+sphinxcontrib-openapi==0.9.0
 sphinx-remove-toctrees==0.0.3
 sphinx_design==0.7.0
 sphinx-autobuild==2024.4.16

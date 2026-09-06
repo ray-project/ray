@@ -1,10 +1,8 @@
 import os
 import signal
 import sys
-import threading
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -153,59 +151,6 @@ def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     # Confirm that the autoscaler failure error is stored.
     error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     assert error is not None
-
-
-def test_raylet_crash_when_get(ray_start_regular):
-    def sleep_to_kill_raylet():
-        # Don't kill raylet before default workers get connected.
-        time.sleep(2)
-        ray._private.worker._global_node.kill_raylet()
-
-    object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-    ray._private.internal_api.free(object_ref)
-
-    thread = threading.Thread(target=sleep_to_kill_raylet)
-    thread.start()
-    with pytest.raises(ray.exceptions.ObjectFreedError):
-        ray.get(object_ref)
-    thread.join()
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_nodes": 1,
-            "num_cpus": 2,
-        },
-        {
-            "num_nodes": 2,
-            "num_cpus": 1,
-        },
-    ],
-    indirect=True,
-)
-def test_eviction(ray_start_cluster):
-    @ray.remote
-    def large_object():
-        return np.zeros(10 * 1024 * 1024)
-
-    obj = large_object.remote()
-    assert isinstance(ray.get(obj), np.ndarray)
-    # Evict the object.
-    ray._private.internal_api.free([obj])
-    # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ObjectFreedError):
-        ray.get(obj)
-
-    @ray.remote
-    def dependent_task(x):
-        return
-
-    # If the object is passed by reference, the task throws an
-    # exception.
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(dependent_task.remote(obj))
 
 
 @pytest.mark.parametrize(

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Make the GCS fault tolerant by backing cluster metadata with Redis or the alpha embedded RocksDB, with tuning guidance.
+
 .. _fault-tolerance-gcs:
 
 GCS Fault Tolerance

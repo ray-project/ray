@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray schedules tasks and actors onto nodes: labels, resources, and the DEFAULT, SPREAD, placement group, and node affinity strategies.
+
 .. _ray-scheduling:
 
 Scheduling
@@ -5,8 +8,64 @@ Scheduling
 
 This page provides an overview of how Ray decides to schedule tasks and actors to nodes.
 
-.. DJS 19 Sept 2025: There should be an overview of all features and configs that impact scheduling here.
-  This should include descriptions for default values and behaviors, and links to things like default labels or resource definitions that can be used for scheduling without customization.
+Scheduling at a glance
+----------------------
+
+Ray schedules every task and actor without any configuration from you. Each control that follows has a default that applies until you override it, so read this section as a map of the available controls rather than a list of required settings.
+
+Ray places a task or actor in two steps. First it narrows the cluster to the nodes that can run the work, using the resource requirements and label selectors you declare. Then it picks one of those nodes using the scheduling strategy. For tasks under the ``"DEFAULT"`` strategy, data locality takes precedence over utilization, so Ray prefers a node that already holds the task's large arguments.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 30 48
+
+   * - Control
+     - Default
+     - Where it's documented
+   * - Node logical resources
+     - Auto-detected from the machine's physical CPU, GPU, and memory
+     - :ref:`Resources <ray-scheduling-resources>`
+   * - Task resource requirements
+     - 1 logical CPU
+     - :ref:`Specifying resource requirements <resource-requirements>`
+   * - Actor resource requirements
+     - 1 logical CPU to schedule, 0 to run
+     - :ref:`Specifying resource requirements <resource-requirements>`
+   * - Node labels
+     - ``ray.io/node-id`` on every node; ``ray.io/accelerator-type`` on accelerator nodes
+     - :doc:`./labels`
+   * - Scheduling strategy
+     - ``"DEFAULT"``
+     - :ref:`Scheduling strategies <ray-scheduling-strategies>`
+   * - Data locality
+     - Enabled for tasks, ignored for actors and when you set a strategy
+     - :ref:`Locality-aware scheduling <ray-scheduling-locality>`
+   * - Gang placement
+     - None. Ray schedules each task and actor independently unless you create a placement group
+     - :doc:`./placement-group`
+
+Because the actor scheduling default is non-zero while its running default is zero, an actor that declares no resource requirements still needs a node with at least one free CPU to start, and any number of them can then run there. A node with ``num_cpus=0`` runs neither tasks nor actors by default.
+
+The ``"DEFAULT"`` strategy's node selection is tunable through environment variables, though most clusters never need to change them:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 12 48
+
+   * - Environment variable
+     - Default
+     - Effect
+   * - ``RAY_scheduler_spread_threshold``
+     - ``0.5``
+     - Utilization below this scores a node as 0, making it equally preferred with other lightly loaded nodes.
+   * - ``RAY_scheduler_top_k_fraction``
+     - ``0.2``
+     - Sizes the candidate set Ray randomly picks from, as a fraction of total cluster nodes.
+   * - ``RAY_scheduler_top_k_absolute``
+     - ``1``
+     - Floor on that candidate set, so ``k`` never drops below this in a small cluster.
+
+See :ref:`"DEFAULT" <ray-scheduling-strategies>` for how Ray combines these into a score.
 
 Labels
 ------

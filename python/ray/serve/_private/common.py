@@ -718,10 +718,6 @@ class DeploymentTargetInfo:
     running_replicas: List[RunningReplicaInfo]
 
 
-class ServeDeployMode(str, Enum):
-    MULTI_APP = "MULTI_APP"
-
-
 class ServeComponentType(str, Enum):
     REPLICA = "replica"
 
@@ -914,7 +910,7 @@ class ReplicaQueueLengthInfo:
 class CreatePlacementGroupRequest:
     bundles: List[Dict[str, float]]
     strategy: str
-    target_node_id: str
+    target_node_id: Optional[str]
     name: str
     runtime_env: Optional[Dict[str, Any]] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None

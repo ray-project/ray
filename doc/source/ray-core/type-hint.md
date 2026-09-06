@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Python type hints for Ray remote functions and actors, enabling IDE support and static type checking via ray.remote and @ray.method."
+---
+
 (core-type-hint)=
 
 # Type hints in Ray

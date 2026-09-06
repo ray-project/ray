@@ -1,7 +1,4 @@
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
+import pyarrow
 
 
 def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:

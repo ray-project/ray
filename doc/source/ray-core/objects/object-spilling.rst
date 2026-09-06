@@ -1,3 +1,6 @@
+.. meta::
+   :description: Configure where Ray spills objects once the object store fills up, including custom spill directories and spill statistics.
+
 Object Spilling
 ===============
 .. _object-spilling:

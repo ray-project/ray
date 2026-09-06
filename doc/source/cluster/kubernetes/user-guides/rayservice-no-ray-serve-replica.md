@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Why a RayService worker pod can stay not-ready with no Serve replica scheduled, and how to verify and update the apps in place."
+---
+
 (kuberay-rayservice-no-ray-serve-replica)=
 
 # RayService worker Pods aren't ready
@@ -6,9 +12,9 @@ This guide explores a specific scenario in KubeRay's RayService API where a Ray 
 
 To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
 
-ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. Hence, if a Ray Pod without a running ProxyActor receives requests, those requests will fail. KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
+ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. Hence, if a head or worker Pod without a running ProxyActor receives requests, those requests will fail. KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
 
-The default behavior of Ray Serve only creates ProxyActor on Ray Pods with running Ray Serve replicas. To illustrate, the following example serves one simple Ray Serve app using RayService.
+The default behavior of Ray Serve only creates ProxyActor on Pods with running Ray Serve replicas. To illustrate, the following example serves one simple Ray Serve app using RayService.
 
 
 ## Step 1: Create a Kubernetes cluster with Kind
@@ -80,7 +86,7 @@ kubectl describe rayservices.ray.io rayservice-no-ray-serve-replica
 #    Status:                False
 #    Type:                  UpgradeInProgress
 
-# Step 4.2: List all Ray Pods in the `default` namespace.
+# Step 4.2: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -156,7 +162,7 @@ Update the `num_replicas` for the app from `1` to `2` in `ray-service.no-ray-ser
 # Step 7.2: Apply the updated RayService config.
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 
-# Step 7.3: List all Ray Pods in the `default` namespace.
+# Step 7.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]

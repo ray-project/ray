@@ -1,3 +1,6 @@
+.. meta::
+   :description: Implement a custom tensor transport for Ray Direct Transport: metadata classes, communicator metadata, send and receive, and cleanup.
+
 .. _custom-tensor-transport:
 
 *************************************************

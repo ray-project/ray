@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Set up a Ray cluster on bare metal or a private cloud, either manually with ray start or through the cluster launcher."
+---
+
 (on-prem)=
 
 # Launching an On-Premise Cluster

@@ -1699,7 +1699,7 @@ class TestGangAutoscaling:
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
             autoscaling_config={
-                "min_replicas": 2,
+                "min_replicas": 0,
                 "max_replicas": 8,
                 # Lower delays/windows so the test observes scaling within seconds
                 "upscale_delay_s": 0.1,
@@ -1717,15 +1717,21 @@ class TestGangAutoscaling:
         handle = serve.run(GangAutoscale.bind(), name="gang_autoscale_app")
         wait_for_condition(check_apps_running, apps=["gang_autoscale_app"])
 
-        wait_for_condition(
-            check_num_replicas_eq,
-            name="GangAutoscale",
-            target=2,
-            app_name="gang_autoscale_app",
-            use_controller=True,
+        deployment_id = DeploymentID(
+            name="GangAutoscale", app_name="gang_autoscale_app"
         )
 
-        # Send enough requests to trigger upscaling
+        def no_replicas():
+            controller = _get_global_client()._controller
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            assert replicas.count() == 0
+            return True
+
+        wait_for_condition(no_replicas)
+
+        # Send enough requests to trigger upscaling.
         results = [handle.remote() for _ in range(20)]
 
         # Wait for scale-up to 8 replicas (4 complete gangs).
@@ -1747,28 +1753,28 @@ class TestGangAutoscaling:
         running = deployment.replica_states.get("RUNNING")
         assert running % GANG_SIZE == 0
 
-        # Release all requests to allow traffic to drain
-        signal.send.remote()
+        # Release the first burst and clear the signal so the second burst blocks.
+        ray.get(signal.send.remote(clear=True))
         for res in results:
             res.result()
 
-        # As the queue is drained, we should scale back down
+        # As the queue is drained, all gang members should stop.
+        wait_for_condition(no_replicas, timeout=60)
+
+        # A second burst must recreate all four gangs from zero.
+        results = [handle.remote() for _ in range(20)]
         wait_for_condition(
             check_num_replicas_eq,
             name="GangAutoscale",
-            target=2,
+            target=8,
             app_name="gang_autoscale_app",
             timeout=60,
             use_controller=True,
         )
 
-        deployment = (
-            serve.status()
-            .applications["gang_autoscale_app"]
-            .deployments["GangAutoscale"]
-        )
-        running = deployment.replica_states.get("RUNNING")
-        assert running % GANG_SIZE == 0
+        ray.get(signal.send.remote(clear=True))
+        for res in results:
+            res.result()
 
         serve.delete("gang_autoscale_app")
         serve.shutdown()

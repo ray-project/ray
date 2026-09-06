@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run RLHF post-training for LLMs with verl on KubeRay, demonstrating PPO training on a Ray cluster."
+---
+
 (kuberay-verl)=
 # Reinforcement Learning with Human Feedback (RLHF) for LLMs with verl on KubeRay
 

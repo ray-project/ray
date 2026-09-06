@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable Istio mTLS and L7 traffic observability for a RayCluster, including the headless service Ray requires."
+---
+
 (kuberay-istio)=
 # mTLS and L7 observability with Istio
 
@@ -66,7 +72,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.6.0 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 

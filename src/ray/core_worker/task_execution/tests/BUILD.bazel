@@ -46,10 +46,12 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:ray_config",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
         "//src/ray/core_worker/task_execution:unordered_actor_task_execution_queue",
+        "//src/ray/observability:fake_ray_event_recorder",
     ],
 )
 
@@ -64,6 +66,7 @@ ray_cc_test(
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker_rpc_client:core_worker_client_interface",
+        "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/util:time",
     ],
 )

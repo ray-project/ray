@@ -1,3 +1,6 @@
+.. meta::
+   :description: Write RLlib MultiAgentEnv environments: per-agent observation and action spaces, step and reward dictionaries, turn-based play, and agent grouping.
+
 .. _rllib-multi-agent-environments-doc:
 
 Multi-Agent Environments
@@ -401,7 +404,7 @@ multi-agent environments, directly compatible with RLlib through the built-in
     )
 
 See `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__
-for an end-to-env example with the `water world env <https://pettingzoo.farama.org/environments/sisl/waterworld/>`__
+for an end-to-end example with the `water world env <https://pettingzoo.farama.org/environments/sisl/>`__
 
 Also, `see here for an example on the pistonball env with RLlib <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__.
 

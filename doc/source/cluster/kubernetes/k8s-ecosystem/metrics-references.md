@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Reference for the metrics KubeRay exposes: controller-runtime metrics plus custom RayCluster, RayService, and RayJob metrics."
+---
+
 (kuberay-metrics-references)=
 
 # KubeRay metrics references

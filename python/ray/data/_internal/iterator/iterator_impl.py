@@ -26,7 +26,6 @@ class DataIteratorImpl(DataIterator):
     ) -> Tuple[
         Iterator[RefBundle],
         Optional[DatasetStats],
-        bool,
         Optional["StreamingExecutor"],
     ]:
         (
@@ -34,7 +33,7 @@ class DataIteratorImpl(DataIterator):
             stats,
             executor,
         ) = self._base_dataset._execute_to_iterator()
-        return ref_bundles_iterator, stats, False, executor
+        return ref_bundles_iterator, stats, executor
 
     def stats(self) -> str:
         return self._base_dataset.stats()

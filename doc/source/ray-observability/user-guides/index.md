@@ -15,6 +15,7 @@ Debugging Applications <debug-apps/index>
 cli-sdk
 configure-logging
 profiling
+jax-tpu-profiling
 add-app-metrics
 ray-tracing
 ray-event-export
@@ -26,6 +27,8 @@ The guides include:
 * {ref}`observability-debug-apps`
 * {ref}`observability-programmatic`
 * {ref}`configure-logging`
+* {ref}`profiling`
+* {ref}`jax-tpu-profiling`
 * {ref}`application-level-metrics`
 * {ref}`ray-tracing`
 * {ref}`ray-event-export`

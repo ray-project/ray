@@ -298,7 +298,13 @@ class TestAutoscalingMetrics:
                 await signal.wait.remote()
                 return "sup"
 
-        @serve.deployment(graceful_shutdown_timeout_s=1, max_ongoing_requests=50)
+        # Health check often so the controller notices the killed replica (and drops
+        # its handle metrics) in ~1s; the default 10s period is what made this flaky.
+        @serve.deployment(
+            graceful_shutdown_timeout_s=1,
+            max_ongoing_requests=50,
+            health_check_period_s=1,
+        )
         class Router:
             def __init__(self, handle: DeploymentHandle):
                 if use_get_handle_api:
@@ -329,8 +335,10 @@ class TestAutoscalingMetrics:
         print(f"Killing Router ({router_info['actor_id']}) at", time.time())
         ray.kill(router)
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=0)
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
+        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=20)
+        wait_for_condition(
+            check_num_requests_eq, client=client, id=dep_id, expected=0, timeout=20
+        )
 
         # Wait for new Router replica to start, so we avoid potential
         # race conditions during test shutdown.
@@ -338,7 +346,7 @@ class TestAutoscalingMetrics:
         # initializes the test shutdown procedure deletes the Router
         # deployment, replica initializes and tries to get deployment
         # handle to `A` and fails.)
-        wait_for_condition(check_num_replicas_eq, name="Router", target=1)
+        wait_for_condition(check_num_replicas_eq, name="Router", target=1, timeout=20)
 
     @skip_if_haproxy(
         "direct ingress makes the ingress replicas self-report a source-agnostic "

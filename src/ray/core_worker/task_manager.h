@@ -86,6 +86,9 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status)>;
 using ConsumptionUpdateCallback = std::function<void(Status, int64_t)>;
+// Callback to asynchronously free an object's copies on the given set of nodes.
+using FreeObjectOnNodesCallback = std::function<void(
+    const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations)>;
 
 /**
  * When the streaming generator tasks are submitted,
@@ -310,6 +313,7 @@ class TaskManager : public TaskManagerInterface {
       PushErrorCallback push_error_callback,
       int64_t max_lineage_bytes,
       worker::TaskEventBuffer &task_event_buffer,
+      ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
       std::function<std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>>(
           const ActorID &)> get_actor_rpc_client_callback,
       std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -317,6 +321,7 @@ class TaskManager : public TaskManagerInterface {
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback,
       SetDirectTransportMetadata set_direct_transport_metadata,
+      FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async,
       ClockInterface &clock)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -326,12 +331,15 @@ class TaskManager : public TaskManagerInterface {
         push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer),
+        ray_task_event_recorder_(ray_task_event_recorder),
         get_actor_rpc_client_callback_(std::move(get_actor_rpc_client_callback)),
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
+        free_stale_unconsumed_generator_objects_async_(
+            std::move(free_stale_unconsumed_generator_objects_async)),
         clock_(clock) {
     // On change, only retract keys that dropped to zero (emit their final 0). Live
     // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
@@ -994,17 +1002,17 @@ class TaskManager : public TaskManagerInterface {
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
-   * Detect whether a streaming generator replay produced a different number
-   * of objects than the first successful attempt, and if so, fail the task.
-   * Returns true when inconsistency was detected and the task was failed
-   * (caller must not run normal completion logic in that case). Must run
-   * early in CompletePendingTask: before any return object is written to the
-   * store (so downstream consumers cannot observe the inconsistent objects)
-   * and before SetTaskStatus(FINISHED) (FailPendingTask RAY_CHECKs
-   * IsPending()). Whether this is a replay is determined internally from the
-   * task's successful-execution count. The caller must skip this check on
-   * application-error completions, which already route through the failure
-   * path.
+   * Fail a streaming generator task if a replay reports a different object
+   * count than the first successful attempt. Must run before completion
+   * bookkeeping in CompletePendingTask. Runs for both successful and
+   * application-error completions — retries must reproduce the same object
+   * count.
+   *
+   * \param task_id The streaming generator task id.
+   * \param reply Completing attempt; count from
+   *   streaming_generator_return_ids_size().
+   * \return true if the task was failed (skip normal completion); false
+   *   otherwise.
    */
   bool FailStreamingGeneratorReplayIfInconsistent(const TaskID &task_id,
                                                   const rpc::PushTaskReply &reply)
@@ -1152,6 +1160,9 @@ class TaskManager : public TaskManagerInterface {
   /// error).
   worker::TaskEventBuffer &task_event_buffer_;
 
+  /// Records task events to the event aggregator.
+  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
+
   /**
    * Callback to get the actor RPC client.
    */
@@ -1178,6 +1189,9 @@ class TaskManager : public TaskManagerInterface {
 
   /// Callback to set the direct transport metadata for a object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
+
+  /// Callback to asynchronously free an object's copies on a set of nodes.
+  FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async_;
 
   ClockInterface &clock_;
 

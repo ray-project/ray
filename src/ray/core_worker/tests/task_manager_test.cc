@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -33,6 +34,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
 
@@ -111,9 +113,11 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
     const ObjectID &generator_id,
     const ObjectID &dynamic_return_id,
     std::shared_ptr<Buffer> data,
-    bool set_in_plasma) {
+    bool set_in_plasma,
+    NodeID node_id = NodeID::FromRandom()) {
   rpc::ReportGeneratorItemReturnsRequest request;
   rpc::Address addr;
+  addr.set_node_id(node_id.Binary());
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
@@ -166,6 +170,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(std::string, GetSessionName, (), (const, override));
 
   MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
+  MOCK_METHOD(int64_t, GetCurrentTimestampNanos, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -196,6 +201,12 @@ class TaskManagerTest : public ::testing::Test {
             *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
+              rpc::ErrorType error_type;
+              if (object.IsException(&error_type)) {
+                plasma_put_error_types_[object_id] = error_type;
+              } else {
+                plasma_put_error_types_.erase(object_id);
+              }
               return Status::OK();
             },
             [this](TaskSpecification &spec, uint32_t delay_ms) {
@@ -211,6 +222,7 @@ class TaskManagerTest : public ::testing::Test {
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
             *task_event_buffer_mock_.get(),
+            fake_ray_event_recorder_,
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
@@ -221,6 +233,10 @@ class TaskManagerTest : public ::testing::Test {
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
             [](const ObjectID &, const std::string &) {},
+            /*free_stale_unconsumed_generator_objects_async=*/
+            [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &nodes) {
+              freed_objects_.emplace_back(object_id, nodes);
+            },
             /*clock=*/clock_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
@@ -290,10 +306,15 @@ class TaskManagerTest : public ::testing::Test {
   Clock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
+  std::vector<std::pair<ObjectID, absl::flat_hash_set<NodeID>>> freed_objects_;
+  // Error type recorded when put_in_local_plasma_callback_ receives an
+  // exception RayObject. Cleared for non-exception puts of the same id.
+  std::unordered_map<ObjectID, rpc::ErrorType> plasma_put_error_types_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
@@ -1602,6 +1623,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder failing_mgr_recorder;
   TaskManager failing_mgr(
       *local_store,
       *local_ref_counter,
@@ -1621,6 +1643,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      failing_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1629,6 +1652,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
   rpc::Address caller_address;
@@ -1668,6 +1693,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       lineage_pinning_enabled_);
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
+  ray::observability::FakeRayEventRecorder retry_mgr_recorder;
   TaskManager retry_mgr(
       *local_store,
       *local_ref_counter,
@@ -1691,6 +1717,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      retry_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1699,6 +1726,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
   rpc::Address caller_address;
@@ -1736,6 +1765,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       lineage_pinning_enabled_);
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
+  ray::observability::FakeRayEventRecorder dyn_mgr_recorder;
   TaskManager dyn_mgr(
       *local_store,
       *local_ref_counter,
@@ -1759,6 +1789,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      dyn_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1767,6 +1798,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
@@ -2775,6 +2808,149 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMismatchWithEmptyReturnsFail
                                malformed_reply,
                                caller_address,
                                /*is_application_error=*/false);
+
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(num_retries_, 1);
+}
+
+// Regression: app-error replay must not copy return_objects(0) (intentionally
+// serialized None for streaming generators) onto stream ObjectRefs. That used
+// to recreate lost reconstructable block refs as Python None after plasma
+// loss (`TypeError: Not a block type: None` in Ray Data). Retries must be
+// reproducible via intermediate reports; CompletePendingTask only stores the
+// static return.
+TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayDoesNotFillNone) {
+  rpc::Address caller_address;
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  ObjectID generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  for (int64_t i = 0; i < 2; i++) {
+    ObjectID obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+    rpc::ReportGeneratorItemReturnsRequest req =
+        GetIntermediateTaskReturn(/*idx=*/i,
+                                  /*finished=*/false,
+                                  generator_id,
+                                  /*dynamic_return_id=*/obj_id,
+                                  data,
+                                  /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  // Same object count as the first attempt so count-mismatch does not fire;
+  // only the static return is None (production streaming-generator path).
+  stored_in_plasma.clear();
+  plasma_put_error_types_.clear();
+
+  // Production replay re-reports the same yields. in_plasma=true matches the
+  // first attempt: HandleTaskReturn writes an OBJECT_IN_PLASMA sentinel and
+  // does not call put_in_local_plasma_callback. The app exception is a new
+  // stream index in production; including it here would trip the count-mismatch
+  // path (covered by TestStreamingGeneratorAppErrorReplayCountMismatchFails).
+  for (int64_t i = 0; i < 2; i++) {
+    ObjectID obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+    rpc::ReportGeneratorItemReturnsRequest req =
+        GetIntermediateTaskReturn(/*idx=*/i,
+                                  /*finished=*/false,
+                                  generator_id,
+                                  /*dynamic_return_id=*/obj_id,
+                                  data,
+                                  /*set_in_plasma=*/true);
+    manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {});
+  }
+
+  rpc::PushTaskReply app_error_reply;
+  rpc::ReturnObject *return_object = app_error_reply.add_return_objects();
+  return_object->set_object_id(spec.ReturnId(0).Binary());
+  return_object->set_data("\xc0");  // msgpack nil
+  for (int64_t i = 0; i < 2; i++) {
+    rpc::StreamingGeneratorReturnIdInfo *return_id_proto =
+        app_error_reply.add_streaming_generator_return_ids();
+    return_id_proto->set_object_id(spec.StreamingGeneratorReturnId(i).Binary());
+    return_id_proto->set_is_plasma_object(true);
+  }
+  app_error_reply.set_task_execution_error("simulated application error");
+
+  manager_.CompletePendingTask(spec.TaskId(),
+                               app_error_reply,
+                               caller_address,
+                               /*is_application_error=*/true);
+
+  // Stream refs must not be rewritten from the static None return. App-error
+  // completion does not call MarkTaskReturnObjectsFailed, and the in_plasma
+  // re-reports above do not go through put_in_local_plasma_callback.
+  for (int64_t i = 0; i < 2; i++) {
+    const ObjectID obj_id = spec.StreamingGeneratorReturnId(i);
+    ASSERT_FALSE(stored_in_plasma.count(obj_id)) << "stream index " << i;
+    ASSERT_FALSE(plasma_put_error_types_.count(obj_id)) << "stream index " << i;
+  }
+}
+
+// App-error replays with a different object count must fail-fast with
+// STREAMING_GENERATOR_REPLAY_INCONSISTENT (same as successful mismatched
+// replays). Previously this check was skipped because an app-error gap-fill
+// path was assumed to handle failure.
+TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayCountMismatchFails) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  ObjectID generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  for (int64_t i = 0; i < 3; i++) {
+    ObjectID obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+    rpc::ReportGeneratorItemReturnsRequest req =
+        GetIntermediateTaskReturn(/*idx=*/i,
+                                  /*finished=*/false,
+                                  generator_id,
+                                  /*dynamic_return_id=*/obj_id,
+                                  data,
+                                  /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/3,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  rpc::PushTaskReply app_error_reply;
+  rpc::ReturnObject *return_object = app_error_reply.add_return_objects();
+  return_object->set_object_id(spec.ReturnId(0).Binary());
+  return_object->set_data("\xc0");
+  // Fewer stream IDs than the first successful attempt.
+  for (int64_t i = 0; i < 2; i++) {
+    rpc::StreamingGeneratorReturnIdInfo *return_id_proto =
+        app_error_reply.add_streaming_generator_return_ids();
+    return_id_proto->set_object_id(spec.StreamingGeneratorReturnId(i).Binary());
+    return_id_proto->set_is_plasma_object(true);
+  }
+  app_error_reply.set_task_execution_error("simulated application error");
+
+  manager_.CompletePendingTask(spec.TaskId(),
+                               app_error_reply,
+                               caller_address,
+                               /*is_application_error=*/true);
 
   ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
@@ -3798,6 +3974,164 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
   ASSERT_EQ(store_->Size(), 1);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedFreesUnconsumedPlasmaReturns) {
+  /**
+   * Once the caller has deleted the generator, a report of an unconsumed
+   * in-plasma return must be freed on the reporting worker's node instead of
+   * being written to the stream, while an inlined (non-plasma) unconsumed
+   * report is simply dropped.
+   */
+  rpc::Address caller_address;
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  ObjectID generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  const NodeID executor_node_id = NodeID::FromRandom();
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), executor_node_id, WorkerID::FromRandom());
+
+  // The caller drops the generator while the task is still running. The stream
+  // is retained (EOF not written yet) but marked caller-deleted.
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+
+  // The executor reports an unconsumed in-plasma return. It must be freed on
+  // the executor's node and must not be owned.
+  ObjectID plasma_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ plasma_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ASSERT_EQ(freed_objects_.size(), 1);
+  ASSERT_EQ(freed_objects_[0].first, plasma_return_id);
+  ASSERT_EQ(freed_objects_[0].second, absl::flat_hash_set<NodeID>{executor_node_id});
+  ASSERT_FALSE(reference_counter_->HasReference(plasma_return_id));
+
+  // An unconsumed inlined return has no plasma copy; nothing to free.
+  ObjectID inlined_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ inlined_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false,
+      /*node_id*/ executor_node_id);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ASSERT_EQ(freed_objects_.size(), 1);
+  ASSERT_FALSE(reference_counter_->HasReference(inlined_return_id));
+
+  // Cleanup: finish the task and delete the stream for real.
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFreed) {
+  /**
+   * Lineage reconstruction after the caller deleted the generator: the caller
+   * consumed index 0 (and still references it) but never consumed index 1,
+   * then dropped the generator. When the consumed object is lost and the task
+   * is retried, the replay re-reports both indices. The consumed index must be
+   * re-materialized, not freed; the unconsumed index must be freed on the
+   * executor's node.
+   */
+  rpc::Address caller_address;
+  TaskSpecification spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  ObjectID generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  const NodeID executor_node_id = NodeID::FromRandom();
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), executor_node_id, WorkerID::FromRandom());
+
+  // Attempt 0: yield two objects in plasma, consume only index 0, and finish
+  // the task.
+  ObjectID consumed_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  ObjectID unconsumed_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  for (int64_t i = 0; i < 2; i++) {
+    std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+    rpc::ReportGeneratorItemReturnsRequest req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ ObjectID::FromIndex(spec.TaskId(), 2 + i),
+        /*data*/ data,
+        /*set_in_plasma*/ true,
+        /*node_id*/ executor_node_id);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status) {}));
+  }
+  ObjectID consumed_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &consumed_id).ok());
+  ASSERT_EQ(consumed_id, consumed_return_id);
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  // The caller drops the generator while still holding the consumed ref. The
+  // stream is retained because the consumed return's lineage is in scope.
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(freed_objects_.empty());
+
+  // The consumed object is lost; lineage reconstruction retries the task.
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  // Attempt 1 replays both yields. The consumed index must be handled
+  // (re-materialized in plasma), not freed.
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ consumed_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
+  manager_.HandleReportGeneratorItemReturns(req,
+                                            /*execution_signal_callback*/ [](Status) {});
+  ASSERT_TRUE(freed_objects_.empty());
+  ASSERT_TRUE(reference_counter_->HasReference(consumed_return_id));
+
+  // The unconsumed index replayed on the deleted stream must be freed on the
+  // executor's node and not owned again.
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ unconsumed_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
+  manager_.HandleReportGeneratorItemReturns(req,
+                                            /*execution_signal_callback*/ [](Status) {});
+  ASSERT_EQ(freed_objects_.size(), 1);
+  ASSERT_EQ(freed_objects_[0].first, unconsumed_return_id);
+  ASSERT_EQ(freed_objects_[0].second, absl::flat_hash_set<NodeID>{executor_node_id});
+  ASSERT_FALSE(reference_counter_->HasReference(unconsumed_return_id));
+
+  // Cleanup: finish the retry, release the consumed ref, delete the stream.
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+  reference_counter_->RemoveLocalReference(consumed_return_id, nullptr);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNeeded) {
   /**
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded
@@ -4418,9 +4752,10 @@ TEST_F(TaskManagerLineageTest,
     return ObjectID::FromIndex(spec.TaskId(), stream_index + 2);
   };
   // Report one yield of two objects starting at stream index `base`.
+  const NodeID executor_node_id = NodeID::FromRandom();
   auto report_yield = [&](int64_t base, const ExecutionSignalCallback &signal) {
     rpc::ReportGeneratorItemReturnsRequest req;
-    req.mutable_worker_addr()->CopyFrom(rpc::Address());
+    req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
     req.set_item_index(base);
     req.set_generator_id(generator_id.Binary());
     for (int64_t i = 0; i < 2; i++) {
@@ -4996,6 +5331,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder test_manager_recorder;
   TaskManager test_manager(
       *local_store,
       *local_reference_counter,
@@ -5013,6 +5349,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       capturing_push_error_callback,  // This will capture the error message
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
@@ -5020,6 +5357,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
   // Create a task with retries enabled
@@ -5083,6 +5422,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder test_manager_recorder;
   TaskManager test_manager(
       *local_store,
       *local_reference_counter,
@@ -5100,6 +5440,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       failing_push_error_callback,  // This will fail
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
@@ -5107,6 +5448,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
   // Create a task that will be retried

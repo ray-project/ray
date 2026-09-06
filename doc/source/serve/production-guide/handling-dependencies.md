@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ship Ray Serve application dependencies with runtime environments, including per-deployment dependency sets."
+---
+
 (serve-handling-dependencies)=
 # Handle Dependencies
 

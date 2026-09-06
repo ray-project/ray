@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Experimental Java API for creating, updating, configuring, and scaling Serve deployments, and calling Python deployments from Java."
+---
+
 (serve-java-api)=
 # Experimental Java API
 

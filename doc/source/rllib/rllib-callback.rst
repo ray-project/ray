@@ -1,3 +1,6 @@
+.. meta::
+   :description: Inject code into RLlib experiments with callback lambdas or a stateful RLlibCallback, covering callback events, chaining, and resolution order.
+
 .. _rllib-callback-docs:
 
 Callbacks

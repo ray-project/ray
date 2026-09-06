@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Launch a Ray cluster on AWS with the cluster launcher, covering Boto3 setup, EFS, IAM roles, S3 access, and CloudWatch."
+---
+
 
 # Launching Ray Clusters on AWS
 
@@ -358,7 +364,7 @@ Ensure that all worker nodes are configured to use the ``ray-autoscaler-cloudwat
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To export Ray's Prometheus system metrics to CloudWatch, first ensure that your cluster has the
-Ray Dashboard installed, then uncomment the ``head_setup_commands`` section in `example-cloudwatch.yaml file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ file.
+Ray dashboard installed, then uncomment the ``head_setup_commands`` section in `example-cloudwatch.yaml file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ file.
 You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` metric namespace.
 
 .. code-block:: yaml

@@ -18,6 +18,7 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    _get_shared_build_app_label_selector,
     build_serve_application,
     override_deployment_info,
 )
@@ -1037,6 +1038,72 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     deployment_state_manager.set_deployment_healthy(deployment_id)
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
+
+
+@pytest.mark.parametrize(
+    "label_selectors,expected_selector",
+    [
+        ([], None),
+        ([None], None),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                {"ray.io/group": "vllm"},
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                None,
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"group": "a"},
+                {"group": "b"},
+            ],
+            None,
+        ),
+    ],
+)
+def test_get_shared_build_app_label_selector(label_selectors, expected_selector):
+    deployments = []
+    for index, label_selector in enumerate(label_selectors):
+        schema_args = {"name": f"deployment_{index}"}
+        if label_selector is not None:
+            schema_args["ray_actor_options"] = {"label_selector": label_selector}
+
+        deployments.append(DeploymentSchema(**schema_args))
+
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=deployments,
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) == expected_selector
+
+
+def test_get_shared_build_app_label_selector_with_fallback_strategy():
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=[
+            DeploymentSchema(
+                name="deployment",
+                ray_actor_options={
+                    "label_selector": {"ray.io/group": "primary"},
+                    "fallback_strategy": [
+                        {"label_selector": {"ray.io/group": "fallback"}}
+                    ],
+                },
+            )
+        ],
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) is None
 
 
 @patch(

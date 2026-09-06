@@ -1,3 +1,6 @@
+.. meta::
+   :description: Pattern: use a single actor as a synchronization point to coordinate other tasks and actors.
+
 Pattern: Using an actor to synchronize other tasks and actors
 =============================================================
 

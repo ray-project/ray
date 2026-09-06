@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.data.context import ShuffleStrategy
 from ray.util.annotations import RayDeprecationWarning
 
 
@@ -49,6 +50,21 @@ def test_data_context_current_context_manager():
             raise ValueError("boom")
 
     assert DataContext.get_current() is original
+
+
+def test_hash_shuffle_v2_strategy_alias():
+    """`hash_shuffle_v2` remains a deprecated alias of `shuffle_v2`."""
+
+    assert ShuffleStrategy.SHUFFLE_V2.value == "shuffle_v2"
+    assert ShuffleStrategy.HASH_SHUFFLE_V2 is ShuffleStrategy.SHUFFLE_V2
+    assert "hash_shuffle_v2" not in [s.value for s in ShuffleStrategy]
+
+    # Deprecated value resolves to the current strategy
+    with pytest.warns(DeprecationWarning, match="hash_shuffle_v2"):
+        assert ShuffleStrategy("hash_shuffle_v2") is ShuffleStrategy.SHUFFLE_V2
+
+    with pytest.raises(ValueError):
+        ShuffleStrategy("not_a_shuffle_strategy")
 
 
 if __name__ == "__main__":

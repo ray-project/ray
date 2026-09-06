@@ -81,7 +81,6 @@ py_test_module_list(
         "test_kv_store.py",
         "test_long_poll.py",
         "test_persistence.py",
-        "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_serve_with_tracing.py",
         "test_websockets.py",
@@ -107,7 +106,6 @@ py_test_module_list(
         "test_batching.py",
         "test_broadcast.py",
         "test_callback.py",
-        "test_cluster.py",
         "test_controller.py",
         "test_controller_benchmark.py",
         "test_controller_recovery.py",
@@ -130,7 +128,7 @@ py_test_module_list(
         "test_list_outbound_deployments.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
-        "test_proxy.py",
+        "test_proxy_actor_wrapper.py",
         "test_proxy_response_generator.py",
         "test_queue_monitor.py",
         "test_ray_client.py",
@@ -145,6 +143,26 @@ py_test_module_list(
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
         "test_util.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Multi-node cluster tests. On the shared Windows shard these run at 65-79% of the
+# default medium timeout, so a loaded runner tips them over; give them headroom.
+py_test_module_list(
+    size = "medium",
+    timeout = "long",
+    files = [
+        "test_cluster.py",
+        "test_proxy.py",
     ],
     tags = [
         "exclusive",

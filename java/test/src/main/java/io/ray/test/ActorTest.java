@@ -1,16 +1,13 @@
 package io.ray.test;
 
-import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -122,31 +119,6 @@ public class ActorTest extends BaseTest {
         Ray.task(ActorTest::testActorAsFieldOfParameter, Collections.singletonList(actor), 100)
             .remote()
             .get());
-  }
-
-  // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
-  @Test(groups = {"cluster"})
-  public void testUnreconstructableActorObject() throws InterruptedException {
-    ActorHandle<Counter> counter = Ray.actor(Counter::new, 100).remote();
-    // Call an actor method.
-    ObjectRef value = counter.task(Counter::getValue).remote();
-    Assert.assertEquals(100, value.get());
-    // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value), false);
-    // Wait for delete RPC to propagate
-    TimeUnit.SECONDS.sleep(1);
-    // Free deletes from in-memory store.
-    Assert.expectThrows(UnreconstructableException.class, () -> value.get());
-
-    // Call an actor method.
-    ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
-    Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
-    // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(largeValue), false);
-    // Wait for delete RPC to propagate
-    TimeUnit.SECONDS.sleep(1);
-    // Free deletes big objects from plasma store.
-    Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
 
   public interface ChildClassInterface {

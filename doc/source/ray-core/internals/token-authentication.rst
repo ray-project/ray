@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray token authentication works: authentication modes, token sources and precedence, and propagation across C++, Python, and HTTP.
+
 .. _token-authentication:
 
 Token Authentication
@@ -129,7 +132,7 @@ merges it with any user-supplied headers.
    For HTTP, middleware and header injection are not automatically wired up for new services;
    they must be added manually.
 
-Ray Dashboard Flow
+Ray dashboard flow
 ------------------
 
 When a Ray cluster is started with ``RAY_AUTH_MODE=token``, accessing the dashboard triggers an

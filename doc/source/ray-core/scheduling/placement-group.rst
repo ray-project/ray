@@ -1,3 +1,6 @@
+.. meta::
+   :description: Atomically reserve resources across nodes with placement groups, Ray's gang scheduling primitive, using bundles and placement strategies.
+
 Placement Groups
 ================
 
@@ -500,7 +503,7 @@ Observe and Debug Placement Groups
 Ray provides several useful tools to inspect the placement group states and resource usage.
 
 - **Ray Status** is a CLI tool for viewing the resource usage and scheduling resource requirements of placement groups.
-- **Ray Dashboard** is a UI tool for inspecting placement group states.
+- **Ray dashboard** is a UI tool for inspecting placement group states.
 - **Ray State API** is a CLI for inspecting placement group states.
 
 .. tab-set::
@@ -844,7 +847,7 @@ put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown 
 
   .. code-block:: bash
 
-    # Inside each Ray pod, start the worker using the label value
+    # Inside each Pod, start the worker using the label value
     ray start \
       --address="${RAY_HEAD_ADDRESS}" \
       --num-gpus=4 \

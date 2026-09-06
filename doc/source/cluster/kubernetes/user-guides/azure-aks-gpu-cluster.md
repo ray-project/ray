@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Create an Azure AKS cluster with a GPU node pool for KubeRay and fetch its kubeconfig."
+---
+
 (kuberay-aks-gpu-cluster-setup)=
 
 # Start Azure AKS Cluster with GPUs for KubeRay

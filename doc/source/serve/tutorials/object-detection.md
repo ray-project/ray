@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Build a real-time object detection service with Ray Serve, covering code structure, deployment, testing, and troubleshooting."
 ---
 
 (serve-object-detection-tutorial)=

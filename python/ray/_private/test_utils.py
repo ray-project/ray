@@ -91,6 +91,13 @@ def rocksdb_gcs_test_enabled():
     return os.environ.get("TEST_GCS_ROCKSDB") == "1"
 
 
+def sandbox_test_enabled():
+    """True when the test suite should run the sandboxing tests.
+    Set by the buildkite ":ray: core: sandbox tests" job.
+    """
+    return os.environ.get("TEST_SANDBOX") == "1"
+
+
 def persistent_gcs_test_enabled():
     """True when the GCS backend under test persists state across restart
     (external Redis or RocksDB). Use this — not external_redis_test_enabled —

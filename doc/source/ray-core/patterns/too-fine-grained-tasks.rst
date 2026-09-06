@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: splitting work into very small tasks lets per-task overhead dominate; batch work into coarser tasks.
+
 Anti-pattern: Over-parallelizing with too fine-grained tasks harms speedup
 ==========================================================================
 

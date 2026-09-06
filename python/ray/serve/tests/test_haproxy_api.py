@@ -439,11 +439,11 @@ listen stats
 
 
 def test_config_escapes_special_characters_in_names(haproxy_api_cleanup):
-    """App / deployment names can contain any character (see
-    test_deploy_with_any_characters). They must be escaped when rendered into
-    the metric set-var-fmt values so a '#' (HAProxy comment char) or other
-    special character can't corrupt the config (regression for the
-    set-var(...) str(...) injection)."""
+    """App / deployment names can contain most characters (see
+    test_deploy_with_any_characters; '#' is rejected at deploy time). They must
+    still be escaped when rendered into the metric set-var-fmt values so a '#'
+    (HAProxy comment char) or other special character can't corrupt the config
+    (regression for the set-var(...) str(...) injection)."""
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file_path = os.path.join(temp_dir, "haproxy.cfg")
         config = HAProxyConfig(

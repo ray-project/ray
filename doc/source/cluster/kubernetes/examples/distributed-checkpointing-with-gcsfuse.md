@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Distributed checkpointing on GKE with KubeRay and GCSFuse: bucket configuration, RayJob deployment, and resuming from a checkpoint."
+---
+
 (kuberay-distributed-checkpointing-gcsfuse)=
 
 # Distributed checkpointing with KubeRay and GCSFuse

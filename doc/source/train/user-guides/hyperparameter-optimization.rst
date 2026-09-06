@@ -1,3 +1,6 @@
+.. meta::
+   :description: Tune hyperparameters for a Ray Train run with Ray Tune, covering per-trial resources, concurrency limits, and metric reporting.
+
 .. _train-tune:
 
 Hyperparameter Tuning with Ray Tune

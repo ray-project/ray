@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -16,11 +17,6 @@ from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
-
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset

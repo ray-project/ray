@@ -1,3 +1,6 @@
+.. meta::
+   :description: Define Tune search spaces, including custom distributions and conditional spaces where one parameter's range depends on another.
+
 .. _tune-search-space-tutorial:
 
 Working with Tune Search Spaces

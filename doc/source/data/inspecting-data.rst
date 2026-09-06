@@ -1,3 +1,6 @@
+.. meta::
+   :description: Inspect a Ray Data Dataset's schema, row count, and sample rows or batches to understand your data before processing it.
+
 .. _inspecting-data:
 
 ===============

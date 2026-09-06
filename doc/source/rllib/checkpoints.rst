@@ -1,3 +1,6 @@
+.. meta::
+   :description: Save and restore RLlib Algorithm and subcomponent state through the Checkpointable API, covering directory structure, versions, and partial restores.
+
 .. _rllib-checkpoints-docs:
 
 Checkpointing

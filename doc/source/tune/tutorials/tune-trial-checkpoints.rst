@@ -1,3 +1,6 @@
+.. meta::
+   :description: Save and load Tune trial checkpoints with the function and class APIs, including periodic checkpointing and checkpointing at termination.
+
 .. _tune-trial-checkpoint:
 
 How to Save and Load Trial Checkpoints

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Best practices for large Ray clusters: networking and system configuration, head node sizing, autoscaler tuning, and node choice.
+
 .. _vms-large-cluster:
 
 Best practices for deploying large clusters

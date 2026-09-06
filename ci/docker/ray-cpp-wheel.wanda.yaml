@@ -21,6 +21,7 @@ build_args:
   - MANYLINUX_VERSION
   - HOSTTYPE
   - BUILDKITE_COMMIT
+  - RAYCI_IMAGE_PIP_INDEX_URL
   - ARCH_SUFFIX
   - RAY_CORE_IMAGE=cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX
   - RAY_CPP_CORE_IMAGE=cr.ray.io/rayproject/ray-cpp-core$ARCH_SUFFIX

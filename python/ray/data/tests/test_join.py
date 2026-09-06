@@ -17,7 +17,7 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture(
     autouse=True,
-    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.HASH_SHUFFLE_V2],
+    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2],
     ids=["shufflev1", "shufflev2"],
 )
 def hash_shuffle_version(request, restore_data_context):

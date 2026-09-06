@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How to contribute to Ray Data: choose an issue, get early feedback, write good tests, verify locally, and open a reviewable pull request."
+---
+
 # Contributing Guide
 
 If you want your changes to be reviewed and merged quickly, following a few key practices makes a big difference. Clear, focused, and well-structured contributions help reviewers understand your intent and ensure your improvements land smoothly.

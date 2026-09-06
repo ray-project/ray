@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, and vision language models."
+---
+
 (vllm-compatibility-guide)=
 # vLLM compatibility
 
@@ -83,7 +89,7 @@ curl -X POST http://localhost:8000/v1/embeddings \
 
 ## Transcriptions
 
-You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 
 ### Deploy a transcription model
@@ -349,17 +355,17 @@ for chunk in response:
 
 ### Supported models
 
-For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#multimodal-language-models).
+For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models/#list-of-multimodal-language-models).
 
 ## Reasoning models
 
 Ray Serve LLM supports reasoning models such as DeepSeek-R1 and QwQ through vLLM. These models use extended thinking processes before generating final responses.
 
-For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 ## See also
 
-- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models.html) - Complete list of supported models and features
-- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html) - vLLM's OpenAI-compatible server documentation
+- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models/) - Complete list of supported models and features
+- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server/) - vLLM's OpenAI-compatible server documentation
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
 

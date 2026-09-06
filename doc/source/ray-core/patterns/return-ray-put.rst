@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: returning ray.put ObjectRefs from a task adds a copy and weakens fault tolerance; return the value instead.
+
 Anti-pattern: Returning ray.put() ObjectRefs from a task harms performance and fault tolerance
 ==============================================================================================
 

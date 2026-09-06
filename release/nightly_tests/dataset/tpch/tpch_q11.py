@@ -51,7 +51,7 @@ def main(args):
         nation_supplier = nation_filtered.join(
             supplier,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("n_nationkey",),
             right_on=("s_nationkey",),
         ).select_columns(["s_suppkey"])
@@ -63,7 +63,7 @@ def main(args):
             partsupp.join(
                 nation_supplier,
                 join_type="inner",
-                num_partitions=16,
+                num_partitions=200,
                 on=("ps_suppkey",),
                 right_on=("s_suppkey",),
             )

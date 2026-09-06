@@ -1,3 +1,6 @@
+.. meta::
+   :description: Configure Ray Train scale and accelerators: worker count, GPUs per worker, accelerator type, communication backend, and per-worker resources.
+
 .. _train_scaling_config:
 
 Configuring Scale and Accelerators

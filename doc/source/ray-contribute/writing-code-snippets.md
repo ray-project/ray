@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Guide to writing runnable, CI-tested code examples for Ray docs using doctest-style, code-output-style, and literalinclude formats. Read this when adding code snippets to docstrings or user guides so they keep working for users."
+    description: "Guide to writing runnable, CI-tested code examples for Ray docs using doctest-style, code-output-style, and literalinclude formats, and to debugging one that fails. Read this when adding code snippets to docstrings or user guides so they keep working for users."
 ---
 
 (writing-code-snippets_ref)=
@@ -347,3 +347,27 @@ pytest --doctest-modules python/ray/data/read_api.py
 pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
 pytest --doctest-modules doc/source/data/getting-started.rst
 ```
+
+## How to debug a failing example
+
+When a code snippet fails in CI, two questions decide what you need to do about it: what kind of failure is it, and what was the example protecting. To find which step failed, see [Per-library docs example tests](ci.md#per-library-docs-example-tests), which maps each documentation path to the step that runs its examples.
+
+### What kind of failure is it?
+
+- **The example ran, but its output didn't match.** This is an ordinary test failure. Reproduce it locally with `pytest --doctest-modules <file>` and compare the actual output against the expected `testoutput` or `>>>` block. Either the code changed or the expected output is wrong.
+- **The build failed before your example ran.** An import error or a `conf.py` error can abort the build, and the rest of the log is unreliable after an abort. Fix that error first, then re-read the log.
+- **A Sphinx warning failed the build.** The doc site host (Read the Docs) render gate treats warnings as errors, so a malformed directive or a broken cross-reference fails the build even when your code is correct. This is a markup problem, not a code failure. See [the Read the Docs render gate](ci.md#the-read-the-docs-render-gate).
+
+### What was the example protecting?
+
+A failing example is a signal, but the right response depends on what the example was there to catch. There are three cases:
+
+- **A breaking-change detector.** The snippet is user-facing code that broke because the library's behavior changed. Treat the failure as a real signal: either don't land the change, or land it with breaking-change communication. Once the change is approved, do update the example to match the new behavior, so the page stays correct for the version that ships. What's wrong is updating it *instead of* communicating the break, because that hides the change from the users who copied the old example.
+- **An example validator.** The example itself is wrong, such as a typo, a bad merge, or a stale import, and just needs to run. Fix the example. Don't mistake it for a code regression.
+- **A drift indicator.** The example still runs, but the prose around it has gone stale relative to what the code now does. Update the narrative, not just the example.
+
+The same example can fail different ways at different times. An `IndentationError` introduced by a bad merge is an example-validator failure, so fix the snippet. An `ImportError` from an upstream API change to that same example is a breaking-change signal, so fix the code or communicate the break. The failure text tells you which case you're in.
+
+Let the intent guide whether to skip. Skipping with `# doctest: +SKIP` or `:skipif: True` is right for an example that depends on an external system, but it's the wrong response to a breaking-change detector. Skipping there hides a real break from users.
+
+The same reasoning applies to the [`docs-go` label](ci.md#skipping-example-tests-with-the-docs-go-label), which skips the per-library example steps for a whole PR. It's a convenience for a prose change that doesn't touch the examples, not a way past a red example test.
