@@ -158,6 +158,17 @@ Provider
             :ref:`vsphere_config <cluster-configuration-vsphere-config>`:
                 :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
 
+    .. tab-item:: Local
+
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`head_ip <cluster-configuration-head-ip>`: str
+            :ref:`external_head_ip <cluster-configuration-external-head-ip>`: str
+            :ref:`worker_ips <cluster-configuration-worker-ips>`:
+                - str
+            :ref:`coordinator_address <cluster-configuration-coordinator-address>`: str
+
 .. _cluster-configuration-security-group-type:
 
 Security Group
@@ -903,6 +914,148 @@ The user that Ray will authenticate with when launching new nodes.
         The cloud service provider. For vSphere and VCF, this must be set to ``vsphere``.
 
         * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
+    .. tab-item:: Local
+
+        The on-premises node provider. For local clusters, this must be set to
+        ``local``.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
+.. _cluster-configuration-head-ip:
+
+``provider.head_ip``
+~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+    .. tab-item:: Local
+
+        The hostname or IP address of the head node in a manually managed local
+        cluster. Omit this field when you configure an automatically managed local
+        cluster with ``provider.coordinator_address``.
+
+        * **Required:** Yes, unless ``provider.coordinator_address`` is set
+        * **Importance:** High
+        * **Type:** String
+
+.. _cluster-configuration-external-head-ip:
+
+``provider.external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+    .. tab-item:: Local
+
+        The public hostname or IP address used to connect to the head node over
+        SSH. Set this field when you run ``ray up`` from outside the cluster's
+        private network.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+
+.. _cluster-configuration-worker-ips:
+
+``provider.worker_ips``
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+    .. tab-item:: Local
+
+        A list of hostnames or IP addresses for worker nodes in a manually managed
+        local cluster. Omit this field when you configure an automatically managed
+        local cluster with ``provider.coordinator_address``.
+
+        * **Required:** Yes, unless ``provider.coordinator_address`` is set
+        * **Importance:** High
+        * **Type:** List of String
+
+.. _cluster-configuration-coordinator-address:
+
+``provider.coordinator_address``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        Not available.
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+    .. tab-item:: Local
+
+        The ``host:port`` address of the coordinator server for an automatically
+        managed local cluster. When this field is set, omit ``provider.head_ip``
+        and ``provider.worker_ips``. Automatically managed local clusters require
+        the top-level ``max_workers`` field.
+
+        * **Required:** No
         * **Importance:** High
         * **Type:** String
 
