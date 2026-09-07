@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic
+from typing import Generic, Optional
 
 import pyarrow as pa
 
@@ -28,13 +28,15 @@ class Scanner(ABC, Generic[InputSplit]):
     """
 
     @abstractmethod
-    def read_schema(self) -> pa.Schema:
-        """Return the schema that will be produced by this scanner.
+    def read_schema(self) -> Optional[pa.Schema]:
+        """Return the schema that will be produced by this scanner, if known.
 
         This reflects the schema after all column pruning has been applied.
+        Readers with dynamic schemas return ``None``.
 
         Returns:
-            PyArrow Schema describing the output data.
+            PyArrow Schema describing the output data, or ``None`` if the
+            schema can only be determined during execution.
         """
         ...
 

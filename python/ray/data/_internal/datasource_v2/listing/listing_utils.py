@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 import pyarrow as pa
 
@@ -24,6 +24,33 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
     from ray.data.expressions import Expr
+
+
+class _CachedPathPartitionFilter:
+    """Keep a bounded cache of decisions from driver-side schema sampling.
+
+    The same instance is serialized into ``ListFiles`` after sampling, so the
+    first cached decisions can be reused during listing. This is an I/O
+    optimization, not an exactly-once guarantee: uncached paths and task retries
+    can invoke the callback again. Workers never extend the cache.
+    """
+
+    def __init__(self, delegate: "PathPartitionFilter", max_cached_paths: int = 1024):
+        self._delegate = delegate
+        self._decisions: Dict[str, bool] = {}
+        self._max_cached_paths = max_cached_paths
+        self._frozen = False
+
+    def freeze(self) -> None:
+        self._frozen = True
+
+    def apply(self, path: str) -> bool:
+        if path in self._decisions:
+            return self._decisions[path]
+        decision = self._delegate.apply(path)
+        if not self._frozen and len(self._decisions) < self._max_cached_paths:
+            self._decisions[path] = decision
+        return decision
 
 
 def partition_files(
@@ -115,9 +142,10 @@ def sample_files(
 
     Used for driver-side schema inference in ``_read_datasource_v2``. Sampling
     more than one file lets callers unify schemas (e.g., if the first file has an
-    all-null column, later files' non-null types can promote it). No caching --
-    the returned manifest is discarded after schema inference, and the
-    ``ListFiles`` op lists the same paths again on workers at execution time.
+    all-null column, later files' non-null types can promote it). The returned
+    manifest is discarded after schema inference. When a partition filter is
+    configured, its path decisions are cached separately so the callback isn't
+    repeated when ``ListFiles`` lists the same paths on workers.
 
     Uses ``list_file_infos`` (raw path + size), not ``list_files``, so that
     metadata-heavy indexers (e.g. the footer-based Parquet indexer) don't do

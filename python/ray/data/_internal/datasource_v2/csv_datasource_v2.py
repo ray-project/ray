@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from pyarrow import csv
+from pyarrow.fs import LocalFileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
@@ -22,7 +24,11 @@ from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.csv_file_reader import CSVFileReader
+from ray.data._internal.datasource_v2.readers.csv_file_reader import (
+    CSVFileReader,
+    _find_record_boundary,
+    _is_record_boundary,
+)
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     IdentityInMemorySizeEstimator,
 )
@@ -42,9 +48,9 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
-# Header-aware chunk planning performs a prefix read for each multi-chunk file.
-# Emit manifests frequently so downstream reads can start without waiting for
-# the generic 1000-row listing batch to accumulate.
+# Record alignment opens every multi-chunk file during listing. Emit manifests
+# frequently so downstream reads can start without waiting for the generic
+# 1000-row listing batch to accumulate.
 _MAX_CHUNKS_PER_LIST_FILES_OUTPUT = 64
 
 
@@ -69,45 +75,36 @@ def _supports_line_delimited_chunking(
 
     convert_options = arrow_csv_args.get("convert_options")
     if convert_options is not None and convert_options.include_columns:
-        # Later chunks need all physical column names to replace the header.
+        # Later chunks need all physical column names to replace the header,
+        # but a projected header block only exposes the included ones.
         return False
 
-    if open_stream_args.get("compression") is not None:
-        return False
-    if set(open_stream_args) - {"buffer_size", "compression"}:
-        # Random-access chunk reads can't safely preserve other stream wrappers.
+    if open_stream_args:
+        # Chunk reads use ``open_input_file`` for random access, so arguments
+        # promised to ``open_input_stream`` (including ``buffer_size``) wouldn't
+        # be honored. Keep the file whole whenever the caller customizes stream
+        # opening semantics.
         return False
 
     return True
 
 
-class _SchemaValidatingCSVFileChunker(FileChunker):
-    """Validate multi-chunk files once without duplicating schema metadata."""
+class _RecordAlignedCSVFileChunker(FileChunker):
+    """Align a delegate's nominal byte ranges to CSV record boundaries.
 
-    def __init__(
-        self,
-        delegate: FileChunker,
-        *,
-        filesystem: Optional["FileSystem"],
-        read_options: csv.ReadOptions,
-        parse_options: csv.ParseOptions,
-        arrow_csv_args: Dict[str, Any],
-        open_stream_args: Dict[str, Any],
-    ):
+    The reader aligns every chunk again before parsing, so this pass isn't
+    required for correctness. It runs during listing so that a record spanning
+    many nominal chunks is discovered once per file instead of once per read
+    task, and so the partitioner weighs each chunk by its real byte size.
+    """
+
+    def __init__(self, delegate: FileChunker, *, filesystem: Optional["FileSystem"]):
         self._delegate = delegate
         self._filesystem = filesystem
-        self._read_options = read_options
-        self._parse_options = parse_options
-        self._arrow_csv_args = arrow_csv_args
-        self._open_stream_args = open_stream_args
-        self._physical_schema: Optional[pa.Schema] = None
 
     @property
     def requires_file_io(self) -> bool:
         return True
-
-    def set_physical_schema(self, schema: pa.Schema) -> None:
-        self._physical_schema = schema
 
     def generate_chunk_metadatas(self, path: str, file_size: int):
         chunks = iter(self._delegate.generate_chunk_metadatas(path, file_size))
@@ -116,34 +113,65 @@ class _SchemaValidatingCSVFileChunker(FileChunker):
             return
         second_chunk = next(chunks, None)
         if second_chunk is None:
-            # A single chunk starts at byte zero and can consume the real file
-            # header, so listing doesn't need an extra schema read.
-            yield first_chunk
+            # Whole-file reads don't need random access. In particular, small
+            # files on stream-only filesystems must use open_input_stream too.
+            metadata, _ = first_chunk
+            if metadata is None or (
+                metadata["chunk_byte_start_idx"] == 0
+                and metadata["chunk_byte_end_idx"] == file_size
+            ):
+                yield None, file_size
+            else:
+                yield first_chunk
             return
 
-        if self._physical_schema is None:
-            raise RuntimeError("CSV physical schema must be inferred before listing")
-
-        inspector = CSVFileReader(
-            schema=pa.schema([]),
-            filesystem=self._filesystem,
-            read_options=self._read_options,
-            parse_options=self._parse_options,
-            arrow_csv_args=self._arrow_csv_args,
-            open_stream_args=self._open_stream_args,
-        )
-        file_schema = inspector.inspect_schema(path)
-        if file_schema.names != self._physical_schema.names:
-            # A byte-range chunk has no header. If the physical column order
-            # differs from the sampled schema, keep the file whole so the
-            # reader can parse the real header and either align missing fields
-            # or fail explicitly on unknown fields.
+        # Align the entire file in one forward pass. If one record spans many
+        # nominal chunks, ``previous_end`` lets us discard every covered chunk
+        # without rescanning the same tail once per read task.
+        filesystem = self._filesystem or LocalFileSystem()
+        try:
+            file = filesystem.open_input_file(path)
+        except (pa.ArrowNotImplementedError, NotImplementedError):
+            # Some custom filesystems only support sequential input streams.
+            # Fall back before emitting any chunk so the reader can use
+            # ``open_input_stream`` without losing or duplicating bytes.
             yield None, file_size
             return
 
-        yield first_chunk
-        yield second_chunk
-        yield from chunks
+        with file:
+            actual_file_size = file.size()
+            previous_end = 0
+            for metadata, _ in chain((first_chunk, second_chunk), chunks):
+                if metadata is None:
+                    yield None, actual_file_size
+                    return
+
+                raw_start = min(metadata["chunk_byte_start_idx"], actual_file_size)
+                raw_end = min(metadata["chunk_byte_end_idx"], actual_file_size)
+                if raw_end <= previous_end:
+                    continue
+
+                start = previous_end
+                if raw_start > previous_end:
+                    start = raw_start
+                    if not _is_record_boundary(file, start, actual_file_size):
+                        start = _find_record_boundary(file, start, actual_file_size)
+                if raw_end <= start:
+                    previous_end = start
+                    continue
+
+                end = raw_end
+                if not _is_record_boundary(file, end, actual_file_size):
+                    end = _find_record_boundary(file, end, actual_file_size)
+                if start < end:
+                    yield (
+                        {
+                            "chunk_byte_start_idx": start,
+                            "chunk_byte_end_idx": end,
+                        },
+                        end - start,
+                    )
+                previous_end = end
 
 
 @DeveloperAPI
@@ -189,7 +217,6 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
             csv.ParseOptions() if parse_options is None else parse_options
         )
         self._arrow_csv_args = csv_args
-        self._physical_schema: Optional[pa.Schema] = None
 
         if file_chunker is not None:
             selected_file_chunker = file_chunker
@@ -206,13 +233,8 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
         if isinstance(selected_file_chunker, WholeFileChunker):
             self._file_chunker = selected_file_chunker
         else:
-            self._file_chunker = _SchemaValidatingCSVFileChunker(
-                selected_file_chunker,
-                filesystem=self._filesystem,
-                read_options=self._read_options,
-                parse_options=self._parse_options,
-                arrow_csv_args=self._arrow_csv_args,
-                open_stream_args=self._open_stream_args,
+            self._file_chunker = _RecordAlignedCSVFileChunker(
+                selected_file_chunker, filesystem=self._filesystem
             )
 
     @property
@@ -257,49 +279,41 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
     def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:
         import copy
 
-        if self._partitioning is None or len(sample) == 0:
-            return copy.deepcopy(self._partitioning)
-        if self._partitioning.field_names:
-            return copy.deepcopy(self._partitioning)
-
-        partition_kv = PathPartitionParser(self._partitioning)(sample.paths[0])
-        if not partition_kv:
-            return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
-        )
+        # Unlike Parquet, CSV keeps a dynamic output schema so Hive partition
+        # keys discovered outside the bounded sample can still be appended at
+        # execution time. Pinning ``field_names`` from the first sampled path
+        # would make a later, deeper Hive path fail before the reader can retain
+        # its additional partition column.
+        return copy.deepcopy(self._partitioning)
 
     def infer_schema(self, sample: FileManifest) -> pa.Schema:
+        """Unify the header schemas of the sampled files.
+
+        Pure: the result is only a hint for planning. Chunked reads take the
+        column names and types from each file's own header block, so nothing
+        here needs to be retained by the datasource, its chunker, or the reader.
+        """
         if len(sample) == 0:
             return pa.schema([])
 
-        inspector = CSVFileReader(
-            schema=pa.schema([]),
-            filesystem=self._filesystem,
-            read_options=self._read_options,
-            parse_options=self._parse_options,
-            arrow_csv_args=self._arrow_csv_args,
-            open_stream_args=self._open_stream_args,
-        )
+        inspector = self._create_inspector()
         schemas = [inspector.inspect_schema(str(path)) for path in sample.paths]
         schema = unify_schemas_with_validation(schemas) or schemas[0]
         assert isinstance(schema, pa.Schema)
-        self._physical_schema = schema
-        if isinstance(self._file_chunker, _SchemaValidatingCSVFileChunker):
-            self._file_chunker.set_physical_schema(schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
-            partition_kv = PathPartitionParser(resolved_partitioning)(sample.paths[0])
+            partition_parser = PathPartitionParser(resolved_partitioning)
+            partition_field_names = []
+            for path in sample.paths:
+                for field_name in partition_parser(path):
+                    if field_name not in partition_field_names:
+                        partition_field_names.append(field_name)
             partition_schema = _partition_field_types_to_pa_schema(
-                field_names=list(partition_kv.keys()),
+                field_names=partition_field_names,
                 field_types=resolved_partitioning.field_types or {},
             )
-            for field_name in partition_kv:
+            for field_name in partition_field_names:
                 if schema.get_field_index(field_name) == -1:
                     schema = schema.append(partition_schema.field(field_name))
 
@@ -321,9 +335,6 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
     ) -> CSVScanner:
         return CSVScanner(
             schema=schema,
-            physical_schema=(
-                self._physical_schema if self._physical_schema is not None else schema
-            ),
             filesystem=filesystem or self._filesystem,
             partitioning=options.get("partitioning", self._partitioning),
             include_paths=self._include_paths,
@@ -332,4 +343,13 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
             parse_options=self._parse_options,
             arrow_csv_args=dict(self._arrow_csv_args),
             open_stream_args=dict(self._open_stream_args),
+        )
+
+    def _create_inspector(self) -> CSVFileReader:
+        return CSVFileReader(
+            filesystem=self._filesystem,
+            read_options=self._read_options,
+            parse_options=self._parse_options,
+            arrow_csv_args=self._arrow_csv_args,
+            open_stream_args=self._open_stream_args,
         )

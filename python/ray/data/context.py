@@ -625,11 +625,9 @@ class DataContext:
             (``ListFiles → ReadFiles`` logical chain and driver-side sampling
             for schema inference). Defaults to True;
             override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Other readers continue to use V1 regardless of this flag.
-        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
-            ``ParquetFileChunker`` when splitting large Parquet files into
-            multiple read tasks. When ``None``, the chunker's built-in default
-            (currently 1 GiB) is used.
+            V2). ``read_csv`` keeps using V1 when
+            ``parse_options.invalid_row_handler`` is set. Other readers continue
+            to use V1 regardless of this flag.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.

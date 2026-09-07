@@ -520,13 +520,13 @@ def _read_datasource_v2(
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
       via ``scanner.create_reader().read(manifest)``.
 
-    Schema inference happens once on the driver by sampling the first
-    file — no caching layer needed.
+    Schema inference happens once on the driver from a bounded file sample.
     """
     import time
 
     from ray.data._internal.datasource_v2.listing.listing_utils import (
         _build_pruners,
+        _CachedPathPartitionFilter,
         sample_files,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -574,6 +574,12 @@ def _read_datasource_v2(
         if key in ray_remote_args
     }
 
+    if partition_filter is not None:
+        # Schema sampling and execution list the same initial paths. Share the
+        # bounded decisions already made on the driver. Filters must tolerate
+        # repeated calls for uncached paths and task retries.
+        partition_filter = _CachedPathPartitionFilter(partition_filter)
+
     pruners = _build_pruners(datasource.file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
@@ -581,6 +587,8 @@ def _read_datasource_v2(
     # Sample a few files for schema inference. Listed again (cheaply) during
     # execution inside the ListFiles op — no caching layer needed.
     sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    if partition_filter is not None:
+        partition_filter.freeze()
     if len(sample) == 0:
         raise ValueError(
             f"no files found under {datasource.paths!r}. Check the path and any "
@@ -608,9 +616,9 @@ def _read_datasource_v2(
     # captured in a pickled closure and runs inside worker tasks, so its
     # estimator must be I/O-free and pickle-safe — use the datasource's
     # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
+    # encoding-ratio multiplier). Sources can request global target-count
+    # partitioning for V1-compatible file grouping; byte and manifest-row
+    # safety limits still take precedence over the requested count.
     # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
     # back to sentinel bounds so the partitioner just rolls every file
     # into a single bucket.
@@ -634,6 +642,10 @@ def _read_datasource_v2(
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
         num_buckets=num_buckets,
+        preserve_order=ctx.execution_options.preserve_order,
+        # Exact global grouping is only needed for an explicit public override.
+        # The default path must remain streaming and allow parallel listing.
+        enforce_num_buckets=parallelism != -1,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -2463,14 +2475,6 @@ def read_csv(
         ...     file_extensions=["csv"])
         Dataset(num_rows=?, schema=Unknown schema)
 
-    .. note::
-
-        When DataSourceV2 is enabled, CSV files must have a consistent set of
-        columns. Ray samples a bounded number of files to determine the logical
-        schema and raises ``ValueError`` if a later file contains a column that
-        wasn't present in that sample. This fail-closed behavior prevents
-        silently dropping data from heterogeneous CSV inputs.
-
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -2537,7 +2541,26 @@ def read_csv(
 
     _validate_shuffle_arg(shuffle)
 
-    if DataContext.get_current().use_datasource_v2:
+    parse_options = arrow_csv_args.get("parse_options")
+    has_invalid_row_handler = (
+        parse_options is not None
+        and getattr(parse_options, "invalid_row_handler", None) is not None
+    )
+    use_csv_datasource_v2 = (
+        DataContext.get_current().use_datasource_v2 and not has_invalid_row_handler
+    )
+    if has_invalid_row_handler and DataContext.get_current().use_datasource_v2:
+        # V2 performs bounded schema discovery before execution. Running a user
+        # callback during that discovery and again while reading would duplicate
+        # observable side effects, so retain V1 semantics until schema discovery
+        # can reuse the parsed prefix itself.
+        logger.info(
+            "read_csv is using the DataSourceV1 path because "
+            "`parse_options.invalid_row_handler` is set; large files won't be "
+            "split into parallel chunks."
+        )
+
+    if use_csv_datasource_v2:
         from ray.data._internal.datasource_v2.csv_datasource_v2 import (
             CSVDatasourceV2,
         )
