@@ -108,7 +108,6 @@ def stateful_application_level_policy(
         # Read previous state for this deployment (persisted from last iteration)
         prev_state = ctx.policy_state or {}
         scale_count = prev_state.get("scale_count", 0)
-        prev_state.get("last_replicas", ctx.current_num_replicas)
 
         # Simple scaling logic: scale based on queue depth
         desired_replicas = max(
