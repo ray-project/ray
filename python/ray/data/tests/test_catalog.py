@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 from ray.data.catalog import (
@@ -222,6 +223,129 @@ def test_resolve_azure_strips_leading_question_mark(isolated_env):
         patcher.stop()
 
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+
+
+def _azure_parquet_resolve(isolated_env, pyarrow_version):
+    """Resolve an Azure Parquet table with `pyarrow.__version__` forced.
+
+    The pyarrow floor for Parquet-on-Azure is a property of the installed
+    pyarrow, so pinning the reported version is what keeps these two tests
+    meaningful on any lane -- the v17 one included.
+    """
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(data_source_format="PARQUET", creds=azure_resp)
+    try:
+        with mock.patch(
+            "ray.data._internal.utils.arrow_utils.get_pyarrow_version",
+            return_value=(parse_version(pyarrow_version) if pyarrow_version else None),
+        ):
+            return catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+    finally:
+        patcher.stop()
+
+
+@pytest.mark.parametrize("old_version", ["17.0.0", "19.0.1"])
+def test_resolve_azure_parquet_rejects_old_pyarrow(isolated_env, old_version):
+    # `read_parquet` is filesystem-only, and `pyarrow.fs.AzureFileSystem` gained
+    # its `sas_token` parameter in 20.0.0 (apache/arrow#45705). Below that a
+    # vended SAS cannot reach the reader by any route, and pyarrow does not say
+    # so in Python -- it falls through to DefaultAzureCredential and, over a
+    # plain-HTTP endpoint, aborts the process with SIGABRT. Hence the up-front
+    # ImportError.
+    with pytest.raises(ImportError, match="requires pyarrow >= 20.0.0"):
+        _azure_parquet_resolve(isolated_env, old_version)
+
+
+@pytest.mark.parametrize("new_version", ["20.0.0", "23.0.1"])
+def test_resolve_azure_parquet_builds_filesystem_on_new_pyarrow(
+    isolated_env, new_version
+):
+    # On a pyarrow that can take a SAS, the Parquet branch builds an explicit
+    # AzureFileSystem carrying it -- `read_parquet` is filesystem-only, so that
+    # is the channel that has to be populated.
+    resolved = _azure_parquet_resolve(isolated_env, new_version)
+
+    assert isinstance(resolved.filesystem, pafs.AzureFileSystem)
+    # The `<container>@<account>.dfs.core.windows.net` authority must be gone:
+    # pyarrow only parses that form when it builds the filesystem from the URI
+    # itself, and here we are handing it one, so the authority would be taken as
+    # part of the path and the read would 404.
+    assert resolved.path == "abfs://c/path"
+    # storage_options is still populated for readers that take it.
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "abfss://cont@acct.dfs.core.windows.net/a/b",
+            ("acct", "cont", "a/b"),
+        ),
+        ("abfs://cont@acct.dfs.core.windows.net/x", ("acct", "cont", "x")),
+        # Table at the container root: no key.
+        ("abfss://cont@acct.dfs.core.windows.net/", ("acct", "cont", "")),
+    ],
+)
+def test_parse_azure_url(url, expected):
+    from ray.data.catalog import _parse_azure_url
+
+    assert _parse_azure_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # No account authority -- nothing to take the account name from.
+        "abfss://container/path",
+        "s3://bucket/key",
+        "https://acct.dfs.core.windows.net/cont/path",
+    ],
+)
+def test_parse_azure_url_rejects_unexpected_shapes(url):
+    from ray.data.catalog import _parse_azure_url
+
+    with pytest.raises(ValueError):
+        _parse_azure_url(url)
+
+
+def test_resolve_azure_parquet_warns_when_pyarrow_version_unknown(isolated_env):
+    # pyarrow vendored inside another package reports no version. Warn rather
+    # than block, matching `_check_pyarrow_version`'s stance. Asserted on the
+    # logger call rather than via caplog: ray.data's logger does not propagate
+    # to the root handler caplog installs.
+    with mock.patch("ray.data.catalog.logger") as mock_logger:
+        resolved = _azure_parquet_resolve(isolated_env, None)
+
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+    mock_logger.warning.assert_called_once()
+    assert "could not be determined" in mock_logger.warning.call_args[0][0]
+
+
+def test_resolve_azure_delta_has_no_pyarrow_floor(isolated_env):
+    # Delta must keep working on old pyarrow: its SAS goes to deltalake's
+    # object_store via `storage_options`, which has its own Azure client and
+    # never touches `pyarrow.fs.AzureFileSystem`.
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
+    try:
+        with mock.patch(
+            "ray.data._internal.utils.arrow_utils.get_pyarrow_version",
+            return_value=parse_version("17.0.0"),
+        ):
+            resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
     assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
 
 
