@@ -53,6 +53,20 @@ class FlattenDictTest(unittest.TestCase):
         assert in_ == ori_in
         assert result == {"a/b/c/d": 1, "b/c/d": 2, "c/d": 3, "e": 4}
 
+    def test_flatten_list_with_prevent_delimiter(self):
+        # The list branch used to re-check `subkey`, a name only the dict branch
+        # binds, so a dict holding just a list raised UnboundLocalError.
+        ori_in = OrderedDict({"a": [1, 2]})
+        in_ = copy.deepcopy(ori_in)
+        result = flatten_dict(in_, prevent_delimiter=True, flatten_list=True)
+        assert in_ == ori_in
+        assert result == {"a/0": 1, "a/1": 2}
+
+    def test_prevent_delimiter_still_raises_with_flatten_list(self):
+        # Dropping the list-branch check must not weaken the dict-branch one.
+        with pytest.raises(ValueError):
+            flatten_dict({"a": {"b/c": 1}}, prevent_delimiter=True, flatten_list=True)
+
 
 class UnflattenDictTest(unittest.TestCase):
     def test_output_type(self):

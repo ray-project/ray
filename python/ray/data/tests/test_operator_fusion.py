@@ -574,8 +574,9 @@ def test_fuse_map_into_shuffle_reduce(
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 
+@pytest.mark.parametrize("use_external", [False, True])
 def test_fused_shuffle_reduce_preserves_operator_config(
-    ray_start_regular_shared_2_cpus, restore_data_context
+    ray_start_regular_shared_2_cpus, restore_data_context, use_external
 ):
     """Fusing a map into ShuffleReduceOp must carry over operator-level config.
 
@@ -585,6 +586,7 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     """
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_external_hash_shuffle = use_external
 
     ds = (
         ray.data.range(100)
@@ -593,9 +595,8 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    assert dag.name == (
-        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
-    )
+    prefix = "ExternalHashShuffleReduce" if use_external else "HashShuffleReduce"
+    assert dag.name == (f"{prefix}(keys=('id',), partitions=4)->MapBatches(<lambda>)")
     assert dag._fused_output_map_transformer is not None
     assert dag._peak_memory_multiplier == 3
 
