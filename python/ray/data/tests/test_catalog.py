@@ -186,7 +186,7 @@ def test_resolve_iceberg(uc_catalog):
     assert ckw["header.X-Iceberg-Access-Delegation"] == "vended-credentials"
 
 
-def test_resolve_azure_sets_env(isolated_env):
+def test_resolve_azure_vends_sas_via_storage_options(isolated_env):
     catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
     azure_resp = GenerateTemporaryTableCredentialResponse(
         url="abfss://c@acct.dfs.core.windows.net/path",
@@ -198,16 +198,18 @@ def test_resolve_azure_sets_env(isolated_env):
     finally:
         patcher.stop()
 
-    # Azure creds flow via the environment (read by both pyarrow and the
-    # deltalake object_store log reader); no filesystem/storage_options.
+    # There is no picklable pyarrow Azure filesystem to build a SAS into, so the
+    # credential travels to the read tasks in `storage_options` -- a plain dict
+    # that pickles with the read plan. The env var is also set, but reaches only
+    # the driver once Ray is running, so it cannot be the only channel.
     assert resolved.filesystem is None
-    assert resolved.storage_options is None
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
 
 def test_resolve_azure_strips_leading_question_mark(isolated_env):
     # UC may return the SAS as a full query string ("?sv=..."); the leading "?"
-    # must be stripped for AZURE_STORAGE_SAS_TOKEN.
+    # must be stripped in both channels it travels through.
     catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
     azure_resp = GenerateTemporaryTableCredentialResponse(
         url="abfss://c@acct.dfs.core.windows.net/path",
@@ -215,11 +217,12 @@ def test_resolve_azure_strips_leading_question_mark(isolated_env):
     )
     patcher = _mock_uc_sdk(creds=azure_resp)
     try:
-        catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+        resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
     finally:
         patcher.stop()
 
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
 
 
 def _gcp_resp():
