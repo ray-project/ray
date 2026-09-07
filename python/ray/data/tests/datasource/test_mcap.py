@@ -5,7 +5,10 @@ import os
 import pytest
 
 import ray
-from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _unwrap_protocol,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -386,6 +389,146 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+def _read_stream_blocks(path, **datasource_kwargs):
+    """Run MCAPDatasource's own read path against ``path`` and return its blocks.
+
+    Exercises `_open_input_source` and `_read_stream` together, which is where the
+    seeking and block-sizing behaviour lives, without standing up a Ray cluster.
+    """
+    from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
+
+    datasource = MCAPDatasource(path, **datasource_kwargs)
+    resolved, filesystem = _resolve_paths_and_filesystem(path)
+    with datasource._open_input_source(filesystem, resolved[0]) as f:
+        return list(datasource._read_stream(f, resolved[0]))
+
+
+def _read_stream_rows(path, **datasource_kwargs):
+    from ray.data.block import BlockAccessor
+
+    rows = []
+    for block in _read_stream_blocks(path, **datasource_kwargs):
+        rows.extend(BlockAccessor.for_block(block).iter_rows(True))
+    return rows
+
+
+def test_mcap_opens_file_for_random_access(ray_start_regular_shared, simple_mcap_file):
+    """The read path must get a seekable handle, so mcap uses the file's index.
+
+    `mcap.reader.make_reader` picks `SeekingReader` only when `stream.seekable()` is
+    true. Without it the datasource silently falls back to a full scan, which is not
+    something the output rows reveal.
+    """
+    from mcap.reader import SeekingReader, make_reader
+
+    from ray.data._internal.datasource.mcap_datasource import MCAPDatasource
+
+    datasource = MCAPDatasource(simple_mcap_file)
+    resolved, filesystem = _resolve_paths_and_filesystem(simple_mcap_file)
+
+    with datasource._open_input_source(filesystem, resolved[0]) as f:
+        assert f.seekable()
+        assert isinstance(make_reader(f), SeekingReader)
+
+
+def test_read_mcap_file_without_index(ray_start_regular_shared, tmp_path):
+    """A file written with no summary or chunk index still reads.
+
+    Streaming writers omit both. `SeekingReader` falls back to a linear scan in that
+    case, so opening for random access must not make such files unreadable.
+    """
+    from mcap.writer import IndexType, Writer
+
+    path = os.path.join(tmp_path, "unindexed.mcap")
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream,
+            index_types=IndexType.NONE,
+            use_chunking=False,
+            use_statistics=False,
+            use_summary_offsets=False,
+        )
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic="/test", message_encoding="json"
+        )
+        for i in range(3):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=1000 + i,
+                publish_time=1000 + i,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+    rows = _read_stream_rows(path)
+    assert [row["data"]["seq"] for row in rows] == [0, 1, 2]
+
+    # And through the public API, which is the path users take.
+    assert ray.data.read_mcap(path).count() == 3
+
+
+def test_read_mcap_log_time_order(ray_start_regular_shared, tmp_path):
+    """``log_time_order`` picks between log-time order and file order.
+
+    The messages are written out of log-time order on purpose. The default merges
+    them by ``log_time``; ``log_time_order=False`` hands them back as written.
+    """
+    path = os.path.join(tmp_path, "unordered.mcap")
+    messages = [
+        {"topic": "/test", "data": {"seq": i}, "log_time": log_time}
+        for i, log_time in enumerate([3_000_000_000, 1_000_000_000, 2_000_000_000])
+    ]
+    create_test_mcap_file(path, messages)
+
+    ordered = _read_stream_rows(path)
+    assert [row["log_time"] for row in ordered] == [
+        1_000_000_000,
+        2_000_000_000,
+        3_000_000_000,
+    ]
+
+    as_written = _read_stream_rows(path, log_time_order=False)
+    assert [row["log_time"] for row in as_written] == [
+        3_000_000_000,
+        1_000_000_000,
+        2_000_000_000,
+    ]
+
+    ds = ray.data.read_mcap(path, log_time_order=False)
+    assert [row["data"]["seq"] for row in ds.take_all()] == [0, 1, 2]
+
+
+def test_read_mcap_yields_blocks_at_target_max_block_size(
+    ray_start_regular_shared, restore_data_context, multi_topic_mcap_file
+):
+    """A file is streamed out in blocks of about ``target_max_block_size``.
+
+    With a one-byte target every message overflows the block it is added to, so
+    each message becomes its own block, and the rows across blocks are exactly the
+    rows of a single-block read, in the same order.
+    """
+    from ray.data.block import BlockAccessor
+
+    ctx = ray.data.DataContext.get_current()
+
+    ctx.target_max_block_size = None
+    (whole,) = _read_stream_blocks(multi_topic_mcap_file)
+    expected = list(BlockAccessor.for_block(whole).iter_rows(True))
+    assert len(expected) == 9
+
+    ctx.target_max_block_size = 1
+    blocks = _read_stream_blocks(multi_topic_mcap_file)
+    assert len(blocks) == 9
+    rows = []
+    for block in blocks:
+        rows.extend(BlockAccessor.for_block(block).iter_rows(True))
+    assert rows == expected
 
 
 if __name__ == "__main__":
