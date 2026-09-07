@@ -3210,6 +3210,7 @@ def read_mcap(
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
+    batch_size: Optional[int] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     # Advanced Ray remote parameters
@@ -3301,6 +3302,10 @@ def read_mcap(
             shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
             Defaults to ``["mcap"]``.
+        batch_size: Optional number of messages per output block. When set,
+            each read task yields one block per batch instead of one block
+            per file. Defaults to ``None`` (whole-file block). Must be
+            positive if set.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3344,6 +3349,7 @@ def read_mcap(
         time_range=time_range,
         message_types=message_types,
         include_metadata=include_metadata,
+        batch_size=batch_size,
         filesystem=filesystem,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
