@@ -67,9 +67,12 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
     def _validate_bins_are_positive(self):
         # A non-positive bin count has no meaning, and `pd.cut` does not refuse
         # it: zero produces an all-null column, so the failure is silent.
+        # Only integers are checked here. `_fit` already rejects other types
+        # with a message naming `bins`, and comparing e.g. a list to 0 would
+        # replace that message with a bare operator TypeError.
         counts = self.bins.values() if isinstance(self.bins, dict) else [self.bins]
         for count in counts:
-            if count <= 0:
+            if isinstance(count, int) and count <= 0:
                 raise ValueError(
                     f"bins must be a positive integer, but got {count} instead."
                 )

@@ -314,6 +314,16 @@ def test_uniform_kbins_discretizer_rejects_non_positive_bins(bins):
         UniformKBinsDiscretizer(["A"], bins=bins)
 
 
+@pytest.mark.parametrize("bins", ([1, 2], "abc", 3.5))
+def test_uniform_kbins_discretizer_defers_non_integer_bins_to_fit(bins):
+    # Non-integer `bins` keeps reaching the type check in `_fit`, which names
+    # the parameter, rather than tripping the positivity comparison.
+    discretizer = UniformKBinsDiscretizer(["A"], bins=bins)
+    ds = ray.data.from_pandas(pd.DataFrame({"A": [1.0, 2.0]}))
+    with pytest.raises(TypeError, match="`bins` must be an integer"):
+        discretizer.fit(ds)
+
+
 if __name__ == "__main__":
     import sys
 
