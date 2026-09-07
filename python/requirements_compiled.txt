@@ -1,4 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 about-time==4.2.1
@@ -447,7 +448,7 @@ decorator==5.2.1
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
-deepspeed==0.18.9
+deepspeed===0.18.9
     # via -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
@@ -755,7 +756,6 @@ gymnasium==1.2.2
     #   -r python/requirements.txt
     #   minigrid
     #   pettingzoo
-    #   shimmy
     #   supersuit
 h11==0.16.0
     # via
@@ -896,6 +896,7 @@ jedi==0.19.2
     # via ipython
 jinja2==3.1.6
     # via
+    #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   ax-platform
@@ -1317,7 +1318,6 @@ numpy==2.2.6
     #   raydp
     #   scikit-learn
     #   scipy
-    #   shimmy
     #   skops
     #   soundfile
     #   stanio
@@ -2136,7 +2136,6 @@ scipy==1.17.1 ; python_version >= "3.11"
     #   skops
     #   statsforecast
     #   statsmodels
-    #   torch-cluster
     #   torch-geometric
     #   torch-sparse
     #   xgboost
@@ -2164,8 +2163,6 @@ shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt
 shellingham==1.5.4
     # via typer
-shimmy==2.0.0
-    # via -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 simplejson==4.0.1
@@ -2381,20 +2378,17 @@ torch==2.9.0
     #   tensordict
     #   timm
     #   torch-optimizer
+    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-optimizer==0.1.0
     # via mosaicml
-torch-scatter==2.1.2
+torch-scatter==2.1.2 ; sys_platform == "linux"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2
+torch-sparse==0.6.18 ; sys_platform == "linux"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via

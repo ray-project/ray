@@ -87,6 +87,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         reduce_fn: ReduceFn,
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ExternalHashShuffleReduce",
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -101,6 +102,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------
         self._reduce_ray_remote_args: Dict[str, Any] = dict(
@@ -188,7 +190,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     ) -> None:
         """Submit one reduce task for this partition wrapper."""
         reduce_options = self._reduce_task_remote_args(
-            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            int(estimated_bytes * self._peak_memory_multiplier)
             if estimated_bytes > 0
             else 0
         )
@@ -372,13 +374,15 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
-        usage = ExecutionResources.zero()
+        cpu: float = 0
+        memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
-            usage = usage.add(ExecutionResources(cpu=bundle.cpu, memory=bundle.memory))
-        return usage
+            cpu += bundle.cpu
+            memory += bundle.memory
+        return ExecutionResources(cpu=cpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""
@@ -389,7 +393,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         sizes = [b for b in partition_bytes.values() if b > 0]
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
-            memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            memory = int(avg_bytes * self._peak_memory_multiplier)
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )

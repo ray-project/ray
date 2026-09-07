@@ -6,6 +6,7 @@ from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _Computed,
     _PublicField,
+    _tokenize_ignoring_nulls,
     migrate_private_fields,
     simple_split_tokenizer,
 )
@@ -100,7 +101,7 @@ class Tokenizer(SerializablePreprocessorBase):
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_tokenizer(s: pd.Series):
-            return s.map(self._tokenization_fn)
+            return _tokenize_ignoring_nulls(s, self._tokenization_fn)
 
         df[self._output_columns] = df.loc[:, self._columns].transform(column_tokenizer)
         return df

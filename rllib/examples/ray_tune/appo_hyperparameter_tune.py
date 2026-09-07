@@ -73,6 +73,8 @@ Results to expect
 -----------------
 The tuner will explore the hyperparameter space via random sampling and find
 configurations that achieve reward of 475+ on CartPole within 2 million timesteps.
+Each trial also stops after `--stop-iters` training iterations, so that a trial
+sampling poor hyperparameters does not train for the full timestep budget.
 The best trial's hyperparameters will be logged at the end of training.
 """
 
@@ -138,10 +140,13 @@ config = (
     )
 )
 
-# Stopping criteria: either reach target reward or max timesteps
+# Stopping criteria: whichever of target reward, max timesteps, or max training
+# iterations is reached first. The iteration cap bounds trials that sample poor
+# hyperparameters and would otherwise keep training until --stop-timesteps.
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+    TRAINING_ITERATION: args.stop_iters,
 }
 
 

@@ -45,7 +45,6 @@ class MetricsGroup(Enum):
     OUTPUTS = "outputs"
     TASKS = "tasks"
     OBJECT_STORE_MEMORY = "object_store_memory"
-    MISC = "misc"
     ACTORS = "actors"
 
 
@@ -54,6 +53,7 @@ class MetricsType(Enum):
     Gauge = 1
     Histogram = 2
     Unsupported = 3
+    Distribution = 4
 
 
 @dataclass(frozen=True)
@@ -543,9 +543,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
 
-    # === Miscellaneous metrics ===
-    # Use "metrics_group: "misc" in the metadata for new metrics in this section.
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -565,9 +562,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
-
-        self._issue_detector_hanging = 0
-        self._issue_detector_high_memory = 0
 
         # Initialize the histogram and distribution metrics
         self.task_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
@@ -899,36 +893,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Distribution of max USS bytes across tasks.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Unsupported,
+        metrics_type=MetricsType.Distribution,
     )
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
-
-    @metric_property(
-        description="Average USS usage of tasks.",
-        metrics_group=MetricsGroup.TASKS,
-    )
-    def average_max_uss_per_task(self) -> Optional[float]:
-        """Average max USS usage of tasks."""
-        if self.max_uss_bytes.num_samples == 0:
-            return None
-        return self.max_uss_bytes.mean
-
-    @metric_property(
-        description="Indicates if the operator is hanging.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_hanging(self) -> int:
-        return self._issue_detector_hanging
-
-    @metric_property(
-        description="Indicates if the operator is using high memory.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_high_memory(self) -> int:
-        return self._issue_detector_high_memory
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""

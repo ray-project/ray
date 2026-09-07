@@ -112,8 +112,11 @@ doc/source/ray-core/examples/highly_parallel.ipynb: doc
 doc/external/test_hashes.py: ml_doc
 doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
+# This holds for both the doc subtree and the repo-root .claude/.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
+.claude/skills/backport-docs/SKILL.md:
+.claude/settings.json:
 doc/source/llm/doc_code/example.py: llm
 # Unowned doc dirs and doc-root executables fall to the core docs example step.
 doc/source/cluster/example.py: core_doc
@@ -226,8 +229,13 @@ doc/test_myst_doc.py: core_doc
 doc/source/_intersphinx/python.inv: doc
 doc/source/_intersphinx/refresh.py: doc
 doc/source/_intersphinx/README.md:
-python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
-ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
+# A docs-only deplock change runs the docbuild, the API-consistency checks, and
+# the `raydepsets --check` lock-consistency job (via `deplock_check`), but not
+# the wheel/image build matrix: the docs lock feeds only the Sphinx docbuild
+# image and is never installed into a Ray wheel, so it emits `deplock_check`
+# rather than `python_dependencies`.
+python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
+ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
 # Redirect YAML selects the dedicated lightweight check and nothing else: no
 # docbuild, no API checks, no per-team doc tests. The README beside it is prose
 # and stays unrouted, which is what the second case locks in.

@@ -12,6 +12,10 @@ from pydantic import ValidationError
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env_deep,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
@@ -125,6 +129,11 @@ class ServeHead(SubprocessModule):
                         f"The GCS may be down, please retry later: {e}"
                     ),
                 )
+
+        if should_redact_runtime_env(req):
+            # A `runtime_env` can appear per application, per deployment under
+            # `ray_actor_options`, and on `controller_options`.
+            details = redact_runtime_env_deep(details)
 
         return Response(
             text=json.dumps(details),

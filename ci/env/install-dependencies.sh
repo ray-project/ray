@@ -276,14 +276,11 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
 
-    # Install MuJoCo.
+    # System libraries required for gymnasium rendering (MuJoCo, OpenGL, GLFW).
+    # The MuJoCo library itself ships with the `mujoco` pip package, which is
+    # pinned in rllib-test-requirements.txt.
     sudo apt-get update
-    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3 patchelf
-    wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
-    mkdir -p /root/.mujoco
-    mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
-    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
-    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin
+    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3
   fi
 
   # Additional Train test dependencies.
@@ -327,7 +324,7 @@ install_pip_packages() {
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
       # If we require a custom torch version, use that
       if [[ -n "${TORCH_VERSION-}" ]]; then
-        # Install right away, as some dependencies (e.g. torch-spline-conv) need
+        # Install right away, as some dependencies (e.g. torch-scatter) need
         # torch to be installed for their own install.
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
@@ -339,7 +336,7 @@ install_pip_packages() {
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
       else
         # Otherwise, use pinned default torch version.
-        # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
+        # Again, install right away, as some dependencies (e.g. torch-scatter) need
         # torch to be installed for their own install.
         TORCH_PACKAGE=$(grep -ohE "torch==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
         TORCHVISION_PACKAGE=$(grep -ohE "torchvision==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
