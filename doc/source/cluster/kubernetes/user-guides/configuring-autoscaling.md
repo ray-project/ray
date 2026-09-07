@@ -403,9 +403,9 @@ the following namespaced permissions for the operator in every namespace it watc
 
 | API group | Resources | Verbs |
 | --- | --- | --- |
-| Core (`""`) | `serviceaccounts` | `create`, `delete`, `get`, `list`, `watch` |
-| `rbac.authorization.k8s.io` | `roles` | `create`, `delete`, `get`, `list`, `update`, `watch` |
-| `rbac.authorization.k8s.io` | `rolebindings` | `create`, `delete`, `get`, `list`, `watch` |
+| Core (`""`) | `serviceaccounts` | `create`, `delete`, `get`, `list`, `patch`, `update`, `watch` |
+| `rbac.authorization.k8s.io` | `roles` | `create`, `delete`, `get`, `list`, `patch`, `update`, `watch` |
+| `rbac.authorization.k8s.io` | `rolebindings` | `create`, `delete`, `get`, `list`, `patch`, `update`, `watch` |
 
 The `list` and `watch` permissions are required even though the reconciler addresses the
 generated objects by name. The operator's controller-runtime client can use informers for
@@ -413,7 +413,7 @@ these reads; if an informer cannot list one of these resources, autoscaling reco
 can remain blocked instead of returning the underlying authorization error.
 
 For a restricted installation, grant equivalent namespaced permissions in each namespace
-listed by KubeRay's `watchNamespace` setting. If `rbacEnable` is `false`, create the
+listed by KubeRay's `watchNamespace` setting. If `rbac.enable` is `false`, create the
 equivalent rules yourself before enabling in-tree autoscaling. You can inspect the operator's
 effective permissions with:
 
