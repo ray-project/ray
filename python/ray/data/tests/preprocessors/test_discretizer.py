@@ -306,6 +306,14 @@ def test_uniform_kbins_discretizer_serialization():
     assert len(result) == 3
 
 
+@pytest.mark.parametrize("bins", (0, -3, {"A": 0}))
+def test_uniform_kbins_discretizer_rejects_non_positive_bins(bins):
+    # A non-positive bin count has no meaning; without this check `bins=0`
+    # produced an all-null column instead of an error.
+    with pytest.raises(ValueError, match="bins must be a positive integer"):
+        UniformKBinsDiscretizer(["A"], bins=bins)
+
+
 if __name__ == "__main__":
     import sys
 
