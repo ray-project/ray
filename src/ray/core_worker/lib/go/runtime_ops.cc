@@ -39,10 +39,6 @@ std::atomic<bool> g_runtime_initialized{false};
 std::atomic<bool> g_ray_log_initialized{false};
 std::atomic<int> g_worker_mode{0};
 
-inline ray::rpc::WorkerType ConvertToRpcWorkerType(int c_worker_type) {
-  return static_cast<ray::rpc::WorkerType>(c_worker_type);
-}
-
 }  // namespace
 
 // ============================================================================

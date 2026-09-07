@@ -21,7 +21,6 @@
 
 #include "ray/core_worker/lib/go/native_worker_context.h"
 
-#include <mutex>
 #include <string>
 #include <thread>
 
@@ -46,10 +45,10 @@ WorkerContextOperations &GetContextOps() {
 }
 
 // Cache for immutable IDs (Worker ID and Job ID never change during worker lifetime)
-// Using RAII wrappers for automatic memory management
+// Using RAII wrappers for automatic memory management. thread_local storage makes
+// the caches inherently race-free, so no mutex is needed.
 thread_local CByteArrayPtr cached_worker_id;
 thread_local CByteArrayPtr cached_job_id;
-std::mutex cache_mutex;  // Protects cache initialization
 
 }  // anonymous namespace
 
