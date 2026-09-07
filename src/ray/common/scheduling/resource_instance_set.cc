@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -150,7 +151,6 @@ FixedPoint NodeResourceInstanceSet::Sum(ResourceID resource_id) const {
 bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) const {
   return this->resources_ == other.resources_;
 }
-
 
 bool NodeResourceInstanceSet::CanAllocate(const ResourceSet &resource_demands) const {
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {

@@ -18,6 +18,7 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ray {
 
@@ -174,7 +175,6 @@ FixedPoint NodeResources::GetAvailableSum(scheduling::ResourceID resource_id) co
 std::set<scheduling::ResourceID> NodeResources::GetAvailableResourceIds() const {
   return available.ExplicitResourceIds();
 }
-
 
 void NodeResources::SetAvailableResource(scheduling::ResourceID resource_id,
                                          FixedPoint value) {
