@@ -191,16 +191,20 @@ class FileBasedDatasource(Datasource):
         )
 
         if not expanded_paths:
+            # Only listing has run at this point: `partition_filter` and
+            # `file_extensions` are applied below and raise their own errors, so
+            # naming them here would point at causes that cannot apply yet. What
+            # can leave the listing empty is a path that holds nothing readable,
+            # including a directory whose entries are all skipped by prefix.
             message = (
-                f"No files found under {_truncated_repr(paths)}. Check the path "
-                "and any configured `partition_filter` or `file_extensions` "
-                "filters."
+                f"No files found under {_truncated_repr(paths)}. Note that "
+                "listing skips names starting with '_' or '.'."
             )
             if ignore_missing_paths:
-                # Paths that do not exist were dropped during listing, so we
-                # cannot tell here whether they were absent or merely empty.
+                # Missing paths are dropped inside listing, so we cannot tell
+                # here whether they were absent or merely empty.
                 message += (
-                    " Paths that do not exist were skipped because "
+                    " Paths that do not exist were also skipped because "
                     "'ignore_missing_paths' is set to True."
                 )
             raise ValueError(message)

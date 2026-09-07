@@ -307,8 +307,11 @@ def test_excluded_prefixes_only_raises_no_files_found(
     with open(os.path.join(tmp_path, filename), "wb"):
         pass
 
-    with pytest.raises(ValueError, match="No files found under"):
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
         MockFileBasedDatasource(tmp_path)
+
+    # The prefix rule is the non-obvious cause, so the message has to name it.
+    assert "starting with '_' or '.'" in str(exc_info.value)
 
 
 def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
