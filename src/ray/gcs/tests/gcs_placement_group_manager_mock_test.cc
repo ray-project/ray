@@ -85,29 +85,104 @@ class GcsPlacementGroupManagerMockTest : public Test {
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
-  // Test priority works
-  //   When return with reschedule, it should be given with the highest pri
-  auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
+  auto recovery_req =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto recovery_pg =
+      std::make_shared<GcsPlacementGroup>(recovery_req, "", counter_, clock_);
+  auto pending_req =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
+  auto pending_pg =
+      std::make_shared<GcsPlacementGroup>(pending_req, "", counter_, clock_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
-  std::unique_ptr<Postable<void(bool)>> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
+      .Times(5)
+      .WillRepeatedly(Invoke([](const std::string &,
+                                const std::string &,
+                                std::string,
+                                bool,
+                                Postable<void(bool)> callback) {
+        std::move(callback).Post("PendingQueuePriorityReschedule", true);
+      }));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
-      .WillOnce(DoAll(SaveArg<0>(&request)));
-  auto now = clock_.NowUnixNanos();
-  gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
-  auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
-  ASSERT_EQ(1, pending_queue.size());
-  ASSERT_LE(now, pending_queue.begin()->first);
-  ASSERT_GE(clock_.NowUnixNanos(), pending_queue.begin()->first);
-  std::move(*put_cb).Post("PendingQueuePriorityReschedule", true);
+      .Times(4)
+      .WillRepeatedly(DoAll(SaveArg<0>(&request)));
+
+  // Create a placement group, then lose its node while a normal PG is pending.
+  gcs_placement_group_manager_->RegisterPlacementGroup(recovery_pg, cb);
   io_context_.poll();
-  pg->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-  request.failure_callback(pg, true);
+  ASSERT_EQ(request.placement_group, recovery_pg);
+  const auto dead_node_id = NodeID::FromRandom();
+  recovery_pg->GetMutableBundle(0)->set_node_id(dead_node_id.Binary());
+  recovery_pg->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+  request.success_callback(recovery_pg);
+  io_context_.restart();
+  io_context_.poll();
+  ASSERT_EQ(recovery_pg->GetState(), rpc::PlacementGroupTableData::CREATED);
+
+  gcs_placement_group_manager_->RegisterPlacementGroup(pending_pg, cb);
+  EXPECT_CALL(*gcs_placement_group_scheduler_, GetAndRemoveBundlesOnNode(dead_node_id))
+      .WillOnce(Return(absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>{
+          {recovery_pg->GetPlacementGroupID(), {0}}}));
+  gcs_placement_group_manager_->OnNodeDead(dead_node_id);
+
+  // Fresh recovery retains highest priority, ahead of the due normal PG.
+  auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
+  ASSERT_EQ(2, pending_queue.size());
+  ASSERT_EQ(pending_queue.begin()->first, 0);
+  ASSERT_EQ(pending_queue.begin()->second.second, recovery_pg);
+  ASSERT_EQ(pending_queue.rbegin()->first, clock_.NowUnixNanos());
+  ASSERT_EQ(pending_queue.rbegin()->second.second, pending_pg);
+  ASSERT_EQ(recovery_pg->GetState(), rpc::PlacementGroupTableData::RESCHEDULING);
+  io_context_.restart();
+  io_context_.poll();
+  ASSERT_EQ(request.placement_group, recovery_pg);
+  ASSERT_EQ(recovery_pg->GetStats().scheduling_attempt(), 2);
+  ASSERT_EQ(pending_pg->GetStats().scheduling_attempt(), 0);
+
+  // A feasible recovery failure uses the existing retry backoff instead of rank 0.
+  const auto now = clock_.NowUnixNanos();
+  const auto retry_delay_ns =
+      1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms();
+  request.failure_callback(recovery_pg, /*is_feasible=*/true);
+  ASSERT_EQ(2, pending_queue.size());
+  ASSERT_EQ(recovery_pg->GetStats().highest_retry_delay_ms(), retry_delay_ns / 1000000);
+  const auto retry_rank = pending_queue.rbegin()->first;
+  ASSERT_EQ(pending_queue.rbegin()->second.second, recovery_pg);
+  ASSERT_GT(retry_rank, now);
+  ASSERT_EQ(retry_rank, now + retry_delay_ns);
+
+  // The failure continuation lets the normal PG schedule during recovery's cooldown.
+  io_context_.restart();
+  io_context_.poll();
+  ASSERT_EQ(request.placement_group, pending_pg);
+  ASSERT_EQ(pending_pg->GetState(), rpc::PlacementGroupTableData::PENDING);
+  ASSERT_EQ(pending_pg->GetStats().scheduling_attempt(), 1);
+  pending_pg->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
+  pending_pg->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+  request.success_callback(pending_pg);
+  io_context_.restart();
+  io_context_.poll();
+  ASSERT_EQ(pending_pg->GetState(), rpc::PlacementGroupTableData::CREATED);
   ASSERT_EQ(1, pending_queue.size());
-  ASSERT_GE(0, pending_queue.begin()->first);
+  ASSERT_EQ(pending_queue.begin()->first, retry_rank);
+  ASSERT_EQ(recovery_pg->GetStats().scheduling_attempt(), 2);
+
+  // Recovery retries when due and retains the backoff state across failures.
+  clock_.AdvanceTime(absl::Nanoseconds(retry_rank - clock_.NowUnixNanos()));
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_TRUE(pending_queue.empty());
+  ASSERT_EQ(request.placement_group, recovery_pg);
+  ASSERT_EQ(recovery_pg->GetStats().scheduling_attempt(), 3);
+  request.failure_callback(recovery_pg, /*is_feasible=*/true);
+  ASSERT_EQ(1, pending_queue.size());
+  ASSERT_EQ(pending_queue.begin()->second.second, recovery_pg);
+  const auto next_delay_ns = pending_queue.begin()->first - clock_.NowUnixNanos();
+  ASSERT_GT(next_delay_ns, retry_delay_ns);
+  ASSERT_EQ(next_delay_ns,
+            retry_delay_ns *
+                RayConfig::instance().gcs_create_placement_group_retry_multiplier());
+  ASSERT_EQ(recovery_pg->GetStats().highest_retry_delay_ms(), next_delay_ns / 1000000);
 }
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
