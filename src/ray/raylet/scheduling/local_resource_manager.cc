@@ -375,11 +375,15 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   for (const auto &[resource_id, instances] : resources.GetAvailable().Resources()) {
     rpc::syncer::ResourceInstances resource_instances;
     for (const auto &value : instances) {
-      resource_instances.add_values(std::max(value.Double(), 0.0));
+      if (value > 0) {
+        resource_instances.add_values(value.Double());
+      }
     }
-    (*resource_view_sync_message
-          .mutable_resources_available_instances())[resource_id.Binary()] =
-        std::move(resource_instances);
+    if (resource_instances.values_size() > 0) {
+      (*resource_view_sync_message
+            .mutable_resources_available_instances())[resource_id.Binary()] =
+          std::move(resource_instances);
+    }
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
