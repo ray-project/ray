@@ -1,2 +1,4 @@
-pymongoarrow==1.7.2
+# 1.7.2 caps pyarrow at <19.1, below Ray Data's declared floor; 1.9.0 is the
+# first release that allows pyarrow 20.
+pymongoarrow==1.9.0
 pymongo>=4.4
