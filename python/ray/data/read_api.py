@@ -3231,6 +3231,7 @@ def read_mcap(
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
+    log_time_order: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3314,6 +3315,10 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
+        log_time_order: Whether to return each file's messages in ascending
+            ``log_time`` order. Defaults to True. If False, messages are returned in
+            the order they were written to the file. The order applies within each
+            file, not across files.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3376,6 +3381,7 @@ def read_mcap(
         time_range=time_range,
         message_types=message_types,
         include_metadata=include_metadata,
+        log_time_order=log_time_order,
         filesystem=filesystem,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,

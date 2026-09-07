@@ -18,6 +18,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+    import pyarrow.fs
     from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,7 @@ class MCAPDatasource(FileBasedDatasource):
         time_range: Optional[TimeRange] = None,
         message_types: Optional[Union[List[str], Set[str]]] = None,
         include_metadata: bool = True,
+        log_time_order: bool = True,
         **file_based_datasource_kwargs,
     ):
         """Initialize MCAP datasource.
@@ -110,6 +112,9 @@ class MCAPDatasource(FileBasedDatasource):
             include_metadata: Whether to include MCAP metadata fields in the output.
                 Defaults to True. When True, includes schema, channel, and message
                 metadata.
+            log_time_order: Whether to yield each file's messages in ascending
+                ``log_time`` order. Defaults to True. If False, messages are
+                yielded in the order they were written to the file.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -121,16 +126,46 @@ class MCAPDatasource(FileBasedDatasource):
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
+        self._log_time_order = log_time_order
+
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        """Open the file for random access, so mcap can use the file's index.
+
+        An MCAP file can end with a summary section that indexes each chunk by
+        byte offset and time range. ``mcap.reader.make_reader`` returns a
+        ``SeekingReader``, which uses that index, only if ``stream.seekable()`` is
+        true. ``FileBasedDatasource`` opens a sequential stream, which is not
+        seekable even on a local filesystem.
+
+        With the index, ``topics`` and ``time_range`` skip chunks that cannot
+        match, and ``log_time_order=True`` merges chunks as they are read. The
+        non-seeking reader instead scans every record and, for log-time order,
+        sorts the whole file in memory first. A file with no index is still read,
+        with a linear scan.
+
+        ``open_args`` is ignored. MCAP compresses its own chunks, so it needs no
+        outer codec.
+        """
+        return filesystem.open_input_file(path)
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Read MCAP file and yield blocks of message data.
 
-        This method implements efficient MCAP reading with predicate pushdown.
-        It uses MCAP's built-in filtering capabilities for optimal performance
-        and applies additional filters when needed.
+        ``topics`` and ``time_range`` are pushed down to the MCAP reader, which
+        uses the file's chunk index to skip chunks that cannot match.
+
+        A block is yielded whenever its estimated size reaches
+        ``target_max_block_size``, so a large file becomes several blocks. With
+        ``log_time_order=True``, rows stay in log-time order across a file's
+        blocks.
 
         Args:
-            f: File-like object to read from. Must be seekable for MCAP reading.
+            f: Seekable file opened by ``_open_input_source``.
             path: Path to the MCAP file being processed.
 
         Yields:
@@ -150,10 +185,12 @@ class MCAPDatasource(FileBasedDatasource):
             topics=list(self._topics) if self._topics else None,
             start_time=self._time_range.start_time if self._time_range else None,
             end_time=self._time_range.end_time if self._time_range else None,
-            log_time_order=True,
+            log_time_order=self._log_time_order,
             reverse=False,
         )
 
+        # `None` disables block sizing, so a file is one block.
+        target_max_block_size = self._data_context.target_max_block_size
         builder = DelegatingBlockBuilder()
 
         for schema, channel, message in messages:
@@ -164,6 +201,13 @@ class MCAPDatasource(FileBasedDatasource):
             # Convert message to dictionary format
             message_data = self._message_to_dict(schema, channel, message, path)
             builder.add(message_data)
+
+            if (
+                target_max_block_size is not None
+                and builder.get_estimated_memory_usage() >= target_max_block_size
+            ):
+                yield builder.build()
+                builder = DelegatingBlockBuilder()
 
         # Yield the block if we have any messages
         if builder.num_rows() > 0:
