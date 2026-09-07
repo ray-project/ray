@@ -12,21 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package plugin is the entry point for the userfuncs plugin. When the .so is
-// loaded by a worker, init registers the user functions with the runtime.
+// Package plugin is the entry point for the userfuncs plugin. Importing the
+// userfuncs package is what registers the user functions: its package init
+// runs when the .so is loaded by a worker. This main package must not call
+// RegisterFunctions itself — that would register everything a second time on
+// top of the import's init.
 package main
 
 import (
-	"github.com/ray-project/ray/go/examples/userfuncs"
-	"github.com/ray-project/ray/go/pkg/log"
+	_ "github.com/ray-project/ray/go/examples/userfuncs"
 )
 
-func init() {
-	if err := userfuncs.RegisterFunctions(); err != nil {
-		log.Log.Error(err, "register user functions failed")
-	}
-}
-
 func main() {
-	// Plugin, not an executable; init() does the registration.
+	// Plugin, not an executable; the userfuncs package init does the
+	// registration.
 }

@@ -115,7 +115,9 @@ func GetSetupWorkerCmd() *cobra.Command {
 }
 
 func runSetupWorker(ctx context.Context, args []string, cfg *SetupWorkerConfig) error {
-	level, err := zapcore.ParseLevel(common.LoggerLevel)
+	// ParseLogLevel accepts the documented level names (warning, critical)
+	// that zapcore.ParseLevel rejects.
+	level, err := common.ParseLogLevel(common.LoggerLevel)
 	if err != nil {
 		level = zapcore.InfoLevel
 	}

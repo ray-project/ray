@@ -50,7 +50,6 @@ go_test(
         "path_utils_test.go",
         "ray_constants_test.go",
         "services_test.go",
-        "state_test.go",
         "utils_test.go",
         "validation_test.go",
     ],

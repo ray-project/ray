@@ -22,8 +22,9 @@ import (
 	"strings"
 )
 
-// RAY_PATH is the absolute path of the Ray Go package, used to build resource
-// paths such as jars.
+// RAY_PATH is the absolute path of the Ray package directory that carries
+// shared resources such as jars (python/ray in a source checkout, the
+// installed ray package in a wheel-based deployment).
 // Corresponds to Python: os.path.abspath(os.path.dirname(os.path.dirname(__file__))).
 var RAY_PATH string
 
@@ -31,8 +32,22 @@ func init() {
 	// Prefer the RAY_PATH environment variable.
 	rayPath := os.Getenv("RAY_PATH")
 	if rayPath == "" {
-		// Use runtime.Caller(0) to locate the current file, which is more
-		// reliable than os.Args[0].
+		// Installed layout: the raygo worker binary lives under
+		// <ray-pkg>/go/cmd, so the Ray package root is three levels up from
+		// the executable. runtime.Caller below records a compile-time source
+		// path that does not exist there, so probe the executable first.
+		if exe, err := os.Executable(); err == nil {
+			candidate := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+			if _, err := os.Stat(filepath.Join(candidate, "jars")); err == nil {
+				rayPath = candidate
+			}
+		}
+	}
+	if rayPath == "" {
+		// Source tree: this file lives at go/internal/common, so the repo
+		// root is three levels up and the jars live under python/ray. In a
+		// hermetic test sandbox python/ray is not materialized; fall back to
+		// the repo root so RAY_PATH still points at a valid directory.
 		_, currentFile, _, ok := runtime.Caller(0)
 		var currentDir string
 		if ok {
@@ -42,9 +57,18 @@ func init() {
 			currentDir, _ = os.Getwd()
 		}
 		rayPath = filepath.Dir(filepath.Dir(filepath.Dir(currentDir)))
+		if pyRay := filepath.Join(rayPath, "python", "ray"); dirExists(pyRay) {
+			rayPath = pyRay
+		}
 	}
 
 	RAY_PATH = rayPath
+}
+
+// dirExists reports whether path exists and is a directory.
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // GetRayJarsDir returns the directory containing all Ray-related jars and their

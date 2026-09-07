@@ -20,7 +20,7 @@ load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 gazelle(
     name = "gazelle",
     args = ["go"],
-    prefix = "github.com/ray-project/ray",
+    prefix = "github.com/ray-project/ray/go",
 )
 
 gazelle(
