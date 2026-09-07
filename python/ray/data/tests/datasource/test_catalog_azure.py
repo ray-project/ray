@@ -34,9 +34,15 @@ Backends (see the ``azure_backend`` factory fixture)
     return a ``GenerateTemporaryTableCredentialResponse`` carrying a genuine,
     signature-checked Azurite SAS and a genuine ``abfss://`` URL. Azurite
     validates that SAS, so the credential is load-bearing: strip it and the
-    reads fail. Requires ``azurite`` on ``PATH`` (``npm install -g azurite``)
-    and ``azure-storage-blob`` importable; skips cleanly otherwise. Azurite is
-    a Node package, so it stays a local prerequisite, not a Python requirement.
+    reads fail.
+
+    Azurite is started as a container via ``testcontainers`` -- the same
+    mechanism ``test_kafka.py`` uses for its broker, and already a declared data
+    test dependency -- falling back to an ``azurite`` binary on ``PATH``
+    (``npm install -g azurite``) where Docker is unusable. A remote-only Docker
+    context is one such case: the container starts, but its published port is
+    not reachable from the test process. With neither available the suite skips,
+    as it does without ``azure-storage-blob``, which mints the SAS.
 
 ``real``  (when the environment is configured)
     A real Azure Databricks workspace over real Azure storage. Nothing is
@@ -122,6 +128,7 @@ table -- which in Unity Catalog must be *external*, since managed tables are
 Delta-only -- so set ``RAY_TEST_AZURE_UC_PARQUET_TABLE`` to run it.
 """
 
+import logging
 import os
 import shutil
 import socket
@@ -177,6 +184,11 @@ def _reference_rows(start: int, count: int):
 
 # Azurite's well-known development account. Not a secret -- it is published in
 # Azure's own docs and is what every Azurite instance starts with.
+logger = logging.getLogger(__name__)
+
+# Azurite's in-container blob port, which testcontainers maps to a host port.
+_AZURITE_BLOB_PORT = 10000
+
 _AZURITE_ACCOUNT = "devstoreaccount1"
 _AZURITE_KEY = (
     "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
@@ -213,10 +225,11 @@ class _AzuriteBackend:
 
     is_emulator = True
 
-    def __init__(self, process, port, tmp_location):
+    def __init__(self, authority, *, container_handle=None, process=None, tmp_dir=None):
+        self._container_handle = container_handle
         self._process = process
-        self._tmp_location = tmp_location
-        self.authority = f"127.0.0.1:{port}"
+        self._tmp_location = tmp_dir
+        self.authority = authority
         # deltalake's object_store needs the account in the endpoint; pyarrow
         # takes the bare authority and adds the account itself.
         self.account_endpoint = f"http://{self.authority}/{_AZURITE_ACCOUNT}"
@@ -227,13 +240,54 @@ class _AzuriteBackend:
     # ---- lifecycle -----------------------------------------------------
     @classmethod
     def start(cls):
-        exe = shutil.which("azurite")
-        if exe is None:
-            pytest.skip("azurite not installed (npm install -g azurite)")
+        """Start Azurite, preferring a container over a local binary.
+
+        The container is what CI can use -- `testcontainers` is already a
+        declared data test dependency and `test_kafka.py` starts its broker the
+        same way -- and it needs no npm. The binary path stays for machines with
+        no usable Docker (a remote-only Docker context, for instance, publishes
+        the emulator's port somewhere this process cannot reach).
+        """
         pytest.importorskip(
             "azure.storage.blob",
             reason="azure-storage-blob is needed to mint an Azurite SAS",
         )
+
+        backend = cls._start_container() or cls._start_binary()
+        if backend is None:
+            pytest.skip(
+                "no usable Azurite: needs either a working Docker daemon (for "
+                "the testcontainers path) or `azurite` on PATH "
+                "(`npm install -g azurite`)"
+            )
+        return backend
+
+    @classmethod
+    def _start_container(cls):
+        try:
+            # `testcontainers.azurite` is deprecated in favour of this path.
+            from testcontainers.community.azurite import AzuriteContainer
+        except ImportError:
+            return None
+
+        try:
+            handle = AzuriteContainer()
+            handle.start()
+        except Exception as exc:  # noqa: BLE001 - any Docker problem is a pass
+            # No daemon, no image, an unreachable remote context: all mean "use
+            # the other path", none mean "fail the suite".
+            logger.info("Azurite container unavailable (%s); trying a binary", exc)
+            return None
+
+        host = handle.get_container_host_ip()
+        port = handle.get_exposed_port(_AZURITE_BLOB_PORT)
+        return cls(f"{host}:{port}", container_handle=handle)
+
+    @classmethod
+    def _start_binary(cls):
+        exe = shutil.which("azurite")
+        if exe is None:
+            return None
 
         port = _free_port()
         location = tempfile.mkdtemp(prefix="azurite-")
@@ -264,12 +318,15 @@ class _AzuriteBackend:
             process.terminate()
             pytest.fail("azurite did not start within 30s")
 
-        return cls(process, port, location)
+        return cls(f"127.0.0.1:{port}", process=process, tmp_dir=location)
 
     def stop(self):
         if self._patcher is not None:
             self._patcher.stop()
             self._patcher = None
+        if self._container_handle is not None:
+            self._container_handle.stop()
+            return
         self._process.terminate()
         try:
             self._process.wait(timeout=15)

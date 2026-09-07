@@ -2414,11 +2414,9 @@ py_test(
     ],
 )
 
-# The Azure tests skip unless `azurite` is on PATH -- it is an npm package, so
-# the CI images do not carry it and these run locally for now. The target is
-# still worth having: it keeps the file collected, so an import or syntax
-# regression is caught rather than going unnoticed until someone runs it by
-# hand.
+# The Azure tests start Azurite as a container via `testcontainers`, the same
+# way `test_kafka` starts its broker, and skip if no usable Docker and no local
+# `azurite` binary is found.
 py_test(
     name = "test_catalog_azure",
     size = "medium",
