@@ -400,8 +400,10 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
 
+  // resources_available is no longer sent; check per-instance data.
   const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
-  ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
+  ASSERT_EQ(resource_view_sync_messge.resources_available_instances().at("CPU").values(0),
+            0);
 }
 
 TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {

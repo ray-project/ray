@@ -33,7 +33,19 @@ NodeResources CreateNodeResources(double available_cpu,
   NodeResources resources;
   resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
   resources.SetAvailableResource(ResourceID::Memory(), available_memory);
-  resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
+  size_t num_gpu = static_cast<size_t>(total_gpu);
+  if (num_gpu > 0) {
+    std::vector<FixedPoint> gpu_instances;
+    double remaining_avail = available_gpu;
+    for (size_t i = 0; i < num_gpu; i++) {
+      double per_instance = std::min(remaining_avail, 1.0);
+      gpu_instances.push_back(FixedPoint(std::max(per_instance, 0.0)));
+      remaining_avail -= per_instance;
+    }
+    resources.SetAvailableInstances(ResourceID::GPU(), std::move(gpu_instances));
+  } else if (available_gpu > 0) {
+    resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
+  }
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -262,7 +274,7 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
     NodeResources resources;
     resources.SetAvailableResource(ResourceID::CPU(), 1.0);
     resources.SetAvailableResource(ResourceID::Memory(), 0.25);
-    resources.SetAvailableResource(ResourceID::GPU(), 1);
+    resources.SetAvailableInstances(ResourceID::GPU(), {FixedPoint(1), FixedPoint(0)});
     resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
@@ -276,7 +288,7 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
     NodeResources resources;
     resources.SetAvailableResource(ResourceID::CPU(), 1.0);
     resources.SetAvailableResource(ResourceID::Memory(), 0.25);
-    resources.SetAvailableResource(ResourceID::GPU(), 0);
+    resources.SetAvailableInstances(ResourceID::GPU(), {FixedPoint(0), FixedPoint(0)});
     resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
