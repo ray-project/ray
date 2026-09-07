@@ -250,6 +250,7 @@ First consider the following deployment configurations. Because the driver deplo
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -269,6 +270,7 @@ First consider the following deployment configurations. Because the driver deplo
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -325,6 +327,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -344,6 +347,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -363,6 +367,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
