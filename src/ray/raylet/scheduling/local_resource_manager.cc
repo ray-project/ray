@@ -367,14 +367,10 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
 
-  // Resource availability can be negative locally but treat it as 0
-  // when we broadcast to others since other parts of the
-  // system assume resource availability cannot be negative and
-  // there is no difference between negative and zero from other nodes
-  // and gcs's point of view.
   for (const auto &[resource_id, instances] : resources.GetAvailable().Resources()) {
     rpc::syncer::ResourceInstances resource_instances;
     for (const auto &value : instances) {
+      // If the resource availablility is zero or negative, we don't need to broadcast it
       if (value > 0) {
         resource_instances.add_values(value.Double());
       }

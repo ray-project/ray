@@ -115,8 +115,8 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
         cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
             scheduling::NodeID("local"));
     ASSERT_TRUE(local_node_resource.total == node_resources.total);
-    ASSERT_TRUE(local_node_resource.available.ToNodeResourceSet() ==
-                node_resources.available.ToNodeResourceSet());
+    ASSERT_TRUE(local_node_resource.GetAvailable().ToNodeResourceSet() ==
+                node_resources.GetAvailable().ToNodeResourceSet());
   }
 
   // TODO(@clay4444): Remove this once we did the batch rpc request refactor!
