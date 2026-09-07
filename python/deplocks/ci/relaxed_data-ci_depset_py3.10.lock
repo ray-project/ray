@@ -343,6 +343,18 @@ attrs==26.1.0 \
 #   dm-tree
 #   jsonschema
 #   referencing
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   azure-storage-blob
+azure-storage-blob==12.28.0 \
+    --hash=sha256:00fb1db28bf6a7b7ecaa48e3b1d5c83bfadacc5a678b77826081304bd87d6461 \
+    --hash=sha256:e7d98ea108258d29aa0efbfd591b2e2075fa1722a2fae8699f0b3c9de11eff41
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   -r python/requirements/ml/data-test-requirements.txt
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
@@ -1076,6 +1088,7 @@ cryptography==44.0.3 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   azure-storage-blob
 #   jwcrypto
 #   pyopenssl
 #   snowflake-connector-python
@@ -1116,6 +1129,12 @@ dask==2026.3.0 \
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/data-requirements.txt
 #   distributed
+databricks-sdk==0.103.0 \
+    --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
+    --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   -r python/requirements/ml/data-test-requirements.txt
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/data-test-requirements.txt
@@ -1624,6 +1643,7 @@ google-auth==2.39.0 \
     --hash=sha256:73222d43cdc35a3aeacbfdcaf73142a97839f10de930550d89ebfe1d0a00cde7
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   databricks-sdk
 #   google-api-core
 #   google-cloud-bigquery
 #   google-cloud-bigquery-storage
@@ -2002,6 +2022,12 @@ iniconfig==2.3.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   pytest
+isodate==0.7.2 \
+    --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
+    --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   azure-storage-blob
 itsdangerous==2.2.0 \
     --hash=sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef \
     --hash=sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173
@@ -3450,6 +3476,7 @@ protobuf==6.32.0 \
     --hash=sha256:ba377e5b67b908c8f3072a57b63e2c6a4cbd18aea4ed98d2584350dbf46f2783 \
     --hash=sha256:d52691e5bee6c860fff9a1c86ad26a13afbeb4b168cd4445c922b7e2cf85aaf0
 # via
+#   databricks-sdk
 #   google-api-core
 #   google-cloud-bigquery-storage
 #   googleapis-common-protos
@@ -4247,6 +4274,8 @@ requests==2.33.1 \
     --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   azure-core
+#   databricks-sdk
 #   datasets
 #   delta-sharing
 #   docker
@@ -4499,6 +4528,7 @@ six==1.17.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   astunparse
+#   azure-core
 #   google-pasta
 #   opencensus
 #   promise
@@ -4954,6 +4984,8 @@ typing-extensions==4.15.0 \
 #   aiosignal
 #   anyio
 #   arro3-core
+#   azure-core
+#   azure-storage-blob
 #   confluent-kafka
 #   daft
 #   etils

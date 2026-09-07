@@ -2414,6 +2414,25 @@ py_test(
     ],
 )
 
+# The Azure tests skip unless `azurite` is on PATH -- it is an npm package, so
+# the CI images do not carry it and these run locally for now. The target is
+# still worth having: it keeps the file collected, so an import or syntax
+# regression is caught rather than going unnoticed until someone runs it by
+# hand.
+py_test(
+    name = "test_catalog_azure",
+    size = "medium",
+    srcs = ["tests/datasource/test_catalog_azure.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_aggregations",
     size = "medium",
