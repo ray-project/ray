@@ -1,13 +1,13 @@
 # __begin_scheduled_batch_processing_policy__
-from datetime import datetime
-from typing import Any, Dict
+from datetime import datetime, timezone
+from typing import Any
 from ray.serve.config import AutoscalingContext
 
 
 def scheduled_batch_processing_policy(
     ctx: AutoscalingContext,
-) -> tuple[int, Dict[str, Any]]:
-    current_time = datetime.now()
+) -> tuple[int, dict[str, Any]]:
+    current_time = datetime.now(tz=timezone.utc)
     current_hour = current_time.hour
     # Scale up during business hours (9 AM - 5 PM)
     if 9 <= current_hour < 17:
@@ -24,13 +24,13 @@ def scheduled_batch_processing_policy(
 
 
 # __begin_custom_metrics_autoscaling_policy__
-from typing import Any, Dict
+from typing import Any
 from ray.serve.config import AutoscalingContext
 
 
 def custom_metrics_autoscaling_policy(
     ctx: AutoscalingContext,
-) -> tuple[int, Dict[str, Any]]:
+) -> tuple[int, dict[str, Any]]:
     cpu_usage_metric = ctx.aggregated_metrics.get("cpu_usage", {})
     memory_usage_metric = ctx.aggregated_metrics.get("memory_usage", {})
     max_cpu_usage = list(cpu_usage_metric.values())[-1] if cpu_usage_metric else 0
@@ -50,7 +50,6 @@ def custom_metrics_autoscaling_policy(
 
 
 # __begin_application_level_autoscaling_policy__
-from typing import Dict, Tuple
 from ray.serve.config import AutoscalingContext
 
 from ray.serve._private.common import DeploymentID
@@ -58,13 +57,13 @@ from ray.serve.config import AutoscalingContext
 
 
 def coordinated_scaling_policy(
-    contexts: Dict[DeploymentID, AutoscalingContext]
-) -> Tuple[Dict[DeploymentID, int], Dict]:
+    contexts: dict[DeploymentID, AutoscalingContext]
+) -> tuple[dict[DeploymentID, int], dict]:
     """Scale deployments based on coordinated load balancing."""
     decisions = {}
 
     # Example: Scale a preprocessing deployment
-    preprocessing_id = [d for d in contexts if d.name == "Preprocessor"][0]
+    preprocessing_id = next(d for d in contexts if d.name == "Preprocessor")
     preprocessing_ctx = contexts[preprocessing_id]
 
     # Scale based on queue depth
@@ -78,7 +77,7 @@ def coordinated_scaling_policy(
     decisions[preprocessing_id] = preprocessing_replicas
 
     # Example: Scale a model deployment proportionally
-    model_id = [d for d in contexts if d.name == "Model"][0]
+    model_id = next(d for d in contexts if d.name == "Model")
     model_ctx = contexts[model_id]
 
     # Scale model to handle preprocessing output
@@ -94,13 +93,13 @@ def coordinated_scaling_policy(
 # __end_application_level_autoscaling_policy__
 
 # __begin_stateful_application_level_policy__
-from typing import Dict, Tuple, Any
+from typing import Any
 from ray.serve.config import AutoscalingContext
 from ray.serve._private.common import DeploymentID
 
 def stateful_application_level_policy(
-    contexts: Dict[DeploymentID, AutoscalingContext]
-) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
+    contexts: dict[DeploymentID, AutoscalingContext]
+) -> tuple[dict[DeploymentID, int], dict[DeploymentID, dict[str, Any]]]:
     """Example policy demonstrating per-deployment state persistence."""
     decisions = {}
     policy_state = {}
@@ -109,7 +108,7 @@ def stateful_application_level_policy(
         # Read previous state for this deployment (persisted from last iteration)
         prev_state = ctx.policy_state or {}
         scale_count = prev_state.get("scale_count", 0)
-        last_replicas = prev_state.get("last_replicas", ctx.current_num_replicas)
+        prev_state.get("last_replicas", ctx.current_num_replicas)
 
         # Simple scaling logic: scale based on queue depth
         desired_replicas = max(
@@ -132,13 +131,13 @@ def stateful_application_level_policy(
 
 # __end_stateful_application_level_policy__
 # __begin_apply_autoscaling_config_example__
-from typing import Any, Dict
+from typing import Any
 from ray.serve.config import AutoscalingContext
 
 
 def queue_length_based_autoscaling_policy(
     ctx: AutoscalingContext,
-) -> tuple[int, Dict[str, Any]]:
+) -> tuple[int, dict[str, Any]]:
     # This policy calculates the "raw" desired replicas based on queue length.
     # Ray Serve automatically applies scaling factors, delays, and bounds from
     # the deployment's autoscaling_config on top of this decision.

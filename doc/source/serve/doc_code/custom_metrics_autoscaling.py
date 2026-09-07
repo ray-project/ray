@@ -1,6 +1,5 @@
 # __serve_example_begin__
 import time
-from typing import Dict
 
 import psutil
 from ray import serve
@@ -26,7 +25,7 @@ class CustomMetricsDeployment:
         time.sleep(0.5)
         return "Hello, world!"
 
-    def record_autoscaling_stats(self) -> Dict[str, float]:
+    def record_autoscaling_stats(self) -> dict[str, float]:
         # Get CPU usage as a percentage
         cpu_usage = self.process.cpu_percent(interval=0.1)
 
@@ -46,7 +45,7 @@ app = CustomMetricsDeployment.bind()
 # __serve_example_end__
 
 if __name__ == "__main__":
-    import requests  # noqa
+    import requests
 
     serve.run(app)
     for _ in range(10):
