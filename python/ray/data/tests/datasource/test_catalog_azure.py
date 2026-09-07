@@ -75,20 +75,21 @@ Backends (see the ``azure_backend`` factory fixture)
     ``SELECT``. Without both, ``generate_temporary_table_credentials`` refuses
     rather than vending a SAS.
 
-Expected failures
------------------
-Two of these fail today. They are written against the behaviour a correct
-implementation must have, not against current behaviour, so that fixing the
-code is what turns them green:
+How the credential reaches the read tasks
+-----------------------------------------
+Via ``storage_options``. There is no picklable pyarrow Azure filesystem to
+build a SAS into, so ``resolve()`` returns the SAS as a plain dict entry, which
+pickles along with the read plan; deltalake's object_store reads it on each
+worker. The environment variable is set too, but it reaches only the driver
+once Ray is running -- ``_apply_env`` can amend the cluster ``runtime_env``
+only while Ray is still uninitialized, and any case with an existing Dataset is
+already past that. AWS gets away with the environment because its vended
+``S3FileSystem`` carries the keys into the tasks; Azure has no such object, so
+``storage_options`` is the channel that has to work.
 
-``test_delta_count_min_max_via_catalog``
-``test_vended_credentials_reach_read_tasks``
-    ``_apply_env`` seeds the cluster ``runtime_env`` only when Ray is *not* yet
-    initialized. Any already-running cluster -- every case where a Dataset
-    already exists -- leaves read tasks with no credential. AWS survives this
-    because an ``S3FileSystem`` carrying the credentials is pickled into the
-    tasks; Azure gets no filesystem, so the environment is its only channel and
-    the workers end up with nothing.
+``test_vended_credentials_reach_read_tasks`` asserts that channel-agnostically
+-- the credential must be reachable from a read task by *some* route that
+survives pickling -- so it stays honest if the delivery mechanism changes again.
 """
 
 import os
