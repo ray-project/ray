@@ -81,6 +81,7 @@ ray_cc_test(
     size = "small",
     srcs = ["gcs_client_bridge_test.cc"],
     linkopts = ["-lm"],
+    tags = ["team:core"],
     deps = [
         ":gcs_client_bridge",
     ],
@@ -93,6 +94,7 @@ ray_cc_test(
     size = "small",
     srcs = ["gcs_client_publisher_test.cc"],
     linkopts = ["-lm"],
+    tags = ["team:core"],
     deps = [
         ":gcs_client_bridge",
         ":gcs_memory",
@@ -104,6 +106,7 @@ ray_cc_test(
     name = "gcs_memory_test",
     size = "small",
     srcs = ["gcs_memory_test.cc"],
+    tags = ["team:core"],
     deps = [
         ":gcs_memory",
     ],
@@ -339,6 +342,7 @@ ray_cc_test(
     name = "native_worker_context_test",
     size = "small",
     srcs = ["native_worker_context_test.cc"],
+    tags = ["team:core"],
     deps = [
         ":native_worker_context_bridge",
         "//src/ray/core_worker:core_worker_lib",
@@ -396,6 +400,7 @@ ray_cc_test(
     name = "native_object_store_test",
     size = "small",
     srcs = ["native_object_store_test.cc"],
+    tags = ["team:core"],
     deps = [
         ":native_object_store_bridge",
         "//src/ray/core_worker:core_worker_lib",
@@ -408,6 +413,7 @@ ray_cc_test(
     name = "task_submitter_ops_test",
     size = "small",
     srcs = ["task_submitter_ops_test.cc"],
+    tags = ["team:core"],
     deps = [
         ":core_worker_provider",
         ":task_argument",
