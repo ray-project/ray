@@ -84,6 +84,10 @@ Ray Serve allows you to use different delays for different downscaling scenarios
   
 This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler. ::{note} If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds. ::
 
+:::{warning}
+Setting `metrics_interval_s` to a very low value (for example, `0.1`) causes replicas and handles to push metrics to the controller at high frequency. This can overload the head node controller and cause instability. Use the default value of `10` unless you have a specific, well-tested reason to lower it.
+:::
+
 * **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=30]**: This is the window over which the average number of ongoing requests per replica is calculated.
 
 * **[`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value="mean"]**: This controls how metrics are aggregated over the `look_back_period_s` time window. The aggregation function determines how Ray Serve combines multiple metric measurements into a single value for autoscaling decisions. Supported values:
@@ -246,7 +250,7 @@ First consider the following deployment configurations. Because the driver deplo
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -266,7 +270,7 @@ First consider the following deployment configurations. Because the driver deplo
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -323,7 +327,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -343,7 +347,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -363,7 +367,7 @@ For this attempt, set an autoscaling configuration for `Driver` as well, with th
     downscale_delay_s: 60
     upscaling_factor: 0.3
     downscaling_factor: 0.3
-    metrics_interval_s: 2
+    metrics_interval_s: 10
     look_back_period_s: 10
 ```
 
@@ -408,7 +412,7 @@ If you expect your application to receive bursty traffic, and at the same time w
 
 * Set a larger `upscaling_factor`. If `upscaling_factor > 1`, then the autoscaler scales up more aggressively than normal. This setting can allow your deployment to be more sensitive to bursts of traffic.
 
-* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst). Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to be less than or equal to `upscale_delay_s`, otherwise upscaling is delayed because the autoscaler doesn't receive fresh information often enough.
+* Lower the [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst). Always set [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to be less than or equal to `upscale_delay_s`, otherwise upscaling is delayed because the autoscaler doesn't receive fresh information often enough. Avoid setting it to an extremely low value (for example, `0.1`), as this can overload the head node controller and cause instability.
 
 * Set a lower `max_ongoing_requests`. If `max_ongoing_requests` is too high relative to `target_ongoing_requests`, then when traffic increases, Serve might assign most or all of the requests to the existing replicas before the new replicas are started. This setting can lead to very high latencies during upscale.
 
@@ -433,7 +437,7 @@ You may observe that deployments are scaling down too quickly. Instead, you may 
 Custom autoscaling policies are experimental and may change in future releases.
 :::
 
-Ray Serve’s built-in, request-driven autoscaling works well for most apps. Use **custom autoscaling policies** when you need more control—e.g., scaling on external metrics (CloudWatch, Prometheus), anticipating predictable traffic (scheduled batch jobs), or applying business logic that goes beyond queue thresholds.
+Ray Serve's built-in, request-driven autoscaling works well for most apps. Use **custom autoscaling policies** when you need more control—e.g., scaling on external metrics (CloudWatch, Prometheus), anticipating predictable traffic (scheduled batch jobs), or applying business logic that goes beyond queue thresholds.
 
 Custom policies let you implement scaling logic based on any metrics or rules you choose.
 
@@ -447,7 +451,7 @@ An `AutoscalingContext` object provides the following information to the custom 
 * **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
 * **Capacity bounds:** `min` / `max` replica limits adjusted for current cluster capacity.
 * **Policy state:** A `dict` you can use to persist arbitrary state across control-loop iterations.
-* **Timing:** Timestamps of the last scale actions and “now”.
+* **Timing:** Timestamps of the last scale actions and "now".
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
@@ -465,7 +469,7 @@ The following example showcases a policy that scales up during business hours an
 :end-before: __serve_example_end__
 ```
 
-Policies are defined **per deployment**. If you don’t provide one, Ray Serve falls back to its built-in request-based policy.
+Policies are defined **per deployment**. If you don't provide one, Ray Serve falls back to its built-in request-based policy.
 
 The policy function is invoked by the Ray Serve controller every `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` seconds (default **0.1s**), so your logic runs against near-real-time state.
 
