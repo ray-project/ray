@@ -180,7 +180,10 @@ def _resolve_hf_model_id_from_mirror(engine_config: "VLLMEngineConfig") -> None:
     if local_path and local_path != engine_config.actual_hf_model_id:
         engine_config.hf_model_id = local_path
         logger.info(f"Resolved model from mirror to local path: {local_path}")
-    elif engine_config.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS:
+    elif (
+        engine_config.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        and engine_config.mirror_config.bucket_uri
+    ):
         engine_config.hf_model_id = engine_config.mirror_config.bucket_uri
         logger.info(
             f"Streaming load format; using mirror URI: "

@@ -276,6 +276,31 @@ class TestModelConfig:
 
         assert engine_config.hf_model_id == "qwen-0.5b"
 
+
+    def test_streaming_load_format_with_empty_bucket_uri_keeps_alias(self):
+        """An empty/falsy bucket_uri must not overwrite hf_model_id."""
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+            _resolve_hf_model_id_from_mirror,
+        )
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="qwen-0.5b",
+                model_source="s3://my-bucket/my-model",
+            ),
+            engine_kwargs=dict(load_format="runai_streamer"),
+        )
+        engine_config = llm_config.get_engine_config()
+        engine_config.mirror_config.bucket_uri = ""
+
+        with patch(
+            "ray.llm._internal.common.utils.download_utils.get_model_location_on_disk",
+            side_effect=lambda model_id: model_id,
+        ):
+            _resolve_hf_model_id_from_mirror(engine_config)
+
+        assert engine_config.hf_model_id == "qwen-0.5b"
+
     def test_hf_model_source_used_as_hf_model_id(self):
         """A plain HuggingFace model_source is used directly as hf_model_id."""
         llm_config = LLMConfig(
