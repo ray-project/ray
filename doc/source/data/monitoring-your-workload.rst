@@ -522,7 +522,7 @@ By enabling verbosity Ray Data adds a few more outputs:
   to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
   they show how long running each of the operators is in the context of the full dataset execution.
 * **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output
-  block, into the input prep, function body and output block build phases, so you can see which part of the transform the
+  block, into the input prep, function body, and output block build phases, so you can see which part of the transform the
   time actually went to.
 
 Example stats
