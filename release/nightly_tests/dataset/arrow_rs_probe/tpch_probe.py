@@ -15,7 +15,8 @@ This probe runs the RELEASE tpch scripts themselves (release/nightly_tests/
 dataset/tpch/tpch_q*.py — same code, same public bucket, smaller --sf) in a
 fresh process per cell, over the matrix
 
-    queries x shuffle strategies (hash_shuffle, hash_shuffle_v2)
+    queries x shuffle strategies (hash_shuffle, shuffle_v2 -- spelled
+    hash_shuffle_v2 until #65411; the old name still resolves with a warning)
             x readers (RAY_DATA_USE_ARROW_RS_PARQUET_READER=0/1)
 
 and reports wall + spilled_gb per cell, R per (query, strategy). What it can
@@ -28,7 +29,7 @@ would still be signal.
 
 Usage:
   python tpch_probe.py --outdir DIR [--sf 10] [--repeat 1]
-      [--queries tpch_q9,tpch_q20] [--strategies hash_shuffle,hash_shuffle_v2]
+      [--queries tpch_q9,tpch_q20] [--strategies hash_shuffle,shuffle_v2]
       [--dry-run]
 Needs AWS credentials (public bucket s3://ray-benchmark-data/tpch/parquet).
 """
@@ -187,7 +188,7 @@ def main():
     p.add_argument("--sf", type=int, default=10)
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--queries", default="tpch_q9,tpch_q20")
-    p.add_argument("--strategies", default="hash_shuffle,hash_shuffle_v2")
+    p.add_argument("--strategies", default="hash_shuffle,shuffle_v2")
     p.add_argument(
         "--cell-timeout",
         type=int,

@@ -87,30 +87,34 @@ TIMEOUT_CAP_S = 14400
 # The A/B #5 P0 ledger (arrow_rs_docs/2026-08-27.md section 11; names as the
 # results DB spells them, '+' where the yaml matrix value has spaces), plus
 # three controls. Category is documentation only -- all cells run identically.
+#
+# Renamed 2026-09-08 when the branch moved onto master: the suite dropped every
+# ``*_autoscaling_*`` variant (fixed-size twins stand in; the two rlp / map_groups
+# autoscaling cells fold into their fixed-size rows) and renamed the
+# ``hash_shuffle_v2`` strategy ``shuffle_v2`` (#65411). The pre-rename names are
+# what builds <= 106426 and the docs up to 2026-09-08.md carry.
 TARGETS = {
     # wall-time regressions
-    "tpch_q10_autoscaling_hash_shuffle_v2": "wall",
-    "tpch_q3_autoscaling_hash_shuffle_v2": "wall",
-    "tpch_q22_autoscaling_hash_shuffle": "wall",
+    "tpch_q10_fixed_size_shuffle_v2": "wall",
+    "tpch_q3_fixed_size_shuffle_v2": "wall",
+    "tpch_q22_fixed_size_hash_shuffle": "wall",
     "tpch_q14_fixed_size_hash_shuffle": "wall",
-    "tpch_q18_fixed_size_hash_shuffle_v2": "wall",
+    "tpch_q18_fixed_size_shuffle_v2": "wall",
     "joins_sf100_right_outer": "wall",
-    "read_parquet_autoscaling": "wall",
-    "map_groups_autoscaling_sort_shuffle_pull_based_column02+column14": "wall",
-    "map_groups_autoscaling_hash_shuffle_column02+column14": "wall",
+    "read_parquet_fixed_size": "wall",
+    "map_groups_fixed_size_hash_shuffle_column02+column14": "wall",
     # peak-memory regressions (tUSS / wUSS peak)
-    "read_large_parquet_autoscaling": "memory",
     "read_large_parquet_fixed_size": "memory",
     "write_parquet": "memory",
     "tpch_q6_fixed_size_hash_shuffle": "memory",
-    "tpch_q6_fixed_size_hash_shuffle_v2": "memory",
+    "tpch_q6_fixed_size_shuffle_v2": "memory",
     "tpch_q17_fixed_size_hash_shuffle": "memory",
-    "tpch_q17_fixed_size_hash_shuffle_v2": "memory",
-    "map_groups_autoscaling_hash_shuffle_column08+column13+column14": "memory",
+    "tpch_q17_fixed_size_shuffle_v2": "memory",
+    "map_groups_fixed_size_hash_shuffle_column08+column13+column14": "memory",
     "wide_schema_pipeline_objects": "memory",
     # sustained-wUSS (retention signature, M77)
-    "map_groups_fixed_size_hash_shuffle_v2_column08+column13+column14": "sustained",
-    "map_groups_fixed_size_hash_shuffle_v2_column02+column14": "sustained",
+    "map_groups_fixed_size_shuffle_v2_column08+column13+column14": "sustained",
+    "map_groups_fixed_size_shuffle_v2_column02+column14": "sustained",
     "map_groups_fixed_size_sort_shuffle_pull_based_column02+column14": "sustained",
     "joins_sf100_inner": "sustained",
     "joins_sf100_left_outer": "sustained",
@@ -119,8 +123,8 @@ TARGETS = {
     "mix.8ds_equal": "sustained",
     # controls: parity or arrow-rs-win in A/B #5 -- if these move, suspect the
     # experiment, not the reader
-    "aggregate_groups_autoscaling_hash_shuffle_column08+column13+column14": "control",
-    "tpch_q12_autoscaling_hash_shuffle": "control",
+    "aggregate_groups_fixed_size_hash_shuffle_column08+column13+column14": "control",
+    "tpch_q12_fixed_size_hash_shuffle": "control",
     "iter_batches_pyarrow": "control",
 }
 
@@ -129,10 +133,8 @@ TARGETS = {
 # too for the same reason.
 SINGLE_COMPUTE = {
     "fixed_size_all_to_all_compute.yaml": "single_node_all_to_all_compute.yaml",
-    "autoscaling_all_to_all_compute.yaml": "single_node_all_to_all_compute.yaml",
     "fixed_size_100_cpu_compute.yaml": "single_node_all_to_all_compute.yaml",
     "fixed_size_cpu_compute.yaml": "single_node_cpu_compute.yaml",
-    "autoscaling_cpu_compute.yaml": "single_node_cpu_compute.yaml",
     "dataset_mixing/compute_8_cpu.yaml": "single_node_cpu_compute.yaml",
 }
 
@@ -150,15 +152,15 @@ ARMS = {
 # confirmation of the M97/M98 per-task-S3-client fix (box: 2.88->0.88,
 # 2.15->0.77, 1.22->0.90) on the three wall shapes with the cleanest history.
 ALLOC_WALL_KEEP = (
-    "read_parquet_autoscaling",
-    "tpch_q18_fixed_size_hash_shuffle_v2",
-    "map_groups_autoscaling_hash_shuffle_column02+column14",
+    "read_parquet_fixed_size",
+    "tpch_q18_fixed_size_shuffle_v2",
+    "map_groups_fixed_size_hash_shuffle_column02+column14",
 )
 # alloc matrix: single-node cells only where single-node IS the question --
 # the rlp per-task USS self-regression (M75/M86) and the col02 OOM cliff (M90).
 ALLOC_SINGLE_TOO = (
-    "read_large_parquet_autoscaling",
-    "map_groups_autoscaling_hash_shuffle_column02+column14",
+    "read_large_parquet_fixed_size",
+    "map_groups_fixed_size_hash_shuffle_column02+column14",
 )
 
 # alloc matrix: gate cells that must replicate inside ONE build (TODO 34f: the
@@ -167,7 +169,7 @@ ALLOC_SINGLE_TOO = (
 # ``repeated_run`` so the release runner schedules N steps per cell (the form
 # has no repeat field; release/ray_release/buildkite/step.py reads this key).
 ALLOC_REPEATED = {
-    "map_groups_autoscaling_hash_shuffle_column02+column14": 3,
+    "map_groups_fixed_size_hash_shuffle_column02+column14": 3,
     "read_large_parquet_fixed_size": 3,
 }
 
