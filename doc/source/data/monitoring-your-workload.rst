@@ -415,7 +415,7 @@ The following are descriptions of the various stats included at the operator lev
     the functions you passed in and the ones Ray Data supplies, such as a read or a write that Ray Data fused into the same
     operator, because a read or a write is a function like any other.
   * **Output block build**: Time spent assembling what your functions return back into blocks, including materializing Python
-    objects into Arrow. Note that this is separate from the object store write, which Ray Data reports as the
+    objects into Arrow. This is separate from the object store write, which Ray Data reports as the
     ``data_block_serialization_time_s`` metric.
 
   Ray Data fuses adjacent operators where it can, and a fused operator reports one figure per phase covering all of its stages.
