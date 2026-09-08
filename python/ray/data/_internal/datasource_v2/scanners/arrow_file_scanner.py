@@ -7,6 +7,10 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.file_pruners import (
+    FilePruner,
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
@@ -173,6 +177,18 @@ class ArrowFileScanner(
             combined = predicate
 
         return replace(self, partition_predicate=combined)
+
+    @override
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        return self.partition_predicate
+
+    @override
+    def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        if self.partition_predicate is None or self.partitioning is None:
+            # Same guard as ``prune_manifest``: without a partitioning spec
+            # there are no partition values to evaluate against.
+            return None
+        return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 
     @override
     def prune_manifest(self, manifest: FileManifest) -> FileManifest:

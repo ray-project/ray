@@ -5,6 +5,7 @@ from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 
@@ -148,15 +149,39 @@ class SupportsPartitionPruning(ABC):
         """
         ...
 
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        """The partition predicate this scanner will apply at read time, if any.
+
+        This is the accepted result of :meth:`prune_partitions`. Planning needs
+        it to tell whether the reader will discard whole files that listing
+        cannot know about.
+
+        Concrete rather than abstract, for the same reason as
+        :meth:`SupportsFilterPushdown.pushed_predicate`.
+        """
+        return None
+
+    def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        """A listing-time pruner equivalent to this scanner's partition predicate.
+
+        Returning one lets listing drop the same files the reader would drop,
+        which is what makes an early stop under a limit sound. Returning
+        ``None`` means listing cannot reproduce the pruning, and planning
+        conservatively disables the limit instead.
+        """
+        return None
+
 
 def derive_list_files_pushdown(
     scanner: Optional["Scanner"],
-) -> Tuple[Optional["Expr"], Optional[List[str]], Optional[int]]:
+) -> Tuple[
+    Optional["Expr"], Optional[List[str]], Optional[int], Optional["FilePruner"]
+]:
     """Read the pushed-down state a scanner accepted, for upstream listing.
 
-    Returns ``(predicate, projected_columns, limit)`` -- the constraints a
-    ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely apply while
-    listing (see :class:`~ray.data._internal.logical.rules.
+    Returns ``(predicate, projected_columns, limit, partition_pruner)`` -- the
+    constraints a ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely
+    apply while listing (see :class:`~ray.data._internal.logical.rules.
     derive_list_files_pushdown.DeriveListFilesPushdown`). Each element is
     ``None`` unless the scanner both implements the corresponding ``Supports*``
     mixin and reports state it actually accepted, so a datasource that ignores
@@ -178,4 +203,23 @@ def derive_list_files_pushdown(
     limit = (
         scanner.pushed_limit() if isinstance(scanner, SupportsLimitPushdown) else None
     )
-    return predicate, projected_columns, limit
+    partition_pruner = None
+    if (
+        isinstance(scanner, SupportsPartitionPruning)
+        and scanner.pushed_partition_predicate() is not None
+    ):
+        # The reader will drop whole files on a partition predicate. Listing
+        # prunes on file statistics and partition columns are in the path, not
+        # the file, so listing cannot see that -- it would count every listed
+        # row towards the limit and stop early on files the reader then
+        # discards, losing rows.
+        #
+        # Giving listing the same path-based pruning removes the mismatch: it
+        # drops exactly the files the reader would, so every row it counts is a
+        # row that survives, and the early stop is sound.
+        partition_pruner = scanner.pushed_partition_pruner()
+        if partition_pruner is None:
+            # Cannot reproduce the pruning during listing (e.g. no partitioning
+            # spec), so fall back to not stopping early at all.
+            limit = None
+    return predicate, projected_columns, limit, partition_pruner

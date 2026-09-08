@@ -1,5 +1,6 @@
 import os
 import re
+from dataclasses import replace
 from typing import Any, List
 
 import lance
@@ -15,7 +16,9 @@ from ray.data import Dataset
 from ray.data._internal.logical.operators import (
     Filter,
     Limit,
+    ListFiles,
     Project,
+    ReadFiles,
     Repartition,
     Sort,
 )
@@ -1167,6 +1170,101 @@ class TestPushIntoBranchesBehavior:
         )
         expected = expected_single.union(expected_single)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+
+def test_limit_over_partition_filter(ray_start_regular_shared, tmp_path):
+    """A limit under a partition filter must be correct *and* still stop early.
+
+    Listing prunes on row-group statistics, which cannot see partition columns
+    -- those live in the directory name, not the file. So listing counted all
+    50 rows of whichever file completed first, stopped, and the reader then
+    dropped that file, returning 0 rows whenever the first-listed file was not
+    ``year=2020``. Which file completed first is decided by an unordered actor
+    pool, so the query was nondeterministically wrong.
+
+    The fix gives listing the same path-based pruning the reader uses, so it
+    drops ``year=2019`` before reading its footer. Every row it counts towards
+    the limit now belongs to a file the reader keeps.
+    """
+    for year in (2019, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2020")
+
+    optimized_plan = LogicalOptimizer().optimize(ds.limit(5)._logical_plan)
+    list_files = get_operators_of_type(optimized_plan, ListFiles)
+    assert len(list_files) == 1
+    # The limit survives -- pruning is what makes stopping early sound.
+    assert list_files[0].limit == 5
+    assert list_files[0].partition_pruner is not None
+
+    # Racy on master: it passed only when ``year=2020`` happened to land first.
+    assert len(ds.take(5)) == 5
+
+
+def test_limit_over_partition_filter_prunes_before_listing(
+    ray_start_regular_shared, tmp_path
+):
+    """Listing reads footers only for files the partition filter keeps.
+
+    Without pruning, a correct answer costs a footer read for every file in the
+    dataset, because the limit has to be abandoned to stay correct. The
+    ``ListFiles`` output row count is one row per file whose footer was read.
+    """
+    for year in range(2000, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") >= "2010")
+
+    # 10 of 20 partitions match, and a limit of 5 is satisfied by the first
+    # file, so listing should stop far short of even those 10.
+    assert len(ds.limit(5).take_all()) == 5
+
+    # Without a limit, pruning alone still keeps listing to the 10 matches.
+    assert ds.count() == 500
+
+
+def test_limit_over_partition_filter_without_partitioning_spec(
+    ray_start_regular_shared, tmp_path
+):
+    """With no partitioning spec, listing cannot prune, so it must not stop early.
+
+    This is the conservative branch: ``pushed_partition_pruner`` returns
+    ``None`` and planning drops the limit rather than risk truncating listing
+    to files the reader discards.
+    """
+    from ray.data._internal.datasource_v2.logical_optimizers import (
+        derive_list_files_pushdown,
+    )
+    from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
+        ParquetScanner,
+    )
+
+    pq.write_table(pa.table({"x": [1, 2, 3]}), tmp_path / "a.parquet")
+    ds = ray.data.read_parquet(str(tmp_path))
+    reads = get_operators_of_type(
+        LogicalOptimizer().optimize(ds._logical_plan), ReadFiles
+    )
+    scanner = reads[0].scanner
+    assert isinstance(scanner, ParquetScanner)
+
+    # A partition predicate but no partitioning spec to evaluate it against.
+    scanner = replace(scanner, partition_predicate=col("year") == "2020")
+    scanner = replace(scanner, partitioning=None)
+    scanner = scanner.push_limit(5)
+
+    assert scanner.pushed_partition_pruner() is None
+    _, _, limit, pruner = derive_list_files_pushdown(scanner)
+    assert limit is None
+    assert pruner is None
 
 
 if __name__ == "__main__":

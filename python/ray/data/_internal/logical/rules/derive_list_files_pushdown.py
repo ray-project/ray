@@ -37,7 +37,12 @@ class DeriveListFilesPushdown(Rule):
             # ``ReadFiles`` is the only consumer that applies these constraints
             # downstream; for anything else they must be dropped.
             scanner = node.scanner if isinstance(node, ReadFiles) else None
-            predicate, projected_columns, limit = derive_list_files_pushdown(scanner)
+            (
+                predicate,
+                projected_columns,
+                limit,
+                partition_pruner,
+            ) = derive_list_files_pushdown(scanner)
 
             new_inputs: list[LogicalOperator] = []
             changed = False
@@ -46,12 +51,20 @@ class DeriveListFilesPushdown(Rule):
                     input_op.predicate is not predicate
                     or input_op.projected_columns != projected_columns
                     or input_op.limit != limit
+                    # Identity, like ``predicate`` above: ``Expr.__eq__``
+                    # builds an expression instead of answering a bool, so the
+                    # pruner wrapping one cannot be compared by value either.
+                    # A pruner is rebuilt per call, so this compares unequal
+                    # whenever there is one -- rebuilding a node that did not
+                    # change, never keeping one that did.
+                    or input_op.partition_pruner is not partition_pruner
                 ):
                     input_op = replace(
                         input_op,
                         predicate=predicate,
                         projected_columns=projected_columns,
                         limit=limit,
+                        partition_pruner=partition_pruner,
                     )
                     changed = True
                 new_inputs.append(input_op)
