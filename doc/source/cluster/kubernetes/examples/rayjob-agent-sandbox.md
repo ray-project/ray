@@ -198,10 +198,10 @@ gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
 
 Then download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
 
-- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it.
+- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it, and the egress policy below closes the metadata-server path to the pool's cloud credentials.
 - `PodSnapshotStorageConfig` — points Pod Snapshots at your bucket.
 - `PodSnapshotPolicy` — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The SDK requires the grouping rule because it guarantees a sandbox restores only from its own snapshots.
-- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, separate from the pool above. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while the suspend and resume example's Ray actors connect to the sandbox pod IP directly. On a NetworkPolicy-enforcing cluster the managed policy would block them. For containment, layer on an egress NetworkPolicy like the one above.
+- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, separate from the pool above. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while the suspend and resume example's Ray actors connect to the sandbox pod IP directly. On a NetworkPolicy-enforcing cluster the managed policy would block them. The manifest instead ships its own `python-snapshot-pool-restrict-egress` NetworkPolicy: default-deny egress with DNS only, which blocks untrusted code from reaching the GKE metadata server and using the pool's Workload Identity credentials. Snapshot checkpoints are unaffected because uploads run through the node-side snapshot agent.
 
 ```bash
 kubectl apply -f sandbox-snapshot.yaml
