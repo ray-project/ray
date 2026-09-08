@@ -739,10 +739,12 @@ class DataContext:
             usage exceeds this fraction of its memory limit, an idle operator with
             queued input may run one task despite an exhausted object-store budget
             for task outputs. This keeps the pipeline moving without releasing more
-            upstream output. The allowance is bounded to one task per operator and
-            takes effect with this threshold alone; CPU/GPU limits are always
-            enforced. Set together with ``object_store_reservation_overshoot_ratio``
-            it additionally enables the overshoot throttle. Defaults to None.
+            upstream output. Only one such task runs at a time per operator, since
+            the allowance requires the operator to have no task in flight; CPU/GPU
+            limits are always enforced. Leaving this unset disables the allowance
+            entirely, which keeps object-store backpressure strict on the default
+            path. Set together with ``object_store_reservation_overshoot_ratio`` it
+            additionally enables the overshoot throttle. Defaults to None.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Doesn't apply to Datasets with an

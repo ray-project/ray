@@ -1000,7 +1000,13 @@ class TestOutputBackpressureGuard:
         self, restore_data_context
     ):
         """The allowance is opt-in, so leaving the threshold unset preserves the
-        pre-existing behavior exactly."""
+        pre-existing behavior exactly.
+
+        The threshold is what keeps the allowance from firing in the steady state:
+        an operator held back by output backpressure is idle with queued input on
+        every cycle, so an unconditional allowance would admit one extra task each
+        time a task finishes (see `test_input_backpressure_e2e`).
+        """
         metrics_patch, guard, alloc, o2, o3 = _build_blocked_downstream(
             ray_remote_args={"num_cpus": 4},
             num_cpus_budget=4,
@@ -1574,6 +1580,60 @@ class TestReservationOpResourceAllocator:
         # The capped ops stay at their cap rather than absorbing the leftover.
         assert alloc._op_budgets[o2].cpu == 0
         assert alloc._op_budgets[o4].cpu == 0
+
+    @pytest.mark.parametrize(
+        "downstream_max_cpu, expected_downstream_cpu",
+        [
+            # Headroom left after the split (1000 - 100) covers the 10 leftover.
+            (1000, 110),
+            # Only 5 of headroom left after the split, so the 10 leftover doesn't
+            # fit and must stay undistributed rather than breach the cap.
+            (105, 100),
+        ],
+    )
+    def test_leftover_respects_a_bounded_cap_already_partly_used(
+        self, downstream_max_cpu, expected_downstream_cpu, restore_data_context
+    ):
+        """A bounded-cap op may take the leftover only up to its *remaining* headroom.
+
+        The op has already received its share from the split above, so the leftover
+        has to be measured against what is left of the cap, not against the whole cap.
+        """
+        resource_manager, _, (o2, o3) = _build_reservation_allocator(2)
+        alloc = resource_manager.op_resource_allocator
+        eligible = [o2, o3]
+
+        alloc._update_reservation = MagicMock(return_value=ExecutionResources.zero())
+        alloc._get_eligible_ops = MagicMock(return_value=eligible)
+        alloc._total_shared = ExecutionResources(cpu=200)
+        resource_manager.get_mem_op_internal = MagicMock(return_value=0)
+        resource_manager.get_mem_op_outputs = MagicMock(return_value=0)
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        for op in eligible:
+            alloc._op_reserved[op] = ExecutionResources.zero()
+            alloc._reserved_for_op_outputs[op] = 0.0
+            op.min_scheduling_resources = MagicMock(
+                return_value=ExecutionResources.zero()
+            )
+
+        # o3 takes its 100 share first; o2's tight cap then leaves 10 behind.
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=downstream_max_cpu),
+            )
+        )
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources(cpu=90))
+        )
+
+        alloc.update_budgets(limits=ExecutionResources.zero())
+
+        assert alloc._op_budgets[o3].cpu == expected_downstream_cpu
+        assert alloc._op_budgets[o3].cpu <= downstream_max_cpu
+        assert alloc._op_budgets[o2].cpu == 90
 
 
 if __name__ == "__main__":

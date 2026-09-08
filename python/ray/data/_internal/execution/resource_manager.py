@@ -542,9 +542,11 @@ class ResourceManager:
     def _feeds_blocking_materializing_op(self, op: PhysicalOperator) -> bool:
         """Whether a blocking, materializing operator consumes ``op``'s output.
 
-        Unlike ``_is_blocking_materializing_op``, eligibility is irrelevant. Only
-        the immediate consumer counts: in ``Map1 -> Map2 -> Join`` it's Map2 that
-        holds the line, and exempting it keeps Map1 from backing up.
+        Unlike ``_is_blocking_materializing_op``, eligibility is relevant here:
+        only the downstream *eligible* operators are inspected
+        (``get_downstream_eligible_ops`` skips over ineligible ones), and the op
+        itself is not checked. In ``Map1 -> Map2 -> Join`` it's Map2 that holds
+        the line, and exempting it keeps Map1 from backing up.
         """
         return any(
             isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
@@ -838,9 +840,19 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if not self._is_task_submission_blocked_on_output_budget(op, budget):
             return True
 
-        # NOTE: Returning True below also stops Case 1 of
-        #       `OutputBackpressureGuard.should_unblock` relaxing upstream here,
-        #       which would only deepen the pressure.
+        # NOTE: Returning True below also stops ``OutputBackpressureGuard.should_unblock``
+        #       from relaxing the upstream op's output backpressure. That guard unblocks
+        #       an op when a downstream op can't submit new tasks; here this op still can
+        #       — it's under object-store pressure with buffered inputs — so unblocking
+        #       upstream would only deepen the pressure.
+        #
+        # NOTE: The pressure check is load-bearing, not just an optimization. Being
+        #       idle with queued input is the *normal* steady state of an operator
+        #       held back by output backpressure, not evidence of a stall, and the
+        #       condition re-arms every time a task finishes. Without the check the
+        #       allowance would therefore admit one more task per idle cycle
+        #       indefinitely, defeating object-store backpressure on the default
+        #       path (see `test_input_backpressure_e2e`).
         #
         # Pressure check first: it short-circuits on the default path, where the
         # threshold is unset.
@@ -879,17 +891,27 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
-    @staticmethod
-    def _most_downstream_uncapped_op(
+    def _most_downstream_op_that_fits(
+        self,
         ops: List[PhysicalOperator],
+        resources: ExecutionResources,
+        op_headroom: Dict[PhysicalOperator, ExecutionResources],
         skip: AbstractSet[PhysicalOperator] = frozenset(),
     ) -> Optional[PhysicalOperator]:
-        """The most downstream op in ``ops`` with no cap on its resource usage."""
+        """The most downstream op in ``ops`` whose remaining headroom can absorb ``resources``.
+
+        ``op_headroom`` is filled by the allocation loop and records how much
+        each op can still take before hitting its ``max_resource_usage`` cap.
+        """
         for op in reversed(ops):
             if op in skip:
                 continue
             _, max_resource_usage = op.min_max_resource_requirements()
             if max_resource_usage == ExecutionResources.inf():
+                return op
+            if resources.satisfies_limit(
+                op_headroom.get(op, ExecutionResources.zero())
+            ):
                 return op
         return None
 
@@ -1032,19 +1054,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 
-        # The throttle withholds object-store only, so every eligible op still
-        # shares CPU/GPU/memory. Object-store therefore needs its own participant
-        # count and position: reusing `i` would leave the pool un-shrunk on a
-        # throttled op's turn and skew the split toward upstream.
+        # Throttled ops don't participate in the object-store shared reservation,
+        # but still share CPU/GPU/memory, so the object-store split needs its own
+        # participant count and position.
         throttled_ops = {
             op
             for op in eligible_ops
             if self._is_op_overshooting_object_store_reservation(op)
         }
         num_os_participants = len(eligible_ops) - len(throttled_ops)
+        assert num_os_participants >= 0
         os_position = 0
 
         # Allocate the remaining shared resources to each operator.
+        op_headroom: Dict[PhysicalOperator, ExecutionResources] = {}
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
@@ -1085,6 +1108,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     ExecutionResources.zero()
                 )
                 op_shared = op_shared.min(max_shared)
+                op_headroom[op] = max_shared.subtract(op_shared).max(
+                    ExecutionResources.zero()
+                )
 
             remaining_shared = remaining_shared.subtract(op_shared)
             assert remaining_shared.is_non_negative(), (
@@ -1096,24 +1122,30 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
-        # Give any remaining shared resources to the most downstream uncapped op.
-        # This can happen when some ops have their shared allocation capped. A
-        # throttled op may take the leftover CPU/GPU, but not the object-store.
+        # Give any remaining shared resources to the most downstream op that can
+        # absorb them. This can happen when some ops have their shared allocation
+        # capped. A throttled op may take the leftover CPU/GPU, but not the
+        # object-store.
         if not remaining_shared.is_zero():
-            recipient = self._most_downstream_uncapped_op(eligible_ops)
-            if recipient is not None:
-                self._op_budgets[recipient] = self._op_budgets[recipient].add(
-                    remaining_shared.copy(object_store_memory=0)
-                )
-            if remaining_shared.object_store_memory > 0:
-                recipient = self._most_downstream_uncapped_op(
-                    eligible_ops, skip=throttled_ops
+            non_os_shared = remaining_shared.copy(object_store_memory=0)
+            if not non_os_shared.is_zero():
+                recipient = self._most_downstream_op_that_fits(
+                    eligible_ops, non_os_shared, op_headroom
                 )
                 if recipient is not None:
                     self._op_budgets[recipient] = self._op_budgets[recipient].add(
-                        ExecutionResources(
-                            object_store_memory=remaining_shared.object_store_memory
-                        )
+                        non_os_shared
+                    )
+            if remaining_shared.object_store_memory > 0:
+                os_shared = ExecutionResources(
+                    object_store_memory=remaining_shared.object_store_memory
+                )
+                recipient = self._most_downstream_op_that_fits(
+                    eligible_ops, os_shared, op_headroom, skip=throttled_ops
+                )
+                if recipient is not None:
+                    self._op_budgets[recipient] = self._op_budgets[recipient].add(
+                        os_shared
                     )
 
         # A materializing operator like `AllToAllOperator` waits for all its input
