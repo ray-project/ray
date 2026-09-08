@@ -28,6 +28,19 @@ Agent Sandbox provides a collection of declarative Kubernetes APIs to easily man
 
 The Agent Sandbox project also provides a [Python SDK](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client) which can be used from within Ray actors to invoke Sandbox creation and secure code execution on sandboxes.
 
+## Why suspend and resume sandboxes?
+
+In agentic RL rollouts, a sandbox is typically held for a whole multi-turn trajectory but only executes commands for a small fraction of that time: a turn runs a few seconds of code, then waits many seconds for model inference. The sandbox is idle, but its pod still holds its full CPU and memory reservation, which is what bounds cluster density.
+
+The turn boundary is the natural suspend signal. The orchestrator, here a Ray actor, knows the exact moment it has a command result and is waiting on the model. Suspending at that boundary returns the pod's reservation to the scheduler for the duration of the inference call. Resuming restores the sandbox before the next turn's command arrives.
+
+Agent Sandbox supports two suspension mechanisms, demonstrated in the optional Steps 8 and 9 at the end of this guide:
+
+1. **Pause and resume with `spec.operatingMode`** — built into Agent Sandbox and works on any Kubernetes cluster, with no snapshot infrastructure at all. Suspending terminates the sandbox pod and frees its CPU and memory reservation while keeping the `Sandbox` resource and its volumes. Resuming recreates the pod and remounts storage. Process state and memory are not preserved.
+2. **Memory snapshots** — Agent Sandbox supports snapshotting a sandbox's full memory state through the Python SDK's snapshot extension, which checkpoints the entire guest to object storage before suspending and restores it intact on resume. The checkpoint covers the process tree, memory, open file descriptors, and `tmpfs`. This guide uses GKE Pod Snapshots as the reference snapshot backend, set up by the optional snapshot pieces of Steps 1, 4, and 5 below.
+
+Use plain `operatingMode` pause and resume when the sandbox's durable state lives on its persistent volumes. Use memory snapshots when the agent depends on live process state that must survive the gap, such as running background processes, in-memory data, or open files.
+
 ## Deploying KubeRay with Agent Sandbox
 
 The following example creates a KubeRay RayJob, which runs a Ray job that uses the Agent Sandbox SDK to invoke code execution in a secure sandbox. It is highly recommended to keep Pods used for sandboxing decoupled from the Ray cluster itself.
@@ -241,19 +254,6 @@ Dispatching 2 code executors...
 Cleaning up sandboxes...
 (SandboxExecutor pid=342, ip=10.72.1.10) [executor-0] claimed sandbox 'sandbox-claim-3a93b626' in 0.212s
 ```
-
-## Suspend and resume sandboxes
-
-In agentic RL rollouts, a sandbox is typically held for a whole multi-turn trajectory but only executes commands for a small fraction of that time: a turn runs a few seconds of code, then waits many seconds for model inference. The sandbox is idle, but its pod still holds its full CPU and memory reservation, which is what bounds cluster density.
-
-The turn boundary is the natural suspend signal. The orchestrator, here a Ray actor, knows the exact moment it has a command result and is waiting on the model. Suspending at that boundary returns the pod's reservation to the scheduler for the duration of the inference call. Resuming restores the sandbox before the next turn's command arrives.
-
-Agent Sandbox supports two suspension mechanisms:
-
-1. **Pause and resume with `spec.operatingMode`** — built into Agent Sandbox and works on any Kubernetes cluster, with no snapshot infrastructure at all. Suspending terminates the sandbox pod and frees its CPU and memory reservation while keeping the `Sandbox` resource and its volumes. Resuming recreates the pod and remounts storage. Process state and memory are not preserved.
-2. **Memory snapshots** — Agent Sandbox supports snapshotting a sandbox's full memory state through the Python SDK's snapshot extension, which checkpoints the entire guest to object storage before suspending and restores it intact on resume. The checkpoint covers the process tree, memory, open file descriptors, and `tmpfs`. This guide uses GKE Pod Snapshots as the reference snapshot backend, using the snapshot pieces of Steps 1, 3, 4, and 5.
-
-Use plain `operatingMode` pause and resume when the sandbox's durable state lives on its persistent volumes. Use memory snapshots when the agent depends on live process state that must survive the gap, such as running background processes, in-memory data, or open files.
 
 ### Step 8 (optional): Pause and resume sandboxes with `spec.operatingMode`
 
