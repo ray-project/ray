@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
+    _release_image_use,
     pull_and_extract_container_image,
     sanitize_image_name,
 )
@@ -54,17 +55,32 @@ class BaseImageManager(ABC):
         self,
         image: str,
         timeout_seconds: float = 120.0,
+        instance_id: Optional[str] = None,
     ) -> str:
         """Pull container image and extract rootfs into local cache or storage.
 
         Args:
             image: Container image reference (e.g. 'python:3.10-slim') or path to local tar archive.
             timeout_seconds: Timeout for network operations.
+            instance_id: The sandbox instance that will use the image. When
+                given, the image is pinned in the cache until
+                ``release_image`` is called for the same instance.
 
         Returns:
             Absolute directory path containing the extracted container filesystem.
         """
         pass
+
+    def release_image(self, image: str, instance_id: str) -> None:
+        """Release an instance's pin on an image taken by ``pull_image``.
+
+        Managers without a cache need not override this.
+
+        Args:
+            image: Container image reference or tar path passed to ``pull_image``.
+            instance_id: The sandbox instance that no longer uses the image.
+        """
+        return None
 
     @abstractmethod
     def get_image_dir(self, image: str) -> str:
@@ -227,12 +243,17 @@ class ImageManager(BaseImageManager):
         self,
         image: str,
         timeout_seconds: float = 120.0,
+        instance_id: Optional[str] = None,
     ) -> str:
         """Pull container image and extract rootfs into local images cache directory.
+
+        The cache is bounded (see ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES``);
+        passing ``instance_id`` pins the image until ``release_image``.
 
         Args:
             image: Container image name (e.g. 'busybox:latest') or path to local tar archive.
             timeout_seconds: Timeout for network operations.
+            instance_id: The sandbox instance that will use the image.
 
         Returns:
             Absolute directory path containing the extracted container filesystem.
@@ -241,7 +262,17 @@ class ImageManager(BaseImageManager):
             image,
             images_dir=self._images_dir,
             timeout_seconds=timeout_seconds,
+            instance_id=instance_id,
         )
+
+    def release_image(self, image: str, instance_id: str) -> None:
+        """Release an instance's pin on a cached image.
+
+        Args:
+            image: Container image name or tar path passed to ``pull_image``.
+            instance_id: The sandbox instance that no longer uses the image.
+        """
+        _release_image_use(self.get_image_dir(image), instance_id)
 
     def get_image_dir(self, image: str) -> str:
         """Get the cached local directory path for an image.

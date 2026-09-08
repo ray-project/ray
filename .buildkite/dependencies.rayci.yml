@@ -19,19 +19,17 @@ steps:
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy(python=3.11)
 
-  # `soft_fail: true` is temporary. uv fails eagerly on an unreadable --find-links
-  # URL before deciding whether it needs anything from it, and data.pyg.org (the
-  # PyG wheel index every ML/data/rllib depset declares) has been a dangling CNAME
-  # since 2026-09-02 (https://github.com/pyg-team/pyg-lib/issues/719), so this job
-  # is red on every run regardless of the PR. The pip-compile step above is
-  # unaffected: pip skips an unreachable find-links and PyPI's sdist satisfies the
-  # pins. Remove soft_fail once data.pyg.org resolves and this job is green on
-  # master again.
   - label: ":tapioca: build: raydepsets: compile all dependencies"
     key: raydepsets_compile_all_dependencies
-    tags: python_dependencies
+    # `deplock_check` lets a docs-only deplock change reach this lock-consistency
+    # verification without also triggering the wheel/image build matrix that
+    # `python_dependencies` fans out to. Ordinary dependency changes still emit
+    # `python_dependencies` and run this job through that tag. See the docs
+    # deplock rule and the `deplock_check` declaration in test.rules.txt.
+    tags:
+      - python_dependencies
+      - deplock_check
     instance_type: small
-    soft_fail: true
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build --all-configs --check
     job_env: manylinux-x86_64
