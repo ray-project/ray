@@ -52,7 +52,8 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles --min-total-worker-network-receive-gbps 0.001
+      --iter-bundles --repeat-reads 5
+      --min-total-worker-network-receive-gbps 0.001
 
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
