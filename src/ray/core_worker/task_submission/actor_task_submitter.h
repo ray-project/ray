@@ -108,9 +108,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
   /// \param[in] allow_out_of_order_execution Whether to execute tasks out of order.
-  /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
+  /// \param[in] fail_if_actor_unreachable Unused legacy parameter retained to
+  /// avoid changing callers. Restart disposition uses each task's retry policy.
   /// \param[in] owned Whether the actor is owned by the current process.
-  /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
                                 bool allow_out_of_order_execution,
@@ -278,13 +278,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                                           const TaskSpecification &task_spec);
 
   struct ClientQueue {
-    ClientQueue(bool allow_out_of_order_execution,
-                int32_t max_pending_calls,
-                bool fail_if_actor_unreachable,
-                bool owned)
-        : max_pending_calls_(max_pending_calls),
-          fail_if_actor_unreachable_(fail_if_actor_unreachable),
-          owned_(owned) {
+    ClientQueue(bool allow_out_of_order_execution, int32_t max_pending_calls, bool owned)
+        : max_pending_calls_(max_pending_calls), owned_(owned) {
       if (allow_out_of_order_execution) {
         actor_submit_queue_ = std::make_unique<OutofOrderActorSubmitQueue>();
       } else {
@@ -350,9 +345,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls_ = 0;
-
-    /// Whether to fail newly submitted tasks immediately when the actor is unreachable.
-    bool fail_if_actor_unreachable_ = true;
 
     /// Whether the current process is owner of the actor.
     bool owned_;

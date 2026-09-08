@@ -24,8 +24,9 @@ namespace core {
 void OutofOrderActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t position,
                                          const TaskSpecification &spec) {
-  auto &sending = sending_queue_per_group_[concurrency_group];
-  RAY_CHECK(!sending.contains(position));
+  auto sending_it = sending_queue_per_group_.find(concurrency_group);
+  RAY_CHECK(sending_it == sending_queue_per_group_.end() ||
+            !sending_it->second.contains(position));
   RAY_CHECK(pending_queue_per_group_[concurrency_group]
                 .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
                 .second);
@@ -156,6 +157,32 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
     }
   }
   return std::nullopt;
+}
+
+std::vector<TaskSpecification>
+OutofOrderActorSubmitQueue::PopTasksToFailOnActorRestart() {
+  std::vector<TaskSpecification> tasks_to_fail;
+  // All tasks in the sending queues are dependency-ready, and out-of-order execution
+  // permits any initial zero-retry task to be removed independently.
+  for (auto group_it = sending_queue_per_group_.begin();
+       group_it != sending_queue_per_group_.end();) {
+    auto &sending = group_it->second;
+    for (auto task_it = sending.begin(); task_it != sending.end();) {
+      if (task_it->second.first.IsRetry() || task_it->second.first.MaxRetries() != 0) {
+        ++task_it;
+        continue;
+      }
+
+      tasks_to_fail.push_back(std::move(task_it->second.first));
+      task_it = sending.erase(task_it);
+    }
+    if (sending.empty()) {
+      sending_queue_per_group_.erase(group_it++);
+    } else {
+      ++group_it;
+    }
+  }
+  return tasks_to_fail;
 }
 
 }  // namespace core
