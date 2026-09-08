@@ -549,13 +549,38 @@ class DeploymentAutoscalingState:
     def get_total_num_requests(self) -> float:
         """Total ongoing requests, aggregated at the controller from raw timeseries.
 
-        Replica and handle timeseries are merged into an instantaneous total and then
-        reduced by the deployment's `aggregation_function`, so the result is a window
-        mean, peak or trough rather than the current value. With no running replicas
-        this reduces to the handles' queued-requests series.
+        Running requests come from replicas or from handles, never both; the writer is
+        responsible for keeping those exclusive. Queued requests always come from
+        handles. Every series is merged as one set of sources, so the reduction sees
+        running and queued together rather than aggregating them separately.
 
-        Assumes running requests are emitted on handles or on replicas but not both;
-        the writer is responsible for keeping those exclusive.
+        Processing steps:
+            1. Collect running-request timeseries from replicas, if any reported.
+            2. Collect queued-request timeseries from handles (always).
+            3. Collect running-request timeseries from handles, only if step 1 was empty.
+            4. Merge every series into one instantaneous total: gauges are right-
+               continuous step functions, summed across sources at each change point,
+               which avoids the windowing bias of averaging each source first.
+            5. Reduce that step function with the deployment's `aggregation_function`,
+               so the result is a window mean, peak or trough, not the current value.
+
+        The window opens once every series has contributed a point, because a series is
+        implicitly 0 before its first sample and would otherwise drag the total down. It
+        closes `last_window_s` past the final point, that being how long the last sample
+        is assumed to hold.
+
+        Example (`aggregation_function` MEAN, now = 2.0s):
+            running r1  [(0.2, 5), (0.8, 7), (1.5, 6)]
+            running r2  [(0.1, 3), (0.9, 4), (1.4, 8)]
+            queued  h1  [(0.3, 2), (1.0, 3)]
+
+            merged      [(0.1, 3), (0.2, 8), (0.3, 10), (0.8, 12),
+                         (0.9, 13), (1.0, 14), (1.4, 18), (1.5, 17)]
+
+            window      opens at 0.3, the latest first point (h1); closes at 2.0,
+                        which is 1.5 plus a last_window_s of 0.5
+            result      (10*0.5 + 12*0.1 + 13*0.1 + 14*0.4 + 18*0.1 + 17*0.5) / 1.7
+                        = 23.4 / 1.7 = 13.76
 
         Returns:
             The aggregated total of running and queued requests.
