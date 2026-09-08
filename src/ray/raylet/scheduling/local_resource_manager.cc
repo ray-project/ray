@@ -369,10 +369,17 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
 
   for (const auto &[resource_id, instances] : resources.GetAvailable().Resources()) {
     rpc::syncer::ResourceInstances resource_instances;
+    // Implicit resources default to 1.0 on remote nodes when absent from the message.
+    // Always broadcast them (clamped to 0) so remote nodes see 0, not the 1.0 default,
+    // when the resource is fully allocated.
+    const bool is_implicit = resource_id.IsImplicitResource();
     for (const auto &value : instances) {
-      // If the resource availablility is zero or negative, we don't need to broadcast it
+      // If the non-implicit resource availablility is zero or negative, we don't need to
+      // broadcast it
       if (value > 0) {
         resource_instances.add_values(value.Double());
+      } else if (is_implicit) {
+        resource_instances.add_values(0.0);
       }
     }
     if (resource_instances.values_size() > 0) {
