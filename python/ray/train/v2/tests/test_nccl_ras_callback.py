@@ -2,7 +2,7 @@
 import json
 import logging
 import sys
-from concurrent.futures import Future
+import time
 from typing import Dict, Optional, Union
 from unittest.mock import MagicMock
 
@@ -11,6 +11,8 @@ import pytest
 from ray.train.v2._internal.callbacks import nccl_ras
 from ray.train.v2._internal.callbacks.nccl_ras import (
     NCCLRASCallback,
+    RASPoller,
+    RASQueryError,
     RASReport,
     parse_ras_addr,
     parse_ras_schema,
@@ -429,16 +431,32 @@ def test_parse_ras_addr_malformed_raises(addr):
         parse_ras_addr(addr)
 
 
-class _SyncExecutor:
-    """Executor stand-in that runs work inline so polling stays deterministic."""
+class FakePoller:
+    """Stand-in for :class:`RASPoller` that hands the controller a scripted
+    sequence of poll results, one per tick, and a fixed text report."""
 
-    def submit(self, fn, *args, **kwargs):
-        future = Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except BaseException as exc:  # noqa: BLE001
-            future.set_exception(exc)
-        return future
+    TEXT_REPORT = "NCCL RAS text report"
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.stopped = False
+        self.text_queries = 0
+
+    def start(self):
+        pass
+
+    def stop(self):
+        self.stopped = True
+
+    def next_result(self):
+        return self._results.pop(0) if self._results else None
+
+    def query(self, fmt):
+        # The one-off human-readable fetch at hang time must not consume a
+        # result from the scripted JSON sequence.
+        assert fmt == "text"
+        self.text_queries += 1
+        return self.TEXT_REPORT
 
 
 def make_nccl_ras_callback(
@@ -449,14 +467,16 @@ def make_nccl_ras_callback(
     first_suspicion_polls=1,
     periodic_warn_every_polls=2,
 ):
-    """Build a callback whose JSON RAS query yields the given sequence of reports.
+    """Build a callback whose poller yields the given sequence of poll results.
 
     The detector confirms hangs on consecutive frozen polls but is configured in
     seconds, so a 1s poll interval makes every "seconds" knob equal a poll count:
     ``confirm_count`` polls, and the escalation milestones (tuned for production
     at 60s/120s, i.e. 4 and 8 polls) shrunk to values the small
-    ``confirm_count``s here actually reach. The poll interval is then zeroed on
-    the instance so back-to-back polls are never throttled.
+    ``confirm_count``s here actually reach.
+
+    No poller thread is started: a :class:`FakePoller` returns one scripted
+    result per controller tick, so the tests stay deterministic.
     """
     monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, action)
     monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, str(confirm_count))
@@ -470,20 +490,8 @@ def make_nccl_ras_callback(
 
     callback = NCCLRASCallback()
     assert callback._confirm_poll_counts == confirm_count
-    callback._poll_interval_s = 0.0
     callback._worker_group = MagicMock()
-    callback._executor = _SyncExecutor()
-
-    report_iter = iter(reports)
-
-    def fake_query(ras_format="json"):
-        # The one-off human-readable fetch at hang time must not consume a
-        # report from the JSON poll sequence.
-        if ras_format == "text":
-            return "NCCL RAS text report"
-        return next(report_iter, None)
-
-    callback.query_ras_on_workers = fake_query
+    callback._ras_poller = FakePoller(reports)
 
     captured = []
     callback.dump_workers_stack_traces = lambda: captured.append(True) or "/tmp/dump"
@@ -738,21 +746,192 @@ def test_communicator_removed_over_time(monkeypatch):
     assert not captured_stack_trace
 
 
-def test_throttle_skips_query(monkeypatch):
-    # With a large interval, the second poll falls inside the throttle window of
-    # the first (the two real-clock reads are microseconds apart), so only the
-    # first poll queries and consumes a report.
+def test_no_new_report_is_noop(monkeypatch):
+    # The controller polls (~2s) far more often than the poller publishes (15s).
+    # A hook that finds nothing queued must leave detection state untouched.
     reports = [create_single_comm_report({2: 5, 3: 3})]
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=1, reports=reports
     )
-    callback._poll_interval_s = 1000.0
 
-    callback.after_worker_group_poll_status(MagicMock())  # queries
+    callback.after_worker_group_poll_status(MagicMock())  # consumes the report
     first_report = callback.prev_report
     assert first_report is not None
-    callback.after_worker_group_poll_status(MagicMock())  # throttled, no query
-    assert callback.prev_report is first_report  # unchanged -> no second query
+    callback.after_worker_group_poll_status(MagicMock())  # poller published nothing
+    assert callback.prev_report is first_report
+
+
+def _drain(poller, n, timeout_s=5.0):
+    got = []
+    deadline = time.monotonic() + timeout_s
+    while len(got) < n and time.monotonic() < deadline:
+        item = poller.next_result()
+        if item is None:
+            time.sleep(0.005)
+        else:
+            got.append(item)
+    return got
+
+
+def _join(poller, timeout_s=5.0):
+    poller._thread.join(timeout=timeout_s)
+    return not poller.is_alive
+
+
+def make_poller(query, interval_s=0.01):
+    """A real RASPoller whose ``query`` is replaced by a fake (the transport is
+    exercised by the GPU e2e tests)."""
+    poller = RASPoller(MagicMock(), "ncclras", interval_s=interval_s)
+    poller.query = query
+    return poller
+
+
+def test_ras_poller_publishes_reports_and_stops():
+    # The thread publishes each successful poll; a non-fatal failure is logged
+    # and polling continues; stop() ends the loop without joining.
+    reports = [create_single_comm_report({2: 5, 3: 3})] * 3
+    scripted = iter(reports)
+
+    def query(fmt):
+        assert fmt == "json"
+        try:
+            return next(scripted)
+        except StopIteration:
+            raise RASQueryError("exit_1", stderr="transient")
+
+    poller = make_poller(query)
+    poller.start()
+    assert poller.is_alive
+    assert _drain(poller, 3) == reports
+    # Scripted reports exhausted -> every poll now fails non-fatally, thread lives.
+    assert poller.is_alive
+
+    poller.stop()
+    assert _join(poller)
+    assert poller.next_result() is None
+
+
+def test_ras_poller_fatal_error_is_published_then_exits():
+    fatal = RASQueryError("binary_not_found", "binary 'ncclras' not found", fatal=True)
+
+    def query(fmt):
+        raise fatal
+
+    poller = make_poller(query)
+    poller.start()
+    (item,) = _drain(poller, 1)
+    assert item is fatal
+    assert _join(poller)
+
+
+def test_ras_poller_survives_unexpected_query_error():
+    calls = []
+    report = create_single_comm_report({2: 5, 3: 3})
+
+    def query(fmt):
+        calls.append(fmt)
+        if len(calls) == 1:
+            raise RuntimeError("detector bug")
+        return report
+
+    poller = make_poller(query)
+    poller.start()
+    assert _drain(poller, 1) == [report]
+    poller.stop()
+    assert _join(poller)
+
+
+def test_ras_poller_query_falls_back_to_next_worker():
+    workers = [MagicMock(name="w0"), MagicMock(name="w1"), MagicMock(name="w2")]
+    worker_group = MagicMock()
+    worker_group.get_workers.return_value = workers
+    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+
+    report = create_single_comm_report({2: 5, 3: 3})
+    outcomes = {
+        id(workers[0]): RASQueryError("query_timeout"),
+        id(workers[1]): report,
+    }
+
+    def query_worker(worker, fmt):
+        outcome = outcomes[id(worker)]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    poller._query_worker = query_worker
+    assert poller.query("json") is report  # w0 failed, w1 answered, w2 not asked
+
+
+def test_ras_poller_query_raises_last_error_when_all_workers_fail():
+    workers = [MagicMock(), MagicMock()]
+    worker_group = MagicMock()
+    worker_group.get_workers.return_value = workers
+    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+
+    errors = iter(
+        [RASQueryError("query_timeout"), RASQueryError("binary_not_found", fatal=True)]
+    )
+
+    def query_worker(worker, fmt):
+        raise next(errors)
+
+    poller._query_worker = query_worker
+    with pytest.raises(RASQueryError) as excinfo:
+        poller.query("json")
+    assert excinfo.value.reason == "binary_not_found" and excinfo.value.fatal
+
+
+def test_ras_poller_query_no_workers():
+    worker_group = MagicMock()
+    worker_group.get_workers.return_value = []
+    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+    with pytest.raises(RASQueryError) as excinfo:
+        poller.query("json")
+    assert excinfo.value.reason == "no_workers" and not excinfo.value.fatal
+
+
+def test_callback_starts_and_stops_poller(monkeypatch):
+    # The worker group start owns one poller; teardown stops it and a restart
+    # gets a fresh one (never the stopped instance).
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=[]
+    )
+    callback._poll_interval_s = 0.01
+
+    callback.after_worker_group_start(MagicMock())
+    first = callback._ras_poller
+    assert isinstance(first, RASPoller) and first.is_alive
+
+    callback.before_worker_group_shutdown(MagicMock())
+    assert callback._ras_poller is None and callback._worker_group is None
+    assert _join(first)
+
+    callback.after_worker_group_start(MagicMock())
+    second = callback._ras_poller
+    assert second is not first and second.is_alive
+    assert callback.prev_report is None and callback.comm_deadlock_count == {}
+    callback.before_worker_group_shutdown(MagicMock())
+    assert _join(second)
+
+
+def test_callback_degrades_on_fatal_poll_result(monkeypatch):
+    fatal = RASQueryError("unsupported_f_option", "binary rejected `-f`", fatal=True)
+    callback, captured = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=1,
+        reports=[fatal, create_single_comm_report({2: 5, 3: 3})],
+    )
+
+    callback.after_worker_group_poll_status(MagicMock())  # fatal -> degrade
+    assert callback._is_ras_degraded is True
+    callback.after_worker_group_poll_status(MagicMock())  # no-op once degraded
+    assert callback.prev_report is None and not captured
+
+    # A degraded callback does not start a poller for a later worker group.
+    callback.after_worker_group_start(MagicMock())
+    assert callback._ras_poller is None
 
 
 def test_degraded_skips(monkeypatch):
@@ -781,10 +960,10 @@ def test_unexpected_error_disables_detection(monkeypatch):
     def boom(*_args, **_kwargs):
         raise RuntimeError("detector bug")
 
-    callback.drive_ras_query = boom
+    callback._ras_poller.next_result = boom
     callback.after_worker_group_poll_status(MagicMock())  # must not raise
     assert callback._is_ras_degraded is True
-    # Once degraded, later polls are a no-op (guarded before drive_ras_query).
+    # Once degraded, later polls are a no-op (guarded before next_result).
     callback.after_worker_group_poll_status(MagicMock())
     assert callback.prev_report is None
 
@@ -878,7 +1057,7 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
     # Fail mode threatens to raise a NCCLHangError.
     assert "A NCCLHangError will be raised" in text
     # The RAS report is logged verbatim, without a "NCCL RAS report" label.
-    assert "NCCL RAS text report" in text
+    assert FakePoller.TEXT_REPORT in text
     assert "NCCL RAS report:" not in text
 
 

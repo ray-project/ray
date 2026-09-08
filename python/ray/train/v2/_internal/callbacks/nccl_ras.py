@@ -1,26 +1,34 @@
 """NCCL RAS-based hang detector callback.
 
-NCCL ships Reliability/Availability/Serviceability (RAS) subsystem (NCCL
+NCCL ships a Reliability/Availability/Serviceability (RAS) subsystem (NCCL
 >= 2.24) that runs a monitoring thread inside *every* NCCL process (one per
-GPU/rank). Those threads form a peer mesh tracking job health detecting dead/
-unresponsive ranks and per-rank collective op-counts. Polling ``ncclras``
+GPU/rank). Those threads form a peer mesh tracking job health, detecting dead/
+unresponsive ranks and per-rank collective op-counts. By polling ``ncclras``
 we can check if a communicator's op counts between ranks are mismatched,
 indicating a hang if the op counts don't increase over sequential polls.
 
-Warning: RAS requires that all nodes are communicating, therefore, if there
-is no "world" communicator with all ranks on, RAS will return a subset of
-the ranks and communicators.
+Warning: RAS only knows about the ranks it can reach through its mesh, and the
+mesh is built from the communicators each process has created. Querying
+``ncclras`` on one rank therefore returns every rank reachable *from that
+rank*, which is the whole job only if some communicator spans all ranks (a
+"world" communicator, e.g. the default process group ``torch.distributed``
+creates). If a job only ever creates communicators over disjoint subsets of
+ranks (say ranks 0-1 and ranks 2-3 with no group over 0-3), a query on rank 0
+reports only ranks 0-1 and their communicators, and a hang in the other subset
+is invisible to this callback. In practice every parallelism strategy creates
+a world process group, so real workloads are unlikely to hit this.
 """
 import json
 import logging
 import math
 import os
+import queue
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from collections import defaultdict
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
@@ -29,9 +37,9 @@ import ray
 from ray._private.ray_constants import env_float
 from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.constants import (
-    DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S,
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
+    DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S,
     DEFAULT_NCCLRAS_BINARY_PATH,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
@@ -46,7 +54,7 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
-from ray.train.v2._internal.execution.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
 from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
@@ -341,6 +349,202 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
         return None
 
 
+class RASQueryError(Exception):
+    """A ``ncclras`` query produced no usable output.
+
+    Args:
+        reason: Short machine-readable cause, e.g. ``binary_not_found``,
+            ``query_timeout``, ``exit_1``, ``unparseable_json``.
+        message: Human-readable explanation; defaults to ``reason``.
+        stderr: Tail of the binary's stderr, when there was one.
+        fatal: True for run-wide misconfigurations no retry can fix (binary
+            missing, binary too old for ``-f``); the poller stops on these.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        message: Optional[str] = None,
+        stderr: Optional[str] = None,
+        fatal: bool = False,
+    ):
+        text = message or reason
+        if stderr:
+            text = f"{text} (stderr: {stderr.strip()})"
+        super().__init__(text)
+        self.reason = reason
+        self.stderr = stderr
+        self.fatal = fatal
+
+
+class RASPoller:
+    """Fetches RAS reports from the worker group on a background thread.
+
+    Transport and threading only, no detection state. Vocabulary used here and
+    in :class:`NCCLRASCallback`:
+
+    - a *query* is one ``ncclras`` invocation on one worker;
+    - a *poll* is one loop iteration: workers are queried in turn until one
+      returns a usable report (every worker sees the same RAS mesh, so one
+      success per poll is enough);
+    - a *report* is the parsed :class:`RASReport`.
+
+    The thread polls every ``interval_s`` and publishes each report to a queue
+    the controller drains with :meth:`next_result`, one item per controller
+    tick. A fatal query failure is published as the :class:`RASQueryError`
+    itself and the thread exits, so every state change stays on the controller
+    thread. :meth:`query` is also used synchronously by the callback for the
+    human-readable ``-f text`` report at hang time.
+    """
+
+    def __init__(self, worker_group: WorkerGroup, binary_path: str, interval_s: float):
+        self._worker_group = worker_group
+        self._binary_path = binary_path
+        self._interval_s = interval_s
+        self._stop = threading.Event()
+        self._results: "queue.SimpleQueue[Union[RASReport, RASQueryError]]" = (
+            queue.SimpleQueue()
+        )
+        self._thread = threading.Thread(
+            target=self._run, name="nccl-ras-poller", daemon=True
+        )
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        """Signal the thread to exit.
+
+        Doesn't wait for an in-flight query to finish (up to
+        ``_NCCL_RAS_QUERY_TIMEOUT_S`` per worker) so worker group teardown is
+        never delayed; the thread is a daemon and exits on its own.
+        """
+        self._stop.set()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
+
+    def next_result(self) -> Optional[Union[RASReport, RASQueryError]]:
+        """Take the oldest unread poll result, or ``None`` if there is none.
+
+        Returns:
+            A :class:`RASReport`, a fatal :class:`RASQueryError` (after which
+            nothing more is published), or ``None``.
+        """
+        try:
+            return self._results.get_nowait()
+        except queue.Empty:
+            return None
+
+    def _run(self):
+        """Thread body: poll, publish, wait out the interval, repeat."""
+        while not self._stop.is_set():
+            started = time.monotonic()
+            try:
+                self._results.put(self.query("json"))
+            except RASQueryError as e:
+                if e.fatal:
+                    self._results.put(e)
+                    return
+                logger.info(
+                    "`ncclras` poll produced no report (%s). Will retry next poll.", e
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Unexpected error polling `ncclras`. Will retry.")
+            self._stop.wait(max(0.0, self._interval_s - (time.monotonic() - started)))
+
+    def query(self, fmt: Literal["json", "text"]) -> Union[RASReport, str]:
+        """Run ``ncclras`` on the first worker that answers.
+
+        Args:
+            fmt: ``json`` for a parsed :class:`RASReport`, ``text`` for the
+                human-readable report.
+
+        Returns:
+            The parsed report (``json``) or raw text (``text``).
+
+        Raises:
+            RASQueryError: Every worker failed. The error is the last worker's;
+                ``fatal`` is set when that failure was a misconfiguration.
+        """
+        workers = list(self._worker_group.get_workers())
+        if not workers:
+            raise RASQueryError("no_workers", "no workers available to query")
+
+        last_error: Optional[RASQueryError] = None
+        for worker in workers:
+            try:
+                return self._query_worker(worker, fmt)
+            except RASQueryError as e:
+                logger.debug(
+                    "`ncclras` query failed on worker %s (%s). Trying the next worker.",
+                    worker,
+                    e,
+                )
+                last_error = e
+        raise last_error
+
+    def _query_worker(
+        self, worker: Worker, fmt: Literal["json", "text"]
+    ) -> Union[RASReport, str]:
+        """Run a single ``ncclras`` query on one worker.
+
+        Args:
+            worker: The train worker to run ``ncclras`` on.
+            fmt: ``json`` or ``text``.
+
+        Returns:
+            The parsed report (``json``) or raw text (``text``).
+
+        Raises:
+            RASQueryError: The query timed out, errored, exited non-zero, or
+                produced output that could not be used.
+        """
+        ref = None
+        try:
+            ref = worker.execute_async(
+                run_ncclras, self._binary_path, _NCCL_RAS_QUERY_TIMEOUT_S, fmt
+            )
+            result = ray.get(ref, timeout=_NCCL_RAS_QUERY_TIMEOUT_S)
+        except GetTimeoutError:
+            ray.cancel(ref)
+            raise RASQueryError("query_timeout")
+        except Exception as e:  # noqa: BLE001
+            # ``ref`` is still ``None`` when ``execute_async`` itself failed.
+            if ref is not None:
+                ray.cancel(ref)
+            raise RASQueryError("query_error", str(e))
+
+        if not result["ok"]:
+            reason = result["reason"]
+            if reason == "binary_not_found":
+                raise RASQueryError(
+                    reason,
+                    f"binary {self._binary_path!r} not found on the worker. "
+                    f"Set {NCCLRAS_BINARY_PATH_ENV_VAR} to a valid path",
+                    fatal=True,
+                )
+            if reason == "unsupported_f_option":
+                raise RASQueryError(
+                    reason,
+                    f"binary {self._binary_path!r} rejected the `-f` format flag, "
+                    "which requires NCCL 2.28+",
+                    fatal=True,
+                )
+            raise RASQueryError(reason, stderr=result.get("stderr"))
+
+        if fmt == "json":
+            logger.debug("`ncclras` json output: %s", result["stdout"])
+            report = parse_ras_schema(result["stdout"])
+            if report is None:
+                raise RASQueryError("unparseable_json")
+            return report
+        if not result["stdout"]:
+            raise RASQueryError("empty_text_output")
+        return result["stdout"]
+
+
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """Detects NCCL hangs via the RAS subsystem (see module docstring for the
     topology and the hard/soft model).
@@ -361,7 +565,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             NCCLRAS_BINARY_PATH_ENV_VAR, DEFAULT_NCCLRAS_BINARY_PATH
         )
         self._poll_interval_s = env_float(
-            NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S
+            NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S
         )
         if self._poll_interval_s <= 0:
             raise ValueError(
@@ -400,14 +604,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 f"got {self._action!r}."
             )
 
-        # The train worker group to query for RAS
+        # The train worker group (for stack dumps) and the poller fetching its
+        # RAS reports in the background; both live for one worker group.
         self._worker_group: Optional[WorkerGroup] = None
-        # Background executor for the RAS query to not block the controller event loop.
-        self._executor: Optional[ThreadPoolExecutor] = None
-        # In-flight background RAS query (see ``drive_ras_query``), if any.
-        self._ras_query_future: Optional[Future] = None
-        # Force a query on the next poll after (re)start.
-        self._last_query_time = float("-inf")
+        self._ras_poller: Optional[RASPoller] = None
 
         # The previous successful poll's report
         self.prev_report: Optional[RASReport] = None
@@ -421,10 +621,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
-        self._ras_query_future = None
-        self._last_query_time = float("-inf")
         self.prev_report = None
-
         self.reset_hang_counters()
 
     def reset_hang_counters(self):
@@ -434,19 +631,25 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def after_worker_group_start(self, worker_group: WorkerGroup):
         self._worker_group = worker_group
         self.reset_detection_state()
+        self._retire_poller()
+        if self._is_ras_degraded:
+            return
+        self._ras_poller = RASPoller(
+            worker_group, self._binary_path, self._poll_interval_s
+        )
+        self._ras_poller.start()
 
     def before_worker_group_shutdown(self, worker_group):
+        self._retire_poller()
         self._worker_group = None
-        # Abandon any in-flight query
-        if self._ras_query_future is not None:
-            self._ras_query_future.cancel()
-            self._ras_query_future = None
-        if self._executor is not None:
-            self._executor.shutdown(wait=False)
-            self._executor = None
+
+    def _retire_poller(self):
+        if self._ras_poller is not None:
+            self._ras_poller.stop()
+            self._ras_poller = None
 
     def after_worker_group_poll_status(self, worker_group_status):
-        if self._is_ras_degraded or self._worker_group is None:
+        if self._is_ras_degraded or self._ras_poller is None:
             return
 
         # This hook runs on the controller's poll loop, so any error here must
@@ -454,28 +657,25 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # fail action and must propagate; every other exception is a detector bug
         # -- log it and disable detection for the rest of the run.
         try:
-            ras_report = self.drive_ras_query()
-            if ras_report is None:
-                # No fresh query this poll due to throttling or an in-flight query
+            result = self._ras_poller.next_result()
+            if result is None:
+                # The poller hasn't completed a new poll since the last tick
                 return
-            elif ras_report.mismatched_comms:
-                self.evaluate_comm_mismatch(ras_report)
-            else:  # Healthy with no mismatches
-                if self.comm_deadlock_count:
-                    for comm_id, count in self.comm_deadlock_count.items():
-                        if count > self._suspicion_polls:
-                            logger.info(
-                                "NCCL communicator %s resumed making progress after "
-                                "being stalled for %.0fs (%d polls). It is no longer "
-                                "suspected of hanging.",
-                                comm_id,
-                                count * self._poll_interval_s,
-                                count,
-                            )
+            if isinstance(result, RASQueryError):
+                logger.warning(
+                    "`ncclras` %s. Disabling NCCL RAS hang detection for the rest "
+                    "of this run.",
+                    result,
+                )
+                self._is_ras_degraded = True
+                return
 
+            if result.mismatched_comms:
+                self.evaluate_comm_mismatch(result)
+            else:  # Healthy with no mismatches, so every frozen streak is over
+                self.log_recovered_comms(frozen_counts={})
                 self.reset_hang_counters()
-
-            self.prev_report = ras_report
+            self.prev_report = result
         except NCCLHangError:
             raise
         except Exception:  # noqa: BLE001
@@ -486,7 +686,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._is_ras_degraded = True
 
     def evaluate_comm_mismatch(self, report: RASReport):
-        """Track frozen communicators and escalate user-facing hang messaging.
+        """Advance the per-communicator frozen streaks and act on them.
 
         A communicator is deadlocked only when *no* rank advanced *any* op since
         the last poll: a real hang blocks every rank, so every op freezes. It's
@@ -496,40 +696,60 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if self.prev_report is None:
             return
 
-        # 0. Compute the sequential ras report op count difference
+        # 1. Classify: which mismatched communicators made no progress this poll
+        frozen_counts = self.compute_frozen_streaks(report)
+        confirmed_comm_hangs = [
+            comm_id
+            for comm_id, count in frozen_counts.items()
+            if count == self._confirm_poll_counts
+        ]
+
+        # 2. Update state: a communicator that progressed drops its streak
+        self.log_recovered_comms(frozen_counts)
+        self.comm_deadlock_count = frozen_counts
+
+        # 3. Act
+        if confirmed_comm_hangs:
+            self.handle_confirmed_hangs(confirmed_comm_hangs, report)
+        elif frozen_counts:
+            self.handle_suspected_hangs(report)
+
+    def compute_frozen_streaks(self, report: RASReport) -> Dict[str, int]:
+        """Extend the frozen streak of every mismatched communicator that stalled.
+
+        Args:
+            report: The current poll's report, diffed against ``prev_report``.
+
+        Returns:
+            ``{comm_id: consecutive frozen polls}`` for the communicators that
+            are mismatched in ``report`` and whose ranks all advanced zero ops
+            since ``prev_report``. Communicators that progressed, or are new
+            this poll, are absent so their streak restarts from zero.
+        """
         op_diff = compute_report_op_diff(self.prev_report, report)
 
-        # 1. Identify confirmed hanging mismatched communicator
-        new_comm_deadlock_count: Dict[str, int] = {}
-        confirmed_comm_hangs: List[str] = []
+        frozen_counts: Dict[str, int] = {}
         for comm_id in report.mismatched_comms:
             if comm_id not in op_diff:
                 continue
-
             comm_frozen = all(
                 delta == 0
                 for op_deltas in op_diff[comm_id].values()
                 for delta in op_deltas.values()
             )
-            if not comm_frozen:
-                continue
+            if comm_frozen:
+                frozen_counts[comm_id] = self.comm_deadlock_count.get(comm_id, 0) + 1
+        return frozen_counts
 
-            count = self.comm_deadlock_count.get(comm_id, 0) + 1
-            new_comm_deadlock_count[comm_id] = count
+    def log_recovered_comms(self, frozen_counts: Dict[str, int]):
+        """Log each previously suspected communicator that is no longer frozen.
 
-            if count == self._confirm_poll_counts:
-                confirmed_comm_hangs.append(comm_id)
-
-        # 2. Handle confirmed comm hangs
-        if confirmed_comm_hangs:
-            self.handle_confirmed_hangs(confirmed_comm_hangs, report)
-
-        # 3. Handle unfrozen comms
+        Args:
+            frozen_counts: This poll's streaks; anything in
+                ``comm_deadlock_count`` but not here has resumed progress.
+        """
         for comm_id, count in self.comm_deadlock_count.items():
-            if (
-                comm_id not in new_comm_deadlock_count
-                and self.comm_deadlock_count[comm_id] > self._suspicion_polls
-            ):
+            if comm_id not in frozen_counts and count >= self._suspicion_polls:
                 logger.info(
                     "NCCL communicator %s resumed making progress after being stalled "
                     "for %.0f seconds (%d polls). It is no longer suspected of hanging.",
@@ -538,17 +758,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     count,
                 )
 
-        # 4. Any comm no longer frozen is dropped from the streak count
-        self.comm_deadlock_count = new_comm_deadlock_count
-
-        # 5. Handle suspected frozen comms
-        if self.comm_deadlock_count:
-            self.handle_suspected_hangs(report)
-
     def handle_confirmed_hangs(
         self, confirmed_comm_hangs: List[str], report: RASReport
     ):
-        ras_human_output = self.query_ras_on_workers("text")
+        ras_human_output = self.fetch_ras_human_report()
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
@@ -635,160 +848,24 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 stalled_comms,
                 periodic_escalation,
             )
-            ras_human_output = self.query_ras_on_workers("text")
+            ras_human_output = self.fetch_ras_human_report()
             if ras_human_output:
                 logger.info("%s", ras_human_output)
 
-    def drive_ras_query(self) -> Optional[RASReport]:
-        """Drive the throttled JSON RAS poll without blocking the event loop.
+    def fetch_ras_human_report(self) -> Optional[str]:
+        """Synchronously fetch ``ncclras -f text`` for the logs.
 
-        Only the periodic JSON poll goes through here. The one-off human-readable
-        ``-f text`` report fetched at hang time calls
-        :meth:`query_ras_on_workers` directly (synchronously, on the poll loop)
-        so it doesn't share this method's single-in-flight future or
-        poll-interval throttle.
+        Runs on the controller thread; only called once a hang is suspected or
+        confirmed, when the job is already stalled.
 
         Returns:
-            A report on the poll where a query becomes ready, else ``None``.
+            The report, or ``None`` if no worker could produce one.
         """
-        if self._executor is None:
-            self._executor = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="nccl-ras-query"
-            )
-
-        now = time.monotonic()
-        if self._ras_query_future is None and (
-            now - self._last_query_time >= self._poll_interval_s
-        ):
-            self._last_query_time = now
-            self._ras_query_future = self._executor.submit(
-                self.query_ras_on_workers, "json"
-            )
-
-        future = self._ras_query_future
-        if future is not None and future.done():
-            self._ras_query_future = None
-            try:
-                return future.result()
-            except Exception as e:
-                logger.info("ncclras query failed: %s", e)
-        return None
-
-    def query_ras_on_workers(
-        self, ras_format: Literal["json", "text"]
-    ) -> Optional[Union[RASReport, str]]:
-        """Run RAS query across candidate workers (runs on the background thread).
-
-        Tries each worker in turn and returns the first usable report. If every
-        worker fails, logs the reason: fatal misconfigurations (missing/outdated
-        ``ncclras`` binary) disable detection for the rest of the run, while
-        transient failures (timeouts, exit codes) are logged for the poll and
-        retried on the next one.
-
-        Args:
-            ras_format: What format to use with `ncclras`.
-
-        Returns:
-            The parsed report (``json``) / raw text (``text``), or ``None`` if no
-            worker produced a usable result this poll.
-        """
-        workers = list(self._worker_group.get_workers())
-        if not workers:
-            logger.warning(
-                "NCCL RAS: no workers available to query `ncclras`. "
-                "Skipping this poll."
-            )
+        try:
+            return self._ras_poller.query("text")
+        except RASQueryError as e:
+            logger.info("Could not fetch the `ncclras` text report (%s).", e)
             return None
-
-        last_failure_reason: Optional[str] = None
-        last_failure_stderr: Optional[str] = None
-        for worker in workers:
-            ref = None
-            try:
-                ref = worker.execute_async(
-                    run_ncclras,
-                    self._binary_path,
-                    _NCCL_RAS_QUERY_TIMEOUT_S,
-                    ras_format,
-                )
-                result = ray.get(ref, timeout=_NCCL_RAS_QUERY_TIMEOUT_S)
-            except GetTimeoutError:
-                last_failure_reason = "query_timeout"
-                logger.debug(
-                    "`ncclras` query timed out on worker %s. "
-                    "Cancelling and trying the next worker.",
-                    worker,
-                )
-                ray.cancel(ref)
-                continue
-            except Exception as e:  # noqa: BLE001
-                last_failure_reason = f"query_error: {e}"
-                logger.debug(
-                    "`ncclras` query failed on worker %s: %s. "
-                    "Trying the next worker.",
-                    worker,
-                    e,
-                )
-                if ray is not None:
-                    ray.cancel(ref)
-                continue
-
-            if not result.get("ok"):
-                last_failure_reason = result.get("reason")
-                last_failure_stderr = result.get("stderr", None)
-                logger.debug(
-                    "`ncclras` on worker %s returned no data. "
-                    "Reason: %s, stderr: %s. Trying the next worker.",
-                    worker,
-                    last_failure_reason,
-                    last_failure_stderr,
-                )
-                continue
-
-            if ras_format == "json":
-                # Stash the raw JSON for the pre-fail snapshot / soft-hang logs.
-                logger.debug("`ncclras` json output: %s", result["stdout"])
-                report = parse_ras_schema(result["stdout"])
-                if report is None:
-                    last_failure_reason = "unparseable_json"
-                    continue
-                return report
-            else:  # ras_format == 'text'
-                if result["stdout"]:
-                    return result["stdout"]
-                last_failure_reason = "empty_text_output"
-                continue
-
-        # Every worker failed. Fatal, run-wide misconfigurations disable the
-        # detector. Anything else is treated as transient and retried next poll.
-        if last_failure_reason == "binary_not_found":
-            logger.warning(
-                "`ncclras` binary %r not found on any worker. "
-                "Disabling NCCL RAS hang detection for the rest of this run. "
-                "Set %s to a valid path.",
-                self._binary_path,
-                NCCLRAS_BINARY_PATH_ENV_VAR,
-            )
-            self._is_ras_degraded = True
-        elif last_failure_reason == "unsupported_f_option":
-            logger.warning(
-                "`ncclras` binary %r rejected the `-f` format flag, "
-                "which requires NCCL 2.28+. Disabling NCCL RAS hang detection "
-                "for the rest of this run.",
-                self._binary_path,
-            )
-            self._is_ras_degraded = True
-        else:
-            logger.info(
-                "`ncclras` (%s) returned no usable data from any of "
-                "%d worker(s) this poll (last reason: %s, last stderr: %s). "
-                "Will retry next poll.",
-                ras_format,
-                len(workers),
-                last_failure_reason,
-                last_failure_stderr,
-            )
-        return None
 
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
@@ -820,17 +897,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.info("Could not launch a stack dump on any worker.")
             return None
 
-        ready, not_ready = ray.wait(
+        _, not_ready = ray.wait(
             list(dump_refs), num_returns=len(dump_refs), timeout=_STACK_DUMP_TIMEOUT_S
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
+            for rank, text in launch_failures.items():
+                (Path(temp_dir) / f"rank_{rank}.log").write_text(text)
+
             for ref, rank in dump_refs.items():
                 file = Path(temp_dir) / f"rank_{rank}.log"
-
-                if rank in launch_failures:
-                    file.write_text(launch_failures[rank])
-                elif ref in not_ready:
+                if ref in not_ready:
                     logger.warning(
                         "Stack dump on rank %d did not finish within %.0fs. "
                         "Its trace will be missing from the hang diagnostics.",
@@ -841,7 +918,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     file.write_text(
                         f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
                     )
-                elif ref in ready:
+                else:
                     try:
                         file.write_text(ray.get(ref))
                     except Exception as e:  # noqa: BLE001

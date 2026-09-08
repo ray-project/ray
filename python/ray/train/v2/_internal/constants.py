@@ -162,7 +162,7 @@ DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
 
 # How often (seconds) to query the NCCL RAS subsystem on a worker
 NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S"
-DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S: float = 15.0
+DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S: float = 15.0
 # How long a communicator must make no progress before the detector acts.
 NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S"
 DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
