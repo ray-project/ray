@@ -8,6 +8,14 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
+# These tests start their own cluster with `ray start --head` as a subprocess, so
+# the head and the driver only agree on a token when both read it from the
+# environment.
+RAY_TOKEN_AUTH_TEST_ENV = {
+    "RAY_AUTH_MODE": "token",
+    "RAY_AUTH_TOKEN": "test_token_12345678901234567890123456789012",
+}
+
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
@@ -218,6 +226,7 @@ cc_test(
         "src/ray/test/*.cc",
     ]),
     copts = COPTS,
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -248,6 +257,7 @@ cc_test(
         "src/ray/test/cluster/test_cross_language_invocation.py",
         ":ray_cpp_pkg_files",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -273,6 +283,7 @@ cc_test(
         ":ray_cpp_pkg_files",
         "//java:libio_ray_ray_test.jar",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = [
         "no_macos",
@@ -341,6 +352,7 @@ cc_test(
     data = [
         "simple_kv_store.so",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -410,6 +422,7 @@ cc_test(
     data = [
         "metric_example.so",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -448,6 +461,7 @@ py_test_module_list(
         "counter.so",
         "plus.so",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",
@@ -468,10 +482,11 @@ py_test(
         "simple_job",
         "simple_job.so",
     ],
-    env = {
-        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
-        "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
-    },
+    env = dict(
+        RAY_TOKEN_AUTH_TEST_ENV,
+        SIMPLE_DRIVER_MAIN_PATH = "$(location simple_job)",
+        SIMPLE_DRIVER_SO_PATH = "$(location simple_job.so)",
+    ),
     tags = [
         # TODO(ray-core): fix this test on apple silicon macos.
         "no_macos",

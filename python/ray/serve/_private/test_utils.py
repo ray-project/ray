@@ -824,7 +824,11 @@ def check_ray_stopped():
 
 
 def check_ray_started():
-    return requests.get("http://localhost:8265/api/ray/version").status_code == 200
+    from ray._private.test_utils import get_with_auth_token
+
+    return (
+        get_with_auth_token("http://localhost:8265/api/ray/version").status_code == 200
+    )
 
 
 def check_deployment_status(

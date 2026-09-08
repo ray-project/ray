@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
 import ray
 import ray._private.state
@@ -18,6 +17,7 @@ from ray._common.utils import binary_to_hex
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.test_utils import (
     check_call_subprocess,
+    get_with_auth_token,
     wait_for_aggregator_agent_if_enabled,
 )
 from ray.core.generated import gcs_pb2, gcs_service_pb2
@@ -185,7 +185,7 @@ def test_timeline_request(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        resp = requests.get(f"{dashboard_url}/api/v0/tasks/timeline")
+        resp = get_with_auth_token(f"{dashboard_url}/api/v0/tasks/timeline")
         resp.raise_for_status()
         assert resp.json(), "No result has returned"
         return True

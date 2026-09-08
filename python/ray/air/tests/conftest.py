@@ -5,7 +5,12 @@ import os
 import pytest
 
 import ray
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import (
+    _isolate_token_auth_state,  # noqa: F401
+    _restore_token_auth_env,  # noqa: F401
+    _token_auth_env_baseline,  # noqa: F401
+    pytest_runtest_makereport,  # noqa
+)
 
 # Keep the Parquet footer-reader pool tiny for these tests. The production
 # default of 32 actors times out under CI parallelism; tests that need a larger

@@ -5,6 +5,11 @@ import re
 import sys
 from typing import Dict
 
+# RayConfig reads the auth mode once at import; pin a fixed token before
+# importing ray so the cluster and this process agree regardless of ~/.ray.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
+
 import grpc
 import pytest
 import requests
@@ -13,7 +18,11 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import generate_system_config_map
+from ray._private.test_utils import (
+    generate_system_config_map,
+    get_with_auth_token,
+    request_with_auth_token,
+)
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -27,7 +36,7 @@ SERVE_HEAD_URL = "http://localhost:8265/api/serve/applications/"
 
 
 def deploy_config_multi_app(config: Dict, url: str):
-    put_response = requests.put(url, json=config, timeout=30)
+    put_response = request_with_auth_token("PUT", url, json=config, timeout=30)
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
 
@@ -123,13 +132,13 @@ def test_put_with_http_options(ray_start_stop, option, override):
     updated_serve_config_json = copy.deepcopy(original_serve_config_json)
     updated_serve_config_json[option] = override
 
-    put_response = requests.put(
-        SERVE_HEAD_URL, json=updated_serve_config_json, timeout=5
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=updated_serve_config_json, timeout=5
     )
     assert put_response.status_code == 200
 
     # Fetch Serve status and confirm that HTTP options are unchanged
-    get_response = requests.get(SERVE_HEAD_URL, timeout=5)
+    get_response = get_with_auth_token(SERVE_HEAD_URL, timeout=5)
     serve_details = ServeInstanceDetails.model_validate(get_response.json())
 
     original_http_options = HTTPOptionsSchema.model_validate(original_http_options_json)
@@ -239,17 +248,17 @@ def test_get_applications_while_gcs_down(
     # Test serve REST API availability when the GCS is down.
     serve.start(detached=True)
 
-    get_response = requests.get(SERVE_HEAD_URL, timeout=15)
+    get_response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
     assert get_response.status_code == 200
     ray._private.worker._global_node.kill_gcs_server()
 
     for _ in range(10):
-        assert requests.get(SERVE_HEAD_URL, timeout=30).status_code == 200
+        assert get_with_auth_token(SERVE_HEAD_URL, timeout=30).status_code == 200
 
     ray._private.worker._global_node.start_gcs_server()
 
     for _ in range(10):
-        assert requests.get(SERVE_HEAD_URL, timeout=30).status_code == 200
+        assert get_with_auth_token(SERVE_HEAD_URL, timeout=30).status_code == 200
 
     serve.shutdown()
 
@@ -260,7 +269,7 @@ def test_get_applications_while_gcs_down(
 def test_target_capacity_field(ray_start_stop):
     """Test that the `target_capacity` field is always populated as expected."""
 
-    raw_json = requests.get(SERVE_HEAD_URL).json()
+    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
 
     # `target_capacity` should be present in the response before deploying anything.
     assert raw_json["target_capacity"] is None
@@ -275,7 +284,7 @@ def test_target_capacity_field(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     # `target_capacity` should be present in the response even if not set.
-    raw_json = requests.get(SERVE_HEAD_URL).json()
+    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
@@ -286,7 +295,7 @@ def test_target_capacity_field(ray_start_stop):
     # Set `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 20
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = requests.get(SERVE_HEAD_URL).json()
+    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 20
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 20
@@ -297,7 +306,7 @@ def test_target_capacity_field(ray_start_stop):
     # Update `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 40
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = requests.get(SERVE_HEAD_URL).json()
+    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 40
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 40
@@ -308,7 +317,7 @@ def test_target_capacity_field(ray_start_stop):
     # Reset `target_capacity` by omitting it, ensure it is returned properly.
     del config["target_capacity"]
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = requests.get(SERVE_HEAD_URL).json()
+    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
@@ -318,7 +327,12 @@ def test_target_capacity_field(ray_start_stop):
 
     # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
     config["target_capacity"] = 101
-    assert requests.put(SERVE_HEAD_URL, json=config, timeout=30).status_code == 400
+    assert (
+        request_with_auth_token(
+            "PUT", SERVE_HEAD_URL, json=config, timeout=30
+        ).status_code
+        == 400
+    )
 
 
 def check_log_file(log_file: str, expected_regex: list):

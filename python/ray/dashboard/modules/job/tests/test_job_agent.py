@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-import requests
 import yaml
 
 import ray
@@ -23,6 +22,7 @@ from ray._private.test_utils import (
     chdir,
     format_web_url,
     get_current_unused_port,
+    get_with_auth_token,
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
@@ -548,7 +548,7 @@ async def test_job_log_in_multiple_node(
         job_check_status.append(False)
 
     async def _check_all_jobs_log():
-        response = requests.get(webui_url + "/nodes?view=summary")
+        response = get_with_auth_token(webui_url + "/nodes?view=summary")
         response.raise_for_status()
         summary = response.json()
         assert summary["result"] is True, summary["msg"]

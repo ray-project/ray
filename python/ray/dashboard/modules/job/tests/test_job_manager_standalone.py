@@ -1,4 +1,10 @@
+import os
 import sys
+
+# RayConfig reads the auth mode once at import; pin a fixed token before
+# importing ray so the cluster and this process agree regardless of ~/.ray.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
 
 import pytest
 

@@ -16,7 +16,7 @@ from ray.tests.conftest import _ray_start
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    return {"Connection": "keep-alive"}
 
 
 @pytest.fixture(scope="module")

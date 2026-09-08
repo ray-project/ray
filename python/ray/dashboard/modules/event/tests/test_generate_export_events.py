@@ -1,5 +1,3 @@
-# isort: skip_file
-# ruff: noqa: E402
 import json
 import os
 import sys
@@ -10,6 +8,11 @@ import pytest
 # `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE_CONFIG
 # even outside a Ray driver.
 os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
+
+# RayConfig reads the auth mode once at import; pin a fixed token before
+# importing ray so the cluster and this process agree regardless of ~/.ray.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
 
 import ray
 from ray._common.test_utils import async_wait_for_condition

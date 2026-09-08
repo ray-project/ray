@@ -45,7 +45,9 @@ from ray._private.ray_constants import (
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,
+    get_with_auth_token,
     init_error_pubsub,
+    request_with_auth_token,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
@@ -378,7 +380,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(3)
         try:
-            response = requests.get(
+            response = get_with_auth_token(
                 webui_url + "/test/http_get?url=" + quote_plus(target_url)
             )
             response.raise_for_status()
@@ -398,7 +400,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert agent_addr is not None
             node_ip, http_port, _ = json.loads(agent_addr)
 
-            response = requests.get(
+            response = get_with_auth_token(
                 f"http://{build_address(node_ip, http_port)}"
                 f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
@@ -656,21 +658,24 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     def dashboard_available():
         try:
-            return requests.get(webui_url).status_code == 200
+            return get_with_auth_token(webui_url).status_code == 200
         except Exception:
             return False
 
     wait_for_condition(dashboard_available)
 
     # Starting and getting jobs should be fine from API clients
-    response = requests.post(webui_url + "/api/jobs/", json={"entrypoint": "ls"})
+    response = request_with_auth_token(
+        "POST", webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+    )
     response.raise_for_status()
-    response = requests.get(webui_url + "/api/jobs/")
+    response = get_with_auth_token(webui_url + "/api/jobs/")
     response.raise_for_status()
 
     # Starting job should be blocked for browsers
     for testcase in testcases:
-        response = requests.post(
+        response = request_with_auth_token(
+            "POST",
             webui_url + "/api/jobs/",
             json={"entrypoint": "ls"},
             headers=testcase,
@@ -680,7 +685,8 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     # DELETE should be blocked for browsers
     for testcase in testcases:
-        response = requests.delete(
+        response = request_with_auth_token(
+            "DELETE",
             webui_url + "/api/jobs/nonexistent-job-id",
             headers=testcase,
         )
@@ -688,7 +694,8 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     # PATCH should also be blocked for browsers
     for testcase in testcases:
-        response = requests.patch(
+        response = request_with_auth_token(
+            "PATCH",
             webui_url + "/api/jobs/nonexistent-job-id",
             headers=testcase,
             json={},
@@ -696,7 +703,7 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
         assert response.status_code == 405, "PATCH should be blocked for browsers"
 
     # Getting jobs should be fine for browsers
-    response = requests.get(webui_url + "/api/jobs/")
+    response = get_with_auth_token(webui_url + "/api/jobs/")
     response.raise_for_status()
 
 
@@ -711,20 +718,23 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
 
     def dashboard_available():
         try:
-            return requests.get(webui_url).status_code == 200
+            return get_with_auth_token(webui_url).status_code == 200
         except Exception:
             return False
 
     wait_for_condition(dashboard_available)
 
     # Starting and getting jobs should be fine from API clients
-    response = requests.post(webui_url + "/api/jobs/", json={"entrypoint": "ls"})
+    response = request_with_auth_token(
+        "POST", webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+    )
     response.raise_for_status()
-    response = requests.get(webui_url + "/api/jobs/")
+    response = get_with_auth_token(webui_url + "/api/jobs/")
     response.raise_for_status()
 
     # Starting job should be blocked for browsers
-    response = requests.post(
+    response = request_with_auth_token(
+        "POST",
         webui_url + "/api/jobs/",
         json={"entrypoint": "ls"},
         headers={
@@ -736,7 +746,7 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
         response.raise_for_status()
 
     # Getting jobs should be fine for browsers
-    response = requests.get(webui_url + "/api/jobs/")
+    response = get_with_auth_token(webui_url + "/api/jobs/")
     response.raise_for_status()
 
 
@@ -762,7 +772,7 @@ def test_profiling_endpoints_disabled_by_default(
     ]
 
     for endpoint in profiling_endpoints:
-        response = requests.get(webui_url + endpoint)
+        response = get_with_auth_token(webui_url + endpoint)
         assert response.status_code == 403, (
             f"Expected 403 for {endpoint} when profiling is disabled, "
             f"got {response.status_code}"
@@ -770,7 +780,7 @@ def test_profiling_endpoints_disabled_by_default(
         assert "RAY_DASHBOARD_ENABLE_PROFILING" in response.text
 
     # The status endpoint should report profiling as disabled.
-    response = requests.get(webui_url + "/api/profiling_enabled")
+    response = get_with_auth_token(webui_url + "/api/profiling_enabled")
     response.raise_for_status()
     data = response.json()
     assert data["data"]["profilingEnabled"] is False
@@ -951,7 +961,7 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps = set()
     for _ in range(10):
-        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
+        response = get_with_auth_token(webui_url + "/test/aiohttp_cache/t1?value=1")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -959,7 +969,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1")
+        response = get_with_auth_token(
+            webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -967,7 +979,7 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
+        response = get_with_auth_token(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -975,14 +987,14 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache/tt?value={x}")
+        response = get_with_auth_token(webui_url + f"/test/aiohttp_cache/tt?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
     assert len(timestamps) == 10
 
     timestamps.clear()
-    response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
+    response = get_with_auth_token(webui_url + "/test/aiohttp_cache/raise_exception")
     with pytest.raises(Exception):
         response.raise_for_status()
     result = response.json()
@@ -991,7 +1003,7 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
+        response = get_with_auth_token(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -1000,7 +1012,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     timestamps.clear()
     data = collections.defaultdict(set)
     for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
-        response = requests.get(webui_url + f"/test/aiohttp_cache_lru/t1?value={x}")
+        response = get_with_auth_token(
+            webui_url + f"/test/aiohttp_cache_lru/t1?value={x}"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         data[x].add(timestamp)
@@ -1023,7 +1037,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     # Check that the cluster_status endpoint works without the underlying data
     # from the GCS, but returns nothing.
     def get_cluster_status():
-        response = requests.get(f"{webui_url}/api/cluster_status")
+        response = get_with_auth_token(f"{webui_url}/api/cluster_status")
         response.raise_for_status()
         print(response.json())
         assert response.json()["result"]
@@ -1044,7 +1058,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     )
     ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR, "world")
 
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = get_with_auth_token(f"{webui_url}/api/cluster_status")
     response.raise_for_status()
     assert response.json()["result"]
     assert "autoscalingStatus" in response.json()["data"]
@@ -1078,7 +1092,7 @@ def test_get_nodes_summary(call_ray_start):
     webui_url = format_web_url(webui_url)
 
     def get_nodes_summary():
-        response = requests.get(f"{webui_url}/nodes?view=summary")
+        response = get_with_auth_token(f"{webui_url}/nodes?view=summary")
         response.raise_for_status()
         response = response.json()
         print(response)
@@ -1186,6 +1200,7 @@ import time
 import requests
 from ray._private.test_utils import (
     format_web_url,
+    get_with_auth_token,
     wait_until_server_available,
 )
 import logging
@@ -1203,7 +1218,7 @@ start_time = time.time()
 while True:
     time.sleep(1)
     try:
-        response = requests.get(
+        response = get_with_auth_token(
             webui_url + "/test/dump", proxies={"http": None, "https": None}
         )
         response.raise_for_status()
@@ -1326,7 +1341,9 @@ def test_dashboard_does_not_depend_on_serve():
     ctx = ray.init()
 
     # Ensure standard dashboard features, like component_activities, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
+    response = get_with_auth_token(
+        f"http://{ctx.dashboard_url}/api/component_activities"
+    )
     assert response.status_code == 200
 
     assert "driver" in response.json()
@@ -1339,7 +1356,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/applications/")
+        response = get_with_auth_token(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -1377,7 +1394,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/applications/")
+        response = get_with_auth_token(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -1570,7 +1587,7 @@ def test_middleware_with_httpserver_for_proxy_server(
     webui_url = address_info["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    response = requests.get(f"{webui_url}{target_path}")
+    response = get_with_auth_token(f"{webui_url}{target_path}")
     assert response.json() == mock_response
     assert response.status_code == 200
 
@@ -1593,7 +1610,7 @@ def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
     webui_url = address["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    response = requests.get(f"{webui_url}{target_path}")
+    response = get_with_auth_token(f"{webui_url}{target_path}")
     assert response.json() == mock_response
     assert response.status_code == 200
 
@@ -1614,7 +1631,7 @@ def test_dashboard_not_included_ray_init(shutdown_only, capsys):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get("http://localhost:8265")
+        get_with_auth_token("http://localhost:8265")
 
 
 def test_dashboard_not_included_ray_start(shutdown_only, capsys):
@@ -1640,7 +1657,7 @@ def test_dashboard_not_included_ray_start(shutdown_only, capsys):
         with pytest.raises(ConnectionError):
             # Since the dashboard doesn't start, it should raise ConnectionError
             # becasue we cannot estabilish a connection.
-            requests.get("http://localhost:8265")
+            get_with_auth_token("http://localhost:8265")
     finally:
         runner.invoke(scripts.stop, ["--force"])
 
@@ -1665,7 +1682,7 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get("http://localhost:8265")
+        get_with_auth_token("http://localhost:8265")
 
 
 @pytest.mark.skipif(
@@ -1687,14 +1704,19 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     import aiohttp
     from prometheus_client.samples import Sample
 
+    from ray._raylet import AuthenticationTokenLoader
+
     ray_context = ray_start_with_dashboard
     assert wait_until_server_available(ray_context["webui_url"]) is True
     webui_url = format_web_url(ray_context["webui_url"])
     blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+    auth_headers = AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
 
     async def make_blocking_call():
         async with aiohttp.ClientSession() as session:
-            async with session.get(blocking_url) as resp:
+            async with session.get(blocking_url, headers=auth_headers) as resp:
                 resp.raise_for_status()
                 return await resp.text()
 

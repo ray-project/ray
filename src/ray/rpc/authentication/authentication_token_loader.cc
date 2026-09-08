@@ -29,6 +29,9 @@
 
 #ifdef _WIN32
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#else
+#include <pwd.h>
+#include <unistd.h>
 #endif
 
 namespace ray {
@@ -266,8 +269,19 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
 #else
   const char *path_separator = "/";
   const char *home = std::getenv("HOME");
-  if (home != nullptr) {
+  if (home != nullptr && home[0] != '\0') {
     home_dir = home;
+  } else {
+    // Match Python's Path.home(): when HOME is unset (e.g. CI running as root
+    // without HOME), fall back to the passwd database so the C++ and Python
+    // sides resolve the same ~/.ray/auth_token path.
+    struct passwd pwd;
+    struct passwd *result = nullptr;
+    char buf[4096];  // A home-dir path fits comfortably; no ERANGE retry needed.
+    if (getpwuid_r(getuid(), &pwd, buf, sizeof(buf), &result) == 0 && result != nullptr &&
+        result->pw_dir != nullptr) {
+      home_dir = result->pw_dir;
+    }
   }
 #endif
 

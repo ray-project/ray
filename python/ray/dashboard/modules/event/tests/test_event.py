@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -35,6 +34,8 @@ from ray._private.protobuf_compat import message_to_dict
 from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
     format_web_url,
+    get_with_auth_token,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.cluster_utils import AutoscalingCluster
@@ -148,7 +149,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
 
     def _check_events():
         try:
-            resp = requests.get(f"{webui_url}/events")
+            resp = get_with_auth_token(f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -214,7 +215,7 @@ def test_event_message_limit(
 
     def _check_events():
         try:
-            resp = requests.get(f"{webui_url}/events")
+            resp = get_with_auth_token(f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -239,17 +240,17 @@ def test_report_events(ray_start_with_dashboard):
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     url = f"{webui_url}/report_events"
 
-    resp = requests.post(url)
+    resp = request_with_auth_token("POST", url)
     assert resp.status_code == 400
-    resp = requests.post(url, json={"Hello": "World"})
+    resp = request_with_auth_token("POST", url, json={"Hello": "World"})
     assert resp.status_code == 400
 
     job_id = ray.JobID.from_int(100).hex()
     sample_event = _get_event("Hello", job_id=job_id)
-    resp = requests.post(url, json=[json.dumps(sample_event)])
+    resp = request_with_auth_token("POST", url, json=[json.dumps(sample_event)])
     assert resp.status_code == 200
 
-    resp = requests.get(f"{webui_url}/events")
+    resp = get_with_auth_token(f"{webui_url}/events")
     assert resp.status_code == 200
     result = resp.json()
     all_events = result["data"]["events"]
