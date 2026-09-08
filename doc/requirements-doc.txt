@@ -37,8 +37,14 @@ myst-nb==1.4.0
 # Jupyter conversion
 jupytext==1.15.2
 
-# Pin urllib to avoid downstream ssl incompatibility issues
-urllib3 < 1.27
+# The old <1.27 ceiling was botocore's pre-Python-3.10 urllib3 cap (its
+# `python_version < "3.10"` requirement, the "downstream ssl incompatibility").
+# This docs build runs on Python 3.11, where botocore requires urllib3
+# !=2.2.0,<3 and requests requires <3, so nothing here still caps urllib3 at the
+# 1.x line. Moving to 2.x clears the 1.26.x advisories the scanners flag (all
+# fixed only in the 2.x line). Kept pinned for deterministic deplock
+# regeneration and Dependabot bumps; bump it deliberately rather than removing.
+urllib3==2.7.0
 
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
