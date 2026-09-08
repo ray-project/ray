@@ -111,8 +111,11 @@ DEFAULT_ARROW_RS_MALLOC_TRIM = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM", False)
 # variant above collapses the same idle-worker floor but costs 24-36% wall,
 # because any explicit M_TRIM_THRESHOLD also disables glibc's dynamic mmap
 # threshold so every large decode buffer goes mmap/munmap (arrow_rs_docs
-# findings M61/M64). Linux/glibc only; a no-op elsewhere. Default False.
-DEFAULT_ARROW_RS_MALLOC_TRIM_EOS = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", False)
+# findings M61/M64). Linux/glibc only; a no-op elsewhere. Default True since
+# 2026-09-08: on the release fleet it closed every arrow-rs retention row at
+# ~rs wall (findings M101, build 106096) and replicated x3 on the gate cells
+# with no wall price (M124, build 106284); set the env var to 0 to ablate.
+DEFAULT_ARROW_RS_MALLOC_TRIM_EOS = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", True)
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).

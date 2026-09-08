@@ -3221,6 +3221,33 @@ if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
 
 
+def test_arrow_rs_malloc_trim_eos_default_on(monkeypatch):
+    """The end-of-stream ``malloc_trim(0)`` ships ON: ``DataContext`` defaults
+    ``arrow_rs_malloc_trim_eos`` to True and the env var still wins when set.
+
+    History (findings M101 / M124 in arrow_rs_docs/findings.md): on the release
+    fleet one trim per read-task stream closed every arrow-rs retention row
+    (rlp per-task USS 1.85 -> 0.99, write_parquet sustained 1.40 -> 0.88) at
+    ~rs wall, and its single 2.37x wall cell (M107) did not replicate x3, so
+    the default flipped 2026-09-08. A regression of this default would bring
+    the retention rows back without touching any decode path, i.e. invisibly
+    to the decoded-bytes gates -- hence the literal ``is True`` here.
+    """
+    from ray._common.utils import env_bool
+    from ray.data import context as ctx_mod
+
+    if "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS" in os.environ:
+        pytest.skip("env override set in this session; default not observable")
+    assert ctx_mod.DEFAULT_ARROW_RS_MALLOC_TRIM_EOS is True
+    # A fresh context (not the process-wide one tests mutate) carries it.
+    assert ctx_mod.DataContext().arrow_rs_malloc_trim_eos is True
+    # The mallopt lever stays off: only one allocator lever ships.
+    assert ctx_mod.DEFAULT_ARROW_RS_MALLOC_TRIM is False
+    # Ablation path: the env var overrides the default at import time.
+    monkeypatch.setenv("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", "0")
+    assert env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", True) is False
+
+
 def test_arrow_rs_malloc_trim_eos_fires_once_per_read(tmp_path, monkeypatch):
     """``DataContext.arrow_rs_malloc_trim_eos`` (env
     ``RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS``) calls glibc ``malloc_trim(0)`` exactly

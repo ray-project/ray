@@ -239,12 +239,13 @@ def _maybe_trim_at_stream_end() -> float:
     (:func:`_maybe_enable_malloc_trim`) removes that floor but trims on every
     free AND disables the dynamic mmap threshold, costing 24-36% wall (M61/M64).
     Trimming ONCE per task stream releases the same retained pages while the
-    allocator behaves normally during decode. No-op unless the knob is on.
+    allocator behaves normally during decode. On by default since 2026-09-08
+    (``RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=0`` ablates it); no-op off glibc.
 
-    Returns the wall seconds the trim took (0.0 when off). Under this lever
-    the col02 map_groups fleet cell ran 2.37x pa wall (findings M107) — the
-    time is surfaced per task as ``ReadFilesTaskStats.trim_wall_s`` so the
-    "trim cost" vs "placement" hypotheses can be told apart from result.json.
+    Returns the wall seconds the trim took (0.0 when off). The time is surfaced
+    per task as ``ReadFilesTaskStats.trim_wall_s`` so a "trim cost" reading can
+    be told apart from placement in result.json: the one 2.37x wall cell seen
+    under this lever (findings M107) did not replicate x3 (M124).
     """
     from ray.data.context import DataContext
 

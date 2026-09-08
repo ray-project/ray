@@ -37,25 +37,23 @@ Two matrices share this machinery (--matrix); the name scheme stays
 Buildkite filter (name:.*_2x2_.*) cover them:
 
   2x2    {rs, pa} x {multi, single} over every target (item 29; build 105711).
-  alloc  DEFAULT. {pa, rs, rstrim, rseos} on the original fleet over the
-         memory, sustained and control targets plus three wall targets kept as
-         the release-scale confirmation of the M97/M98 wall fix; single-node
-         cells only where the single-node reading is itself the question
-         (ALLOC_SINGLE_TOO). The two extra arms are the arrow-rs reader plus
-         one allocator lever each, toggled by env exactly like the reader flag:
-           rstrim  RAY_DATA_ARROW_RS_MALLOC_TRIM=1      mallopt(M_TRIM_THRESHOLD,0)
-                   once per worker: the box-confirmed mechanism probe (M48
-                   idle-floor R 0.08) at its known wall price (M61 +24-36%).
-           rseos   RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1  one malloc_trim(0) at
-                   the end of each read task's stream: the ship candidate.
-         Reading: rstrim closes the sustained-wUSS gap => glibc heap retention
-         is the release-regime mechanism (its wall column is the price);
-         rseos matching rstrim's memory at ~rs wall => ship it; the gap
-         surviving both levers => not the allocator (live-object retention or
-         worker count) => task timeline + heap census next. Sanity gate:
-         decoded-bytes/peak-batch dists identical across the three rs arms
-         (neither lever touches a decode path); pa cells must reproduce the
-         5-run history or the window is contaminated.
+  alloc  DEFAULT. {pa, rs} on the original fleet over the memory, sustained
+         and control targets plus three wall targets kept as the release-scale
+         confirmation of the M97/M98 wall fix; single-node cells only where
+         the single-node reading is itself the question (ALLOC_SINGLE_TOO);
+         the two cells that must replicate inside one build run x3
+         (ALLOC_REPEATED). History: builds 106096 / 106284 ran this matrix
+         with two extra arms, rstrim (RAY_DATA_ARROW_RS_MALLOC_TRIM=1, the
+         mallopt mechanism probe, retired M108) and rseos
+         (RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1, one malloc_trim(0) per read
+         task stream). rseos closed every retention row at ~rs wall (M101) and
+         its one wall outlier did not replicate (M124), so on 2026-09-08 the
+         eos trim became the arrow-rs default (context.py) -- the rs arm now
+         IS the former rseos arm and the extra arms are gone. Reading: pa
+         cells must reproduce the build history or the window is
+         contaminated; decoded-bytes/peak-batch dists must match across arms
+         (the trim touches no decode path); any rs/pa ratio >= 1.15 is a fix
+         item (arrow_rs_docs/findings.md M104 gates).
 
 Usage (from anywhere; rewrites its marker block in release_data_tests.yaml):
     python gen_2x2_release_tests.py                # regenerate alloc + validate
@@ -138,15 +136,14 @@ SINGLE_COMPUTE = {
     "dataset_mixing/compute_8_cpu.yaml": "single_node_cpu_compute.yaml",
 }
 
-# Arm -> the env prefix prepended to the parent's run script. Reader flag
-# first in every arm; the allocator knobs are read by the arrow-rs reader only
-# (python/ray/data/context.py DEFAULT_ARROW_RS_MALLOC_TRIM[_EOS]), so they are
-# inert on the pa path by construction.
+# Arm -> the env prefix prepended to the parent's run script. The rs arm is
+# the reader as shipped: since 2026-09-08 that includes the end-of-stream
+# malloc_trim (python/ray/data/context.py DEFAULT_ARROW_RS_MALLOC_TRIM_EOS =
+# True), so no allocator knob is spelled out here. Add an explicit
+# RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=0 arm only to ablate it.
 ARMS = {
     "pa": f"{READER_ENV}=0",
     "rs": f"{READER_ENV}=1",
-    "rstrim": f"{READER_ENV}=1 RAY_DATA_ARROW_RS_MALLOC_TRIM=1",
-    "rseos": f"{READER_ENV}=1 RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1",
 }
 
 # alloc matrix: wall targets dropped except these three -- the release-scale
@@ -335,11 +332,11 @@ _BLOCK_HEADERS = {
         "# node}.",
     ],
     "alloc": [
-        "# Allocator arms on the original fleet: {pa, rs, rstrim, rseos} over the",
-        "# memory / sustained / control targets + 3 wall-fix confirmations; single",
-        "# cells only for the two shapes whose single-node reading is the question.",
-        "# rstrim = RAY_DATA_ARROW_RS_MALLOC_TRIM=1 (mechanism probe, known wall",
-        "# price); rseos = RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1 (ship candidate).",
+        "# {pa, rs} on the original fleet over the memory / sustained / control",
+        "# targets + 3 wall-fix confirmations; single cells only for the two shapes",
+        "# whose single-node reading is the question; two gate cells x3. rs = the",
+        "# arrow-rs reader as shipped, which since 2026-09-08 includes the",
+        "# end-of-stream malloc_trim (former rseos arm; rstrim retired, M108).",
     ],
 }
 
@@ -403,9 +400,9 @@ def validate(defaults, resolved_tests, matrix):
         _, arm, topology = parse_2x2_name(name)
         assert test["frequency"] == "manual", name
         assert test["run"]["script"].startswith(f"{ARMS[arm]} "), name
-        # The allocator knobs ride on the rs reader; never emit them alone.
-        if "MALLOC_TRIM" in ARMS[arm]:
-            assert test["run"]["script"].startswith(f"{READER_ENV}=1 "), name
+        # The trim is the reader's default now; an allocator knob spelled into
+        # a cell would silently turn the matrix back into an ablation.
+        assert "MALLOC_TRIM" not in test["run"]["script"], name
         compute = test["cluster"]["cluster_compute"]
         assert os.path.exists(
             os.path.join(DATASET_DIR, compute)
@@ -456,7 +453,7 @@ def main():
     n_single = sum(1 for _, _, s in cells if s == "single")
     print(
         f"OK [{matrix}]: {count} generated entries ({n_targets} targets, "
-        f"{len(ARMS) if matrix == 'alloc' else 2} arms, {count - n_single} multi + "
+        f"{len(ARMS)} arms, {count - n_single} multi + "
         f"{n_single} single), {len(resolved)} resolved tests total, all names unique"
     )
 

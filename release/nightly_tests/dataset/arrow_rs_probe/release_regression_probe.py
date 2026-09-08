@@ -61,12 +61,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.abspath(os.path.join(HERE, ".."))
 TPCH = "s3://ray-benchmark-data/tpch/parquet"
 
-# Reader arms, by env, mirroring the 2x2(x3) release build (arrow_rs_docs/
-# 2026-09-04.md): pa = PyArrow; rs = arrow-rs as shipped; rstrim = arrow-rs +
-# mallopt(M_TRIM_THRESHOLD, 0) once per worker; rseos = arrow-rs + one glibc
-# malloc_trim(0) per read-task stream (the M101 candidate default — its col02
-# fleet wall 2.37 is the flip blocker, TODO 34f). Both knobs are DataContext
-# fields read only inside the arrow-rs read task, so they are inert for pa.
+# Reader arms, by env, mirroring the release builds (arrow_rs_docs/
+# 2026-09-04.md): pa = PyArrow; rs = arrow-rs as shipped (since 2026-09-08 that
+# INCLUDES one glibc malloc_trim(0) per read-task stream, so rs == rseos);
+# rsnoeos = arrow-rs with that trim ablated; rstrim = arrow-rs + mallopt(
+# M_TRIM_THRESHOLD, 0) once per worker (retired mechanism probe, M108). Both
+# knobs are DataContext fields read only inside the arrow-rs read task, so
+# they are inert for pa.
 _RS = "RAY_DATA_USE_ARROW_RS_PARQUET_READER"
 _KNOBS = ("RAY_DATA_ARROW_RS_MALLOC_TRIM", "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS")
 ARMS = {
@@ -74,6 +75,7 @@ ARMS = {
     "rs": {_RS: "1"},
     "rstrim": {_RS: "1", "RAY_DATA_ARROW_RS_MALLOC_TRIM": "1"},
     "rseos": {_RS: "1", "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS": "1"},
+    "rsnoeos": {_RS: "1", "RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS": "0"},
 }
 
 

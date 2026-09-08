@@ -275,8 +275,8 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         ("decode_wall_s_per_task_dist", "read_task_decode_wall_s"),
         ("peak_batch_bytes_per_task_dist", "read_task_peak_batch_bytes"),
         # Wall seconds of the reader's end-of-stream finalizer (the arrow-rs
-        # malloc_trim under RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS); inside
-        # decode_wall_s. 0 for pyarrow and for arrow-rs with the knob off.
+        # malloc_trim, on by default, RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=0 turns
+        # it off); inside decode_wall_s. 0 for pyarrow and with the knob off.
         ("trim_wall_s_per_task_dist", "read_task_trim_wall_s"),
         ("yield_wall_s_per_task_dist", "read_task_yield_wall_s"),
         ("first_table_wall_s_per_task_dist", "read_task_first_table_wall_s"),
