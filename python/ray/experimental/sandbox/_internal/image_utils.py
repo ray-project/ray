@@ -6,12 +6,14 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from functools import lru_cache
 from typing import BinaryIO, Dict, Optional, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -20,6 +22,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
+
+# A cached image holds either an EROFS image of the root filesystem (the
+# default whenever ``mkfs.erofs`` can build one) or an extracted directory.
+# gVisor mounts the EROFS image inside the Sentry, so the image's uids and
+# gids never need a host representation: files keep their real owners and
+# in-sandbox chown works for any uid, all from an unprivileged worker.
+ROOTFS_IMAGE = "rootfs.erofs"
+# Set to "dir" on workers to force the extracted-directory layout.
+_ROOTFS_LAYOUT_ENV = "RAY_SANDBOX_ROOTFS"
+# Cache layout version recorded in each image's ``.extracted`` marker, next
+# to the layout it was built with; a mismatch re-pulls the image once.
+_EXTRACT_FORMAT = 2
 
 
 def _registry_request(
@@ -225,10 +239,27 @@ def get_registry_auth_headers(
     return {}
 
 
+def _drop_ownership_subtree(ownership: Dict[str, Tuple[int, int]], name: str) -> None:
+    """Forget recorded owners for a deleted path and everything under it."""
+    ownership.pop(name, None)
+    prefix = name + "/"
+    for key in [k for k in ownership if k.startswith(prefix)]:
+        del ownership[key]
+
+
 def extract_tar_layer(
-    tar_input: Union[bytes, io.IOBase, BinaryIO], dest_dir: str
+    tar_input: Union[bytes, io.IOBase, BinaryIO],
+    dest_dir: str,
+    ownership: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
-    """Extract a tar archive layer onto dest_dir with OCI whiteout handling."""
+    """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
+
+    ``ownership``, shared by the caller across an image's layers, records the
+    final {normalized path: (uid, gid)} of every member shipped with a
+    non-root owner; whiteouts and root-owned replacements drop entries. The
+    extracted files themselves stay owned by the extracting user; the EROFS
+    image build restores the recorded owners.
+    """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
@@ -261,9 +292,17 @@ def extract_tar_layer(
                 continue
 
             basename = os.path.basename(name)
+            rel = os.path.normpath(name)
 
             # Handle OCI opaque whiteout (.wh..wh..opq)
             if basename == ".wh..wh..opq":
+                if ownership is not None and dirname:
+                    for key in [
+                        k
+                        for k in ownership
+                        if k.startswith(os.path.normpath(dirname) + "/")
+                    ]:
+                        del ownership[key]
                 if os.path.exists(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
@@ -280,6 +319,10 @@ def extract_tar_layer(
             if basename.startswith(".wh."):
                 del_name = basename[4:]
                 del_path = os.path.join(parent_dir, del_name)
+                if ownership is not None:
+                    _drop_ownership_subtree(
+                        ownership, os.path.normpath(os.path.join(dirname, del_name))
+                    )
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -350,6 +393,14 @@ def extract_tar_layer(
                     except OSError:
                         pass
 
+            # Hardlinks share their target's inode and record.
+            if ownership is not None and rel != "." and not member.islnk():
+                if member.uid or member.gid:
+                    ownership[rel] = (member.uid, member.gid)
+                else:
+                    # A later layer re-shipping the path as root wins.
+                    ownership.pop(rel, None)
+
     # Children first, so a parent's restrictive mode cannot block them.
     for dir_path, mode, mtime in reversed(dir_mtimes):
         try:
@@ -358,6 +409,152 @@ def extract_tar_layer(
             os.utime(dir_path, (mtime, mtime))
         except OSError:
             pass
+
+
+@lru_cache(maxsize=1)
+def mkfs_erofs_path() -> Optional[str]:
+    """Path of a ``mkfs.erofs`` that can build images from tarballs, or None.
+
+    Building from a tar (erofs-utils 1.7+) is what lets an unprivileged
+    worker record the image's real uid/gid: a directory source would only
+    carry the worker's own ownership.
+    """
+    path = shutil.which("mkfs.erofs")
+    if path is None:
+        return None
+    try:
+        res = subprocess.run([path, "--help"], capture_output=True, text=True)
+    except OSError:
+        return None
+    if "--tar" not in res.stdout + res.stderr:
+        logger.warning(
+            "%s is too old to build images from tarballs (erofs-utils 1.7+); "
+            "cached images use the extracted-directory layout.",
+            path,
+        )
+        return None
+    return path
+
+
+def rootfs_layout() -> str:
+    """``"erofs"`` or ``"dir"``: how images are cached on this node."""
+    if os.environ.get(_ROOTFS_LAYOUT_ENV) == "dir":
+        return "dir"
+    return "erofs" if mkfs_erofs_path() else "dir"
+
+
+def expected_extract_marker(layout: str) -> str:
+    """The ``.extracted`` content a cache built with ``layout`` must carry."""
+    return json.dumps({"format": _EXTRACT_FORMAT, "rootfs": layout}, sort_keys=True)
+
+
+def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
+    """``tar.add`` filter giving members the image's recorded owners."""
+
+    def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo:
+        ids = ownership.get(os.path.normpath(ti.name))
+        ti.uid, ti.gid = ids if ids else (0, 0)
+        ti.uname = ti.gname = ""
+        return ti
+
+    return _filter
+
+
+def _seed_tmp(rootfs_dir: str) -> None:
+    """Docker parity for /tmp: world-writable, sticky, and non-empty.
+
+    runsc mounts a private tmpfs over an *empty* /tmp, which breaks
+    rename(2) from /tmp with EXDEV; one dotfile keeps /tmp on the rootfs.
+    """
+    tmp_dir = os.path.join(rootfs_dir, "tmp")
+    try:
+        os.makedirs(tmp_dir, exist_ok=True)
+        os.chmod(tmp_dir, 0o1777)
+        with open(os.path.join(tmp_dir, ".ray-sandbox-keep"), "a", encoding="utf-8"):
+            pass
+    except OSError:
+        pass
+
+
+# Mount points runsc needs in the root filesystem: its mandatory mounts plus
+# the ones Ray's OCI spec adds. A read-only root gets no overlay (runsc drops
+# it for spec.root.readonly), so an immutable EROFS image must ship them.
+_MOUNTPOINT_DIRS = ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp")
+_MOUNTPOINT_FILES = ("etc/resolv.conf", "etc/hosts", "etc/hostname")
+
+
+def _seed_mountpoints(rootfs_dir: str) -> None:
+    """Create the mount points runsc expects, where the image lacks them."""
+    for rel in _MOUNTPOINT_DIRS:
+        path = os.path.join(rootfs_dir, rel)
+        if not os.path.lexists(path):
+            try:
+                os.makedirs(path, mode=0o755)
+            except OSError:
+                pass
+    for rel in _MOUNTPOINT_FILES:
+        path = os.path.join(rootfs_dir, rel)
+        if not os.path.lexists(path):
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "a", encoding="utf-8"):
+                    pass
+            except OSError:
+                pass
+
+
+def build_erofs_image(
+    rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
+) -> None:
+    """Build an EROFS image of ``rootfs_dir`` carrying the image's real owners.
+
+    The tree is re-packed as a tar whose headers hold the recorded uid/gid
+    (the files on disk belong to the worker), and ``mkfs.erofs --tar``
+    turns that into the image. gVisor's EROFS reader maps the image and
+    only reads the flat-plain data layout, hence ``-E^inline_data``, and
+    4 KiB blocks match its page-size check.
+
+    Args:
+        rootfs_dir: Extracted root filesystem.
+        ownership: {path: (uid, gid)} recorded during extraction.
+        out_path: Destination image file.
+    """
+    mkfs = mkfs_erofs_path()
+    if mkfs is None:
+        raise SandboxCreationError("mkfs.erofs with tarball support is required")
+    flat_tar = f"{out_path}.tar"
+    try:
+        with tarfile.open(flat_tar, "w") as tar:
+            tar.add(rootfs_dir, arcname=".", filter=_owner_filter(ownership))
+        res = subprocess.run(
+            [mkfs, "--tar=f", "-b4096", "-E^inline_data", out_path, flat_tar],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        try:
+            os.remove(flat_tar)
+        except OSError:
+            pass
+    if res.returncode != 0:
+        raise SandboxCreationError(
+            f"mkfs.erofs failed: {(res.stderr or res.stdout).strip()[-500:]}"
+        )
+
+
+def _snapshot_account_files(rootfs_dir: str, image_dir: str) -> None:
+    """Keep the image's passwd and group files readable without the rootfs.
+
+    Callers resolving user names (``exec`` as a named user) read these once
+    the extracted tree is gone.
+    """
+    for name in ("passwd", "group"):
+        src = os.path.join(rootfs_dir, "etc", name)
+        if os.path.isfile(src) and not os.path.islink(src):
+            try:
+                shutil.copyfile(src, os.path.join(image_dir, name))
+            except OSError:
+                pass
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
@@ -535,7 +732,8 @@ def pull_and_extract_container_image(
             leaves the image alone until the instance releases it.
 
     Returns:
-        Absolute directory path containing the extracted container filesystem.
+        Absolute path of the image's cache directory. It holds ``rootfs.erofs``
+        (the default) or an extracted ``rootfs/`` tree, plus the image config.
     """
     try:
         os.makedirs(images_dir, mode=0o777, exist_ok=True)
@@ -552,6 +750,9 @@ def pull_and_extract_container_image(
     if max_cache > 0:
         evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
 
+    layout = rootfs_layout()
+    expected_marker = expected_extract_marker(layout)
+
     def _finish() -> str:
         if instance_id is not None:
             _mark_image_in_use(target_dir, instance_id)
@@ -562,11 +763,18 @@ def pull_and_extract_container_image(
             fcntl.flock(f_lock, fcntl.LOCK_EX)
             marker_path = os.path.join(target_dir, ".extracted")
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                if os.path.isfile(image):
-                    if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                try:
+                    with open(marker_path, "r", encoding="utf-8") as f_mark:
+                        marker_current = f_mark.read() == expected_marker
+                except OSError:
+                    marker_current = False
+                # A cache from another layout re-pulls once.
+                if marker_current:
+                    if os.path.isfile(image):
+                        if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                            return _finish()
+                    else:
                         return _finish()
-                else:
-                    return _finish()
 
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
@@ -575,11 +783,12 @@ def pull_and_extract_container_image(
 
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
+            ownership: Dict[str, Tuple[int, int]] = {}
 
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
-                        extract_tar_layer(f, tmp_rootfs_dir)
+                        extract_tar_layer(f, tmp_rootfs_dir, ownership=ownership)
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
@@ -689,7 +898,9 @@ def pull_and_extract_container_image(
                                     blob_resp, tmp_blob_file, length=64 * 1024
                                 )
                                 tmp_blob_file.seek(0)
-                                extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
+                                extract_tar_layer(
+                                    tmp_blob_file, tmp_rootfs_dir, ownership=ownership
+                                )
 
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
@@ -699,14 +910,39 @@ def pull_and_extract_container_image(
                         f"Failed to pull and extract container image '{image}': {err}"
                     ) from err
 
+            _seed_tmp(tmp_rootfs_dir)
+            if layout == "erofs":
+                _seed_mountpoints(tmp_rootfs_dir)
+                try:
+                    build_erofs_image(
+                        tmp_rootfs_dir,
+                        ownership,
+                        os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                    )
+                except Exception:
+                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    raise
+                _snapshot_account_files(tmp_rootfs_dir, tmp_extract_dir)
+                # The image replaces the tree; nothing reads the tree once the
+                # Sentry mounts the image.
+                shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+
             with open(
                 os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
             ) as f_mark:
-                f_mark.write("ok")
+                f_mark.write(expected_marker)
 
+            # A re-extract (layout change) replaces the directory; keep the
+            # pins of sandboxes already running on the old one.
+            try:
+                users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
+            except OSError:
+                users = []
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir, ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
+            for user in users:
+                _mark_image_in_use(target_dir, user)
 
             return _finish()
         finally:

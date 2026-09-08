@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import image_utils
 from ray.experimental.sandbox._internal.image_utils import (
+    _owner_filter,
+    expected_extract_marker,
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
@@ -187,7 +190,8 @@ def test_extract_tar_layer_whiteouts(tmp_path):
     assert (dest / "app" / "file4.txt").read_bytes() == b"file4 content"
 
 
-def test_pull_and_extract_local_tar(tmp_path):
+def test_pull_and_extract_local_tar(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
     local_tar = tmp_path / "sample.tar"
     with tarfile.open(str(local_tar), "w") as tar:
         data = b"hello from local tar"
@@ -273,7 +277,8 @@ def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     )
 
 
-def test_pull_and_extract_remote_image(tmp_path):
+def test_pull_and_extract_remote_image(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
     images_dir = tmp_path / "images"
     extracted_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(images_dir)
@@ -287,7 +292,8 @@ def test_pull_and_extract_remote_image(tmp_path):
     assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 
-def test_pull_and_extract_docker_io_prefixed_image(tmp_path):
+def test_pull_and_extract_docker_io_prefixed_image(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
     images_dir = tmp_path / "images"
     extracted_dir = pull_and_extract_container_image(
         "docker.io/library/busybox:latest", images_dir=str(images_dir)
@@ -431,6 +437,164 @@ def test_get_registry_auth_headers_no_auth_needed():
             "localhost:5000", "my/repo", reference="latest"
         )
         assert headers == {}
+
+
+def _add_member(tar, name, data=b"", uid=0, gid=0, mode=0o644, typ=tarfile.REGTYPE):
+    ti = tarfile.TarInfo(name)
+    ti.uid = uid
+    ti.gid = gid
+    ti.mode = mode
+    ti.type = typ
+    if typ == tarfile.REGTYPE:
+        ti.size = len(data)
+        tar.addfile(ti, io.BytesIO(data))
+    else:
+        tar.addfile(ti)
+
+
+def test_extract_tar_layer_ownership_recording(tmp_path):
+    """The ownership map accumulates across layers with normalized paths and
+    honors whiteouts and root-owned replacements (mailman-shaped image)."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership = {}
+
+    buf1 = io.BytesIO()
+    with tarfile.open(fileobj=buf1, mode="w:gz") as tar:
+        _add_member(
+            tar, "./var/spool/postfix/defer", uid=101, mode=0o700, typ=tarfile.DIRTYPE
+        )
+        _add_member(
+            tar,
+            "var/spool/postfix/maildrop",
+            uid=101,
+            gid=104,
+            mode=0o1730,
+            typ=tarfile.DIRTYPE,
+        )
+        _add_member(tar, "var/lib/mailman3/data", uid=38, gid=38, typ=tarfile.DIRTYPE)
+        _add_member(tar, "var/lib/mailman3/data/gone.txt", b"x", uid=38, gid=38)
+        _add_member(tar, "etc/passwd", b"root:x:0:0::/root:/bin/sh\n")
+    extract_tar_layer(buf1.getvalue(), str(dest), ownership=ownership)
+    assert ownership == {
+        "var/spool/postfix/defer": (101, 0),
+        "var/spool/postfix/maildrop": (101, 104),
+        "var/lib/mailman3/data": (38, 38),
+        "var/lib/mailman3/data/gone.txt": (38, 38),
+    }
+
+    # Layer 2: a deletion whiteout, an opaque whiteout, and a root-owned
+    # re-ship of a recorded path all drop entries.
+    buf2 = io.BytesIO()
+    with tarfile.open(fileobj=buf2, mode="w:gz") as tar:
+        _add_member(tar, "var/spool/postfix/.wh.maildrop")
+        _add_member(tar, "var/lib/mailman3/.wh..wh..opq")
+        _add_member(tar, "var/lib/mailman3/fresh.txt", b"y")
+        _add_member(tar, "var/spool/postfix/defer", mode=0o755, typ=tarfile.DIRTYPE)
+    extract_tar_layer(buf2.getvalue(), str(dest), ownership=ownership)
+    assert ownership == {}
+
+
+def test_owner_filter_restores_recorded_owners():
+    fn = _owner_filter({"opt/data": (38, 38)})
+    ti = tarfile.TarInfo("./opt/data")
+    ti.uid, ti.gid, ti.uname, ti.gname = 1000, 1000, "ray", "ray"
+    out = fn(ti)
+    assert (out.uid, out.gid, out.uname, out.gname) == (38, 38, "", "")
+    ti = tarfile.TarInfo("./bin/sh")
+    ti.uid = ti.gid = 1000
+    assert (fn(ti).uid, fn(ti).gid) == (0, 0)
+
+
+def _fake_mkfs_erofs(bin_dir):
+    """A stand-in mkfs.erofs: advertises --tar and copies the tar to the image."""
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
+        "# args: --tar=f -b4096 -E^inline_data OUT TAR\n"
+        'cp "$5" "$4"\n'
+    )
+    script.chmod(0o755)
+    return script
+
+
+def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, monkeypatch):
+    """With mkfs.erofs available, the cache holds an image built from a tar
+    carrying the image's real owners, no extracted tree, and a layout marker."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _fake_mkfs_erofs(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    monkeypatch.delenv("RAY_SANDBOX_ROOTFS", raising=False)
+    image_utils.mkfs_erofs_path.cache_clear()
+
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        _add_member(tar, "opt/data", uid=38, gid=38, mode=0o750, typ=tarfile.DIRTYPE)
+        _add_member(tar, "opt/data/f.txt", b"z", uid=38, gid=38)
+        _add_member(
+            tar,
+            "etc/passwd",
+            b"root:x:0:0::/root:/bin/sh\nmail:x:38:38::/var/mail:/bin/sh\n",
+        )
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
+    args = (bin_dir / "mkfs.args").read_text().split()
+    assert args[:3] == ["--tar=f", "-b4096", "-E^inline_data"]
+    marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
+    assert marker == expected_extract_marker("erofs")
+    assert (
+        "mail:x:38:38"
+        in open(os.path.join(image_dir, "passwd"), encoding="utf-8").read()
+    )
+    # The fake image *is* the flattened tar: check the owners it carries.
+    with tarfile.open(os.path.join(image_dir, "rootfs.erofs")) as tar:
+        owners = {os.path.normpath(m.name): (m.uid, m.gid) for m in tar.getmembers()}
+    assert owners["opt/data"] == (38, 38)
+    assert owners["opt/data/f.txt"] == (38, 38)
+    assert owners["etc/passwd"] == (0, 0)
+    assert owners["tmp/.ray-sandbox-keep"] == (0, 0)  # Docker-parity /tmp seed
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_rootfs_layout_selection(tmp_path, monkeypatch):
+    image_utils.mkfs_erofs_path.cache_clear()
+    monkeypatch.setenv("PATH", str(tmp_path))  # no mkfs.erofs at all
+    monkeypatch.delenv("RAY_SANDBOX_ROOTFS", raising=False)
+    assert image_utils.rootfs_layout() == "dir"
+    image_utils.mkfs_erofs_path.cache_clear()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _fake_mkfs_erofs(bin_dir)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    assert image_utils.rootfs_layout() == "erofs"
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
+    assert image_utils.rootfs_layout() == "dir"
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_layout_change_reextracts(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        _add_member(tar, "hello.txt", b"hi")
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(image_dir, ".extracted")
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write(expected_extract_marker("erofs"))
+    again = pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert again == image_dir
+    assert open(marker, encoding="utf-8").read() == expected_extract_marker("dir")
 
 
 if __name__ == "__main__":

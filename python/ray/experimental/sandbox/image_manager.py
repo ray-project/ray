@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
+    ROOTFS_IMAGE,
     _release_image_use,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -157,6 +158,7 @@ class BaseImageManager(ABC):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -181,6 +183,11 @@ class BaseImageManager(ABC):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            root_path: Host directory for ``root.path`` when the image is an
+                EROFS file (its rootfs then comes from the gVisor annotations
+                and this directory only anchors the overlay's backing file).
+                Ignored for extracted-directory images. Defaults to a
+                directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -289,6 +296,8 @@ class ImageManager(BaseImageManager):
     def get_rootfs_path(self, image: str) -> str:
         """Get the rootfs directory path for an image.
 
+        Only extracted-directory images have one; see ``get_rootfs_image``.
+
         Args:
             image: Container image name or tar path.
 
@@ -296,6 +305,19 @@ class ImageManager(BaseImageManager):
             Absolute path to rootfs directory inside the image cache.
         """
         return os.path.join(self.get_image_dir(image), "rootfs")
+
+    def get_rootfs_image(self, image: str) -> Optional[str]:
+        """Path of the image's EROFS root filesystem, or None for a directory.
+
+        Args:
+            image: Container image name or tar path.
+
+        Returns:
+            Absolute path of ``rootfs.erofs`` when the cached image is an
+            EROFS file, else None.
+        """
+        path = os.path.join(self.get_image_dir(image), ROOTFS_IMAGE)
+        return path if os.path.isfile(path) else None
 
     def is_image_extracted(self, image: str) -> bool:
         """Check if an image has already been extracted to the local cache.
@@ -367,6 +389,7 @@ class ImageManager(BaseImageManager):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -391,6 +414,11 @@ class ImageManager(BaseImageManager):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            root_path: Host directory for ``root.path`` when the image is an
+                EROFS file (its rootfs then comes from the gVisor annotations
+                and this directory only anchors the overlay's backing file).
+                Ignored for extracted-directory images. Defaults to a
+                directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -403,30 +431,53 @@ class ImageManager(BaseImageManager):
         )
 
         image_dir = self.pull_image(image)
-        rootfs = os.path.join(image_dir, "rootfs")
-
+        erofs_image = os.path.join(image_dir, ROOTFS_IMAGE)
         spec.setdefault("root", {})
+        if os.path.isfile(erofs_image):
+            # gVisor mounts the EROFS image inside the Sentry; root.path is
+            # only the anchor under which the "self" overlay keeps the
+            # writable upper layer's backing file, so make it per sandbox.
+            rootfs = root_path or os.path.join(image_dir, "root")
+            os.makedirs(rootfs, exist_ok=True)
+            annotations = spec.setdefault("annotations", {})
+            annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
+            annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
+            # runsc applies no overlay to a read-only root, and an immutable
+            # image can't grow a mount point for an arbitrary workdir, so a
+            # readonly sandbox with an explicit workdir gets a private
+            # writable overlay instead (its writes are discarded with it).
+            if readonly and workdir_path is not None:
+                logger.warning(
+                    "readonly=True with an explicit workdir on an EROFS image: "
+                    "runsc cannot create the workdir mount point in a read-only "
+                    "image, so this sandbox runs on a private writable overlay "
+                    "(its writes are discarded with it)."
+                )
+                readonly = False
+            if not readonly:
+                annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
+        else:
+            rootfs = os.path.join(image_dir, "rootfs")
+            # Docker parity: runsc mounts a private tmpfs over an *empty*
+            # /tmp, breaking rename(2) from /tmp with EXDEV. The placeholder
+            # keeps /tmp on the rootfs and stays visible in the sandbox (one
+            # empty dotfile in scratch space); readonly sandboxes get a tmpfs
+            # below, which hides it. (EROFS images get this at build time.)
+            tmp_dir = os.path.join(rootfs, "tmp")
+            try:
+                os.makedirs(tmp_dir, exist_ok=True)
+                # Unconditional: /tmp must be world-writable with the sticky
+                # bit whether it came from the image or was just created.
+                os.chmod(tmp_dir, 0o1777)
+                with open(
+                    os.path.join(tmp_dir, ".ray-sandbox-keep"), "a", encoding="utf-8"
+                ):
+                    pass
+            except OSError:
+                # Best effort: runsc then falls back to its private tmpfs.
+                pass
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
-
-        # Docker parity: runsc mounts a private tmpfs over an *empty*
-        # /tmp, breaking rename(2) from /tmp with EXDEV. The placeholder
-        # keeps /tmp on the rootfs and stays visible in the sandbox (one
-        # empty dotfile in scratch space); readonly sandboxes get a tmpfs
-        # below, which hides it.
-        tmp_dir = os.path.join(rootfs, "tmp")
-        try:
-            os.makedirs(tmp_dir, exist_ok=True)
-            # Unconditional: /tmp must be world-writable with the sticky bit
-            # whether it came from the image or was just created.
-            os.chmod(tmp_dir, 0o1777)
-            with open(
-                os.path.join(tmp_dir, ".ray-sandbox-keep"), "a", encoding="utf-8"
-            ):
-                pass
-        except OSError:
-            # Best effort: runsc then falls back to its private tmpfs.
-            pass
 
         spec.setdefault("process", {})
         spec["process"]["args"] = ["sleep", "infinity"]
@@ -645,6 +696,7 @@ class ImageManager(BaseImageManager):
             network=network,
             resolv_conf_source=resolv_conf_source,
             hosts_source=hosts_source,
+            root_path=rootfs_dir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 

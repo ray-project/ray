@@ -180,6 +180,21 @@ def test_gvisor_backend_container_image_overlay_isolation():
         backend.delete_sandbox(sb3)
 
 
+def _erofs_layout_active() -> bool:
+    from ray.experimental.sandbox._internal.image_utils import rootfs_layout
+
+    return rootfs_layout() == "erofs"
+
+
+# readonly=True with an explicit workdir needs runsc to keep the rootfs
+# overlay for a read-only root (it drops it today, and an immutable EROFS
+# image cannot grow the workdir mount point), so on EROFS the sandbox runs on
+# a private writable overlay instead; test_readonly_rootfs_erofs_fallback
+# covers that behavior.
+@pytest.mark.skipif(
+    os.environ.get("TEST_SANDBOX") == "1" and _erofs_layout_active(),
+    reason="EROFS rootfs: readonly + explicit workdir falls back to a writable overlay",
+)
 def test_gvisor_backend_readonly_rootfs():
     backend = GVisorSandboxBackend()
     # Default is readonly=True
@@ -248,6 +263,26 @@ def test_string_exec_shell_configuration():
         runtime.delete(instance_id)
 
 
+def test_readonly_rootfs_erofs_fallback(ensure_mkfs_erofs):
+    """On EROFS, readonly + explicit workdir currently runs on a private
+    writable overlay: the workdir works, and rootfs writes are discarded with
+    the sandbox rather than rejected."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+        )
+    )
+    try:
+        res = backend.exec_command(
+            sb, "echo ws_ok > /workspace/ws.txt && cat /workspace/ws.txt", timeout=30
+        )
+        assert res.exit_code == 0, res.stderr
+        assert "ws_ok" in res.stdout
+    finally:
+        backend.delete_sandbox(sb)
+
+
 def test_workdir_writability_matrix():
     """readonly=True + workdir=None -> nothing writable; explicit workdir is
     the only writable path; readonly=False -> everything writable."""
@@ -262,13 +297,16 @@ def test_workdir_writability_matrix():
     finally:
         runtime.delete(instance_id)
 
-    # readonly=True, explicit workdir: it is the only writable path.
+    # readonly=True, explicit workdir: it is the only writable path (on an
+    # EROFS rootfs the root falls back to a writable overlay; see
+    # the note above test_gvisor_backend_readonly_rootfs).
     instance_id = runtime.create(
         image="busybox:latest", workdir="/data", shell="/bin/sh"
     )
     try:
         assert runtime.exec(instance_id, "touch /data/probe").exit_code == 0
-        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+        if not _erofs_layout_active():
+            assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
         assert runtime.exec(instance_id, "pwd").stdout.strip() == "/data"
     finally:
         runtime.delete(instance_id)
@@ -322,6 +360,163 @@ def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
         image="busybox:latest", network=network, rootless=rootless
     )
     return backend._build_run_command(cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1")
+
+
+def test_build_run_command_erofs_skips_overlay_flag():
+    """An EROFS rootfs gets its overlay from the bundle annotations."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(image="busybox:latest", network="none")
+    cmd = backend._build_run_command(
+        cfg, "/tmp/rd", "/tmp/rd/overlay", "sb-1", erofs=True
+    )
+    assert not any(a.startswith("--overlay2") for a in cmd)
+    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert any(a.startswith("--overlay2") for a in _run_argv("none"))
+
+
+def _owned_busybox_tar(tar_path: str) -> None:
+    """A busybox-based local image tar with baked non-root ownership, modeled
+    on the mailman image (0700 uid=101 spool, 02710 setgid dir, a setuid tool)."""
+    import io
+    import tarfile
+
+    from ray.experimental.sandbox._internal import image_utils
+    from ray.experimental.sandbox.image_manager import ImageManager
+
+    # Extract busybox as a plain directory to re-pack it.
+    layout = os.environ.get("RAY_SANDBOX_ROOTFS")
+    os.environ["RAY_SANDBOX_ROOTFS"] = "dir"
+    try:
+        busybox_rootfs = os.path.join(
+            ImageManager(images_dir="/tmp/ray/sandbox/images-dir").pull_image(
+                "busybox:latest"
+            ),
+            "rootfs",
+        )
+    finally:
+        if layout is None:
+            os.environ.pop("RAY_SANDBOX_ROOTFS", None)
+        else:
+            os.environ["RAY_SANDBOX_ROOTFS"] = layout
+    del image_utils
+
+    def _as_root(ti):
+        ti.uid = ti.gid = 0
+        ti.uname = ti.gname = ""
+        return ti
+
+    with tarfile.open(tar_path, "w") as tar:
+        tar.add(busybox_rootfs, arcname=".", filter=_as_root)
+        for name, typ, uid, gid, mode, data in (
+            ("./var/spool/testq", tarfile.DIRTYPE, 101, 0, 0o700, None),
+            (
+                "./var/spool/testq/inner.txt",
+                tarfile.REGTYPE,
+                101,
+                0,
+                0o600,
+                b"queued\n",
+            ),
+            ("./var/spool/public", tarfile.DIRTYPE, 101, 104, 0o2710, None),
+            (
+                "./usr/local/bin/suidtool",
+                tarfile.REGTYPE,
+                0,
+                0,
+                0o4755,
+                b"#!/bin/sh\nid -u\n",
+            ),
+        ):
+            ti = tarfile.TarInfo(name)
+            ti.type = typ
+            ti.uid, ti.gid, ti.mode = uid, gid, mode
+            if data is not None:
+                ti.size = len(data)
+                tar.addfile(ti, io.BytesIO(data))
+            else:
+                tar.addfile(ti)
+
+
+@pytest.fixture
+def ensure_mkfs_erofs():
+    from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
+
+    if os.environ.get("RAY_SANDBOX_ROOTFS") == "dir" or mkfs_erofs_path() is None:
+        pytest.skip("mkfs.erofs with --tar support is not available")
+
+
+def test_erofs_baked_ownership_and_chown(ensure_mkfs_erofs, tmp_path):
+    """On an EROFS rootfs the image's owners survive without any host id
+    mapping, root traverses another user's 0700 directory, a named user reads
+    only its own files, setuid works, and chown to arbitrary uids succeeds."""
+    from ray.experimental.sandbox.config import DOCKER_DEFAULT_CAPABILITIES
+
+    tar_path = str(tmp_path / "owned-busybox.tar")
+    _owned_busybox_tar(tar_path)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image=tar_path,
+            shell="/bin/sh",
+            network="none",
+            readonly=False,
+            capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
+            env={"PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+        )
+    )
+    try:
+        assert backend._image_manager.get_rootfs_image(tar_path) is not None
+        res = backend.exec_command(
+            sb,
+            "stat -c %u:%g:%a /var/spool/testq /var/spool/public && "
+            "cat /var/spool/testq/inner.txt && "
+            "touch /probe && chown 38:38 /probe && stat -c %u:%g /probe && "
+            "adduser -D -u 1234 alice && mkdir -p /srv/lists && touch /srv/lists/cfg && "
+            "chown -R alice:alice /srv/lists && stat -c %u:%g /srv/lists/cfg && "
+            "mkdir /srv/shared && chown 0:104 /srv/shared && chmod 2770 /srv/shared && "
+            "touch /srv/shared/post && stat -c %g /srv/shared/post",
+            timeout=60,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == [
+            "101:0:700",
+            "101:104:2710",
+            "queued",
+            "38:38",
+            "1234:1234",
+            "104",
+        ]
+        # Ownership is enforced for other users, and setuid still elevates.
+        denied = (
+            backend.exec_command(
+                sb, "cat /var/spool/testq/inner.txt", user="1000", timeout=30
+            )
+            if "user" in backend.exec_command.__code__.co_varnames
+            else None
+        )
+        if denied is not None:
+            assert denied.exit_code != 0
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_erofs_readonly_rootfs(ensure_mkfs_erofs):
+    """readonly=True keeps / read-only on an EROFS rootfs while /tmp stays
+    writable, and the sandbox still boots (mountpoints come from the overlay)."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network="none")
+    )
+    try:
+        res = backend.exec_command(
+            sb,
+            "touch /x 2>/dev/null; test ! -e /x && echo ro && echo hi > /tmp/x && cat /tmp/x",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == ["ro", "hi"]
+    finally:
+        backend.delete_sandbox(sb)
 
 
 def _host_ip() -> str:

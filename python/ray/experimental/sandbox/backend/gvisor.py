@@ -168,7 +168,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         overlay_dir = os.path.join(root_dir, "overlay")
         os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config,
+            root_dir,
+            overlay_dir,
+            sandbox_id,
+            erofs=self._image_manager.get_rootfs_image(config.image) is not None,
+        )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -437,12 +443,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        overlay_dir: str,
+        sandbox_id: str,
+        erofs: bool = False,
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or slirp4netns installed.
+        assert the exact command without runsc or slirp4netns installed. With
+        ``erofs`` the rootfs and its overlay come from the bundle's gVisor
+        annotations, so no ``--overlay2`` flag is passed.
         """
         args = self._runsc_base_args(config)
         use_netns = config.network == "public"
@@ -461,7 +474,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.append(f"--overlay2=root:dir={overlay_dir}")
+        if not erofs:
+            args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
