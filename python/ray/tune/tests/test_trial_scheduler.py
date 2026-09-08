@@ -193,7 +193,8 @@ class EarlyStoppingSuite(unittest.TestCase):
         # `sparse` is the only other trial beyond t=10 and it never reported inside [10, 10],
         # so there is no sample to compare against and the best trial must keep running.
         self.assertEqual(
-            rule.on_trial_result(runner, best, result(10, 1000)), TrialScheduler.CONTINUE
+            rule.on_trial_result(runner, best, result(10, 1000)),
+            TrialScheduler.CONTINUE,
         )
 
     def testMedianStoppingNanReportsAreNotSamples(self):
