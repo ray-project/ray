@@ -922,7 +922,8 @@ class TestDeploymentActorWrapper:
             )
             wrapper.kill()  # should not raise
 
-    def _make_wrapper(self) -> DeploymentActorWrapper:
+    @staticmethod
+    def _make_wrapper() -> DeploymentActorWrapper:
         config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
         # MagicMock does not automatically create __ray_ready__.
         mock_handle = MagicMock()
@@ -1015,22 +1016,22 @@ class TestDeploymentActorWrapper:
         unhealthy immediately, regardless of the ActorUnavailableError
         threshold."""
         wrapper = self._make_wrapper()
-        with patch(
-            "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
-            3,
+        with (
+            patch(
+                "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+                3,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorDiedError(),
+            ),
         ):
-            with (
-                patch(
-                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-                    return_value=True,
-                ),
-                patch(
-                    "ray.serve._private.deployment_state.ray.get",
-                    side_effect=ActorDiedError(),
-                ),
-            ):
-                wrapper._health_check_ref = object()
-                assert wrapper.check_health() is False
+            wrapper._health_check_ref = object()
+            assert wrapper.check_health() is False
 
 
 def check_counts(
@@ -4442,7 +4443,8 @@ class TestActorReplicaWrapper:
             == max_ongoing_requests
         )
 
-    def _make_actor_replica(self) -> ActorReplicaWrapper:
+    @staticmethod
+    def _make_actor_replica() -> ActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             replica_id=ReplicaID(
@@ -4531,22 +4533,22 @@ class TestActorReplicaWrapper:
         """ActorDiedError (a plain actor crash) should mark the replica unhealthy
         immediately, regardless of the ActorUnavailableError threshold."""
         actor_replica = self._make_actor_replica()
-        with patch(
-            "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
-            3,
+        with (
+            patch(
+                "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+                3,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=ActorDiedError(),
+            ),
         ):
-            with (
-                patch(
-                    "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-                    return_value=True,
-                ),
-                patch(
-                    "ray.serve._private.deployment_state.ray.get",
-                    side_effect=ActorDiedError(),
-                ),
-            ):
-                actor_replica._health_check_ref = object()
-                assert actor_replica.check_health() is False
+            actor_replica._health_check_ref = object()
+            assert actor_replica.check_health() is False
 
 
 @pytest.mark.parametrize("deployment_actor", [False, True])
@@ -4569,9 +4571,9 @@ def test_health_check_failure_thresholds(
 ):
     """Failures share a counter and use the latest failure's threshold."""
     if deployment_actor:
-        wrapper = TestDeploymentActorWrapper()._make_wrapper()
+        wrapper = TestDeploymentActorWrapper._make_wrapper()
     else:
-        wrapper = TestActorReplicaWrapper()._make_actor_replica()
+        wrapper = TestActorReplicaWrapper._make_actor_replica()
     monkeypatch.setattr(
         ds_mod, "REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD", threshold
     )
