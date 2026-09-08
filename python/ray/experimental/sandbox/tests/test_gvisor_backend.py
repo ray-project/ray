@@ -363,7 +363,7 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the sandbox's process group and its ready
         # file, written once the tap is configured, gates the runsc start.
-        "slirp4netns --configure --mtu=65520 --disable-host-loopback "
+        "slirp4netns --configure --cidr=198.18.0.0/24 --mtu=65520 --disable-host-loopback "
         "--disable-dns --enable-seccomp --ready-fd=3 "
         "--netns-type=path /proc/$NSPID/ns/net tap0 "
         "--userns-path /proc/$NSPID/ns/user 3>/tmp/rd/slirp4netns.ready &",
@@ -455,7 +455,7 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
                 socket.create_connection((target, 2222), timeout=3).close()
 
         # No address names one sandbox from another: every sandbox is
-        # 10.0.2.100 in its own namespace, and the worker's IP reaches the
+        # 198.18.0.100 in its own namespace, and the worker's IP reaches the
         # worker, which has nothing on 2222.
         res = backend.exec_command(
             sb2, f"wget -q -T 3 -O - http://{host_ip}:2222/token", timeout=30
@@ -552,22 +552,30 @@ def test_netns_udp_flows_do_not_cross(ensure_slirp4netns):
     try:
         for sb in sandboxes:
             backend.write_file(sb, "/tmp/client.py", _UDP_CLIENT)
+        names = ("aa", "bb")
         results = {}
 
         def run(sb, name):
-            results[name] = backend.exec_command(
-                sb, f"python3 /tmp/client.py {name} 5000 8.8.8.8", timeout=60
-            )
+            try:
+                results[name] = backend.exec_command(
+                    sb, f"python3 /tmp/client.py {name} 5000 8.8.8.8", timeout=60
+                )
+            except Exception as exc:  # surfaced in the main thread below
+                results[name] = exc
 
         threads = [
             threading.Thread(target=run, args=(sb, name))
-            for sb, name in zip(sandboxes, ("aa", "bb"))
+            for sb, name in zip(sandboxes, names)
         ]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        for name, res in results.items():
+        assert set(results) == set(names), results
+        for name in names:
+            res = results[name]
+            if isinstance(res, Exception):
+                raise res
             assert res.exit_code == 0, res.stderr
             counts = dict(kv.split("=") for kv in res.stdout.split())
             assert counts["foreign"] == "0", (name, res.stdout)

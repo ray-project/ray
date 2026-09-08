@@ -55,7 +55,12 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # network="none" remains the boundary for untrusted code.
 #
 # These flags are the isolation property; tests pin the exact list:
-#   --configure              bring the tap up: 10.0.2.100/24, gateway 10.0.2.2.
+#   --configure              bring the tap up: network + 100, gateway + 2.
+#   --cidr=198.18.0.0/24     the RFC 2544 benchmarking range: it is never
+#                            routed on the internet and, unlike the
+#                            slirp4netns default 10.0.2.0/24, does not
+#                            overlap pod or service CIDRs, which would be
+#                            on-link in the sandbox instead of NAT'd.
 #   --mtu=65520              the largest MTU slirp4netns supports.
 #   --disable-host-loopback  no path from the sandbox to the pod's loopback.
 #   --disable-dns            no built-in resolver: the sandbox sees only the
@@ -65,6 +70,7 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 #                            fails inside a --map-root-user namespace.)
 _SLIRP4NETNS_FLAGS = [
     "--configure",
+    "--cidr=198.18.0.0/24",
     "--mtu=65520",
     "--disable-host-loopback",
     "--disable-dns",
