@@ -993,6 +993,23 @@ def test_evaluate_predicate_on_unpartitioned_file():
     assert result is False
 
 
+def test_evaluate_predicate_on_partition_type_mismatch():
+    """A type mismatch must raise, not conservatively keep every file."""
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    # `year` parses as a string, so comparing it to an int has no Arrow kernel.
+    # Swallowing that returned True for every file, silently voiding the filter.
+    with pytest.raises(pa.lib.ArrowNotImplementedError):
+        parser.evaluate_predicate_on_partition(
+            "year=2020/data.parquet", col("year") == 2020
+        )
+
+    # A path carrying no value for the predicate's column is still kept.
+    assert parser.evaluate_predicate_on_partition(
+        "year=2020/data.parquet", col("month") == "01"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
