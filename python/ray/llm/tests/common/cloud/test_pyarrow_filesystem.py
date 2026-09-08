@@ -419,6 +419,145 @@ class TestPyArrowFileSystemAzureSupport:
             account_name="account", credential=mock_cred.return_value
         )
 
+    @patch.dict("os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"}, clear=True)
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_get_fs_and_path_az(self, mock_handler, mock_pyfs, mock_cred, mock_adlfs):
+        """Test getting az:// filesystem and path (account from env var)."""
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_pyfs_instance = MagicMock()
+        mock_pyfs.return_value = mock_pyfs_instance
+
+        fs, path = PyArrowFileSystem.get_fs_and_path("az://container/path/to/file")
+
+        assert fs == mock_pyfs_instance
+        assert path == "container/path/to/file"
+
+        # Account name comes from AZURE_STORAGE_ACCOUNT_NAME, not the URI
+        # No key/SAS/connection string set, so DefaultAzureCredential is used
+        mock_adlfs.assert_called_once_with(
+            account_name="myaccount", credential=mock_cred.return_value
+        )
+        mock_handler.assert_called_once_with(mock_adlfs_instance)
+        mock_pyfs.assert_called_once_with(mock_handler.return_value)
+
+    @patch.dict(
+        "os.environ",
+        {
+            "AZURE_STORAGE_ACCOUNT_NAME": "myaccount",
+            "AZURE_STORAGE_ACCOUNT_KEY": "secret-key",
+        },
+        clear=True,
+    )
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_az_defers_to_credential_env_vars(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test az:// lets adlfs read an account key/SAS/connection string.
+
+        When one of those credential env vars is set (as the RunAI streamer
+        supports), DefaultAzureCredential must not be forced, otherwise it would
+        take precedence over the account key and SAS token in adlfs.
+        """
+        PyArrowFileSystem._create_az_filesystem("az://container/path")
+
+        mock_cred.assert_not_called()
+        mock_adlfs.assert_called_once_with(account_name="myaccount", credential=None)
+
+    def test_az_missing_account_env(self):
+        """Test az:// raises when AZURE_STORAGE_ACCOUNT_NAME is unset."""
+        with patch.dict("os.environ", {}, clear=True), patch(
+            "adlfs.AzureBlobFileSystem"
+        ), patch("azure.identity.DefaultAzureCredential"), patch(
+            "pyarrow.fs.PyFileSystem"
+        ), patch(
+            "pyarrow.fs.FSSpecHandler"
+        ):
+            with pytest.raises(ValueError, match="AZURE_STORAGE_ACCOUNT_NAME"):
+                PyArrowFileSystem._create_az_filesystem("az://container/path")
+
+    def test_az_import_error(self):
+        """Test ImportError when adlfs is not available for az://."""
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'adlfs'")
+        ):
+            with pytest.raises(
+                ImportError, match="You must `pip install adlfs azure-identity`"
+            ):
+                PyArrowFileSystem._create_az_filesystem("az://container/path")
+
+    def test_az_uri_validation(self):
+        """Test az:// URI validation."""
+        # Test valid URIs
+        valid_uris = [
+            "az://container/path",
+            "az://my-container/deep/nested/path",
+        ]
+
+        for uri in valid_uris:
+            with patch.dict(
+                "os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"}
+            ), patch("adlfs.AzureBlobFileSystem"), patch(
+                "azure.identity.DefaultAzureCredential"
+            ), patch(
+                "pyarrow.fs.PyFileSystem"
+            ), patch(
+                "pyarrow.fs.FSSpecHandler"
+            ):
+                # Should not raise an exception
+                PyArrowFileSystem._create_az_filesystem(uri)
+
+        # Test invalid URIs (account env set so the container check is reached)
+        invalid_uris = [
+            "az:///path",  # Empty container
+            "az://",  # Empty container
+        ]
+
+        for uri in invalid_uris:
+            with patch.dict(
+                "os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"}
+            ), patch("adlfs.AzureBlobFileSystem"), patch(
+                "azure.identity.DefaultAzureCredential"
+            ), patch(
+                "pyarrow.fs.PyFileSystem"
+            ), patch(
+                "pyarrow.fs.FSSpecHandler"
+            ):
+                with pytest.raises(ValueError):
+                    PyArrowFileSystem._create_az_filesystem(uri)
+
+    @patch.dict("os.environ", {"AZURE_STORAGE_ACCOUNT_NAME": "myaccount"})
+    @patch("adlfs.AzureBlobFileSystem")
+    @patch("azure.identity.DefaultAzureCredential")
+    @patch("pyarrow.fs.PyFileSystem")
+    @patch("pyarrow.fs.FSSpecHandler")
+    def test_az_anonymous_access_ignored(
+        self, mock_handler, mock_pyfs, mock_cred, mock_adlfs
+    ):
+        """Test that anonymous access pattern is ignored for az:// URIs."""
+        mock_adlfs_instance = MagicMock()
+        mock_adlfs.return_value = mock_adlfs_instance
+        mock_pyfs_instance = MagicMock()
+        mock_pyfs.return_value = mock_pyfs_instance
+
+        # az:// URI with @ symbol should not trigger anonymous access logic
+        fs, path = PyArrowFileSystem.get_fs_and_path("az://anonymous@container/path")
+
+        assert fs == mock_pyfs_instance
+        assert path == "anonymous@container/path"
+
+        # Verify that DefaultAzureCredential was used, not anonymous access
+        mock_cred.assert_called_once()
+        mock_adlfs.assert_called_once_with(
+            account_name="myaccount", credential=mock_cred.return_value
+        )
+
     def test_abfss_uri_validation(self):
         """Test ABFSS URI validation."""
         # Test valid URIs

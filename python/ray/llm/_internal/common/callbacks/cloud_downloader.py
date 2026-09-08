@@ -18,7 +18,7 @@ class CloudDownloaderConfig(BaseModel):
     @classmethod
     def validate_paths(cls, v: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         # Supported cloud storage URI schemes
-        valid_schemes = ("s3://", "gs://", "abfss://", "azure://")
+        valid_schemes = ("s3://", "gs://", "abfss://", "azure://", "az://")
 
         for i, (cloud_uri, _) in enumerate(v):
             if not any(cloud_uri.startswith(scheme) for scheme in valid_schemes):
@@ -35,7 +35,7 @@ class CloudDownloader(CallbackBase):
     This callback expects self.kwargs to contain a 'paths' field which should be
     a list of tuples, where each tuple contains (cloud_uri, local_path) strings.
 
-    Supported cloud storage URIs: s3://, gs://, abfss://, azure://
+    Supported cloud storage URIs: s3://, gs://, abfss://, azure://, az://
 
     Example:
         ```

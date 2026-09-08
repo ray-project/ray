@@ -45,6 +45,12 @@ class TestCloudMirrorConfig:
         )
         assert config.storage_type == "azure"
 
+    def test_valid_az_uri(self):
+        """Test valid az:// URI (account supplied out-of-band via env var)."""
+        config = CloudMirrorConfig(bucket_uri="az://container/path")
+        assert config.bucket_uri == "az://container/path"
+        assert config.storage_type == "azure"
+
     def test_none_uri(self):
         """Test None URI."""
         config = CloudMirrorConfig(bucket_uri=None)
@@ -117,6 +123,18 @@ class TestLoraMirrorConfig:
         assert config.bucket_name == "container"
         assert config.bucket_path == "lora/models"
 
+    def test_valid_az_config(self):
+        """Test valid az:// LoRA config."""
+        config = LoraMirrorConfig(
+            lora_model_id="test-model",
+            bucket_uri="az://container/lora/models",
+            max_total_tokens=1000,
+        )
+        assert config.lora_model_id == "test-model"
+        assert config.bucket_uri == "az://container/lora/models"
+        assert config.bucket_name == "container"
+        assert config.bucket_path == "lora/models"
+
     def test_bucket_path_parsing(self):
         """Test bucket path parsing for different URI formats."""
         # S3 with multiple path segments
@@ -132,6 +150,15 @@ class TestLoraMirrorConfig:
         config = LoraMirrorConfig(
             lora_model_id="test",
             bucket_uri="abfss://container@account.dfs.core.windows.net/deep/nested/path",
+            max_total_tokens=1000,
+        )
+        assert config.bucket_name == "container"
+        assert config.bucket_path == "deep/nested/path"
+
+        # az:// with multiple path segments
+        config = LoraMirrorConfig(
+            lora_model_id="test",
+            bucket_uri="az://container/deep/nested/path",
             max_total_tokens=1000,
         )
         assert config.bucket_name == "container"
