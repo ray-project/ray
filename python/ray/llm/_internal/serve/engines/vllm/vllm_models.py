@@ -9,6 +9,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
+from ray.llm._internal.common.utils.download_utils import STREAMING_LOAD_FORMATS
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
@@ -193,7 +194,11 @@ class VLLMEngineConfig(BaseModelExtended):
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
             model_source = llm_config.model_loading_config.model_source
-            if is_remote_path(model_source):
+            load_format = llm_config.engine_kwargs.get("load_format")
+            if (
+                is_remote_path(model_source)
+                and load_format not in STREAMING_LOAD_FORMATS
+            ):
                 # Remote URIs (s3://, gs://, …) are download addresses,
                 # not HuggingFace IDs.  Using the URI verbatim as
                 # hf_model_id propagates the scheme and slashes into the
@@ -203,6 +208,9 @@ class VLLMEngineConfig(BaseModelExtended):
                 hf_model_id = llm_config.model_id
                 mirror_config = CloudMirrorConfig(bucket_uri=model_source)
             else:
+                # Streaming load formats read the weights directly from the
+                # remote URI, so pass it through as the model instead of
+                # mirroring it to disk.
                 hf_model_id = model_source
         else:
             # If it's a CloudMirrorConfig (or subtype)
