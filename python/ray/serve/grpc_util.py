@@ -180,6 +180,14 @@ class RayServegRPCContext:
         """
         return self._invocation_metadata_dict.get("tracestate")
 
+    def multiplexed_model_id(self) -> Optional[str]:
+        """Accesses the multiplexed model ID for the RPC.
+
+        Returns:
+          The multiplexed model ID from the request metadata, or None if not set.
+        """
+        return self._invocation_metadata_dict.get("multiplexed_model_id")
+
     def invocation_metadata(self) -> List[Tuple[str, str]]:
         """Accesses the metadata sent by the client.
 

@@ -18,6 +18,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    parse_multiplexed_model_id_header,
     retry_after_headers,
     send_http_response_on_exception,
 )
@@ -429,6 +430,27 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+def test_parse_multiplexed_model_id_header():
+    """The multiplexed-model-id header is parsed with ``-``/``_`` tolerance."""
+    assert (
+        parse_multiplexed_model_id_header({b"serve_multiplexed_model_id": b"m1"})
+        == "m1"
+    )
+    # Proxies (nginx, AWS API Gateway) rewrite underscores to hyphens.
+    assert (
+        parse_multiplexed_model_id_header({b"serve-multiplexed-model-id": b"m2"})
+        == "m2"
+    )
+    # Header matching is case-insensitive.
+    assert (
+        parse_multiplexed_model_id_header({b"Serve_Multiplexed_Model_Id": b"m3"})
+        == "m3"
+    )
+    # Absent header returns the empty string.
+    assert parse_multiplexed_model_id_header({b"other": b"value"}) == ""
+    assert parse_multiplexed_model_id_header({}) == ""
 
 
 if __name__ == "__main__":

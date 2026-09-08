@@ -52,6 +52,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
@@ -909,6 +910,24 @@ def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
     """
     for key, value in headers.items():
         if _matches_session_id_header(key.decode("utf-8")):
+            return value.decode("utf-8")
+    return ""
+
+
+def _matches_multiplexed_model_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the multiplexed-model-id header.
+
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent so
+    intermediate proxies that rewrite the separator (nginx, AWS API Gateway,
+    ...) don't silently drop the multiplexed model ID.
+    """
+    return header_key.lower().replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID
+
+
+def parse_multiplexed_model_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the multiplexed-model-id header value, or '' if absent."""
+    for key, value in headers.items():
+        if _matches_multiplexed_model_id_header(key.decode("utf-8")):
             return value.decode("utf-8")
     return ""
 

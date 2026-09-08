@@ -112,6 +112,21 @@ def test_ray_serve_grpc_context_serializable():
     assert deserialized_context.__dict__ == context.__dict__
 
 
+def test_ray_serve_grpc_context_multiplexed_model_id():
+    """The multiplexed model ID is read from the RPC invocation metadata."""
+    fake_context = FakeGrpcContext()
+    fake_context._invocation_metadata = [
+        ("application", "my_app"),
+        ("multiplexed_model_id", "m1"),
+    ]
+    context = RayServegRPCContext(fake_context)
+    assert context.multiplexed_model_id() == "m1"
+
+    # Absent metadata yields None.
+    empty_context = RayServegRPCContext(FakeGrpcContext())
+    assert empty_context.multiplexed_model_id() is None
+
+
 def test_add_grpc_address():
     """Test `add_grpc_address` adds the address to the gRPC server."""
     fake_grpc_server = FakeGrpcServer()

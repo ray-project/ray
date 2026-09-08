@@ -134,6 +134,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
     parse_disconnect_disabled_header,
+    parse_multiplexed_model_id_header,
     parse_request_timeout_header,
     parse_session_id_header,
     retry_after_headers,
@@ -2663,8 +2664,7 @@ class Replica:
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate this.
-            multiplexed_model_id="",
+            multiplexed_model_id=c.multiplexed_model_id() or "",
             route=self._deployment_id.app_name,
             tracing_context=self.get_grpc_tracing_context(c),
             is_streaming=is_streaming,
@@ -3157,8 +3157,7 @@ class Replica:
             call_method="__call__",
             route=self._determine_http_route(scope),
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate the multiplexed model ID.
-            multiplexed_model_id="",
+            multiplexed_model_id=parse_multiplexed_model_id_header(headers),
             session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
