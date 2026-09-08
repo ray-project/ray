@@ -441,12 +441,13 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-        headers, verify = self._get_refreshed_headers_and_verify()
+        headers, verify, cert = self._get_refreshed_credentials()
         result = requests.delete(
             url,
             headers=headers,
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
+            cert=cert,
         )
         if not result.status_code == 200:
             result.raise_for_status()
