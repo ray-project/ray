@@ -42,5 +42,5 @@ Each rule exists because its absence already cost something real.
 4. **Verify against the tree before writing a doc claim.** Env vars, defaults, file paths
    and which branch a script lives on all drift; each audit of these docs has found
    documented knobs that do not exist and shipped defaults documented three values stale.
-5. After every message, check if there is anything to be updated/added/removed in any doc 
-   and make the apt change. 
+5. After every message, check if there is anything to be updated/added/removed in any doc
+   and make the apt change.

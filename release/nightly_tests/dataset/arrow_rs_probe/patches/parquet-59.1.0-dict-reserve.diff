@@ -5,7 +5,7 @@ index ab67694..401a56c 100644
 @@ -97,6 +97,20 @@ impl<I: OffsetSizeTrait> OffsetBuffer<I> {
      ) -> Result<()> {
          self.offsets.reserve(keys.len());
- 
+
 +        // Pre-size `values` from the dictionary's average value length (O(1),
 +        // no pass over the keys). Without this, each key's value lands in an
 +        // unreserved Vec and amortized doubling re-copies roughly all gathered

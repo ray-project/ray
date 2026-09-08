@@ -116,12 +116,13 @@ DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 # ``use_datasource_v2`` is also set. Requires the native ``ray_data_arrow_rs``
 # module to be installed. Defaults to False.
 DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
-    # TESTING COMMIT ONLY — default flipped to True so every read_parquet in the
-    # release suite exercises the Rust reader. Revert this commit before opening
-    # the PR: the shipping default MUST stay False (opt-in). Paired with
-    # release/ray_release/byod/byod_arrow_rs_parquet.sh (installs the crate).
+    # Opt-in: the shipping default stays False because the native module is not
+    # part of the Ray wheel. The two-arm release matrix selects the reader per
+    # test with this env var (release/nightly_tests/dataset/arrow_rs_probe/
+    # gen_2x2_release_tests.py), paired with byod_arrow_rs_parquet.sh, which
+    # installs the crate into the release image.
     "RAY_DATA_USE_ARROW_RS_PARQUET_READER",
-    True,
+    False,
 )
 
 # With the arrow-rs reader: set glibc's M_TRIM_THRESHOLD to 0 (via mallopt) in
