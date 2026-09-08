@@ -475,6 +475,45 @@ async def test_job_manager_network_fault_tolerance(
     )
 
 
+class _StaleAddressGcsClient:
+    """Wraps a live GcsClient but reports an address that nothing is listening on.
+
+    Models a head replacement: the JobManager's own client keeps working through
+    the stable service, while the address it recorded at construction is dead.
+    """
+
+    def __init__(self, client, address: str):
+        self._client = client
+        self.address = address
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+@pytest.mark.asyncio
+async def test_job_succeeds_when_manager_gcs_address_is_stale(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """A job must reach SUCCEEDED even if the address the JobManager recorded is
+    no longer reachable.
+
+    The supervisor runs on a worker whose own GCS client reconnects through the
+    stable head service, so it must not depend on the creating head's address.
+    """
+    ray.init(address=call_ray_start)
+    live_client = ray._private.worker.global_worker.gcs_client
+    # Port 1 is reserved and never bound, so any client built from this address
+    # cannot reach GCS.
+    job_manager = JobManager(
+        _StaleAddressGcsClient(live_client, "127.0.0.1:1"), tmp_path
+    )
+
+    job_id = await job_manager.submit_job(entrypoint="echo hello")
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
 @pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have

@@ -30,6 +30,12 @@ from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
+# Keep the footer-reader pool tiny for unit/integration tests. The default
+# 32-actor pool times out under CI parallelism; tests that need a larger pool
+# can override with monkeypatch.setenv. Mirrored in python/ray/data/test.bzl
+# for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+
 
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.

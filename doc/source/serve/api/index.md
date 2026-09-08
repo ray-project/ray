@@ -7,6 +7,12 @@ myst:
 (serve-api)=
 # Ray Serve API
 
+```{toctree}
+:hidden:
+
+Serve CLI <cli>
+```
+
 ## Python API
 
 (core-apis)=
@@ -180,21 +186,15 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
 ```
 
 
-(serve-cli)=
-
 ## Command Line Interface (CLI)
 
-```{eval-rst}
-.. click:: ray.serve.scripts:cli
-   :prog: serve
-   :nested: full
-```
+The `serve` command line interface deploys, inspects, and manages Serve applications from the command line. See the [Serve CLI reference](serve-cli) for the full command list.
 
 (serve-rest-api)=
 
 ## Serve REST API
 
-The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
+The Serve REST API is exposed at the same port as the Ray dashboard. The dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
 
 ### `PUT "/api/serve/applications/"`
 

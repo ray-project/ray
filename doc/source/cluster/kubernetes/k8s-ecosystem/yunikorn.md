@@ -34,7 +34,7 @@ You need to successfully install Apache YuniKorn on your Kubernetes cluster befo
 When installing KubeRay operator using Helm, pass the `--set batchScheduler.name=yunikorn` flag at the command line:
 
 ```shell
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 --set batchScheduler.name=yunikorn
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 --set batchScheduler.name=yunikorn
 ```
 
 ## Step 4: Use Apache YuniKorn for gang scheduling

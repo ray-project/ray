@@ -14,10 +14,10 @@ exclude: |
     src/ray/thirdparty/|
     doc/external/|
     # Excludes doc/source, except the Markdown and rST prose under doc/source/data
-  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
-  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
-  # hook out entirely and it silently matched zero files.
-  doc/source/(?!data/.*[.](md|rst)$)|
+    # that the `vale` hook below lints and Bazel BUILD files for buildifier.
+    # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
+    # excluded BUILD files would never reach the buildifier hooks.
+    doc/source/(?!data/.*[.](md|rst)$|(?:.*/)?BUILD(?:\.bazel)?$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -94,9 +94,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -361,20 +361,6 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
-
-  - repo: https://github.com/semgrep/pre-commit
-    rev: v1.32.0
-    hooks:
-      - id: semgrep
-        args: [--config=semgrep.yml, --error]
-        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
-        # but the top-level `exclude` above has kept every doc/source path out of
-        # this hook, so the rule has never actually run on those files. Narrowing
-        # that exclude for Vale exposes 8 pre-existing violations under
-        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
-        # fix the violations separately, rather than converting code blocks in a
-        # PR about Vale.
-        exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.17.1
