@@ -597,6 +597,7 @@ class PrometheusQueryMixin:
     Scalar results and instant vectors, including empty and multi-sample
     vectors, retain their Prometheus result types. ``self.prometheus_metrics``
     is a convenience view containing only scalars and single-sample vectors.
+    Results are returned as a dict mapping each query string to its value.
 
     The first read starts a daemon thread that evaluates the queries every
     ``fetch_interval_s``. Reads never block on the network and return ``None``
@@ -607,6 +608,38 @@ class PrometheusQueryMixin:
     variable, which Ray's dashboard and managed clusters already set, so the
     common case needs no address. HTTP headers are read from the JSON-encoded
     ``RAY_PROMETHEUS_HEADERS`` environment variable used by the dashboard.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray.serve.autoscaling_policy import PrometheusQueryMixin
+
+            QUERY = "sum(my_queue_depth)"
+
+            class QueueDepthPolicy(PrometheusQueryMixin):
+                def __init__(self, **kwargs):
+                    super().__init__(prometheus_queries=[QUERY], **kwargs)
+
+                def __call__(self, ctx):
+                    metrics = self.prometheus_metrics or {}
+                    queue_depth = metrics.get(QUERY)
+                    if queue_depth is None:
+                        return ctx.target_num_replicas, {}
+                    desired = ctx.target_num_replicas
+                    if queue_depth > 10:
+                        desired += 1
+                    return desired, {}
+
+    Args:
+        prometheus_address: Base URL of the Prometheus server. Falls back to the
+            ``RAY_PROMETHEUS_HOST`` environment variable.
+        prometheus_queries: PromQL expressions to evaluate on every fetch.
+        fetch_interval_s: Seconds between completion of background fetch and the
+            next fetch.
+        cache_ttl_s: Maximum age in seconds of cached results. Reads return
+            ``None`` once the cache is older than this.
+        **kwargs: Forwarded to ``super().__init__``.
     """
 
     def __init__(
