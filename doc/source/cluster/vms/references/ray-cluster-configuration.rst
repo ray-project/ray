@@ -935,19 +935,22 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: AWS
 
-        Not available.
+        Not available. The AWS provider obtains the head node IP address from EC2.
 
     .. tab-item:: Azure
 
-        Not available.
+        Not available. The Azure provider obtains the head node IP address from
+        Azure APIs.
 
     .. tab-item:: GCP
 
-        Not available.
+        Not available. The GCP provider obtains the head node IP address from
+        Compute Engine.
 
     .. tab-item:: vSphere
 
-        Not available.
+        Not available. The vSphere provider obtains the head node IP address from
+        the managed VM.
 
     .. tab-item:: Local
 
@@ -968,19 +971,27 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: AWS
 
-        Not available.
+        Not available. The AWS provider obtains node IP addresses from EC2. Use
+        :ref:`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
+        to choose whether Ray uses private addresses.
 
     .. tab-item:: Azure
 
-        Not available.
+        Not available. Use
+        :ref:`provider.use_external_head_ip <cluster-configuration-use-external-head-ip>`
+        to provision and use a public address for the head node.
 
     .. tab-item:: GCP
 
-        Not available.
+        Not available. The GCP provider obtains node IP addresses from Compute
+        Engine. Use
+        :ref:`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
+        to choose whether Ray uses private addresses.
 
     .. tab-item:: vSphere
 
-        Not available.
+        Not available. The vSphere provider obtains the head node IP address from
+        the managed VM instead of accepting a static external address in this field.
 
     .. tab-item:: Local
 
@@ -1001,19 +1012,23 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: AWS
 
-        Not available.
+        Not available. The AWS provider creates and discovers worker nodes through
+        EC2 instead of accepting a static list of addresses.
 
     .. tab-item:: Azure
 
-        Not available.
+        Not available. The Azure provider creates and discovers worker nodes
+        through Azure APIs instead of accepting a static list of addresses.
 
     .. tab-item:: GCP
 
-        Not available.
+        Not available. The GCP provider creates and discovers worker nodes through
+        Compute Engine instead of accepting a static list of addresses.
 
     .. tab-item:: vSphere
 
-        Not available.
+        Not available. The vSphere provider creates and discovers worker nodes
+        through its VM service instead of accepting a static list of addresses.
 
     .. tab-item:: Local
 
@@ -1034,19 +1049,23 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: AWS
 
-        Not available.
+        Not available. The AWS provider manages cluster capacity through EC2 and
+        doesn't use the Local provider's coordinator server.
 
     .. tab-item:: Azure
 
-        Not available.
+        Not available. The Azure provider manages cluster capacity through Azure
+        APIs and doesn't use the Local provider's coordinator server.
 
     .. tab-item:: GCP
 
-        Not available.
+        Not available. The GCP provider manages cluster capacity through Compute
+        Engine and doesn't use the Local provider's coordinator server.
 
     .. tab-item:: vSphere
 
-        Not available.
+        Not available. The vSphere provider manages cluster capacity through its
+        VM service and doesn't use the Local provider's coordinator server.
 
     .. tab-item:: Local
 
