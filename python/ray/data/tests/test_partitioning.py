@@ -22,7 +22,8 @@ from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionFilter,
 )
-from ray.data.expressions import col
+from ray.data.datatype import DataType
+from ray.data.expressions import col, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -1008,6 +1009,51 @@ def test_evaluate_predicate_on_partition_type_mismatch():
     assert parser.evaluate_predicate_on_partition(
         "year=2020/data.parquet", col("month") == "01"
     )
+
+
+@udf(DataType(int))
+def _year_as_int(year):
+    return pa.compute.cast(year, pa.int64())
+
+
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        # Correctly typed comparison -- the common case, both outcomes.
+        (col("year") == "2020", True),
+        (col("year") == "2019", False),
+        (col("year") != "2019", True),
+        (col("year") > "2019", True),
+        # Compound predicates over partition columns.
+        ((col("year") == "2020") & (col("month") == "01"), True),
+        ((col("year") == "2020") & (col("month") == "02"), False),
+        ((col("year") == "2019") | (col("month") == "01"), True),
+        # Non-comparison kernels.
+        (col("year").is_null(), False),
+        (col("year").is_in(["2019", "2020"]), True),
+        (col("year").is_in(["2018", "2019"]), False),
+        # A UDF over a partition column runs on the parsed value, so it can
+        # do the cast the user should have written -- and must keep working.
+        (_year_as_int(col("year")) == 2020, True),
+        # A column the path does not partition on is unknowable from the path
+        # alone, so the file is conservatively kept. This is the one case the
+        # narrowed ``except KeyError`` still swallows.
+        (col("day") == "15", True),
+        ((col("year") == "2020") & (col("day") == "15"), True),
+    ],
+)
+def test_evaluate_predicate_on_partition_unaffected_cases(predicate, expected):
+    """Everything that evaluated correctly before the narrowing still does.
+
+    ``evaluate_predicate_on_partition`` used to swallow every exception and
+    return ``True``. Narrowing that to ``KeyError`` only changes behaviour for
+    predicates that *raised*; these all returned a real answer already, and
+    must return the same one.
+    """
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    path = "year=2020/month=01/data.parquet"
+
+    assert parser.evaluate_predicate_on_partition(path, predicate) is expected
 
 
 if __name__ == "__main__":
