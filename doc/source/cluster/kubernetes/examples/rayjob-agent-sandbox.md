@@ -8,7 +8,7 @@ myst:
 
 # Sandboxed code execution with Ray and Agent Sandbox
 
-This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment, and how to {ref}`suspend and resume sandboxes <kuberay-agent-sandbox-snapshot>` between agent turns to reclaim their capacity while they're idle. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
+This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment, and how to suspend and resume sandboxes between agent turns to reclaim their capacity while they're idle. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
 
 The setup below enables memory-snapshot suspend and resume by default. Suspension is opt-in at runtime, and sandboxes behave normally until you suspend one. Each snapshot-specific setup piece is noted, so you can skip it if you only want sandboxed code execution.
 
@@ -150,7 +150,7 @@ kubectl get pod "$GVISOR_POD" -o jsonpath='{.spec.automountServiceAccountToken}{
 kubectl exec "$GVISOR_POD" -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1     # expect: No such file or directory
 ```
 
-#### Snapshot storage and sandbox pool
+#### (Optional) Snapshot storage and sandbox pool
 
 This part provisions the storage and warm pool used by memory-snapshot suspend and resume. Skip it if you don't plan to use suspend and resume. Snapshot state is written to a Cloud Storage bucket, which needs hierarchical namespaces, uniform bucket-level access, and the same location as the cluster:
 
@@ -242,8 +242,6 @@ Cleaning up sandboxes...
 (SandboxExecutor pid=342, ip=10.72.1.10) [executor-0] claimed sandbox 'sandbox-claim-3a93b626' in 0.212s
 ```
 
-(kuberay-agent-sandbox-snapshot)=
-
 ## Suspend and resume sandboxes
 
 In agentic RL rollouts, a sandbox is typically held for a whole multi-turn trajectory but only executes commands for a small fraction of that time: a turn runs a few seconds of code, then waits many seconds for model inference. The sandbox is idle, but its pod still holds its full CPU and memory reservation, which is what bounds cluster density.
@@ -257,7 +255,7 @@ Agent Sandbox supports two suspension mechanisms:
 
 Use plain `operatingMode` pause and resume when the sandbox's durable state lives on its persistent volumes. Use memory snapshots when the agent depends on live process state that must survive the gap, such as running background processes, in-memory data, or open files.
 
-### Pause and resume with `spec.operatingMode`
+### Step 8 (optional): Pause and resume sandboxes with `spec.operatingMode`
 
 This mechanism needs no SDK and no GKE-specific features. It's a one-field patch on the `Sandbox` resource, and any orchestrator that applies manifests can issue it directly against the sandboxes created earlier in this guide:
 
@@ -287,7 +285,7 @@ Semantics to plan around:
 - The pod IP and pod name change across the cycle. Re-resolve them from the Sandbox status after resume, and don't cache connections across a suspend.
 - The pod's CPU and memory reservation is returned to the scheduler while suspended. This is where the density win comes from.
 
-### Memory snapshots
+### Step 9 (optional): Suspend and resume with memory snapshots
 
 The example runs a RayJob in which each Ray actor claims a sandbox from the `python-snapshot-pool` warm pool and drives a simulated multi-turn rollout. At the turn boundary the actor calls `sandbox.suspend()`, which snapshots and terminates the pod while the model is thinking, then calls `sandbox.resume()` before the next turn. The first turn writes state to `/tmp` inside the sandbox and the second turn reads it back after the suspend and resume cycle. A plain pod restart wipes `/tmp`, so the read succeeding, together with the SDK's `restored_from_snapshot` check, is what distinguishes a memory snapshot from a plain pause.
 
