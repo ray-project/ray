@@ -1942,6 +1942,46 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
+    def testConstantGridSearchResolvedVarsPerVariant(self):
+        """Each variant must report its own grid value, not the last one."""
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            reported = [resolved_vars[("grid",)] for resolved_vars, _ in variants]
+            actual = [spec["grid"] for _, spec in variants]
+
+            self.assertEqual(actual, [1, 2, 3])
+            self.assertEqual(
+                reported,
+                actual,
+                f"resolved_vars disagrees with the spec for "
+                f"constant_grid_search={constant_grid_search}",
+            )
+
+    def testConstantGridSearchTrialsReportTheirOwnGridValue(self):
+        """The experiment tag and evaluated_params must match the config each trial runs."""
+        from ray.tune.search.basic_variant import BasicVariantGenerator
+
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+        searcher = BasicVariantGenerator(constant_grid_search=True)
+        searcher.add_configurations(
+            Experiment(run=_mock_objective, name="test", config=config, num_samples=1)
+        )
+
+        trials = []
+        while not searcher.is_finished():
+            trial = searcher.next_trial()
+            if not trial:
+                break
+            trials.append(trial)
+
+        self.assertEqual([t.config["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual([t.evaluated_params["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual(len({t.experiment_tag for t in trials}), len(trials))
+
     @patch.object(logger, "warning")
     @pytest.mark.skipif(
         sys.version_info >= (3, 12),

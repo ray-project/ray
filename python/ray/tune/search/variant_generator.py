@@ -276,21 +276,25 @@ def _generate_variants_internal(
             constant_grid_search=constant_grid_search,
             random_state=random_state,
         ):
+            # Under `constant_grid_search`, `resolved_vars` is built once before the
+            # grid loop and would otherwise be mutated and yielded again for every
+            # variant, so all of them would end up sharing the last grid value.
+            variant_vars = resolved_vars.copy()
             for path, value in grid_vars:
-                resolved_vars[path] = _get_value(spec, path)
+                variant_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
                 if (
-                    k in resolved_vars
-                    and v != resolved_vars[k]
-                    and _is_resolved(resolved_vars[k])
+                    k in variant_vars
+                    and v != variant_vars[k]
+                    and _is_resolved(variant_vars[k])
                 ):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
                         "your configuration.".format(k)
                     )
-                resolved_vars[k] = v
-            yield resolved_vars, spec
+                variant_vars[k] = v
+            yield variant_vars, spec
 
 
 def _get_preset_variants(
