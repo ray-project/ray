@@ -1,0 +1,80 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Minimal generated Go protos for the Go runtime local-mode closed loop.
+#
+# The genrule below unzips the go_grpc_compile outputs into declared .pb.go
+# files (hermetic), and go_library compiles them with package name "proto".
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+
+# Generated .pb.go files produced from go_runtime_min_go_proto.
+PROTO_SRCS = [
+    "autoscaler.pb.go",
+    "common.pb.go",
+    "gcs.pb.go",
+    "profile_events.pb.go",
+    "runtime_env_common.pb.go",
+    "runtime_environment.pb.go",
+]
+
+pkg_files(
+    name = "go_runtime_min_go_proto_files",
+    srcs = ["//src/ray/protobuf:go_runtime_min_go_proto"],
+    prefix = "proto",
+    visibility = ["//visibility:private"],
+)
+
+pkg_zip(
+    name = "go_runtime_min_go_proto_zip",
+    srcs = [":go_runtime_min_go_proto_files"],
+    out = "go_runtime_min_go_proto.zip",
+    visibility = ["//visibility:private"],
+)
+
+genrule(
+    name = "install_go_proto",
+    srcs = [
+        ":go_runtime_min_go_proto_zip",
+    ],
+    outs = PROTO_SRCS,
+    cmd = """
+        set -euo pipefail
+        rm -rf $(@D)/tmp_unzip
+        unzip -o -q $(location :go_runtime_min_go_proto_zip) -d $(@D)/tmp_unzip
+        cp $(@D)/tmp_unzip/proto/*.pb.go $(@D)/
+        rm -rf $(@D)/tmp_unzip
+        # Canonicalize the go package to "proto" for all generated files.
+        for f in $(@D)/*.pb.go; do
+            sed -i 's/^package [a-zA-Z0-9_]*/package proto/' "$$f"
+        done
+    """,
+    local = 1,
+)
+
+go_library(
+    name = "proto",
+    srcs = PROTO_SRCS,
+    importpath = "github.com/ray-project/ray/go/proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+        "@org_golang_google_protobuf//runtime/protoimpl",
+    ],
+)
