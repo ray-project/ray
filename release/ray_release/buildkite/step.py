@@ -48,9 +48,14 @@ _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
                 "image": "python:3.10",
                 "shell": ["/bin/bash", "-elic"],
                 "propagate-environment": True,
+                # Lets the test job run `buildkite-agent` -- the reporters use
+                # it to annotate the build. The plugin mounts the binary the
+                # agent is actually running and passes the access token it needs
+                # to reach the API; hand-mounting the binary does neither, and
+                # `propagate-environment` does not carry the token.
+                "mount-buildkite-agent": True,
                 "volumes": [
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
-                    "/usr/local/bin/buildkite-agent:/usr/local/bin/buildkite-agent",
                     f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
                 ],
                 "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
