@@ -1,7 +1,7 @@
 import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, run_tpch_benchmark
+from common import parse_tpch_args, load_table, run_tpch_benchmark, record_dataset
 
 
 def main(args):
@@ -83,7 +83,7 @@ def main(args):
         )
 
         # Aggregate by customer name, customer key, order key, and order date
-        _ = (
+        _ = record_dataset(
             ds.groupby(
                 ["c_name", "o_custkey", "l_orderkey", "o_orderdate", "o_totalprice"]
             )

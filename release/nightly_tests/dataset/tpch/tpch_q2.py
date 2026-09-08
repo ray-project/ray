@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Min
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -175,7 +181,7 @@ def main(args):
         ds = ds.with_column("s_acctbal", to_f64(col("s_acctbal")))
 
         # Select output columns, sort, and limit
-        _ = (
+        _ = record_dataset(
             ds.select_columns(
                 [
                     "s_acctbal",

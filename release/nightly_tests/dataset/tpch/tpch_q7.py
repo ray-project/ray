@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -137,7 +143,7 @@ def main(args):
         )
 
         # Aggregate by supplier nation, customer nation, and year
-        _ = (
+        _ = record_dataset(
             ds.groupby(["n_name_supp", "n_name_cust", "l_year"])
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key=["n_name_supp", "n_name_cust", "l_year"])

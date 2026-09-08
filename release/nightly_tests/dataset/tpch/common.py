@@ -121,7 +121,35 @@ def load_table(
     return ds
 
 
+# The last dataset a query handed to ``record_dataset``. Module-global because
+# the query's final Dataset handle is otherwise local to ``benchmark_fn`` and
+# its per-operator stats (shuffle/join walls, output-block granularity) are
+# lost — tpch rows had no operator breakdown at all before this hook.
+_recorded_dataset = None
+
+
+def record_dataset(ds):
+    """Stash a query's final materialized dataset so ``run_tpch_benchmark`` can
+    attach per-operator metrics to the result row. Returns ``ds`` unchanged so
+    call sites can wrap an existing ``.materialize()`` expression. If called
+    more than once in a query, the last call wins."""
+    global _recorded_dataset
+    _recorded_dataset = ds
+    return ds
+
+
 def run_tpch_benchmark(name: str, benchmark_fn):
+    from benchmark import collect_operator_metrics
+
+    def instrumented_fn():
+        global _recorded_dataset
+        _recorded_dataset = None
+        out = benchmark_fn() or {}
+        if _recorded_dataset is not None:
+            out = {**out, **collect_operator_metrics(_recorded_dataset)}
+            _recorded_dataset = None
+        return out
+
     benchmark = Benchmark()
-    benchmark.run_fn(name, benchmark_fn)
+    benchmark.run_fn(name, instrumented_fn)
     benchmark.write_result()

@@ -1,0 +1,20 @@
+# Single-fat-node analog of the all-to-all fleets, for the arrow-rs 2x2
+# topology axis (arrow_rs_probe/gen_2x2_release_tests.py). NOTE: unlike the
+# CPU analog, one node CANNOT match this fleet's aggregate (32x m5.4xlarge =
+# 512 vCPU / 2 TiB; largest m5 is 96 vCPU / 384 GiB). Same story for joins'
+# 100x m5.2xlarge. The 2x2 comparison is reader-vs-reader WITHIN a topology,
+# so under-provisioning is shared by both arms; expect longer walls and real
+# spill (the generated single-node entries set RAYTEST_FAIL_ON_SPILLING=0
+# and double the timeout). 2 TiB disk absorbs the spill that a fleet would
+# spread over 32 x 512 GiB volumes.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 2048
+
+head_node:
+    instance_type: m5.24xlarge

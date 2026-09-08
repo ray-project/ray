@@ -6,7 +6,7 @@ import numpy as np
 import pyarrow as pa
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 
 # Allow 20% headroom over the observed 10.8 GiB baseline.
@@ -80,8 +80,11 @@ def run_fast_producer_slow_consumer():
         .map_batches(producer)
         .map_batches(consumer, compute=ray.data.TaskPoolStrategy(size=1))
     )
-    for _ in ds.iter_internal_ref_bundles():
-        pass
+    consume_ref_bundles(ds)
+
+    # Per-operator wall time / output bytes / per-task USS+RSS — backpressure is
+    # about where memory piles up, so per-operator is the useful grain.
+    return collect_operator_metrics(ds)
 
 
 def run_many_tiny_objects():
@@ -112,8 +115,9 @@ def run_many_tiny_objects():
         .map_batches(producer)
         .map_batches(consumer, compute=ray.data.TaskPoolStrategy(size=1))
     )
-    for _ in ds.iter_internal_ref_bundles():
-        pass
+    consume_ref_bundles(ds)
+
+    return collect_operator_metrics(ds)
 
 
 def run_training_prefetch(*, num_trainers: int):

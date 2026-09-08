@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
-from common import load_table, parse_tpch_args, run_tpch_benchmark, to_f64
+from common import (
+    load_table,
+    parse_tpch_args,
+    run_tpch_benchmark,
+    to_f64,
+    record_dataset,
+)
 
 
 def main(args):
@@ -115,7 +121,7 @@ def main(args):
             to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount"))),
         )
 
-        _ = (
+        _ = record_dataset(
             ds.groupby("n_name")
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key="revenue", descending=True)

@@ -3,7 +3,7 @@ import functools
 import uuid
 from typing import Callable
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 import ray
 from ray.data import SaveMode
@@ -80,8 +80,10 @@ def main(args):
         ds = read_fn(args.path)
         consume_fn(ds)
 
-        # Report arguments for the benchmark.
-        return vars(args)
+        # Report arguments for the benchmark, plus per-operator time / output bytes /
+        # decode-USS (isolates the read from downstream consume; surfaces the decode
+        # memory the object-store peak can't see). ``ds`` is still in scope here.
+        return {**vars(args), **collect_operator_metrics(ds)}
 
     if args.write_delta and args.write_delta_mode == "overwrite":
         # Populate the table once first (same source/scale as the timed run
@@ -118,8 +120,7 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_bundles:
 
         def consume_fn(ds):
-            for _ in ds.iter_internal_ref_bundles():
-                pass
+            consume_ref_bundles(ds)
 
     elif args.iter_batches:
 

@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Count, Mean, Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -41,7 +47,7 @@ def main(args):
             ]
         )
 
-        _ = (
+        _ = record_dataset(
             ds.groupby(["l_returnflag", "l_linestatus"])
             .aggregate(
                 Sum(on="l_quantity_f", alias_name="sum_qty"),

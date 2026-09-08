@@ -1,0 +1,25 @@
+diff --git a/parquet/src/arrow/buffer/offset_buffer.rs b/parquet/src/arrow/buffer/offset_buffer.rs
+index ab67694..401a56c 100644
+--- a/parquet/src/arrow/buffer/offset_buffer.rs
++++ b/parquet/src/arrow/buffer/offset_buffer.rs
+@@ -97,6 +97,20 @@ impl<I: OffsetSizeTrait> OffsetBuffer<I> {
+     ) -> Result<()> {
+         self.offsets.reserve(keys.len());
+ 
++        // Pre-size `values` from the dictionary's average value length (O(1),
++        // no pass over the keys). Without this, each key's value lands in an
++        // unreserved Vec and amortized doubling re-copies roughly all gathered
++        // data one extra time — for large dictionary values (e.g. binary image
++        // columns) that copy dominates the decode. The estimate is only a
++        // reservation hint: skewed key distributions still grow or waste at
++        // most one doubling's worth, and the exact-sum alternative costs a
++        // second bounds-checked pass that measurably regresses small values.
++        let dict_len = dict_offsets.len().saturating_sub(1);
++        if dict_len > 0 {
++            let avg_len = dict_values.len() / dict_len;
++            self.values.reserve(avg_len.saturating_mul(keys.len()));
++        }
++
+         for key in keys {
+             let index = key.as_usize();
+             if index + 1 >= dict_offsets.len() {
