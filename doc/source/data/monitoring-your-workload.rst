@@ -477,7 +477,7 @@ Ray Data fuses all four stages into one operator, and the breakdown splits that 
 
 Every figure covers all four stages:
 
-* **Function body** holds all four stage bodies: ``ReadRange``, ``Project``, ``map1`` and ``map2``. Two tasks each slept 0.1
+* **Function body** holds all four stage bodies: ``ReadRange``, ``Project``, ``map1``, and ``map2``. Two tasks each slept 0.1
   then 0.2 seconds, so 0.6 of the 645 ms is ``map1`` and ``map2``, and the remainder is the read and the column projection.
 * **Input prep** and **Output block build** likewise cover every stage, not only the two you wrote. Each stage forms its own
   batches and builds its own output blocks, and all four report into the same two figures.
