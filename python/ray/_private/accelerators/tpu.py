@@ -55,6 +55,7 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
+
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
@@ -620,8 +621,25 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     return False
 
 
+def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
+    """Normalize a TPU accelerator type string to the standard 'v{gen}' format."""
+    if not accelerator_type:
+        return ""
+    s = str(accelerator_type).strip().lower()
+    if s.startswith("tpu-v"):
+        return s[4:]
+    if s.startswith("tpu-"):
+        return "v" + s[4:]
+    if s.startswith("tpu"):
+        return "v" + s[3:]
+    return s
+
+
 def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
-    """Returns the number of TPU custom resources per chip for a TPU accelerator type."""
+    """Return custom TPU resources per physical chip (defaults to 1).
+
+    Workloads allocating per logical device can set RAY_TPU_RESOURCE_PER_CHIP.
+    """
     val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
     if val is not None:
         try:
@@ -629,21 +647,27 @@ def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
             if rpc_val <= 0:
                 raise ValueError
             return rpc_val
-        except (ValueError, TypeError):
+        except ValueError:
             raise ValueError(
                 f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, got: {val!r}"
             )
 
+    return 1
+
+
+def get_tpu_devices_per_chip(accelerator_type: Optional[str] = None) -> int:
+    """Return the number of logical devices per physical chip (defaults to 1)."""
     if not accelerator_type:
         accelerator_type = (
-            TPUAcceleratorManager.get_current_node_tpu_pod_type()
-            or os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+            os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR)
+            or TPUAcceleratorManager.get_current_node_tpu_pod_type()
         )
 
-    acc_str = (accelerator_type or "").lower().replace("tpu-", "")
-    if acc_str.startswith("tpu"):
-        acc_str = "v" + acc_str[3:]
-    if any(acc_str.startswith(t) for t in DUAL_DEVICE_TPU_TYPES):
+    if not accelerator_type:
+        return 1
+
+    gen = normalize_tpu_accelerator_type(accelerator_type).split("-")[0]
+    if gen in DUAL_DEVICE_TPU_TYPES:
         return 2
     return 1
 
@@ -660,6 +684,31 @@ class TPUAcceleratorManager(AcceleratorManager):
         return TPU_VISIBLE_CHIPS_ENV_VAR
 
     @staticmethod
+    def _expand_chip_to_device_ids(chip: str, devices_per_chip: int) -> List[str]:
+        """Expand a physical chip ID into logical device IDs for multi-device TPUs."""
+        if devices_per_chip <= 1:
+            return [chip]
+        try:
+            chip_idx = int(chip)
+            return [
+                str(chip_idx * devices_per_chip + dev_idx)
+                for dev_idx in range(devices_per_chip)
+            ]
+        except ValueError:
+            return [chip]
+
+    @staticmethod
+    def _map_device_to_chip_id(device_id: str, devices_per_chip: int) -> str:
+        """Map a logical device ID back to its physical chip ID."""
+        if devices_per_chip <= 1:
+            return device_id
+        try:
+            dev_idx = int(device_id)
+            return str(dev_idx // devices_per_chip)
+        except ValueError:
+            return device_id
+
+    @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
         tpu_visible_chips = os.environ.get(
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
@@ -671,20 +720,23 @@ class TPUAcceleratorManager(AcceleratorManager):
         if tpu_visible_chips == "":
             return []
 
-        visible_chips = list(tpu_visible_chips.split(","))
-        cores_per_chip = get_tpu_resource_per_chip()
-        if cores_per_chip <= 1:
+        visible_chips = [
+            chip.strip() for chip in tpu_visible_chips.split(",") if chip.strip()
+        ]
+        if not visible_chips:
+            return []
+        resource_per_chip = get_tpu_resource_per_chip()
+        if resource_per_chip <= 1:
             return visible_chips
 
-        # Expand physical chip indices to logical device IDs for multi-core TPUs
+        # Expand physical chip indices to logical device IDs for multi-device TPUs
         logical_ids = []
         for chip in visible_chips:
-            try:
-                chip_idx = int(chip)
-                for core_idx in range(cores_per_chip):
-                    logical_ids.append(str(chip_idx * cores_per_chip + core_idx))
-            except ValueError:
-                logical_ids.append(chip)
+            logical_ids.extend(
+                TPUAcceleratorManager._expand_chip_to_device_ids(
+                    chip, resource_per_chip
+                )
+            )
         return logical_ids
 
     @staticmethod
@@ -770,11 +822,12 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             True if it's a valid topology, False otherwise.
         """
-        tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
-        if tpu_version_formatted.startswith("tpu"):
-            tpu_version_formatted = "v" + tpu_version_formatted[3:]
+        tpu_version_formatted = normalize_tpu_accelerator_type(
+            tpu_accelerator_version
+        ).split("-")[0]
+
         if (
-            tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
+            tpu_version_formatted not in VALID_TPU_TOPOLOGY
             or tpu_topology.strip().lower()
             not in VALID_TPU_TOPOLOGY[tpu_version_formatted]
         ):
@@ -816,19 +869,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        cores_per_chip = get_tpu_resource_per_chip()
+        resource_per_chip = get_tpu_resource_per_chip()
 
         # Map logical device IDs to physical chip IDs
-        physical_chips = set()
-        for device_id in visible_tpu_chips:
-            try:
-                dev_idx = int(device_id)
-                physical_chip = (
-                    dev_idx // cores_per_chip if cores_per_chip > 0 else dev_idx
-                )
-                physical_chips.add(str(physical_chip))
-            except ValueError:
-                physical_chips.add(str(device_id))
+        physical_chips = {
+            TPUAcceleratorManager._map_device_to_chip_id(device_id, resource_per_chip)
+            for device_id in visible_tpu_chips
+        }
 
         sorted_physical_chips = sorted(
             physical_chips,
@@ -841,6 +888,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if (
             num_accelerators_on_node > 0
             and num_visible_chips == num_accelerators_on_node
+            and len(visible_tpu_chips) == num_accelerators_on_node * resource_per_chip
         ):
             # Let the ML framework use the defaults
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
@@ -889,10 +937,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
-            if accelerator_type.lower().startswith("tpu"):
-                return "v" + accelerator_type.lower()[3:]
-
-            return accelerator_type
+            return normalize_tpu_accelerator_type(accelerator_type)
         logging.debug("Failed to get a valid accelerator type.")
         return None
 
@@ -999,7 +1044,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         def tpu_pod_type_to_ray_accelerator_type(
             tpu_pod_type: str,
         ) -> Optional[str]:
-            return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
+            gen = normalize_tpu_accelerator_type(tpu_pod_type).split("-")[0]
+            if gen in VALID_TPU_TYPES:
+                return f"TPU-{gen.upper()}"
+            return None
 
         ray_accelerator_type = None
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
