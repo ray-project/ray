@@ -51,8 +51,8 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles --repeat-reads 5
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet
+      --iter-bundles
       --min-total-worker-network-receive-gbps 0.001
 
 - name: "read_large_parquet_fixed_size"

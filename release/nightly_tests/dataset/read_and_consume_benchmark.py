@@ -37,13 +37,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Fail if the workers receive less than this many Gbps in total, on average.",
     )
-    parser.add_argument(
-        "--repeat-reads",
-        type=int,
-        default=1,
-        help="Number of times to read and consume the input.",
-    )
-
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
     consume_group.add_argument("--iter-bundles", action="store_true")
@@ -79,8 +72,6 @@ def parse_args() -> argparse.Namespace:
         parser.error(
             "--write-delta-mode/--write-delta-partition-by require --write-delta."
         )
-    if args.repeat_reads < 1:
-        parser.error("--repeat-reads must be at least 1.")
     return args
 
 
@@ -95,9 +86,8 @@ def main(args):
         read_fn = get_read_fn(args)
         consume_fn = get_consume_fn(args)
 
-        for _ in range(args.repeat_reads):
-            ds = read_fn(args.path)
-            consume_fn(ds)
+        ds = read_fn(args.path)
+        consume_fn(ds)
 
         # Report arguments for the benchmark.
         return vars(args)
