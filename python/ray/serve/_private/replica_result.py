@@ -3,7 +3,6 @@ import concurrent.futures
 import inspect
 import logging
 import pickle
-import time
 from abc import ABC, abstractmethod
 from asyncio import run_coroutine_threadsafe
 from functools import wraps
@@ -21,7 +20,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.serialization import RPCSerializer
-from ray.serve._private.utils import calculate_remaining_timeout, generate_request_id
+from ray.serve._private.utils import generate_request_id
 from ray.serve.exceptions import RequestCancelledError
 from ray.serve.generated.serve_pb2 import ASGIResponse
 
@@ -29,23 +28,26 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _consume_generator_ref_when_ready(
-    obj_ref_gen: "ray.ObjectRefGenerator",
-    ref: ray.ObjectRef,
+    replica_result: "ActorReplicaResult",
 ) -> Callable[[], None]:
-    """Advance a peeked generator stream once ``ref`` is ready.
+    """Advance a peeked generator stream once the user ref is ready.
 
     Uses ``ObjectRef._on_ready`` so readiness does not pull or
-    deserialize the payload.
+    deserialize the payload. Clears ``replica_result._cancel_consume_wait``
+    when the wait fires.
 
     Args:
-        obj_ref_gen: Generator whose stream cursor should be advanced.
-        ref: Peeked ref that must become ready before consuming.
+        replica_result: Accepted unary result with ``_obj_ref`` peeked.
 
     Returns:
         Function that cancels the wait.
     """
+    obj_ref_gen = replica_result._obj_ref_gen
+    ref = replica_result._obj_ref
+    assert obj_ref_gen is not None and ref is not None
 
     def _on_ready(exc):
+        replica_result._cancel_consume_wait = None
         if exc is not None:
             logger.debug("_on_ready failed while waiting to a generator ref: %s", exc)
             return
@@ -95,7 +97,7 @@ class ReplicaResult(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         raise NotImplementedError
 
     @abstractmethod
@@ -104,8 +106,6 @@ class ReplicaResult(ABC):
 
     @abstractmethod
     def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
-        # NOTE(edoakes): there is only a sync version of this method because it
-        # does not block like `to_object_ref` (so there's also no timeout argument).
         raise NotImplementedError
 
 
@@ -188,9 +188,7 @@ class ActorReplicaResult(ReplicaResult):
                 and self._obj_ref is None
             ):
                 [self._obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
-                self._cancel_consume_wait = _consume_generator_ref_when_ready(
-                    self._obj_ref_gen, self._obj_ref
-                )
+                self._cancel_consume_wait = _consume_generator_ref_when_ready(self)
 
             return self._rejection_response
         except asyncio.CancelledError as e:
@@ -209,14 +207,7 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "get() can only be called on a unary ActorReplicaResult."
 
-        start_time_s = time.time()
-        object_ref = self.to_object_ref(timeout_s=timeout_s)
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=timeout_s,
-            start_time_s=start_time_s,
-            curr_time_s=time.time(),
-        )
-        return ray.get(object_ref, timeout=remaining_timeout_s)
+        return ray.get(self.to_object_ref(), timeout=timeout_s)
 
     @_process_response
     async def get_async(self):
@@ -263,9 +254,7 @@ class ActorReplicaResult(ReplicaResult):
         else:
             ray.cancel(self._obj_ref)
 
-    def to_object_ref(  # type: ignore[override]
-        self, *, timeout_s: Optional[float] = None
-    ) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         assert (
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
@@ -602,7 +591,7 @@ class gRPCReplicaResult(ReplicaResult):
     def cancel(self):
         self._call.cancel()
 
-    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         raise OBJ_REF_NOT_SUPPORTED_ERROR
 
     async def to_object_ref_async(self) -> ray.ObjectRef:

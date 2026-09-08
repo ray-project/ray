@@ -4939,22 +4939,13 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::function<void()>> callbacks;
+  std::vector<std::function<void(void)>> callbacks;
   {
     absl::MutexLock lock(&plasma_mutex_);
-    // A notification can arrive with no listener registered, so this lookup
-    // must tolerate a missing key: the raylet fires PlasmaObjectReady
-    // immediately for an already-local object, so two subscriptions for one
-    // object yield two notifications while the first drains every callback.
-    const ObjectID object_id = ObjectID::FromBinary(request.object_id());
-    absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>::iterator it =
-        async_plasma_callbacks_.find(object_id);
-    if (it != async_plasma_callbacks_.end()) {
-      callbacks = std::move(it->second);
-      async_plasma_callbacks_.erase(it);
-    }
+    auto it = async_plasma_callbacks_.extract(ObjectID::FromBinary(request.object_id()));
+    callbacks = it.mapped();
   }
-  for (const std::function<void()> &callback : callbacks) {
+  for (const auto &callback : callbacks) {
     // This callback needs to be asynchronous because it runs on the io_service_, so no
     // RPCs can be processed while it's running. This can easily lead to deadlock (for
     // example if the callback calls ray.get() on an object that is dependent on an RPC

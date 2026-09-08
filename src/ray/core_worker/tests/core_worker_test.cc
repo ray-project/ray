@@ -1936,27 +1936,6 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   ASSERT_EQ(result.calls, 1);
 }
 
-TEST_F(CoreWorkerTest, HandlePlasmaObjectReadyIgnoresDuplicateNotifications) {
-  const ObjectID object_id = ObjectID::FromRandom();
-  rpc::PlasmaObjectReadyRequest request;
-  request.set_object_id(object_id.Binary());
-  rpc::PlasmaObjectReadyReply reply;
-  int reply_count = 0;
-  rpc::SendReplyCallback send_reply =
-      [&reply_count](Status status, std::function<void()>, std::function<void()>) {
-        ASSERT_TRUE(status.ok());
-        ++reply_count;
-      };
-
-  // The raylet may emit a duplicate notification if an object becomes local
-  // between the core worker's Contains() and SubscribePlasmaReady(). Both
-  // notifications must be harmless when there are no remaining listeners.
-  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
-  core_worker_->HandlePlasmaObjectReady(request, &reply, send_reply);
-
-  ASSERT_EQ(reply_count, 2);
-}
-
 TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
 

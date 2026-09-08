@@ -5161,25 +5161,38 @@ cdef class CoreWorker:
         # callback object being garbage collected before it's called by the core worker.
         # This means we *must* guarantee that the ref is manually decremented to avoid
         # a leak.
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            void *callback_ptr
         cpython.Py_INCREF(user_callback)
-        CCoreWorkerProcess.GetCoreWorker().GetAsync(
-            object_ref.native(),
-            async_callback,
-            <void*>user_callback
-        )
+        callback_ptr = <void*>user_callback
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().GetAsync(
+                c_object_id,
+                async_callback,
+                callback_ptr
+            )
 
     def set_wait_async_callback(self, ObjectRef object_ref, user_callback: Callable):
         # Like set_get_async_callback, but does not pull or deserialize. Returns
         # a handle for cancel_wait_async, or 0 if user_callback already ran.
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            void *callback_ptr
+            uint64_t handle
         cpython.Py_INCREF(user_callback)
-        return CCoreWorkerProcess.GetCoreWorker().WaitAsync(
-            object_ref.native(),
-            wait_async_callback_impl,
-            <void*>user_callback
-        )
+        callback_ptr = <void*>user_callback
+        with nogil:
+            handle = CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+                c_object_id,
+                wait_async_callback_impl,
+                callback_ptr
+            )
+        return handle
 
     def cancel_wait_async(self, uint64_t handle):
-        CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):

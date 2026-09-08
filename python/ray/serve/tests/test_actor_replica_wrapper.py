@@ -332,6 +332,7 @@ async def test_rejection_does_not_wait_async_until_accepted(
         assert await replica_result.get_async() == "Hello"
         # Consume is posted to the io thread; wait until it runs.
         await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
+        assert replica_result._cancel_consume_wait is None
 
 
 @pytest.mark.asyncio

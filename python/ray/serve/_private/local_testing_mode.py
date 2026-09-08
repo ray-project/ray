@@ -260,7 +260,7 @@ class LocalReplicaResult(ReplicaResult):
     def cancel(self):
         self._future.cancel()
 
-    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         raise self.OBJ_REF_NOT_SUPPORTED_ERROR
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
