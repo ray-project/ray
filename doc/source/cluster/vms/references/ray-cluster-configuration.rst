@@ -105,6 +105,13 @@ Auth
 
             :ref:`ssh_user <cluster-configuration-ssh-user>`: str
 
+    .. tab-item:: Local
+
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+
 .. _cluster-configuration-provider-type:
 
 Provider
@@ -380,6 +387,10 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
+For a manually managed Local cluster, ``max_workers`` defaults to the number of
+entries in ``provider.worker_ips`` and is capped at that number. For a
+coordinator-managed Local cluster, ``max_workers`` is required.
+
 .. _cluster-configuration-upscaling-speed:
 
 ``upscaling_speed``
@@ -435,7 +446,7 @@ In rare cases when Docker is not available on the system by default (e.g., bad A
 ``provider``
 ~~~~~~~~~~~~
 
-The cloud provider-specific configuration properties.
+The node-provider-specific configuration properties.
 
 * **Required:** Yes
 * **Importance:** High
@@ -459,6 +470,9 @@ Authentication credentials that Ray will use to launch nodes.
 
 Tells the autoscaler the allowed node types and the resources they provide.
 Each node type is identified by a user-specified key.
+
+For Local clusters, omit this field. The Local provider creates and manages a
+single internal node type.
 
 * **Required:** No
 * **Importance:** High
@@ -501,10 +515,13 @@ head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of
 
 
 
-* **Required:** Yes
+* **Required:** Yes, except for Local clusters
 * **Importance:** High
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
+
+For Local clusters, omit this field. The Local provider sets it to the internal
+``local.cluster.node`` node type.
 
 .. _cluster-configuration-file-mounts:
 
@@ -851,6 +868,15 @@ The user that Ray will authenticate with when launching new nodes.
 
         Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
 
+    .. tab-item:: Local
+
+        The path to an existing private key for Ray to use. If this field is
+        omitted, Ray uses the default SSH authentication settings.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+
 .. _cluster-configuration-ssh-public-key:
 
 ``auth.ssh_public_key``
@@ -877,6 +903,11 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: vSphere
 
         Not available.
+
+    .. tab-item:: Local
+
+        Not available. Configure SSH access on the local nodes before you run
+        ``ray up``.
 
 .. _cluster-configuration-type:
 
@@ -922,6 +953,10 @@ The user that Ray will authenticate with when launching new nodes.
         The on-premises node provider. For local clusters, this must be set to
         ``local``.
 
+        The Local provider manages ``available_node_types`` and
+        ``head_node_type`` internally. It doesn't support the top-level
+        ``head_node`` or ``worker_nodes`` fields.
+
         * **Required:** Yes
         * **Importance:** High
         * **Type:** String
@@ -955,8 +990,8 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: Local
 
         The hostname or IP address of the head node in a manually managed local
-        cluster. Omit this field when you configure an automatically managed local
-        cluster with ``provider.coordinator_address``.
+        cluster. If ``provider.coordinator_address`` is set, Ray uses
+        coordinator-managed mode and ignores this field.
 
         * **Required:** Yes, unless ``provider.coordinator_address`` is set
         * **Importance:** High
@@ -996,8 +1031,9 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: Local
 
         The public hostname or IP address used to connect to the head node over
-        SSH. Set this field when you run ``ray up`` from outside the cluster's
-        private network.
+        SSH in a manually managed local cluster. Set this field when you run
+        ``ray up`` from outside the cluster's private network. If
+        ``provider.coordinator_address`` is set, Ray ignores this field.
 
         * **Required:** No
         * **Importance:** Low
@@ -1033,8 +1069,13 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: Local
 
         A list of hostnames or IP addresses for worker nodes in a manually managed
-        local cluster. Omit this field when you configure an automatically managed
-        local cluster with ``provider.coordinator_address``.
+        local cluster. An empty list creates a head-only cluster. If
+        ``provider.coordinator_address`` is set, Ray uses coordinator-managed mode
+        and ignores this field.
+
+        In manually managed mode, the top-level ``min_workers`` and
+        ``max_workers`` fields default to the number of entries in this list.
+        Values greater than the number of entries are capped at that number.
 
         * **Required:** Yes, unless ``provider.coordinator_address`` is set
         * **Importance:** High
@@ -1070,11 +1111,13 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: Local
 
         The ``host:port`` address of the coordinator server for an automatically
-        managed local cluster. When this field is set, omit ``provider.head_ip``
-        and ``provider.worker_ips``. Automatically managed local clusters require
-        the top-level ``max_workers`` field.
+        managed local cluster. Setting this field selects coordinator-managed
+        mode; Ray ignores ``provider.head_ip``, ``provider.worker_ips``, and
+        ``provider.external_head_ip`` if they are also present. The top-level
+        ``max_workers`` field is required, and ``min_workers`` defaults to ``0``.
 
-        * **Required:** No
+        * **Required:** Yes, unless both ``provider.head_ip`` and
+          ``provider.worker_ips`` are set
         * **Importance:** High
         * **Type:** String
 
@@ -1928,6 +1971,18 @@ Minimal configuration
         .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
             :language: yaml
 
+    .. tab-item:: Local
+
+        **Manually managed cluster**
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-minimal-manual.yaml
+            :language: yaml
+
+        **Coordinator-managed cluster**
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-minimal-automatic.yaml
+            :language: yaml
+
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 
@@ -1951,6 +2006,11 @@ Full configuration
     .. tab-item:: vSphere
 
         .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-full.yaml
+            :language: yaml
+
+    .. tab-item:: Local
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-full.yaml
             :language: yaml
 
 TPU Configuration
