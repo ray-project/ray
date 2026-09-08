@@ -1,0 +1,14 @@
+diff --git go/private/sdk.bzl go/private/sdk.bzl
+--- go/private/sdk.bzl
++++ go/private/sdk.bzl
+@@ -444,8 +444,8 @@ def _sdk_build_file(ctx, platform, version, experiments):
+     goos, _, goarch = platform.partition("_")
+
+     pv = parse_version(version)
+-    if pv != None and pv[1] >= 20:
+-        # Turn off coverageredesign GOEXPERIMENT on 1.20+
++    if pv != None and pv[1] >= 20 and pv[1] < 25:
++        # Turn off coverageredesign GOEXPERIMENT on [1.20 ~ 1.25)
+         # until rules_go is updated to work with the
+         # coverage redesign.
+         if not "nocoverageredesign" in experiments and not "coverageredesign" in experiments:
