@@ -53,7 +53,7 @@ RuntimeOperations &RuntimeOperations::GetInstance() {
 void RuntimeOperations::Initialize(const RuntimeInitializeOptions &options) {
   if (options.gcs_address.empty()) {
     RAY_LOG(ERROR) << "RuntimeOperations::Initialize: gcs_address is required";
-    return;
+    throw std::invalid_argument("gcs_address is required");
   }
 
   ray::JobID job_id = options.job_id;
@@ -64,13 +64,13 @@ void RuntimeOperations::Initialize(const RuntimeInitializeOptions &options) {
   if (!cluster_id_str.empty()) {
     if (cluster_id_str.length() != ray::ClusterID::Size() * 2) {
       RAY_LOG(ERROR) << "Invalid ClusterID hex string length";
-      return;
+      throw std::invalid_argument("Invalid ClusterID hex string length");
     }
     try {
       cluster_id = ray::ClusterID::FromHex(cluster_id_str);
     } catch (const std::exception &e) {
       RAY_LOG(ERROR) << "Failed to parse ClusterID: " << e.what();
-      return;
+      throw;
     }
   }
 
@@ -104,7 +104,7 @@ void RuntimeOperations::Initialize(const RuntimeInitializeOptions &options) {
   core_options.debug_source = options.debug_source;
 
   InitializeRayLogging(options);
-  InitializeCoreWorker(options);
+  InitializeCoreWorker(options, cluster_id, fetch_cluster_id_if_nil);
 
   g_worker_mode.store(static_cast<int>(options.worker_type), std::memory_order_relaxed);
   g_runtime_initialized.store(true, std::memory_order_relaxed);
@@ -255,17 +255,21 @@ void RuntimeOperations::ShutdownRayLogging() {
   }
 }
 
-void RuntimeOperations::InitializeCoreWorker(const RuntimeInitializeOptions &options) {
+void RuntimeOperations::InitializeCoreWorker(const RuntimeInitializeOptions &options,
+                                             const ray::ClusterID &cluster_id,
+                                             bool fetch_cluster_id_if_nil) {
   RAY_CHECK(core_worker_ == nullptr) << "CoreWorker already initialized";
 
   // For Go Worker, we need to synchronously verify GCS connection by fetching cluster ID.
   // This ensures the worker can connect to GCS before starting task execution loop.
   // Setting fetch_cluster_id_if_nil=true makes Connect() call SyncGetClusterId()
   // to verify GCS is reachable, failing fast if connection cannot be established.
+  // Use the cluster ID resolved by Initialize (caller-supplied for workers,
+  // fetched or Nil for drivers) so worker registration uses the right identity.
   ray::gcs::GcsClientOptions gcs_options(options.gcs_address,
-                                         ray::ClusterID::Nil(),
+                                         cluster_id,
                                          /*allow_cluster_id_nil=*/true,
-                                         /*fetch_cluster_id_if_nil=*/true);
+                                         fetch_cluster_id_if_nil);
 
   ray::core::CoreWorkerOptions core_options;
   core_options.worker_type = options.worker_type;

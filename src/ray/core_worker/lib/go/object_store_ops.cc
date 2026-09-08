@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -75,9 +76,11 @@ void ObjectStoreOperations::PutWithID(const ray::ObjectID &object_id,
   auto status =
       core_worker.Put(*object, contained_object_ids, object_id, /*pin_object=*/true);
   // Roll back the local reference on failure, matching the three-argument Put
-  // overload, so a failed write does not leak a reference.
+  // overload, so a failed write does not leak a reference, and surface the
+  // failure instead of reporting success to the caller.
   if (!status.ok()) {
     core_worker.RemoveLocalReference(object_id);
+    throw std::runtime_error("Failed to put object: " + status.ToString());
   }
 }
 
@@ -157,11 +160,10 @@ void ObjectStoreOperations::RegisterOwnershipInfoAndResolveFuture(
     const ray::rpc::Address &owner_address) {
   auto &core_worker = GetCoreWorker();
 
+  // Pass outer_object_id through as-is (Nil for standalone objects), matching
+  // the Java bridge's nativeRegisterOwnershipInfoAndResolveFuture.
   core_worker.RegisterOwnershipInfoAndResolveFuture(
-      object_id,
-      outer_object_id.IsNil() ? object_id : outer_object_id,
-      owner_address,
-      "");
+      object_id, outer_object_id, owner_address, "");
 }
 
 }  // namespace go

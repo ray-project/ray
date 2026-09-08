@@ -44,13 +44,15 @@
 // - Member: Union member to access (e.g., arg_type, value.data)
 // - Type: Return type (e.g., int, const char*)
 // - DefaultValue: Value to return on null/type mismatch
-// - CheckType: Expected arg_type for type checking (0 = no check)
-#define CGO_ARG_GETTER(Name, Member, Type, DefaultValue, CheckType)    \
-  extern "C" Type CFunctionArg_##Name(const CFunctionArg *arg) {       \
-    if (arg == nullptr || (CheckType && arg->arg_type != CheckType)) { \
-      return DefaultValue;                                             \
-    }                                                                  \
-    return arg->Member;                                                \
+// - CheckType: Expected arg_type for type checking; pass -1 to skip the check
+//   (FUNCTION_ARG_TYPE_VALUE is 0, so a plain truthiness test would skip the
+//   check for VALUE getters)
+#define CGO_ARG_GETTER(Name, Member, Type, DefaultValue, CheckType)         \
+  extern "C" Type CFunctionArg_##Name(const CFunctionArg *arg) {            \
+    if (arg == nullptr || (CheckType >= 0 && arg->arg_type != CheckType)) { \
+      return DefaultValue;                                                  \
+    }                                                                       \
+    return arg->Member;                                                     \
   }
 
 // Macro to generate setter functions for VALUE type arguments
@@ -94,8 +96,8 @@
   }
 
 // Generate all getter functions using macros
-// Type getter - no type check (CheckType=0)
-CGO_ARG_GETTER(GetType, arg_type, int, -1, 0)
+// Type getter - no type check (CheckType=-1)
+CGO_ARG_GETTER(GetType, arg_type, int, -1, -1)
 
 // VALUE type getters - all check for FUNCTION_ARG_TYPE_VALUE
 CGO_ARG_GETTER(GetValueData, value.data, const char *, nullptr, FUNCTION_ARG_TYPE_VALUE)
@@ -313,10 +315,10 @@ std::vector<std::unique_ptr<TaskArgument>> BuildTaskArgs(const CFunctionArg *arg
       ray::rpc::Address owner_address;
       if (c_arg.reference.owner_address != nullptr &&
           c_arg.reference.owner_address_size > 0) {
-        std::string owner_address_str(c_arg.reference.owner_address,
-                                      c_arg.reference.owner_address_size);
-        // Parse owner address from binary data (simplified - in production you'd use
-        // protobuf parsing) For now, we'll leave it as default address
+        if (!owner_address.ParseFromString(std::string(
+                c_arg.reference.owner_address, c_arg.reference.owner_address_size))) {
+          RAY_LOG(ERROR) << "Failed to parse owner address protobuf";
+        }
       }
 
       task_args.push_back(TaskArgument::ByReference(object_id, owner_address));

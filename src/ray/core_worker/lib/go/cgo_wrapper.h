@@ -140,10 +140,21 @@ typedef struct {
 // of exposing union fields directly to Go code.
 // ============================================================================
 
-// Get the argument type (FUNCTION_ARG_TYPE_VALUE or FUNCTION_ARG_TYPE_REFERENCE)
+/**
+ * @brief Returns the argument type (FUNCTION_ARG_TYPE_VALUE or
+ * FUNCTION_ARG_TYPE_REFERENCE), or -1 if arg is null.
+ */
 int CFunctionArg_GetType(const CFunctionArg *arg);
 
-// Set value argument (for FUNCTION_ARG_TYPE_VALUE)
+/**
+ * @brief Sets a value argument (FUNCTION_ARG_TYPE_VALUE) from caller data.
+ *
+ * @param arg Target CFunctionArg.
+ * @param data Serialized value bytes (copied).
+ * @param data_size Size of the value bytes.
+ * @param metadata Optional metadata bytes (copied).
+ * @param metadata_size Size of the metadata bytes.
+ */
 void CFunctionArg_SetValue(CFunctionArg *arg,
                            const char *data,
                            int data_size,

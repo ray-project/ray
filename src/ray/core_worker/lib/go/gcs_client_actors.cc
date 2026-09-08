@@ -42,6 +42,10 @@ int ray_gcs_client_actors_get_actor_info(CGcsClient *client,
 
   try {
     std::string actor_id_hex_str(actor_id_hex ? actor_id_hex : "");
+    if (actor_id_hex_str.length() != 2 * ray::ActorID::Size()) {
+      set_error(error_out, "Invalid actor_id_hex_str length");
+      return 0;
+    }
     ray::ActorID actor_id = ray::ActorID::FromHex(actor_id_hex_str);
 
     std::unique_ptr<std::string> serialized =
@@ -87,6 +91,10 @@ int ray_gcs_client_actors_get_all_actor_info(CGcsClient *client,
     std::optional<std::string> actor_state_filter = std::nullopt;
 
     if (job_id_hex && strlen(job_id_hex) > 0) {
+      if (strlen(job_id_hex) != 2 * ray::JobID::Size()) {
+        set_error(error_out, "Invalid job_id_hex length");
+        return 0;
+      }
       job_id_filter = ray::JobID::FromHex(std::string(job_id_hex));
     }
     if (actor_state && strlen(actor_state) > 0) {

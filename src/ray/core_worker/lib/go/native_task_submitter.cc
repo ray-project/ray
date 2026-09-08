@@ -66,8 +66,10 @@ CObjectIdArray *CreateCObjectIdArray(const std::vector<ray::ObjectID> &ids) {
   }
 
   result_ptr->count = static_cast<int>(ids.size());
+  // Zero-initialized: the failure path frees array elements based on their
+  // pointer fields, which must not hold garbage.
   result_ptr->object_ids =
-      static_cast<CByteArray *>(malloc(sizeof(CByteArray) * result_ptr->count));
+      static_cast<CByteArray *>(calloc(result_ptr->count, sizeof(CByteArray)));
   if (!result_ptr->object_ids) {
     RAY_LOG(ERROR) << "Failed to allocate memory for CObjectIdArray";
     return nullptr;  // RAII will clean up result_ptr

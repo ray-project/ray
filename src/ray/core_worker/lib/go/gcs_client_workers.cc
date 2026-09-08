@@ -67,6 +67,10 @@ int ray_gcs_client_workers_get_worker_info(CGcsClient *client,
 
   try {
     std::string worker_id_hex_str(worker_id_hex ? worker_id_hex : "");
+    if (worker_id_hex_str.length() != 2 * ray::WorkerID::Size()) {
+      set_error(error_out, "Invalid worker_id_hex_str length");
+      return 0;
+    }
     ray::WorkerID worker_id = ray::WorkerID::FromHex(worker_id_hex_str);
 
     std::unique_ptr<std::string> serialized =

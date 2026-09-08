@@ -95,7 +95,9 @@ class RuntimeOperations {
   RuntimeOperations &operator=(const RuntimeOperations &) = delete;
 
   // Internal helper methods
-  void InitializeCoreWorker(const RuntimeInitializeOptions &options);
+  void InitializeCoreWorker(const RuntimeInitializeOptions &options,
+                            const ray::ClusterID &cluster_id,
+                            bool fetch_cluster_id_if_nil);
   void ShutdownCoreWorker();
   void ShutdownRayLogging();
 

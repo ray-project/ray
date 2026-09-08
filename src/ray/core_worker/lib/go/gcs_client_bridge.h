@@ -31,9 +31,16 @@ CGcsClient *ray_gcs_client_create(const char *address,
                                   char **error_out);
 void ray_gcs_client_destroy(CGcsClient *client);
 
-// Base methods
-// Note: returned strings are allocated with malloc; callers must free them
-const char *ray_gcs_client_address(CGcsClient *client);     // owner: caller
+/**
+ * @brief Returns the raylet RPC address of this GCS client's node.
+ * The returned string is allocated with malloc; the caller must free it.
+ */
+const char *ray_gcs_client_address(CGcsClient *client);  // owner: caller
+
+/**
+ * @brief Returns the cluster ID hex string this client is connected to.
+ * The returned string is allocated with malloc; the caller must free it.
+ */
 const char *ray_gcs_client_cluster_id(CGcsClient *client);  // owner: caller
 
 // Memory management helpers

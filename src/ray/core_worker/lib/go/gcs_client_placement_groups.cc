@@ -66,6 +66,10 @@ int ray_gcs_client_placement_groups_get_by_id(CGcsClient *client,
 
   try {
     std::string pg_id_hex_str(pg_id_hex ? pg_id_hex : "");
+    if (pg_id_hex_str.length() != 2 * ray::PlacementGroupID::Size()) {
+      set_error(error_out, "Invalid pg_id_hex_str length");
+      return 0;
+    }
     ray::PlacementGroupID pg_id = ray::PlacementGroupID::FromHex(pg_id_hex_str);
 
     std::unique_ptr<std::string> serialized =

@@ -69,10 +69,19 @@ typedef struct {
 //   metadata_size - Size of metadata in bytes
 //   owner_address - Serialized owner address (can be NULL)
 //   owner_address_size - Size of owner address in bytes
-//
-// Returns:
-//   CObjectReference containing the object ID, or empty reference on failure.
-//   Caller is responsible for freeing the returned CObjectReference.
+/**
+ * @brief Puts an object into the object store and returns its reference.
+ *
+ * @param data Serialized object data.
+ * @param data_size Size of the serialized data.
+ * @param metadata Optional metadata buffer.
+ * @param metadata_size Size of the metadata buffer.
+ * @param owner_address Reserved for owned-object support; must be null/empty.
+ * @param owner_address_size Reserved; must be 0.
+ *
+ * @return CObjectReference containing the object ID, or empty reference on
+ * failure. Caller is responsible for freeing the returned CObjectReference.
+ */
 CObjectReference CObjectStore_Put(const char *data,
                                   int data_size,
                                   const char *metadata,

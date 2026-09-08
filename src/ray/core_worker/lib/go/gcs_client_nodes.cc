@@ -137,6 +137,9 @@ int ray_gcs_client_nodes_drain(CGcsClient *client,
     if (count > 0 && node_ids_hex) {
       for (int i = 0; i < count; i++) {
         std::string node_id_hex(node_ids_hex[i]);
+        if (node_id_hex.length() != 2 * ray::NodeID::Size()) {
+          continue;  // skip malformed entries in the input list
+        }
         ray::NodeID node_id = ray::NodeID::FromHex(node_id_hex);
         if (draining_nodes.count(node_id)) {
           drained_ids.push_back(node_id_hex);

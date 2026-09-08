@@ -420,7 +420,6 @@ ray_cc_test(
         ":task_submitter_ops",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/protobuf:core_worker_cc_proto",
-        "@com_google_googletest//:gtest",
     ],
 )
 

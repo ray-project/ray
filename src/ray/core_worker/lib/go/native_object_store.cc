@@ -113,10 +113,14 @@ CObjectReference ObjectIDToCObjectReference(const ray::ObjectID &object_id) {
 CObjectArray *CreateCObjectArray(
     const std::vector<std::shared_ptr<ray::RayObject>> &objects) {
   if (objects.empty()) {
-    CObjectArray empty{};
-    empty.objects = nullptr;
-    empty.count = 0;
-    return new CObjectArray(empty);
+    // FreeCObjectArray releases this pointer with free(), so allocate with
+    // malloc (never new) to keep the allocator pair consistent.
+    auto *array = static_cast<CObjectArray *>(malloc(sizeof(CObjectArray)));
+    if (array != nullptr) {
+      array->objects = nullptr;
+      array->count = 0;
+    }
+    return array;
   }
 
   const size_t count = objects.size();
@@ -275,35 +279,30 @@ CObjectArray *CreateCObjectArray(
   return result;
 }
 
-// Helper function to create CWaitResult from std::vector<bool>
-CWaitResult *CreateCWaitResult(const std::vector<bool> &ready) {
+// Helper function to create CWaitResult from std::vector<bool>. Returned by
+// value: the caller owns result.ready and frees it with CObjectStore_FreeWaitResult.
+CWaitResult CreateCWaitResult(const std::vector<bool> &ready) {
+  CWaitResult result{};
   if (ready.empty()) {
-    CWaitResult empty{};
-    empty.ready = nullptr;
-    empty.count = 0;
-    return new CWaitResult(empty);
+    result.ready = nullptr;
+    result.count = 0;
+    return result;
   }
 
-  auto result_ptr =
-      CWaitResultPtr(static_cast<CWaitResult *>(malloc(sizeof(CWaitResult))));
-  if (!result_ptr) {
-    RAY_LOG(ERROR) << "Failed to allocate memory for CWaitResult";
-    return nullptr;
-  }
-
-  result_ptr->count = static_cast<int>(ready.size());
-  result_ptr->ready = static_cast<bool *>(malloc(sizeof(bool) * result_ptr->count));
-  if (!result_ptr->ready) {
+  result.count = static_cast<int>(ready.size());
+  result.ready = static_cast<bool *>(malloc(sizeof(bool) * result.count));
+  if (!result.ready) {
     RAY_LOG(ERROR) << "Failed to allocate memory for ready array";
-    return nullptr;
+    result.count = 0;
+    return result;
   }
 
   // Copy ready flags
-  for (int i = 0; i < result_ptr->count; ++i) {
-    result_ptr->ready[i] = ready[i];
+  for (int i = 0; i < result.count; ++i) {
+    result.ready[i] = ready[i];
   }
 
-  return result_ptr.release();
+  return result;
 }
 
 // Helper function to parse object IDs from C arrays
@@ -434,15 +433,27 @@ extern "C" CObjectArray *CObjectStore_Get(const char **object_ids,
                                           int count,
                                           long long timeout_ms) {
   return CgoErrorHandler::Execute("CObjectStore_Get", [&]() -> CObjectArray * {
+    // An empty request returns a heap-allocated empty CObjectArray (never
+    // nullptr), matching the header contract.
     if (object_ids == nullptr || object_id_sizes == nullptr || count <= 0) {
-      throw std::invalid_argument("Invalid object_ids parameters");
+      auto *empty = static_cast<CObjectArray *>(malloc(sizeof(CObjectArray)));
+      if (empty != nullptr) {
+        empty->objects = nullptr;
+        empty->count = 0;
+      }
+      return empty;
     }
 
     // Parse object IDs
     std::vector<ray::ObjectID> ids = ParseObjectIds(object_ids, object_id_sizes, count);
 
     if (ids.empty()) {
-      throw std::invalid_argument("No valid object IDs found");
+      auto *empty = static_cast<CObjectArray *>(malloc(sizeof(CObjectArray)));
+      if (empty != nullptr) {
+        empty->objects = nullptr;
+        empty->count = 0;
+      }
+      return empty;
     }
 
     // Call business logic
@@ -477,14 +488,7 @@ extern "C" CWaitResult CObjectStore_Wait(const char **object_ids,
     auto ready = ops.Wait(ids, num_objects, timeout_ms, fetch_local);
 
     // Convert to C type
-    CWaitResult *result = CreateCWaitResult(ready);
-    if (result == nullptr) {
-      CWaitResult empty{};
-      empty.ready = nullptr;
-      empty.count = 0;
-      return empty;
-    }
-    return *result;
+    return CreateCWaitResult(ready);
   });
 }
 

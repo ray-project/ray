@@ -129,7 +129,7 @@ CGcsClient *ray_gcs_client_create(const char *address,
     client->gcs_client = std::make_shared<ray::gcs::GcsClient>(options);
 
     std::promise<bool> io_ready;
-    client->io_thread = std::make_unique<std::thread>([&]() {
+    client->io_thread = std::make_unique<std::thread>([client, &io_ready]() {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
           client->io_service->get_executor());
       io_ready.set_value(true);
@@ -141,6 +141,10 @@ CGcsClient *ray_gcs_client_create(const char *address,
         client->gcs_client->Connect(*client->io_service, client->timeout_ms);
     if (!status.ok()) {
       set_error(error_out, ("Failed to connect to GCS: " + status.ToString()).c_str());
+      client->io_service->stop();
+      if (client->io_thread && client->io_thread->joinable()) {
+        client->io_thread->join();
+      }
       delete client;
       return nullptr;
     }
@@ -153,6 +157,10 @@ CGcsClient *ray_gcs_client_create(const char *address,
         std::make_unique<ray::gcs::GlobalStateAccessor>(options);
     if (!client->global_state_accessor->Connect()) {
       set_error(error_out, "Failed to connect GlobalStateAccessor to GCS");
+      client->io_service->stop();
+      if (client->io_thread && client->io_thread->joinable()) {
+        client->io_thread->join();
+      }
       delete client;
       return nullptr;
     }

@@ -112,8 +112,10 @@ extern "C" CSerializedObjectArray *CNativeTaskExecutor_Execute(
         }
 
         result_ptr->count = static_cast<int>(results.size());
+        // calloc: on a later allocation failure the RAII destructor frees every
+        // element, so the slots must start as null pointers.
         result_ptr->objects = static_cast<CSerializedObject *>(
-            malloc(sizeof(CSerializedObject) * result_ptr->count));
+            calloc(result_ptr->count, sizeof(CSerializedObject)));
         if (!result_ptr->objects) {
           throw std::runtime_error("Failed to allocate memory for objects");
         }
@@ -205,8 +207,10 @@ extern "C" CSerializedObjectArray *CNativeTaskExecutor_ExecuteActorTask(
         }
 
         result_ptr->count = static_cast<int>(results.size());
+        // calloc: on a later allocation failure the RAII destructor frees every
+        // element, so the slots must start as null pointers.
         result_ptr->objects = static_cast<CSerializedObject *>(
-            malloc(sizeof(CSerializedObject) * result_ptr->count));
+            calloc(result_ptr->count, sizeof(CSerializedObject)));
         if (!result_ptr->objects) {
           throw std::runtime_error("Failed to allocate memory for objects");
         }
