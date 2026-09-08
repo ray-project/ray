@@ -31,6 +31,9 @@ from ray.tune.schedulers import (
     TrialScheduler,
 )
 from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
+from ray.tune.schedulers.util import (
+    _set_search_properties_backwards_compatible,
+)
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
@@ -2572,6 +2575,44 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(
             lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
         )
+
+
+class SchedulerSetSearchPropertiesSuite(unittest.TestCase):
+    def testLegacySchedulerFallsBackToTwoArgSignature(self):
+        class LegacyScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode):
+                return True
+
+        self.assertTrue(
+            _set_search_properties_backwards_compatible(
+                LegacyScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
+        )
+
+    def testCurrentSchedulerReceivesSpec(self):
+        received = {}
+
+        class CurrentScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode, **spec):
+                received.update(spec)
+                return True
+
+        self.assertTrue(
+            _set_search_properties_backwards_compatible(
+                CurrentScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
+        )
+        self.assertEqual(received, {"num_samples": 4})
+
+    def testUnrelatedTypeErrorIsNotSwallowed(self):
+        class BrokenScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode, **spec):
+                raise TypeError("unsupported operand type(s)")
+
+        with self.assertRaises(TypeError):
+            _set_search_properties_backwards_compatible(
+                BrokenScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
 
 
 if __name__ == "__main__":

@@ -63,9 +63,9 @@ as well as some known problems. If you encounter other problems, `let us know`_.
 
 Visualizing Tasks with Ray Timeline
 -------------------------------------
-View :ref:`how to use Ray Timeline in the Dashboard <dashboard-timeline>` for more details.
+View :ref:`how to use Ray Timeline in the dashboard <dashboard-timeline>` for more details.
 
-Instead of using Dashboard UI to download the tracing file, you can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
+Instead of using the dashboard UI to download the tracing file, you can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
 
 .. testcode::
 
@@ -78,7 +78,7 @@ Instead of using Dashboard UI to download the tracing file, you can also export 
 
 .. _dashboard-profiling:
 
-Python CPU profiling in the Dashboard
+Python CPU profiling in the dashboard
 -------------------------------------
 
 The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
@@ -109,7 +109,7 @@ data loader or multiprocess inference workers), set the URL parameter ``subproce
    :width: 80%
 
 The profiling feature requires ``py-spy`` to be installed. If it is not installed, or if the ``py-spy`` binary does
-not have root permissions, the Dashboard prompts with instructions on how to setup ``py-spy`` correctly:
+not have root permissions, the dashboard prompts with instructions on how to setup ``py-spy`` correctly:
 
 .. code-block::
 
