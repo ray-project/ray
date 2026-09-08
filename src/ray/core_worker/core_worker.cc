@@ -1230,7 +1230,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     ObjectID *object_id,
     std::shared_ptr<Buffer> *data,
     bool inline_small_object,
-    const std::optional<std::string> &tensor_transport) {
+    const std::optional<std::string> &tensor_transport,
+    bool force_inline) {
+  if (force_inline && is_experimental_mutable_object) {
+    return Status::Invalid("Mutable objects cannot be force-inlined.");
+  }
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -1238,20 +1242,27 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
   *object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
                                    worker_context_->GetNextPutIndex());
   SubscribeToNodeChanges();
-  reference_counter_->AddOwnedObject(*object_id,
-                                     contained_object_ids,
-                                     rpc_address_,
-                                     CurrentCallSite(),
-                                     data_size + metadata->Size(),
-                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                     /*add_local_ref=*/true,
-                                     NodeID::FromBinary(rpc_address_.node_id()),
-                                     /*tensor_transport=*/tensor_transport);
+  reference_counter_->AddOwnedObject(
+      *object_id,
+      contained_object_ids,
+      rpc_address_,
+      CurrentCallSite(),
+      data_size + metadata->Size(),
+      LineageReconstructionEligibility::INELIGIBLE_PUT,
+      /*add_local_ref=*/true,
+      force_inline ? std::nullopt
+                   : std::make_optional(NodeID::FromBinary(rpc_address_.node_id())),
+      /*tensor_transport=*/tensor_transport);
 
   // Register the callback to free the RDT object when it is out of scope.
   if (tensor_transport.has_value()) {
     reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
                                                            free_actor_object_callback_);
+  }
+
+  if (force_inline) {
+    *data = std::make_shared<LocalMemoryBuffer>(data_size);
+    return Status::OK();
   }
 
   status = plasma_store_provider_->Create(metadata,
@@ -1313,7 +1324,17 @@ Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
   return experimental_mutable_object_provider_->SetError(object_id);
 }
 
-Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object) {
+Status CoreWorker::SealOwned(const ObjectID &object_id,
+                             bool pin_object,
+                             const std::shared_ptr<RayObject> &inlined_object) {
+  if (inlined_object != nullptr) {
+    RAY_CHECK(!inlined_object->HasData() || !inlined_object->GetData()->IsPlasmaBuffer());
+    // Publish only after the caller has finished writing. No plasma copy exists
+    // to seal or pin; the reference counter keeps the worker-memory copy alive.
+    memory_store_->Put(
+        *inlined_object, object_id, reference_counter_->HasReference(object_id));
+    return Status::OK();
+  }
   auto status = SealExisting(object_id, pin_object, ObjectID::Nil());
   if (status.ok()) {
     return status;
@@ -2868,7 +2889,8 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const std::vector<ObjectID> &contained_object_ids,
                                         const rpc::Address &owner_address,
                                         int64_t *task_output_inlined_bytes,
-                                        std::shared_ptr<RayObject> *return_object) {
+                                        std::shared_ptr<RayObject> *return_object,
+                                        bool force_inline) {
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
   if (data_size > 0) {
@@ -2896,7 +2918,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                               RayObject(nullptr, metadata, {}).IsException();
 
     // Allocate a buffer for the return object.
-    if (inline_error ||
+    if (force_inline || inline_error ||
         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
          (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
@@ -3927,7 +3949,7 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
                                       const std::shared_ptr<RayObject> &obj,
                                       rpc::GetObjectStatusReply *reply) {
-  // If obj is the concrete object value, it is small, so we
+  // If obj is the concrete object value, it is in worker memory, so we
   // send the object back to the caller in the GetObjectStatus
   // reply, bypassing a Plasma put and object transfer. If obj
   // is an indicator that the object is in Plasma, we set an
