@@ -276,7 +276,6 @@ class TestModelConfig:
 
         assert engine_config.hf_model_id == "qwen-0.5b"
 
-
     def test_streaming_load_format_with_empty_bucket_uri_keeps_alias(self):
         """An empty/falsy bucket_uri must not overwrite hf_model_id."""
         from ray.llm._internal.serve.engines.vllm.vllm_engine import (
