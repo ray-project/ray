@@ -11,7 +11,7 @@ S3 + fetch window. See the docstrings of `grand_experiment.py` /
 
 ```bash
 git clone https://github.com/AarryaSaraf/ray.git ~/ray && cd ~/ray
-git checkout arrow-rs-on-64985
+git checkout arrow-rs-on-master
 bash release/nightly_tests/dataset/arrow_rs_probe/run_grand_experiment.sh
 # optional S3 stage: export AWS creds + ARROW_RS_S3_BUCKET=s3://... first
 # quick smoke run:   FIXTURE_SCALE=0.25 STAGES=A bash .../run_grand_experiment.sh
@@ -77,7 +77,7 @@ Fresh Linux box, one command (same setup skeleton as the grand experiment):
 
 ```bash
 git clone https://github.com/AarryaSaraf/ray.git ~/ray && cd ~/ray
-git checkout arrow-rs-on-64985
+git checkout arrow-rs-on-master
 bash release/nightly_tests/dataset/arrow_rs_probe/run_replication.sh
 # quick smoke:            FIXTURE_SCALE=0.25 REPEAT=1 bash .../run_replication.sh
 # one stage:              ONLY=binsweep bash .../run_replication.sh

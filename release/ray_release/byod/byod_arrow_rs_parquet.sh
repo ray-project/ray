@@ -23,7 +23,7 @@ set -exo pipefail
 # branch pushes during a build can't desync the pair; fall back to the branch
 # head otherwise. The echo makes the chosen ref auditable in the image-build
 # log — check it on the first run after any branch switch.
-BRANCH="arrow-rs-on-64985"
+BRANCH="arrow-rs-on-master"
 REF="${BUILDKITE_COMMIT:-refs/heads/${BRANCH}}"
 CRATE_SUBDIR="python/ray/data/_internal/datasource_v2/native/ray_data_arrow_rs"
 

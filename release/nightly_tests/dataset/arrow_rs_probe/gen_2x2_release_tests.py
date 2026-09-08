@@ -54,10 +54,19 @@ Buildkite filter (name:.*_2x2_.*) cover them:
          contaminated; decoded-bytes/peak-batch dists must match across arms
          (the trim touches no decode path); any rs/pa ratio >= 1.15 is a fix
          item (arrow_rs_docs/findings.md M104 gates).
+  full   The reader-default decision run (TODO 39): the alloc matrix above
+         PLUS {pa, rs} on the original fleet for EVERY other test in the
+         file, so the whole data suite runs two-armed in one window on one
+         branch/image (the earlier full-suite A/Bs #3-#5 needed two builds
+         of two branches). Superset of alloc with the same cell names, so
+         the 2x2 results-DB history continues; the extra cells are labelled
+         [suite] in the block. Tests that never read Parquet run both arms
+         too -- they are the arm-neutral controls.
 
 Usage (from anywhere; rewrites its marker block in release_data_tests.yaml):
     python gen_2x2_release_tests.py                # regenerate alloc + validate
     python gen_2x2_release_tests.py --matrix 2x2   # the original 2x2 instead
+    python gen_2x2_release_tests.py --matrix full  # whole suite, two arms
     python gen_2x2_release_tests.py --check        # validate the file as it is
 
 The resolver below (deep_update / matrix / variations / {{var}} substitution)
@@ -173,12 +182,25 @@ ALLOC_REPEATED = {
     "read_large_parquet_fixed_size": 3,
 }
 
-MATRICES = ("2x2", "alloc")
+MATRICES = ("2x2", "alloc", "full")
 DEFAULT_MATRIX = "alloc"
 
 
-def matrix_cells(matrix):
-    """(target, arm, topology) triples for one matrix, in emitted order."""
+def matrix_cells(matrix, parents=()):
+    """(target, arm, topology) triples for one matrix, in emitted order.
+
+    ``parents`` (resolved non-generated test names, '+' for spaces, file
+    order) is only consulted by the ``full`` matrix.
+    """
+    if matrix == "full":
+        cells = matrix_cells("alloc")
+        covered = {t for t, _, _ in cells}
+        for parent in parents:
+            if parent in covered:
+                continue
+            covered.add(parent)
+            cells += [(parent, a, "multi") for a in ARMS]
+        return cells
     if matrix == "2x2":
         return [
             (t, a, s)
@@ -295,14 +317,14 @@ def make_cell(resolved, defaults, arm, topology, matrix=DEFAULT_MATRIX):
     base = _strip_defaults(resolved, defaults)
     base_name = base["name"].replace(" ", "+")
     compute = base["cluster"]["cluster_compute"]
-    if compute not in SINGLE_COMPUTE:
+    if topology == "single" and compute not in SINGLE_COMPUTE:
         raise ValueError(f"{base_name}: no single-node analog for {compute}")
 
     cell = copy.deepcopy(base)
     cell["name"] = f"{base_name}_2x2_{arm}_{topology}"
     cell["frequency"] = "manual"
     # Keys use the '+' form (parent names carry spaces), like TARGETS.
-    if matrix == "alloc" and base_name in ALLOC_REPEATED:
+    if matrix in ("alloc", "full") and base_name in ALLOC_REPEATED:
         cell["repeated_run"] = ALLOC_REPEATED[base_name]
     # Parent scripts come from ">" folded scalars and carry a trailing
     # newline; strip so the emitted string is single-line.
@@ -320,12 +342,12 @@ def make_cell(resolved, defaults, arm, topology, matrix=DEFAULT_MATRIX):
             ]
         cell["run"].pop("wait_for_nodes", None)
         cell["run"]["timeout"] = min(cell["run"]["timeout"] * 2, TIMEOUT_CAP_S)
-    # Reorder for readable yaml; dicts keep insertion order.
-    return {
-        key: cell[key]
-        for key in ("name", "frequency", "repeated_run", "python", "cluster", "run")
-        if key in cell
-    }
+    # Reorder for readable yaml (dicts keep insertion order); whatever else the
+    # parent carries (env: gce, a non-default group / working_dir) follows.
+    front = ("name", "frequency", "repeated_run", "python", "cluster", "run")
+    ordered = {key: cell[key] for key in front if key in cell}
+    ordered.update({key: value for key, value in cell.items() if key not in front})
+    return ordered
 
 
 _BLOCK_HEADERS = {
@@ -340,18 +362,58 @@ _BLOCK_HEADERS = {
         "# arrow-rs reader as shipped, which since 2026-09-08 includes the",
         "# end-of-stream malloc_trim (former rseos arm; rstrim retired, M108).",
     ],
+    "full": [
+        "# The reader-default decision run (TODO 39): the alloc matrix (memory /",
+        "# sustained / control targets + 3 wall-fix confirmations, 4 single cells,",
+        "# two gate cells x3) PLUS {pa, rs} on the original fleet for every other",
+        "# test in this file ([suite] cells) -- the whole data suite two-armed in",
+        "# one window on one branch/image. rs = the arrow-rs reader as shipped",
+        "# (eos malloc_trim included); pa = RAY_DATA_USE_ARROW_RS_PARQUET_READER=0.",
+    ],
 }
+
+
+def _carries_crate(test, defaults):
+    """A test whose byod overrides DEFAULTS' post_build_script builds an image
+    without the crate, so its rs arm would silently be PyArrow: not a cell."""
+    return test["cluster"]["byod"].get("post_build_script") == defaults["cluster"][
+        "byod"
+    ].get("post_build_script")
+
+
+def parent_names(resolved_tests, defaults):
+    """Resolved, non-generated, crate-carrying test names in file order
+    ('+' for spaces)."""
+    return [
+        t["name"].replace(" ", "+")
+        for t in resolved_tests
+        if not parse_2x2_name(t["name"]) and _carries_crate(t, defaults)
+    ]
+
+
+def crateless_names(resolved_tests, defaults):
+    """The parents the full matrix leaves out, for the block header."""
+    return [
+        t["name"].replace(" ", "+")
+        for t in resolved_tests
+        if not parse_2x2_name(t["name"]) and not _carries_crate(t, defaults)
+    ]
 
 
 def render_block(defaults, resolved_tests, matrix):
     by_name = {t["name"].replace(" ", "+"): t for t in resolved_tests}
-    cells = matrix_cells(matrix)
+    cells = matrix_cells(matrix, parent_names(resolved_tests, defaults))
     missing = sorted({t for t, _, _ in cells} - set(by_name))
     if missing:
         raise SystemExit(f"targets not found in release_data_tests.yaml: {missing}")
 
     lines = [BEGIN, f"# matrix: {matrix}"]
     lines += _BLOCK_HEADERS[matrix]
+    if matrix == "full":
+        lines += [
+            "# Left out (own byod.post_build_script, so the image has no crate and",
+            "# both arms would be PyArrow):",
+        ] + [f"#   {name}" for name in crateless_names(resolved_tests, defaults)]
     lines += [
         "# frequency:manual -- trigger explicitly, all arms in one window (M75:",
         "# readings drift across windows). Regenerate with:",
@@ -363,7 +425,7 @@ def render_block(defaults, resolved_tests, matrix):
     for target, arm, topology in cells:
         if target != current:
             current = target
-            lines.append(f"# --- {target}  [{TARGETS[target]}] ---")
+            lines.append(f"# --- {target}  [{TARGETS.get(target, 'suite')}] ---")
         cell = make_cell(by_name[target], defaults, arm, topology, matrix)
         lines.append(
             yaml.safe_dump(
@@ -391,7 +453,10 @@ def validate(defaults, resolved_tests, matrix):
     assert not dupes, f"duplicate resolved test names: {dupes}"
 
     generated = [t for t in resolved_tests if parse_2x2_name(t["name"])]
-    expected = {f"{t}_2x2_{a}_{s}" for t, a, s in matrix_cells(matrix)}
+    expected = {
+        f"{t}_2x2_{a}_{s}"
+        for t, a, s in matrix_cells(matrix, parent_names(resolved_tests, defaults))
+    }
     got = {t["name"] for t in generated}
     assert got == expected, (
         f"generated set mismatch: missing={sorted(expected - got)} "
@@ -406,8 +471,11 @@ def validate(defaults, resolved_tests, matrix):
         # a cell would silently turn the matrix back into an ablation.
         assert "MALLOC_TRIM" not in test["run"]["script"], name
         compute = test["cluster"]["cluster_compute"]
+        # cluster_compute is relative to the test's working_dir (a few parents
+        # sit in nightly_tests/ rather than nightly_tests/dataset/).
+        compute_dir = os.path.join(RELEASE_DIR, test["working_dir"])
         assert os.path.exists(
-            os.path.join(DATASET_DIR, compute)
+            os.path.join(compute_dir, compute)
         ), f"{name}: compute file missing: {compute}"
         if topology == "single":
             assert compute.startswith("single_node_"), name
@@ -450,7 +518,7 @@ def main():
 
     defaults, resolved = resolve_tests(yaml.safe_load(open(TESTS_YAML)))
     count = validate(defaults, resolved, matrix)
-    cells = matrix_cells(matrix)
+    cells = matrix_cells(matrix, parent_names(resolved, defaults))
     n_targets = len({t for t, _, _ in cells})
     n_single = sum(1 for _, _, s in cells if s == "single")
     print(
