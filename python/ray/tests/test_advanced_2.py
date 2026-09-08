@@ -700,10 +700,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
     def delete_miscellaneous_item(resources):
-        del resources["memory"]
-        del resources["object_store_memory"]
+        keep = {"CPU", "GPU", "test_resource"}
         for key in list(resources.keys()):
-            if key.startswith("node:"):
+            if key not in keep:
                 del resources[key]
 
     def test():
