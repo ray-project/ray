@@ -359,6 +359,13 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': N",
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
+            "'read_task_decoded_bytes': D",
+            "'read_task_decode_wall_s': D",
+            "'read_task_peak_batch_bytes': D",
+            "'read_task_trim_wall_s': D",
+            "'read_task_yield_wall_s': D",
+            "'read_task_first_table_wall_s': D",
+            "'average_decoded_bytes_per_read_task': D",
             "'max_uss_per_task': H",
             "'max_rss_bytes': H",
             "'average_max_rss_per_task': H",
@@ -452,6 +459,13 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': None",
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
+            "'read_task_decoded_bytes': D",
+            "'read_task_decode_wall_s': D",
+            "'read_task_peak_batch_bytes': D",
+            "'read_task_trim_wall_s': D",
+            "'read_task_yield_wall_s': D",
+            "'read_task_first_table_wall_s': D",
+            "'average_decoded_bytes_per_read_task': D",
             "'max_uss_per_task': H",
             "'max_rss_bytes': H",
             "'average_max_rss_per_task': H",
@@ -658,6 +672,17 @@ def canonicalize(
     canonicalized_stats = re.sub(
         r"('pN': )(?:N|None)\b",
         r"\g<1>P",
+        canonicalized_stats,
+    )
+    # The arrow-rs per-read-task distributions (read_task_*) are empty for every
+    # read that is not a Parquet read, and their derived average is None; collapse
+    # each to D so the expectations stay shape-only.
+    canonicalized_stats = re.sub(
+        r"(read_task_[a-z_]+['\s:]+)\{[^}]+\}", r"\g<1>D", canonicalized_stats
+    )
+    canonicalized_stats = re.sub(
+        r"(average_decoded_bytes_per_read_task['\s:]+)(?:N|Z|None)\b",
+        r"\g<1>D",
         canonicalized_stats,
     )
     # max_uss_bytes/max_rss_bytes DistributionTrackers may have 0 or N samples
@@ -946,6 +971,13 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
+        "      read_task_decoded_bytes: D,\n"
+        "      read_task_decode_wall_s: D,\n"
+        "      read_task_peak_batch_bytes: D,\n"
+        "      read_task_trim_wall_s: D,\n"
+        "      read_task_yield_wall_s: D,\n"
+        "      read_task_first_table_wall_s: D,\n"
+        "      average_decoded_bytes_per_read_task: D,\n"
         "      max_uss_per_task: H,\n"
         "      max_rss_bytes: H,\n"
         "      average_max_rss_per_task: H,\n"
@@ -1114,6 +1146,13 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
+        "      read_task_decoded_bytes: D,\n"
+        "      read_task_decode_wall_s: D,\n"
+        "      read_task_peak_batch_bytes: D,\n"
+        "      read_task_trim_wall_s: D,\n"
+        "      read_task_yield_wall_s: D,\n"
+        "      read_task_first_table_wall_s: D,\n"
+        "      average_decoded_bytes_per_read_task: D,\n"
         "      max_uss_per_task: H,\n"
         "      max_rss_bytes: H,\n"
         "      average_max_rss_per_task: H,\n"
@@ -1235,6 +1274,13 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_outputs_per_task: N,\n"
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
+        "            read_task_decoded_bytes: D,\n"
+        "            read_task_decode_wall_s: D,\n"
+        "            read_task_peak_batch_bytes: D,\n"
+        "            read_task_trim_wall_s: D,\n"
+        "            read_task_yield_wall_s: D,\n"
+        "            read_task_first_table_wall_s: D,\n"
+        "            average_decoded_bytes_per_read_task: D,\n"
         "            max_uss_per_task: H,\n"
         "            max_rss_bytes: H,\n"
         "            average_max_rss_per_task: H,\n"

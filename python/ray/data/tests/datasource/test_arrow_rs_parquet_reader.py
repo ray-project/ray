@@ -218,7 +218,9 @@ def test_native_path_actually_runs(tmp_path):
 def _make_manifest(paths, sizes, chunk_metadatas):
     from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 
-    return FileManifest.construct_manifest(paths, sizes, chunk_metadatas)
+    return FileManifest.construct_manifest(
+        paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
+    )
 
 
 class _HandleProxy:
@@ -549,12 +551,18 @@ def test_native_chunked_read_row_hash_parity(tmp_path):
             row_group_ids=(0, 2),
             num_rows=10_000,
             uncompressed_size=1,
+            fully_matched=True,
+            rg_sizes=(),
+            rg_rows=(),
         ),
         create_chunk_metadata(
             ParquetRowGroupChunkMetadata,
             row_group_ids=(1, 3),
             num_rows=10_000,
             uncompressed_size=1,
+            fully_matched=True,
+            rg_sizes=(),
+            rg_rows=(),
         ),
     ]
     size = os.path.getsize(path)
@@ -607,6 +615,9 @@ def test_native_bin_coalesces_into_one_call_without_row_hash():
         row_group_ids=(0, 2, 3),
         num_rows=15_000,
         uncompressed_size=1,
+        fully_matched=True,
+        rg_sizes=(),
+        rg_rows=(),
     )
     row_group_num_rows = [5_000, 5_000, 5_000, 5_000]
 
