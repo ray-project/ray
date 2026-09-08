@@ -1,19 +1,3 @@
-"""External-shuffle task bodies (map + reduce).
-
-- each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
-  small handle (path + per-partition offset index + ``shuffle_id`` /
-  ``node_id``). Driver tracks O(N) handles; bulk data stays on local disk and
-  never enters Ray's object store.
-- a per-node ``ShuffleFileServer`` Ray actor runs its OWN Arrow Flight server
-  that ``pread``s requested byte-ranges and streams them back. The REDUCE task
-  is a client of that server.
-  Cross-node this is the real out-of-band transport; single-node it is a
-  loopback Flight connection (still the real code path, not a direct ``open``).
-
-Uses the standard ``PartitionFn`` / ``ReduceFn`` contracts, so group-by /
-sort / aggregate / join factories compose unchanged.
-"""
-
 import os
 import pickle
 import random
@@ -55,9 +39,10 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _read_ipc,
 )
 
-# PartitionFn/ReduceFn contracts are shared with the object-store variant.
-# External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
+# PartitionFn/ReduceFn/BlockTransformer contracts are shared with the
+# object-store variant.
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
+    BlockTransformer,
     PartitionFn,
     ReduceFn,
 )
@@ -65,11 +50,13 @@ from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
     OutputBlockSizeOption,
 )
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
+    BlockType,
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
@@ -89,6 +76,7 @@ def _external_shuffle_map_task(
     map_id: int,
     shuffle_id: str,
     compression: Optional[str] = None,
+    block_transformer: Optional[BlockTransformer] = None,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file under
     ``out_dir``, and return a ``ShuffleHandle`` (on-disk path +
@@ -109,10 +97,25 @@ def _external_shuffle_map_task(
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
+        block_transformer: Optional transform applied to the concatenation of
+            all input blocks before partitioning (e.g. map-side partial
+            aggregation). May change the block schema.
 
     Returns:
         ShuffleHandle describing the on-disk shards for reducers to fetch.
     """
+    if block_transformer is not None:
+        arrow_inputs = [
+            TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
+            for block in blocks
+            if BlockAccessor.for_block(block).num_rows() > 0
+        ] or [
+            TableBlockAccessor.try_convert_block_type(
+                blocks[0], block_type=BlockType.ARROW
+            )
+        ]
+        combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
+        blocks = (block_transformer(combined_input),)
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
@@ -137,20 +140,20 @@ def _external_shuffle_map_task(
     try:
         with open(tmp_path, "wb") as out_file:
             writer = _PartitionWriter(out_file, map_id, compression)
-            for blk in blocks:
+            for block in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
                 # (partition_fn, IPC serialize) is Arrow-only. No-op when
                 # already Arrow.
-                if not isinstance(blk, pa.Table):
-                    blk = BlockAccessor.for_block(blk).to_arrow()
+                if not isinstance(block, pa.Table):
+                    block = BlockAccessor.for_block(block).to_arrow()
                 if output_schema is None:
                     # First-seen schema; reducer uses it to type empty
                     # partitions (ShuffleHandle["schema"]).
-                    output_schema = getattr(blk, "schema", None)
-                if blk.num_rows == 0:
+                    output_schema = getattr(block, "schema", None)
+                if block.num_rows == 0:
                     continue
-                for partition_id, shard in partition_fn(blk).items():
+                for partition_id, shard in partition_fn(block).items():
                     writer.add_shard(partition_id, shard)
             writer.flush_all()
 
@@ -168,7 +171,7 @@ def _external_shuffle_map_task(
             else:
                 expected_size = 0
             assert final_size_on_close == expected_size, (
-                f"_external_shuffle_map_task: file size mismatch — wrote "
+                f"_external_shuffle_map_task: file size mismatch, wrote "
                 f"{final_size_on_close} bytes, index implies {expected_size}"
             )
 
@@ -207,9 +210,9 @@ def _external_shuffle_map_task(
     }
 
 
-@ray.remote
+@ray.remote  # pyrefly: ignore[no-matching-overload]
 def _external_shuffle_reduce_task(
-    handles: List[ShuffleHandle],
+    *handles_by_input: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
     max_bytes_per_fetch: int,
@@ -218,6 +221,7 @@ def _external_shuffle_reduce_task(
     map_transformer: Optional[Any],
     map_task_context: Optional["TaskContext"],
     data_context: Optional["DataContext"],
+    emit_empty_partition: bool = True,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch this partition's shards from every mapper over Arrow
     Flight, run ``reduce_fn`` on the accumulated tables, and yield ``(block,
@@ -231,7 +235,10 @@ def _external_shuffle_reduce_task(
     its future completes.
 
     Args:
-        handles: One ``ShuffleHandle`` per mapper (single upstream input).
+        *handles_by_input: One handle list per upstream input (one for
+            repartition/sort/aggregate, two for join), each holding one
+            ``ShuffleHandle`` per mapper. ``tables_by_input`` passed to
+            ``reduce_fn`` is aligned with this order.
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
         max_bytes_per_fetch: Per-FETCH-frame payload cap.
@@ -241,13 +248,35 @@ def _external_shuffle_reduce_task(
             output stream (or None).
         map_task_context: TaskContext for the fused map, or None.
         data_context: DataContext to install for the fused map, or None.
+        emit_empty_partition: If True (default), a single-input partition with
+            no shards yields one schema-typed empty block. Aggregations pass
+            False (the mappers' pre-finalize schema would conflict with
+            finalized partitions). Multi-input reduces always run reduce_fn.
     """
     start_time_s = time.perf_counter()
 
-    # Pull per-partition source refs + an output schema for the empty-partition
-    # fallback path (so the N-block contract still emits a typed 0-row block
-    # when no mapper produced any data for this partition_id).
-    sources, output_schema = _handles_to_sources(handles, partition_id)
+    num_inputs = len(handles_by_input)
+    sources_by_input: List[List[Any]] = []
+    schemas_by_input: List[Optional[pa.Schema]] = []
+    for handles in handles_by_input:
+        sources, schema = _handles_to_sources(handles, partition_id)
+        sources_by_input.append(sources)
+        schemas_by_input.append(schema)
+    output_schema: Optional[pa.Schema] = next(
+        (s for s in schemas_by_input if s is not None), None
+    )
+
+    def _with_typed_empty_inputs(
+        tables_by_input: List[List[pa.Table]],
+    ) -> List[List[pa.Table]]:
+        if num_inputs == 1:
+            return tables_by_input
+        out: List[List[pa.Table]] = []
+        for tables, schema in zip(tables_by_input, schemas_by_input):
+            if not tables and schema is not None:
+                tables = [schema.empty_table()]
+            out.append(tables)
+        return out
 
     def _yield_with_stats(block: Block):
         """Yield ``block`` then its pickled metadata. The two-yield protocol
@@ -289,44 +318,57 @@ def _external_shuffle_reduce_task(
             ):
                 yield from _yield_with_stats(out_block)
 
-    # No shards for this partition. Yield a typed empty table so the
-    # N-block contract holds when the operator fast path was skipped
-    # (fused map, or wrapper schema missing). Do not call reduce_fn on
-    # ``[[]]``: concat/sort reduces yield nothing for empty input.
-    if not sources:
+    if not any(sources_by_input):
+        if num_inputs == 1:
 
-        def _empty_blocks():
-            assert output_schema is not None
-            yield output_schema.empty_table()
+            def _no_input_blocks():
+                if not emit_empty_partition:
+                    return
+                assert output_schema is not None
+                yield output_schema.empty_table()
 
-        yield from _emit_blocks(_empty_blocks())
+        else:
+
+            def _no_input_blocks():
+                yield from reduce_fn(
+                    partition_id,
+                    _with_typed_empty_inputs([[] for _ in range(num_inputs)]),
+                )
+
+        yield from _emit_blocks(_no_input_blocks())
     else:
-        # Shared per-shuffle staging dir; partition_id lives on the file.
-        shuffle_id = sources[0].shuffle_id
+        shuffle_id = next(s for srcs in sources_by_input for s in srcs).shuffle_id
         staging_dir = os.path.join(
             tempfile.gettempdir(), f"ray_shuffle_external_{shuffle_id}_reduce"
         )
         os.makedirs(staging_dir, exist_ok=True)
         prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
 
-        groups = _group_by_server(sources)
+        groups_by_input = [_group_by_server(srcs) for srcs in sources_by_input]
+        flat_groups = [group for groups in groups_by_input for group in groups]
+        group_input_idx = [
+            input_idx
+            for input_idx, groups in enumerate(groups_by_input)
+            for _ in groups
+        ]
 
         try:
             # Fetch each source region in parallel, pwrite at pre-assigned offsets
             # into this partition's staging file (disjoint → lock-free). Buffered
             # pwrite lands in page cache so the decode-side ``pread``s hit cache.
-            total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
+            total_size, base_offsets, node_sizes = _compute_prefetch_layout(flat_groups)
 
-            # Accumulator for the final reduce.
-            accum_tables: List[pa.Table] = []
+            accum_tables_by_input: List[List[pa.Table]] = [
+                [] for _ in range(num_inputs)
+            ]
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.hash_shuffle_compression (same field the map used).
             _compression = (
                 data_context if data_context is not None else DataContext.get_current()
             ).hash_shuffle_compression
 
-            def _flush(tables: List[pa.Table]):
-                """Call reduce_fn on ``tables`` and yield reshaped raw blocks.
+            def _flush(tables_by_input: List[List[pa.Table]]):
+                """Call reduce_fn on ``tables_by_input`` and yield reshaped raw blocks.
 
                 Fused map / stats are applied downstream of ``_reduce_output_blocks``.
                 """
@@ -337,9 +379,8 @@ def _external_shuffle_reduce_task(
                             target_max_block_size=target_max_block_size,
                         )
                     )
-                # Wrap in a 1-element list — external is single-input, but
-                # reduce_fn's signature is ``(partition_id, tables_by_input)``.
-                for block in reduce_fn(partition_id, [tables]):
+                tables_by_input = _with_typed_empty_inputs(tables_by_input)
+                for block in reduce_fn(partition_id, tables_by_input):
                     if output_buffer is None:
                         # target_max_block_size=None: emit blocks as-is.
                         yield block
@@ -370,32 +411,25 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    n_threads = min(len(groups), max(1, fetch_threads))
-                    work = list(zip(base_offsets, node_sizes, groups))
+                    n_threads = min(len(flat_groups), max(1, fetch_threads))
+                    work = list(
+                        zip(base_offsets, node_sizes, flat_groups, group_input_idx)
+                    )
                     # Randomize submission order per reducer (seeded by partition_id →
                     # deterministic/retry-stable) so concurrent fan-in spreads evenly
                     # across file servers. Disjoint offsets make reordering safe.
                     if work:
                         random.Random(partition_id).shuffle(work)
 
-                    def _decode_region(base: int, size: int):
+                    def _decode_region(base: int, size: int, accum: List[pa.Table]):
                         """Decode one staging-file region's IPC frames into ``accum_tables``."""
                         pos = base
                         end = base + size
-                        region_tables: List[pa.Table] = []
                         while pos < end:
                             length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
                             ipc_buf = os.pread(fd, length, pos + 8)
                             pos += 8 + length
-                            region_tables.append(_read_ipc(ipc_buf, _compression))
-                        if len(region_tables) == 1:
-                            accum_tables.append(region_tables[0])
-                        elif region_tables:
-                            accum_tables.append(
-                                transform_pyarrow.combine_chunks(
-                                    pa.concat_tables(region_tables)
-                                )
-                            )
+                            accum.append(_read_ipc(ipc_buf, _compression))
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
                         futs = {
@@ -406,18 +440,20 @@ def _external_shuffle_reduce_task(
                                 group.node_id,
                                 group.members,
                                 max_bytes_per_fetch,
-                            ): (base, size)
-                            for base, size, group in work
+                            ): (base, size, input_idx)
+                            for base, size, group, input_idx in work
                         }
                         for fut in as_completed(futs):
                             fut.result()
-                            base, size = futs[fut]
+                            base, size, input_idx = futs[fut]
                             if size > 0:
-                                _decode_region(base, size)
+                                _decode_region(
+                                    base, size, accum_tables_by_input[input_idx]
+                                )
 
                     # Drain the accumulator tail.
-                    if accum_tables:
-                        yield from _flush(accum_tables)
+                    if any(accum_tables_by_input):
+                        yield from _flush(accum_tables_by_input)
                     if output_buffer is not None:
                         output_buffer.finalize()
                         yield from output_buffer.iter_ready_blocks()

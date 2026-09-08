@@ -7,6 +7,12 @@ myst:
 (serve-api)=
 # Ray Serve API
 
+```{toctree}
+:hidden:
+
+Serve CLI <cli>
+```
+
 ## Python API
 
 (core-apis)=
@@ -180,15 +186,9 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
 ```
 
 
-(serve-cli)=
-
 ## Command Line Interface (CLI)
 
-```{eval-rst}
-.. click:: ray.serve.scripts:cli
-   :prog: serve
-   :nested: full
-```
+The `serve` command line interface deploys, inspects, and manages Serve applications from the command line. See the [Serve CLI reference](serve-cli) for the full command list.
 
 (serve-rest-api)=
 
