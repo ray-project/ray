@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
-# Directory to store sandbox states, container images and overlay filesystem.
+# Directory for sandbox bundles, cached container images, and per-sandbox
+# overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
 # network="public" gives each sandbox a private user+network namespace pair
@@ -112,7 +113,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
             # The instance id pins the image in the cache while this sandbox
-            # lives (its extracted rootfs is the overlay lower layer).
+            # lives (its EROFS image is the sandbox's root filesystem).
             self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=config.timeout_seconds,
@@ -166,9 +167,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
             raise
-        overlay_dir = os.path.join(root_dir, "overlay")
-        os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
+        run_args = self._build_run_command(config, root_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -278,7 +277,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     pass
 
             shutil.rmtree(root_dir, ignore_errors=True)
-            # Only now is the overlay's lower layer unused.
+            # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
 
     def exec_command(
@@ -437,12 +436,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+        self, config: SandboxConfig, root_dir: str, sandbox_id: str
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or slirp4netns installed.
+        assert the exact command without runsc or slirp4netns installed. The
+        rootfs and its writable overlay come from the bundle's gVisor
+        annotations (see ``ImageManager.create_oci_spec``), so runsc gets no
+        ``--overlay2`` flag.
         """
         args = self._runsc_base_args(config)
         use_netns = config.network == "public"
@@ -461,7 +463,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
