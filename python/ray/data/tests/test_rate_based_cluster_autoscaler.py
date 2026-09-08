@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.data._internal.cluster_autoscaler import (
-    ClusterAutoscalingMetrics,
     DefaultClusterAutoscalerV2,
     RateBasedClusterAutoscaler,
+    ResourceDict,
     create_cluster_autoscaler,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
@@ -48,7 +48,7 @@ class StubUtilizationGauge(ResourceUtilizationGauge):
 
 
 @dataclass(frozen=True)
-class StubClusterAutoscalingMetrics(ClusterAutoscalingMetrics):
+class StubClusterAutoscalingMetrics:
     """A stub `OpRuntimeMetrics` implementation for testing."""
 
     average_num_inputs_per_task: Optional[float] = None
@@ -255,7 +255,7 @@ def test_autoscaler_utilization_threshold(cpu_usage, gpu_usage):
 )
 def test_autoscaler_requests_correct_bundle_count(
     min_scheduling_resources: ExecutionResources,
-    initial_allocation: ExecutionResources,
+    initial_allocation: List[ResourceDict],
     max_cpu_delta: float,
     max_gpu_delta: float,
     expected_total_bundle_count: int,
@@ -280,6 +280,7 @@ def test_autoscaler_requests_correct_bundle_count(
 
     result = autoscaler.try_trigger_scaling()
 
+    assert result is not None
     assert len(result) == expected_total_bundle_count
     # Each bundle should match the min_scheduling_resources (excluding object_store_memory and zeros)
     expected_bundle = _to_resource_bundle(min_scheduling_resources)
@@ -319,7 +320,7 @@ def test_autoscaler_requests_correct_bundle_count(
 )
 def test_autoscaler_skips_scaling_when_at_max_schedulable_tasks(
     max_concurrency_limit: int,
-    initial_cluster_resources: ExecutionResources,
+    initial_cluster_resources: List[ResourceDict],
     min_scheduling_resources: ExecutionResources,
 ):
     """Test that autoscaler skips scaling when bottleneck operator would exceed max resource limits."""
@@ -388,6 +389,7 @@ def test_autoscaler_requests_at_least_one_bundle_when_no_allocation():
 
     result = autoscaler.try_trigger_scaling()
 
+    assert result is not None
     # Should still request at least 1 bundle
     assert len(result) >= 1
     # Bundle should have CPU=2, GPU=1 (no object_store_memory or zero values)
@@ -511,13 +513,13 @@ def test_combined_bottleneck_and_object_store_memory_adds_bundles_from_both():
 def test_log_resource_request_emits_correct_message(
     propagate_logs, caplog  # noqa: F811
 ):
-    resource_request = [{"CPU": 1}, {"CPU": 2, "GPU": 1}, {"CPU": 1}]
+    resource_request = [{"CPU": 1.0}, {"CPU": 2.0, "GPU": 1.0}, {"CPU": 1.0}]
 
     with caplog.at_level(logging.DEBUG):
         RateBasedClusterAutoscaler._log_resource_request(resource_request)
 
     expected_message = (
-        "Sending resource request: [{'CPU': 1}] * 2, [{'CPU': 2, 'GPU': 1}] * 1"
+        "Sending resource request: [{'CPU': 1.0}] * 2, [{'CPU': 2.0, 'GPU': 1.0}] * 1"
     )
     assert expected_message in caplog.text
 
@@ -658,7 +660,7 @@ def test_create_reads_label_selector_from_execution_options(monkeypatch):
     )
     execution_options = ExecutionOptions(label_selector={"ray-subcluster": "training"})
     RateBasedClusterAutoscaler.create(
-        topology=[],
+        topology={},
         execution_options=execution_options,
         resource_manager=MagicMock(spec=ResourceManager),
         execution_id="exec-1",

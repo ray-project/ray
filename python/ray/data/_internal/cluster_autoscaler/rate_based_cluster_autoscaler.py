@@ -534,7 +534,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         implicity request object store memory by requesting more logical CPUs.
         """
         # Compute the number of logical CPUs in the request.
-        num_cpus_in_request = 0
+        num_cpus_in_request: float = 0
         for resource_dict in resource_request:
             num_cpus_in_request += resource_dict.get("CPU", 0)
 
@@ -646,7 +646,7 @@ def _get_normalization_factor(op: SupportsClusterAutoscaling) -> float:
     # NOTE: This will recompute values if you call this method with operators in the
     # same path. The logic is much simpler this way, and the number of operators is
     # small, so we accept the extra work instead of doing a single-pass version.
-    factor = 1
+    factor: float = 1
     while op.output_dependencies:
         assert len(op.output_dependencies) == 1, (
             f"Expected exactly 1 output dependency for {op}, "
