@@ -19,6 +19,7 @@ from ray.train.v2._internal.constants import (
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
+from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     ReportCallback,
@@ -446,6 +447,8 @@ class TrainController:
 
         Raises:
             Exception: If the worker group failed to start.
+            WorkerGroupStartupTimeoutError: If coordinator reservations are
+                not ready yet for positive-resource workers (controller retries).
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
@@ -463,6 +466,39 @@ class TrainController:
                         f"with label_selector returned by user-specified callback {selector}"
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
+
+        # Pin workers to AutoscalingCoordinator reservations, so that two
+        # concurrent runs aren't both scheduled onto the same capacity.
+        # Skipped when:
+        # - Workers request no resources: nothing to reserve, and they fit
+        #   anywhere, so there is nothing to wait for.
+        # - TPU: `SlicePlacementGroup` does its own reservation below and
+        #   ignores `label_selector`, so pins would only add latency.
+        # - A `label_selector` is set: the coordinator picks nodes by resource
+        #   fit and never matches `label_selectors` against node labels, so its
+        #   pins can name a node that violates the selector. Combining the two
+        #   would produce an unsatisfiable selector and a placement group that
+        #   never becomes ready, so the user's selector wins and placement is
+        #   left to the placement group.
+        #   TODO: Reconcile w/ ray core later
+        can_pin_to_reservation = (
+            not scaling_config.use_tpu
+            and sum(resources_per_worker.values()) > 0
+            and not label_selector
+        )
+        if can_pin_to_reservation:
+            reserved_node_label_selectors = (
+                self._scaling_policy.get_reserved_bundle_label_selectors(num_workers)
+            )
+            if reserved_node_label_selectors is None:
+                # Waited for reserved capacity (same idea as pg.wait()) and it
+                # still isn't ready. Retry via SCHEDULING -> RESCHEDULING.
+                raise WorkerGroupStartupTimeoutError(num_workers=num_workers)
+            # `placement_strategy` is deliberately left alone: the pins already
+            # determine the layout, and keeping the strategy lets the placement
+            # group reject a layout that contradicts it rather than silently
+            # downgrading e.g. STRICT_SPREAD to co-located workers.
+            label_selector = reserved_node_label_selectors
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
