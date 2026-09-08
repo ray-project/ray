@@ -6,7 +6,10 @@ import pytest
 import ray
 from ray.core.generated import autoscaler_pb2
 from ray.data._internal import cluster_autoscaler as ca_pkg
-from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.cluster_autoscaler import (
+    CLUSTER_AUTOSCALER_ENV_KEY,
+    create_cluster_autoscaler,
+)
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
@@ -935,6 +938,8 @@ def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
 def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
     """The factory reads ``label_selector`` from ``execution_options`` and
     forwards it to ``DefaultClusterAutoscalerV2``."""
+    monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, "V2")
+
     captured = {}
 
     class _StubV2:
