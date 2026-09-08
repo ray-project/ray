@@ -137,32 +137,44 @@ TEST_F(NativeObjectStoreCGOTest, FreeObjectReferenceWithValidData) {
 }
 
 TEST_F(NativeObjectStoreCGOTest, FreeObjectArrayWithNullObjects) {
-  // Test: FreeObjectArray with null objects should not crash
-  CObjectArray array = {nullptr, 0};
-  EXPECT_NO_THROW(CObjectStore_FreeObjectArray(&array));
+  // An empty result is heap-allocated by CreateCObjectArray as a bare
+  // CObjectArray (no arena payload). Freeing it must not crash. The array
+  // must live on the heap: FreeObjectArray frees the pointer itself, so a
+  // stack-allocated struct would abort in free().
+  auto *array = static_cast<CObjectArray *>(malloc(sizeof(CObjectArray)));
+  ASSERT_NE(array, nullptr);
+  array->objects = nullptr;
+  array->count = 0;
+  CObjectStore_FreeObjectArray(array);
 }
 
 TEST_F(NativeObjectStoreCGOTest, FreeObjectArrayWithValidObjects) {
-  // Test: FreeObjectArray with valid objects
-  CObjectArray array{};  // Zero-initialize
-  array.count = 2;
-  array.objects = static_cast<CObjectReference *>(malloc(sizeof(CObjectReference) * 2));
-  if (array.objects == nullptr) {
-    FAIL() << "Failed to allocate memory for objects array";
+  // Non-empty results are arena-allocated: one malloc block holds the
+  // CObjectArray struct, the CObjectReference array, and every data buffer.
+  // FreeObjectArray frees the arena start exactly once; the fields point
+  // into the arena and must not be freed individually.
+  constexpr int kCount = 2;
+  constexpr size_t kDataSize = 10;
+  const size_t refs_offset = (sizeof(CObjectArray) + alignof(CObjectReference) - 1) &
+                             ~(alignof(CObjectReference) - 1);
+  const size_t data_offset = refs_offset + sizeof(CObjectReference) * kCount;
+  const size_t total_size = data_offset + kDataSize * kCount;
+
+  auto *arena = static_cast<uint8_t *>(malloc(total_size));
+  ASSERT_NE(arena, nullptr);
+  memset(arena, 0, total_size);
+
+  auto *array = reinterpret_cast<CObjectArray *>(arena);
+  array->count = kCount;
+  array->objects = reinterpret_cast<CObjectReference *>(arena + refs_offset);
+  for (int i = 0; i < kCount; ++i) {
+    array->objects[i].size = static_cast<int>(kDataSize);
+    array->objects[i].data =
+        reinterpret_cast<char *>(arena + data_offset + kDataSize * i);
+    memcpy(array->objects[i].data, "0123456789", kDataSize);
   }
 
-  // Zero-initialize each CObjectReference
-  memset(array.objects, 0, sizeof(CObjectReference) * 2);
-
-  array.objects[0].data = static_cast<char *>(malloc(10));
-  array.objects[0].size = 10;
-  // metadata, metadata_size, contained_ids, contained_ids_count already zero
-
-  array.objects[1].data = static_cast<char *>(malloc(20));
-  array.objects[1].size = 20;
-  // metadata, metadata_size, contained_ids, contained_ids_count already zero
-
-  EXPECT_NO_THROW(CObjectStore_FreeObjectArray(&array));
+  CObjectStore_FreeObjectArray(array);
 }
 
 TEST_F(NativeObjectStoreCGOTest, FreeWaitResultWithNullReady) {
