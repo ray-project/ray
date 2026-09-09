@@ -410,16 +410,20 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
     else:
         assert attempts == 1
         retry_line = (
-            "Failed to get file info for ['data/file.parquet'] after 1/1 "
+            "Failed to get file info for ['data/file.parquet'] after 1/3 "
             "attempts (total backoff 0.0s)."
         )
     assert str(exc_info.value) == (
         "When testing for existence of bucket 'my-bucket': "
         "AWS Error ACCESS_DENIED during HeadBucket operation: No response body.\n"
         f"{retry_line}\n"
-        "This looks like an AWS S3 permissions error. Try refreshing your "
-        "credentials, or use s3fs with boto3 (pass "
-        "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
+        "This looks like an AWS S3 permissions error. Make sure your "
+        "credentials have the correct permissions. If this problem persists, "
+        "try refreshing your credentials, or use s3fs with boto3 (pass "
+        "`filesystem=s3fs.S3FileSystem()` to the read/write API). To change "
+        "retry attempts, backoff, or which errors are retried, configure "
+        "`ray.data.DataContext.get_current()` (`retried_io_errors` and the "
+        "retry settings for this operator)."
     )
 
 

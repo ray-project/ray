@@ -1536,9 +1536,13 @@ def _annotate_exception_with_retry_context(
     )
     if "ACCESS_DENIED" in exception_str:
         suffix += (
-            "\nThis looks like an AWS S3 permissions error. Try refreshing your "
-            "credentials, or use s3fs with boto3 (pass "
-            "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
+            "\nThis looks like an AWS S3 permissions error. Make sure your "
+            "credentials have the correct permissions. If this problem persists, "
+            "try refreshing your credentials, or use s3fs with boto3 (pass "
+            "`filesystem=s3fs.S3FileSystem()` to the read/write API). To change "
+            "retry attempts, backoff, or which errors are retried, configure "
+            "`ray.data.DataContext.get_current()` (`retried_io_errors` and the "
+            "retry settings for this operator)."
         )
     try:
         if exc.args and isinstance(exc.args[0], str):
