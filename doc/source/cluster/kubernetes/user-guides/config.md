@@ -182,7 +182,7 @@ The field `rayStartParams.resources` should only be used for custom resources. T
 KubeRay also sets the following parameters for you. You rarely set them yourself, but understanding them helps when you debug autoscaling, cluster connectivity, or metrics.
 
 ### no-monitor
-When you enable autoscaling with `enableInTreeAutoscaling: true`, KubeRay sets `no-monitor: "true"` on the head pod and runs the Ray Autoscaler in a sidecar container instead. The in-tree autoscaler that the head pod's monitor process would otherwise run isn't compatible with Kubernetes, so KubeRay disables that process and lets the sidecar drive scaling. See {ref}`kuberay-autoscaling` for how autoscaling works on Kubernetes.
+When you enable autoscaling with `enableInTreeAutoscaling: true`, KubeRay sets `no-monitor: "true"` on the head pod and runs the Ray Autoscaler in a sidecar container instead. Setting `no-monitor: "true"` disables the autoscaling process that the head pod's monitor would otherwise run, so the sidecar drives scaling. See {ref}`kuberay-autoscaling` for how autoscaling works on Kubernetes.
 
 The monitor process also exports observability data, such as Prometheus metrics, which you want whether or not you enable autoscaling. When KubeRay leaves the monitor running without an autoscaling configuration, the autoscaler starts in READONLY mode. In this mode it reports cluster state and serves metrics, but never launches or terminates nodes. Don't set `no-monitor` yourself. Let KubeRay manage it from your autoscaling configuration.
 
