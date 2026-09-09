@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple
 
 from ray.data.expressions import Expr
@@ -166,23 +167,40 @@ class SupportsPartitionPruning(ABC):
         return None
 
 
+@dataclass(frozen=True, eq=False)
+class ListFilesPushdown:
+    """Constraints a ``ListFiles`` may safely apply while listing.
+
+    Each field is ``None`` unless the scanner consuming the listing both
+    implements the corresponding ``Supports*`` mixin and reports state it
+    actually accepted, so a datasource that ignores a pushdown can never cause
+    listing-time pruning.
+
+    ``eq=False`` on purpose: a generated ``__eq__`` would compare ``predicate``
+    with ``==``, and ``Expr.__eq__`` builds an expression rather than answering
+    a bool -- two instances holding different predicates would compare equal.
+    Callers compare fields themselves, identity for the expression ones.
+    """
+
+    predicate: Optional["Expr"] = None
+    projected_columns: Optional[List[str]] = None
+    limit: Optional[int] = None
+    partition_pruner: Optional["FilePruner"] = None
+
+
 def derive_list_files_pushdown(
     scanner: Optional["Scanner"],
-) -> Tuple[
-    Optional["Expr"], Optional[List[str]], Optional[int], Optional["FilePruner"]
-]:
+) -> ListFilesPushdown:
     """Read the pushed-down state a scanner accepted, for upstream listing.
 
-    Returns ``(predicate, projected_columns, limit, partition_pruner)`` -- the
-    constraints a ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely
-    apply while listing (see :class:`~ray.data._internal.logical.rules.
-    derive_list_files_pushdown.DeriveListFilesPushdown`). Each element is
-    ``None`` unless the scanner both implements the corresponding ``Supports*``
-    mixin and reports state it actually accepted, so a datasource that ignores
-    a pushdown can never cause listing-time pruning.
+    The returned :class:`ListFilesPushdown` holds the constraints a
+    ``ListFiles`` feeding this scanner's ``ReadFiles`` may apply while listing
+    (see :class:`~ray.data._internal.logical.rules.
+    derive_list_files_pushdown.DeriveListFilesPushdown`).
 
-    ``scanner`` may be ``None`` (no downstream reader), which yields all-``None``:
-    nothing downstream applies these constraints, so listing must not either.
+    ``scanner`` may be ``None`` (no downstream reader), which yields an
+    all-``None`` result: nothing downstream applies these constraints, so
+    listing must not either.
     """
     predicate = (
         scanner.pushed_predicate()
@@ -216,4 +234,9 @@ def derive_list_files_pushdown(
             # path), where listing still must not stop early: failing safe
             # costs a footer sweep, failing open loses rows.
             limit = None
-    return predicate, projected_columns, limit, partition_pruner
+    return ListFilesPushdown(
+        predicate=predicate,
+        projected_columns=projected_columns,
+        limit=limit,
+        partition_pruner=partition_pruner,
+    )

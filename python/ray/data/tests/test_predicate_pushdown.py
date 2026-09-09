@@ -1262,9 +1262,9 @@ def test_limit_over_partition_filter_without_partitioning_spec(
     scanner = scanner.push_limit(5)
 
     assert scanner.pushed_partition_pruner() is None
-    _, _, limit, pruner = derive_list_files_pushdown(scanner)
-    assert limit is None
-    assert pruner is None
+    pushdown = derive_list_files_pushdown(scanner)
+    assert pushdown.limit is None
+    assert pushdown.partition_pruner is None
 
 
 if __name__ == "__main__":
