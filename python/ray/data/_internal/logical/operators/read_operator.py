@@ -384,22 +384,27 @@ class ReadFiles(
 
         assert isinstance(self.scanner, SupportsFilterPushdown)
 
+        # Columns the reader manufactures after the scan (``path``,
+        # ``row_hash``). They are in ``scanner.schema``, so a user can filter
+        # on them, but pyarrow cannot bind them against the file.
+        synthesized: Set[str] = getattr(self.scanner, "synthesized_columns", set())
         partition_cols: Set[str] = (
             self.scanner.partition_columns
             if isinstance(self.scanner, SupportsPartitionPruning)
             else set()
         )
 
-        if not partition_cols:
+        if not partition_cols and not synthesized:
             new_scanner, _residual = self.scanner.push_filters(predicate_expr)
             return replace(self, scanner=new_scanner)
 
-        split = _split_predicate_by_columns(predicate_expr, partition_cols)
+        split = _split_predicate_by_columns(predicate_expr, partition_cols, synthesized)
 
         if split.data_predicate is None and split.partition_predicate is None:
-            # Entire predicate is residual (e.g. a single mixed-column
-            # ``OR``); nothing safe to push. Returning ``self`` tells
-            # ``PredicatePushdown`` to keep the ``Filter`` above us.
+            # Entire predicate is residual (a single mixed-column ``OR``, or a
+            # predicate naming only synthesized columns); nothing safe to push.
+            # Returning ``self`` tells ``PredicatePushdown`` to keep the
+            # ``Filter`` above us.
             return self
 
         new_scanner = self.scanner
@@ -416,7 +421,8 @@ class ReadFiles(
         # Residual conjuncts can't be pushed through either ``push_filters``
         # (pyarrow only binds data columns) or ``prune_partitions`` (path
         # parser only binds partition columns), so re-emit them as a
-        # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
+        # ``Filter`` above the new ``ReadFiles`` -- which is also where a
+        # synthesized column has come into existence. Without this, we'd keep
         # the splittable parts and silently drop the residual — letting
         # rows through that the original predicate would have rejected.
         return Filter(

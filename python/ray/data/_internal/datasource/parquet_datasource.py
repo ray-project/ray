@@ -200,10 +200,12 @@ class _SplitPredicateResult:
             pushdown), or None if none could be extracted.
         partition_predicate: Conjuncts referencing only partition columns
             (for partition pruning), or None if none could be extracted.
-        residual_predicate: Conjuncts that mix partition and data columns
-            and can't be split safely (e.g. an ``OR`` straddling both
-            kinds). The caller must keep these as a ``Filter`` above the
-            read; dropping them would over-include rows.
+        residual_predicate: Conjuncts that can't be pushed either way --
+            those naming a synthesized column (which exists only after the
+            read), and those mixing partition and data columns
+            unsplittably (e.g. an ``OR`` straddling both kinds). The caller
+            must keep these as a ``Filter`` above the read; dropping them
+            would over-include rows.
     """
 
     data_predicate: Optional[Expr]
@@ -214,6 +216,7 @@ class _SplitPredicateResult:
 def _split_predicate_by_columns(
     predicate: Expr,
     partition_columns: set,
+    synthesized_columns: Optional[set] = None,
 ) -> _SplitPredicateResult:
     """Split a predicate into data, partition, and residual parts.
 
@@ -224,14 +227,22 @@ def _split_predicate_by_columns(
       evaluate it at scan time.
     - References only partition columns → partition bucket; the partition
       parser can evaluate it from file paths.
+    - References a synthesized column → residual bucket; the column does
+      not exist in the file, so neither pushdown path can bind it.
     - References both kinds (i.e. a non-``AND`` whose column set spans
       both) → residual bucket; semantics-preserving splitting is
       impossible (e.g. ``data > 5 OR partition == "US"``), so the caller
       must keep these as a ``Filter`` above the read.
 
+    Splitting the ``AND`` chain is what keeps an unpushable conjunct from
+    costing the others their pushdown: ``data > 5 AND path == "f"`` still
+    prunes row groups on ``data > 5``.
+
     Args:
         predicate: The predicate expression to analyze.
         partition_columns: Set of partition column names.
+        synthesized_columns: Names produced after the read (e.g. ``path``,
+            ``row_hash``), which no pushdown path can evaluate.
 
     Returns:
         :class:`_SplitPredicateResult` with the three buckets. Combining
@@ -275,19 +286,29 @@ def _split_predicate_by_columns(
         >>> result.residual_predicate is not None
         True
     """
+    synthesized_columns = synthesized_columns or set()
     referenced_cols = set(get_column_references(predicate))
-    data_cols = referenced_cols - partition_columns
+    data_cols = referenced_cols - partition_columns - synthesized_columns
     partition_cols_in_predicate = referenced_cols & partition_columns
+    synthesized_in_predicate = referenced_cols & synthesized_columns
 
-    if not partition_cols_in_predicate:
+    if synthesized_in_predicate:
+        if not data_cols and not partition_cols_in_predicate:
+            # Nothing here is pushable.
+            return _SplitPredicateResult(
+                data_predicate=None,
+                partition_predicate=None,
+                residual_predicate=predicate,
+            )
+        # Mixed with pushable columns -- fall through to the ``AND`` split.
+    elif not partition_cols_in_predicate:
         # Pure data predicate (or no column refs).
         return _SplitPredicateResult(
             data_predicate=predicate,
             partition_predicate=None,
             residual_predicate=None,
         )
-
-    if not data_cols:
+    elif not data_cols:
         # Pure partition predicate.
         return _SplitPredicateResult(
             data_predicate=None,
@@ -297,8 +318,12 @@ def _split_predicate_by_columns(
 
     # Mixed predicate - keep splitting if it's an AND chain.
     if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-        left_result = _split_predicate_by_columns(predicate.left, partition_columns)
-        right_result = _split_predicate_by_columns(predicate.right, partition_columns)
+        left_result = _split_predicate_by_columns(
+            predicate.left, partition_columns, synthesized_columns
+        )
+        right_result = _split_predicate_by_columns(
+            predicate.right, partition_columns, synthesized_columns
+        )
 
         def combine_predicates(
             left: Optional[Expr], right: Optional[Expr]
