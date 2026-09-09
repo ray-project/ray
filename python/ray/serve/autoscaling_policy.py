@@ -1,8 +1,16 @@
 import functools
+import json
 import logging
 import math
+import os
+import threading
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+import urllib.parse
+import urllib.request
+import weakref
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -357,3 +365,324 @@ def replica_queue_length_autoscaling_policy(
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+
+# ---------------------------------------------------------------------------
+# Prometheus-backed autoscaling building blocks
+# ---------------------------------------------------------------------------
+
+DEFAULT_PROMETHEUS_FETCH_INTERVAL_S = 5.0
+DEFAULT_PROMETHEUS_CACHE_TTL_S = 15.0
+DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S = 5.0
+_PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class PrometheusScalar:
+    """A scalar returned by an instant Prometheus query."""
+
+    value: float
+    timestamp: float
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class PrometheusSample:
+    """One labeled sample in a Prometheus instant vector."""
+
+    labels: Mapping[str, str]
+    value: float
+    timestamp: float
+
+    def __post_init__(self):
+        object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class PrometheusVector:
+    """An instant vector returned by a Prometheus query."""
+
+    samples: Tuple[PrometheusSample, ...]
+
+    def __post_init__(self):
+        object.__setattr__(self, "samples", tuple(self.samples))
+
+
+PrometheusQueryResult = Union[PrometheusScalar, PrometheusVector]
+
+
+def _parse_prometheus_headers(headers: Any) -> Dict[str, str]:
+    """Parse and validate Prometheus HTTP headers.
+
+    Matches the formats accepted by the Ray dashboard: a JSON object or a
+    JSON list of ``[name, value]`` pairs. Duplicate names in the list format
+    are collapsed because ``urllib.request`` represents headers as a mapping.
+    """
+    if isinstance(headers, str):
+        headers = json.loads(headers)
+    if isinstance(headers, list):
+        try:
+            headers = dict(headers)
+        except (TypeError, ValueError):
+            headers = None
+    if not isinstance(headers, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in headers.items()
+    ):
+        raise ValueError(
+            "Prometheus headers must be a JSON object with string keys and "
+            "values, or a JSON list of [name, value] pairs."
+        )
+    return dict(headers)
+
+
+def _normalize_query_url(address: str) -> str:
+    """Return the ``/api/v1/query`` URL for a Prometheus address.
+
+    Accepts ``host:port`` or ``http(s)://host:port``, and an address that
+    already ends in the query path.
+    """
+    address = address.rstrip("/")
+    if not address.startswith(("http://", "https://")):
+        address = f"http://{address}"
+    if address.endswith("/api/v1/query"):
+        return address
+    return f"{address}/api/v1/query"
+
+
+def _parse_prometheus_value(value: Any) -> Optional[Tuple[float, float]]:
+    """Parse ``[timestamp, value]``, returning None for a non-finite value."""
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError("Prometheus sample must contain [timestamp, value].")
+    timestamp = float(value[0])
+    sample_value = float(value[1])
+    if not math.isfinite(timestamp):
+        raise ValueError("Prometheus sample timestamp must be finite.")
+    if not math.isfinite(sample_value):
+        return None
+    return sample_value, timestamp
+
+
+def _query_prometheus(
+    query_url: str,
+    query: str,
+    timeout_s: float,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[PrometheusQueryResult]:
+    """Run one instant PromQL query and parse its scalar or vector result."""
+    url = query_url + "?" + urllib.parse.urlencode({"query": query})
+    request = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(request, timeout=timeout_s) as resp:
+        body = json.load(resp)
+
+    if not isinstance(body, dict) or body.get("status") != "success":
+        error = body.get("error", "unknown error") if isinstance(body, dict) else body
+        raise ValueError(f"Prometheus query failed: {error}")
+
+    data = body.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("Prometheus query response is missing its data object.")
+
+    result_type = data.get("resultType")
+    result = data.get("result")
+    if result_type == "scalar":
+        parsed = _parse_prometheus_value(result)
+        if parsed is None:
+            return None
+        value, timestamp = parsed
+        return PrometheusScalar(value=value, timestamp=timestamp)
+
+    if result_type != "vector":
+        raise ValueError(f"Unsupported Prometheus result type: {result_type!r}.")
+    if not isinstance(result, list):
+        raise ValueError("Prometheus vector result must be a list.")
+
+    samples = []
+    for item in result:
+        if not isinstance(item, dict):
+            raise ValueError("Prometheus vector sample must be an object.")
+        if "histogram" in item or "value" not in item:
+            raise ValueError("Native histogram query results are not supported.")
+        labels = item.get("metric", {})
+        if not isinstance(labels, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in labels.items()
+        ):
+            raise ValueError("Prometheus vector labels must map strings to strings.")
+        parsed = _parse_prometheus_value(item["value"])
+        # Prometheus can return NaN or Inf for an empty range such as an idle
+        # histogram_quantile. Treat that sample as no data.
+        if parsed is None:
+            continue
+        value, timestamp = parsed
+        samples.append(
+            PrometheusSample(labels=labels, value=value, timestamp=timestamp)
+        )
+
+    return PrometheusVector(samples=tuple(samples))
+
+
+def _single_prometheus_value(result: PrometheusQueryResult) -> Optional[float]:
+    """Return the only value in a scalar or single-sample vector."""
+    if isinstance(result, PrometheusScalar):
+        return result.value
+    if len(result.samples) == 1:
+        return result.samples[0].value
+    return None
+
+
+def _fetch_prometheus_results(
+    address: str,
+    queries: List[str],
+    timeout_s: float = DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S,
+    headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, PrometheusQueryResult]:
+    """Evaluate ``queries``, independently omitting no-data or failed results."""
+    query_url = _normalize_query_url(address)
+    out: Dict[str, PrometheusQueryResult] = {}
+    for query in queries:
+        try:
+            result = _query_prometheus(query_url, query, timeout_s, headers)
+            if result is not None:
+                out[query] = result
+        except Exception as exc:
+            logger.warning(
+                "Failed to evaluate Prometheus query %r: %s",
+                query,
+                exc,
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
+    return out
+
+
+class _MetricCache:
+    """Shared state between a policy and its refresh thread.
+
+    Kept separate so the thread never holds a reference to the policy, which
+    lets the policy be garbage collected and its thread stopped on reconfig.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        self.results: Optional[Dict[str, PrometheusQueryResult]] = None
+        self.timestamp = 0.0
+
+
+def _run_refresh(
+    cache: _MetricCache,
+    address: str,
+    queries: List[str],
+    headers: Dict[str, str],
+    interval_s: float,
+) -> None:
+    while not cache.stop.is_set():
+        try:
+            results = _fetch_prometheus_results(address, queries, headers=headers)
+            with cache.lock:
+                cache.results = results or None
+                cache.timestamp = time.monotonic()
+        except Exception:
+            logger.warning("Prometheus autoscaling fetch failed.", exc_info=True)
+        cache.stop.wait(interval_s)
+
+
+@PublicAPI(stability="alpha")
+class PrometheusQueryMixin:
+    """Keeps Prometheus query results fresh for an autoscaling policy.
+
+    Mix into a policy and read ``self.prometheus_results`` from ``__call__``.
+    Scalar results and instant vectors, including empty and multi-sample
+    vectors, retain their Prometheus result types. ``self.prometheus_metrics``
+    is a convenience view containing only scalars and single-sample vectors.
+
+    The first read starts a daemon thread that evaluates the queries every
+    ``fetch_interval_s``. Reads never block on the network and return ``None``
+    when Prometheus is unset, unreachable, or the cache is older than
+    ``cache_ttl_s``.
+
+    ``prometheus_address`` defaults to the ``RAY_PROMETHEUS_HOST`` environment
+    variable, which Ray's dashboard and managed clusters already set, so the
+    common case needs no address. HTTP headers are read from the JSON-encoded
+    ``RAY_PROMETHEUS_HEADERS`` environment variable used by the dashboard.
+    """
+
+    def __init__(
+        self,
+        *,
+        prometheus_address: Optional[str] = None,
+        prometheus_queries: Optional[List[str]] = None,
+        fetch_interval_s: float = DEFAULT_PROMETHEUS_FETCH_INTERVAL_S,
+        cache_ttl_s: float = DEFAULT_PROMETHEUS_CACHE_TTL_S,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self._prometheus_address = prometheus_address or os.environ.get(
+            "RAY_PROMETHEUS_HOST"
+        )
+        self._prometheus_headers = _parse_prometheus_headers(
+            os.environ.get(_PROMETHEUS_HEADERS_ENV_VAR, "{}")
+        )
+        self._prometheus_queries = list(prometheus_queries or [])
+        self._fetch_interval_s = fetch_interval_s
+        self._cache_ttl_s = cache_ttl_s
+        self._cache = _MetricCache()
+        self._started = False
+
+    def _ensure_refreshing(self) -> None:
+        if self._started:
+            return
+        self._started = True
+        if not (self._prometheus_address and self._prometheus_queries):
+            return
+        cache = self._cache
+        threading.Thread(
+            target=_run_refresh,
+            args=(
+                cache,
+                self._prometheus_address,
+                self._prometheus_queries,
+                self._prometheus_headers,
+                self._fetch_interval_s,
+            ),
+            name="serve-prometheus-autoscaling-fetch",
+            daemon=True,
+        ).start()
+        # Stop the thread once this policy is garbage collected, e.g. when it
+        # is replaced on a config change.
+        weakref.finalize(self, cache.stop.set)
+
+    def _read_cached_results(
+        self,
+    ) -> Optional[Dict[str, PrometheusQueryResult]]:
+        """Return a shallow copy of the fresh result cache."""
+        self._ensure_refreshing()
+        cache = self._cache
+        with cache.lock:
+            if cache.results is None:
+                return None
+            if time.monotonic() - cache.timestamp > self._cache_ttl_s:
+                return None
+            return dict(cache.results)
+
+    @property
+    def prometheus_results(
+        self,
+    ) -> Optional[Dict[str, PrometheusQueryResult]]:
+        """Latest typed scalar and vector results, or None if unavailable."""
+        return self._read_cached_results()
+
+    @property
+    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
+        """Latest unambiguous scalar values, or None if none are available."""
+        results = self._read_cached_results()
+        if results is None:
+            return None
+        metrics = {
+            query: value
+            for query, result in results.items()
+            if (value := _single_prometheus_value(result)) is not None
+        }
+        return metrics or None
