@@ -1744,8 +1744,8 @@ struct WaitAsyncCallbackResult {
   int calls = 0;
 };
 
-void OnWaitAsyncDone(Status status, void *user) {
-  WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(user);
+void OnWaitAsyncDone(Status status, void *callback_arg) {
+  WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(callback_arg);
   result->status = std::move(status);
   result->calls += 1;
 }
@@ -1907,8 +1907,8 @@ TEST_F(CoreWorkerTest, WaitAsyncAfterShutdownFailsFast) {
 
 TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   // Completing a wait must deregister its memory-store GetAsync callback.
-  // Otherwise the registration -- and the WaitAsyncState it references --
-  // survives until an object that may never arrive shows up.
+  // Otherwise the registration survives until an object that may never
+  // arrive shows up.
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 

@@ -144,7 +144,8 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
 CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
   absl::MutexLock lock(&mu_);
-  auto iter = objects_.find(object_id);
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>::iterator iter =
+      objects_.find(object_id);
   if (iter == objects_.end()) {
     do {
       ++next_async_get_callback_id_;
@@ -153,7 +154,7 @@ CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
         {next_async_get_callback_id_, std::move(callback)});
     return next_async_get_callback_id_;
   }
-  auto &object_ptr = iter->second;
+  std::shared_ptr<RayObject> &object_ptr = iter->second;
   object_ptr->SetAccessed();
   io_context_.post(
       [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
@@ -167,7 +168,8 @@ void CoreWorkerMemoryStore::CancelGetAsync(const ObjectID &object_id,
     return;
   }
   absl::MutexLock lock(&mu_);
-  auto it = object_async_get_requests_.find(object_id);
+  absl::flat_hash_map<ObjectID, std::vector<AsyncGetRequest>>::iterator it =
+      object_async_get_requests_.find(object_id);
   if (it == object_async_get_requests_.end()) {
     return;
   }

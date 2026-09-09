@@ -816,15 +816,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * memory store and the wait will never complete.
    *
    * \param[in] object_id ID of the object to wait for.
-   * \param[in] callback Invoked with status and ``user``.
-   * \param[in] user Opaque pointer passed through to ``callback``.
+   * \param[in] callback Invoked with status and ``callback_arg``.
+   * \param[in] callback_arg Opaque pointer passed through to ``callback``.
    * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
    * already invoked synchronously on the calling thread (unknown owner, or the
    * worker is shutting down).
    */
   uint64_t WaitAsync(const ObjectID &object_id,
-                     void (*callback)(Status status, void *user),
-                     void *user);
+                     void (*callback)(Status status, void *callback_arg),
+                     void *callback_arg);
 
   /**
    * Cancel an in-flight ``WaitAsync`` identified by its handle.
@@ -1966,12 +1966,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * Complete a ``WaitAsync`` request and invoke its callback at most once.
    *
    * Unregisters the handle and cancels the memory-store registration before
-   * running the callback. All three run with ``state->mu`` released.
+   * running the callback.
    *
    * \param[in] state Shared wait state for the request.
+   * \param[in] handle Value returned by ``WaitAsync``.
    * \param[in] status Status passed to the user callback.
    */
-  void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status);
+  void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state,
+                       uint64_t handle,
+                       Status status);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

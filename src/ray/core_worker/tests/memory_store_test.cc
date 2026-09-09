@@ -100,7 +100,7 @@ TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
   CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
   const ObjectID object_id = ObjectID::FromRandom();
 
-  const auto callback_id =
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
       memory_store.GetAsync(object_id, [](std::shared_ptr<RayObject>) {});
   ASSERT_NE(callback_id, 0u);
   {
