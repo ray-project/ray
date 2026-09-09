@@ -889,9 +889,23 @@ py_test(
 )
 
 py_test(
+    name = "test_lineage_tracker_fan_out",
+    size = "small",
+    srcs = ["tests/unit/test_lineage_tracker_fan_out.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_lineage_tracker_linear",
     size = "small",
-    srcs = ["tests/test_lineage_tracker_linear.py"],
+    srcs = ["tests/unit/test_lineage_tracker_linear.py"],
     tags = [
         "exclusive",
         "team:data",
