@@ -48,7 +48,7 @@ WaitForPersistedPort(const std::string &dir,
     return std::visit(overloaded{[](const StatusT::IOError &e) -> RetType {
                                    return StatusT::IOError(e.message());
                                  },
-                                 [&](const StatusT::TimedOut &e) -> RetType {
+                                 [&port_name, timeout_ms](const StatusT::TimedOut &e) -> RetType {
                                    return StatusT::TimedOut(
                                        e.message() + ". Timed out after " +
                                        std::to_string(timeout_ms) +
