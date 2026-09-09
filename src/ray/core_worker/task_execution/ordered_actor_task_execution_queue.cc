@@ -112,8 +112,11 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
   {
     absl::MutexLock lock(&mu_);
+    // A cancel that arrived while another attempt of this task was pending applies to
+    // this attempt too, which the shared entry used to give for free.
+    bool is_canceled = IsTaskCanceledLocked(task_spec.TaskId());
     pending_task_attempt_to_is_canceled.emplace(
-        TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()}, false);
+        TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()}, is_canceled);
   }
 
   // Set the OnArgsReady callback. In the general case, this should be called
@@ -205,6 +208,15 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   ExecuteQueuedTasks();
+}
+
+bool OrderedActorTaskExecutionQueue::IsTaskCanceledLocked(const TaskID &task_id) const {
+  for (const auto &[task_attempt, is_canceled] : pending_task_attempt_to_is_canceled) {
+    if (task_attempt.first == task_id && is_canceled) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {

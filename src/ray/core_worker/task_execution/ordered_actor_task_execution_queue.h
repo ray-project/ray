@@ -72,6 +72,10 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   void AcceptRequestOrRejectIfCanceled(const TaskAttempt &task_attempt,
                                        TaskToExecute &request);
 
+  /// Whether any pending attempt of the given task is already marked canceled.
+  bool IsTaskCanceledLocked(const TaskID &task_id) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   void ExecuteRequest(TaskToExecute &&request);
 
   /// Per-concurrency-group ordering state.
@@ -127,9 +131,6 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
       ABSL_GUARDED_BY(mu_);
 
   friend class OrderedActorTaskExecutionQueueTest;
-
-  FRIEND_TEST(OrderedActorTaskExecutionQueueTest,
-              CancelTaskIfFoundCancelsRemainingAttempt);
 };
 
 }  // namespace core
