@@ -386,7 +386,7 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
 
         def __next__(self):
             raise OSError(
-                "When testing for existence of bucket 'anyscale-prod8d57fcce877a': "
+                "When testing for existence of bucket 'my-bucket': "
                 "AWS Error ACCESS_DENIED during HeadBucket operation: No response body."
             )
 
@@ -401,17 +401,26 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
             )
         )
 
-    message = str(exc_info.value)
-    assert "ACCESS_DENIED" in message
     if retryable:
         assert attempts == 3
-        assert "after 3/3 attempts" in message
+        retry_line = (
+            "Failed to get file info for ['data/file.parquet'] after 3/3 "
+            "attempts (total backoff 6.0s)."
+        )
     else:
         assert attempts == 1
-        assert "after 1/1 attempts" in message
-    assert "permissions error" in message
-    assert "s3fs.S3FileSystem()" in message
-    assert "refreshing your credentials" in message
+        retry_line = (
+            "Failed to get file info for ['data/file.parquet'] after 1/1 "
+            "attempts (total backoff 0.0s)."
+        )
+    assert str(exc_info.value) == (
+        "When testing for existence of bucket 'my-bucket': "
+        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body.\n"
+        f"{retry_line}\n"
+        "This looks like an AWS S3 permissions error. Try refreshing your "
+        "credentials, or use s3fs with boto3 (pass "
+        "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
+    )
 
 
 def test_iterate_with_retry_matches_class_name():
