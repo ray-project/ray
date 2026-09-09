@@ -65,6 +65,9 @@ previous fixed scheduler and creates ``processes`` actors. Set a lower
 The pool creates actors as work arrives and retires actors above ``min_size``
 after ``idle_timeout_s``. Use ``ray_remote_args`` to specify CPUs, GPUs, or
 custom resources for each actor so pending actors can drive cluster autoscaling.
+If an idle actor holds resources needed by accepted work on a pending actor,
+the pool retires it immediately, even at ``min_size``. Capacity is restored
+after actor exit is confirmed, so this handoff can briefly fall below the floor.
 
 For compatibility, a pool without capacity options continues to use the
 previous fixed-capacity scheduler. Non-default ``max_concurrency``,

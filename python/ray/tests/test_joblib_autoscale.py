@@ -299,6 +299,13 @@ def test_pending_pool_releases_actor_set_when_abandoned(shutdown_only):
         {"min_size": -1, "max_size": 1},
         {"min_size": 2, "max_size": 1},
         {"max_size": 1, "idle_timeout_s": -1},
+        {"max_size": 1, "idle_timeout_s": float("nan")},
+        {"max_size": 1, "idle_timeout_s": float("inf")},
+        {"max_size": 1, "idle_timeout_s": "60"},
+        {"max_size": True},
+        {"max_size": 1.5},
+        {"max_size": 1, "min_size": False},
+        {"max_size": 1, "min_size": 0.5},
     ],
 )
 def test_pool_validates_capacity(shutdown_only, options):
@@ -368,11 +375,14 @@ def test_pool_scales_from_and_back_to_zero(shutdown_only):
     pool.join()
 
 
-def test_pending_actor_runs_after_active_actor_releases_resource(shutdown_only):
+@pytest.mark.parametrize("min_size", [1, 2])
+def test_pending_actor_runs_after_active_actor_releases_resource(
+    shutdown_only, min_size
+):
     ray.init(num_cpus=1)
     signal = SignalActor.remote()
     pool = Pool(
-        min_size=1,
+        min_size=min_size,
         max_size=2,
         idle_timeout_s=60,
         ray_remote_args={"num_cpus": 1},
@@ -391,6 +401,13 @@ def test_pending_actor_runs_after_active_actor_releases_resource(shutdown_only):
     actor_ids = [result.get(timeout=20) for result in results]
 
     assert len(set(actor_ids)) == 2
+    wait_for_condition(
+        lambda: sum(
+            state in (_ActorSlotState.ACTIVE, _ActorSlotState.STARTING)
+            for state, _ in pool._actor_set.snapshot()
+        )
+        >= min_size
+    )
     pool.close()
     pool.join()
 
@@ -695,18 +712,12 @@ def test_joblib_backend_can_be_reused_after_task_failure(shutdown_only):
             raise ValueError("expected failure")
         return value
 
-    with (
-        pytest.raises(ValueError, match="expected failure"),
-        joblib.parallel_backend("ray", n_jobs=2, min_size=0, max_size=2),
-    ):
-        joblib.Parallel(pre_dispatch=2)(
-            joblib.delayed(maybe_fail)(value) for value in range(4)
-        )
-
     with joblib.parallel_backend("ray", n_jobs=2, min_size=0, max_size=2):
-        values = joblib.Parallel(pre_dispatch=2)(
-            joblib.delayed(abs)(value) for value in range(-4, 0)
-        )
+        parallel = joblib.Parallel(pre_dispatch=2)
+        with pytest.raises(ValueError, match="expected failure"):
+            parallel(joblib.delayed(maybe_fail)(value) for value in range(4))
+
+        values = parallel(joblib.delayed(abs)(value) for value in range(-4, 0))
 
     assert values == [4, 3, 2, 1]
 

@@ -88,6 +88,9 @@ backend release idle actors:
 never raise it. The backend creates actors as work arrives and retires actors
 above ``min_size`` after ``idle_timeout_s``. Use ``ray_remote_args`` to specify
 the resources each actor should request from the Ray cluster.
+An idle actor may be retired before the timeout to release resources for
+accepted work on a pending actor. This handoff can briefly reduce capacity
+below ``min_size`` while a replacement is created.
 
 Run on a Cluster
 ----------------

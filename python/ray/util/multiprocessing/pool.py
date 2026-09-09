@@ -4,6 +4,7 @@ import functools
 import gc
 import itertools
 import logging
+import math
 import os
 import queue
 import sys
@@ -583,8 +584,10 @@ class _ActorSlotSet:
         """
         if slot.state is not _ActorSlotState.ACTIVE or slot.outstanding != 0:
             return
-        if self._capacity_locked() <= self._min_size:
-            return
+        # Even at the capacity floor, retaining idle resources can prevent
+        # accepted work from ever running when min_size exceeds cluster
+        # capacity. Restore the floor after this actor's exit is confirmed,
+        # just as when recycling an actor at its task limit.
         if any(
             candidate.state is _ActorSlotState.STARTING and candidate.outstanding > 0
             for candidate in self._slots
@@ -803,7 +806,9 @@ class _ActorSlotSet:
                 actor_set = None
                 if owner_collected.is_set():
                     return
-                condition.wait(timeout)
+                condition.wait(
+                    min(timeout, threading.TIMEOUT_MAX) if timeout is not None else None
+                )
 
 
 def _kill_all_actors(actors: Iterable[Any]) -> None:
@@ -1371,7 +1376,7 @@ class Pool:
         initargs: iterable of arguments to the initializer function.
         maxtasksperchild: maximum number of Pool task batches accepted by each
             actor process. After accepting this many tasks, the actor is retired.
-            With standard actor lifecycle options, its replacement is created
+            With adjustable capacity, its replacement is created
             after Ray confirms the actor exit and capacity policy requires one.
         context: Accepted for ``multiprocessing.Pool`` API compatibility but
             ignored; Ray controls process initialization. A warning is logged
@@ -1386,11 +1391,14 @@ class Pool:
             previous fixed-capacity scheduler for compatibility and cannot be
             combined with adjustable capacity.
         min_size: minimum number of actors retained. Defaults to ``processes``
-            when no capacity options are supplied, otherwise ``0``.
+            when no capacity options are supplied, otherwise ``0``. Adjustable
+            capacity may temporarily fall below this floor during actor
+            replacement or resource handoff to pending work.
         max_size: maximum number of actors. Defaults to ``processes`` when
             given, otherwise the current cluster CPU count.
         idle_timeout_s: seconds an actor above ``min_size`` may remain idle
-            before it is retired. Defaults to 60 seconds.
+            before it is retired. Must be finite and non-negative. Defaults
+            to 60 seconds.
     """
 
     def __init__(
@@ -1416,6 +1424,20 @@ class Pool:
             or maxtasksperchild <= 0
         ):
             raise ValueError("maxtasksperchild must be a positive integer or None")
+        for name, value, minimum in (
+            ("min_size", min_size, 0),
+            ("max_size", max_size, 1),
+        ):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < minimum
+            ):
+                raise ValueError(f"{name} must be an integer >= {minimum}")
+        if idle_timeout_s is not None and (
+            not isinstance(idle_timeout_s, (int, float))
+            or not math.isfinite(idle_timeout_s)
+            or idle_timeout_s < 0
+        ):
+            raise ValueError("idle_timeout_s must be finite and non-negative")
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
         ray_remote_args = ray_remote_args or {}
@@ -1462,8 +1484,6 @@ class Pool:
             raise ValueError("max_size must be greater than 0")
         if not 0 <= min_size <= max_size:
             raise ValueError("min_size must be between 0 and max_size")
-        if idle_timeout_s < 0:
-            raise ValueError("idle_timeout_s must be non-negative")
 
         pool_actor = PoolActor.options(**ray_remote_args)
 
