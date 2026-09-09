@@ -12,6 +12,7 @@ from typing import (
     Hashable,
     Iterable,
     List,
+    NamedTuple,
     Optional,
     Sequence,
     Tuple,
@@ -54,6 +55,9 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
@@ -87,6 +91,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import PublicAPI
+from ray.util.debug import log_once
 from ray.util.metrics import Counter, Histogram
 
 if TYPE_CHECKING:
@@ -106,6 +111,23 @@ ENTROPY_KEY = "entropy"
 
 # Additional update keys
 LR_KEY = "learning_rate"
+
+
+class UpdatePlan(NamedTuple):
+    """How one `Learner.update()` call is to be carried out.
+
+    In a multi-Learner group every Learner must follow the same plan: they run one
+    DDP all-reduce per minibatch, so a Learner that skips while the others train, or
+    that steps a different number of times, deadlocks the group. Each Learner
+    proposes a plan from its own train batch, and `Learner._sync_update_plan` makes
+    the plans identical (see there for how they are combined).
+    """
+
+    # Do not train on this batch at all (by default: it holds no module data).
+    skip: bool
+    # Number of minibatches to step through; 0 means "as many as the data yields",
+    # which is only safe when it is the same on every Learner (no minibatching).
+    num_minibatches: int
 
 
 @PublicAPI(stability="alpha")
@@ -1105,7 +1127,20 @@ class Learner(Checkpointable):
             **kwargs,
         )
 
+        # `None` means: skip this update. `_create_iterator_if_necessary` has already
+        # warned and counted it; only the per-update bookkeeping remains.
+        if batch_iter is None:
+            self.after_gradient_based_update(timesteps=timesteps or {})
+            if not _no_metrics_reduce:
+                return self.metrics.reduce()
+            return
+
         # Perform the actual looping through the minibatches or the given data iterator.
+        # Note: `loss_per_module` and `iteration` are initialized upfront so that the
+        # code below the loop is safe even if the iterator (e.g., a data iterator
+        # over an empty dataset) does not yield a single minibatch.
+        loss_per_module = {}
+        iteration = -1
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
@@ -1178,7 +1213,20 @@ class Learner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         **kwargs,
-    ) -> Iterable:
+    ) -> Optional[Iterable]:
+        """Returns the minibatch iterator for `training_data`, or None to skip.
+
+        None means this `update()` call must be skipped: `_should_skip_update` said
+        so for this Learner's batch (by default: it has no module data, e.g. all
+        sampled episodes were lost or `policies_to_train` excludes every module),
+        or -- in a multi-Learner group -- for another Learner's. Overrides of
+        `update()` must check for None and return early; see the base `update()`
+        for the bookkeeping to do in that case.
+
+        In a multi-Learner group the returned iterator also yields the same number
+        of minibatches on every Learner (see `_sync_update_plan`), even if the
+        Learners' shards differ in size.
+        """
         # Data iterator provided.
         if training_data.data_iterators:
             num_iters = kwargs.pop("num_iters", None)
@@ -1208,10 +1256,91 @@ class Learner(Checkpointable):
             for module_id in list(batch.policy_batches.keys()):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
-            if not batch.policy_batches:
-                return {}
-
+            # Sequence batches are sliced (and thus counted) in the sequence dimension
+            # by `MiniBatchCyclicIterator`; decide that before counting minibatches.
             batch = self._set_slicing_by_batch_id(batch, value=True)
+
+            if self.config.never_skip_update:
+                # Opt-out: no skip logic and no cross-Learner reconciliation (saves one
+                # collective per `update()` in multi-Learner setups). The user
+                # promises well-formed batches; hold them to it rather than crashing
+                # deep in the update loop or -- worse -- deadlocking the group.
+                if not batch.policy_batches:
+                    raise ValueError(
+                        "Received an empty train batch (no timesteps for any module) "
+                        "while `never_skip_update=True`. Either ensure every Learner "
+                        "always receives data (e.g. apply backpressure so Learners are "
+                        "never starved, and keep sampled episodes from being lost), or "
+                        "unset `never_skip_update` (the default) so that empty batches "
+                        "make all Learners skip the update together."
+                    )
+            else:
+                wants_to_skip = self._should_skip_update(batch)
+                # With several Learners, shards may hold different amounts of data, and
+                # the number of minibatches `MiniBatchCyclicIterator` derives from a
+                # shard would then differ per Learner -- a DDP desync just like a lone
+                # skip. Unless the caller fixed `num_total_minibatches`, each Learner
+                # proposes its own count and the group settles on one. (Without
+                # `minibatch_size` the count is `num_epochs` or 1 on every Learner.)
+                if (
+                    not num_total_minibatches
+                    and self.config.num_learners > 1
+                    and minibatch_size
+                ):
+                    num_total_minibatches = MiniBatchCyclicIterator.num_minibatches(
+                        batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+                    )
+                # Make the group follow one plan: all Learners skip together (a
+                # Learner that skips alone drops out of the collective sequence and
+                # deadlocks the others) and step the same number of times.
+                plan = self._sync_update_plan(
+                    UpdatePlan(
+                        skip=wants_to_skip, num_minibatches=num_total_minibatches
+                    )
+                )
+                num_total_minibatches = plan.num_minibatches
+                if plan.skip:
+                    if log_once(
+                        "learner_skip_update"
+                        if wants_to_skip
+                        else "learner_skip_update_peer"
+                    ):
+                        logger.warning(
+                            "Skipping this update: `_should_skip_update` returned True "
+                            "for this Learner's train batch. By default this means the "
+                            "batch is empty (no timesteps for any module), e.g. because "
+                            "sampled episodes were lost (EnvRunner or node failures) or "
+                            "`policies_to_train` excludes all modules. In a "
+                            "multi-Learner setup all Learners skip together to stay in "
+                            "sync. Note that this is a symptom of a suboptimal setup: "
+                            "Ideally, you sample exactly the amount of data your "
+                            "Learners consume or - in an asynchronous setup - apply "
+                            "backpressure such that Learners are never starved."
+                            if wants_to_skip
+                            else "Skipping this update: another Learner in the group "
+                            "wants to skip (by default because its train batch is "
+                            "empty) and all Learners must take the same update steps to "
+                            "stay in sync. This Learner's own train batch is dropped."
+                        )
+                    # Diagnostics, summed across Learners when aggregated: how many
+                    # shards were actually empty vs. how many good shards were thrown
+                    # away to stay in sync -- and how much data that was.
+                    self.metrics.log_value(
+                        (
+                            ALL_MODULES,
+                            LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME
+                            if wants_to_skip
+                            else LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
+                        ),
+                        1,
+                        reduce="lifetime_sum",
+                    )
+                    self.metrics.log_value(
+                        (ALL_MODULES, LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME),
+                        batch.env_steps(),
+                        reduce="lifetime_sum",
+                    )
+                    return None
 
             if minibatch_size:
                 batch_iter_cls = MiniBatchCyclicIterator
@@ -1233,6 +1362,53 @@ class Learner(Checkpointable):
                 num_total_minibatches=num_total_minibatches,
             )
         return batch_iter
+
+    @OverrideToImplementCustomLogic
+    def _should_skip_update(self, batch: MultiAgentBatch) -> bool:
+        """Returns whether this Learner wants to skip the current `update()` call.
+
+        Called once per `update()` with the train batch (after modules not in
+        `policies_to_train` have been removed). By default an update is skipped when
+        the batch holds no data for any module, which happens e.g. when all sampled
+        episodes were lost to EnvRunner or node failures.
+
+        Override to add conditions, based on any information available on this
+        Learner -- it need not be consistent across Learners. In a multi-Learner
+        setup RLlib reconciles the answers of all Learners so that they either all
+        skip or all train; a Learner never skips on its own (it would drop out of
+        the group's collective communication and deadlock the others). Do not skip
+        by other means (e.g. returning early from `update()`), for the same reason.
+        Not called if `config.never_skip_update` is set; an empty batch is an error
+        then.
+
+        Args:
+            batch: The train batch of this `update()` call.
+
+        Returns:
+            True to skip this update.
+        """
+        return not batch.policy_batches
+
+    def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
+        """Makes this update's plan identical on every Learner of the group.
+
+        Framework plumbing, not an extension point: framework-specific Learners
+        (e.g. `TorchLearner`) implement it, everyone else overrides
+        `_should_skip_update`. Called exactly once per `update()`, on every Learner,
+        right after `_should_skip_update`; in multi-Learner setups it is a collective
+        operation and must stay one.
+
+        The plans are combined as follows: the group skips if ANY Learner wants to;
+        the number of minibatches is the average of the Learners' proposals.
+
+        Args:
+            plan: This Learner's own proposal, derived from its own train batch.
+
+        Returns:
+            The group's plan. The base implementation, for setups without
+            cross-Learner synchronization, returns `plan` unchanged.
+        """
+        return plan
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod

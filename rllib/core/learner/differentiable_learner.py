@@ -31,6 +31,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -52,6 +53,7 @@ from ray.rllib.utils.typing import (
     StateDict,
     TensorType,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -334,6 +336,14 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
+        # `None` means: skip this update. `_create_iterator_if_necessary` has already
+        # warned and counted it; the parameters are returned unchanged and there is no
+        # loss to report.
+        if batch_iter is None:
+            if not _no_metrics_reduce:
+                return params, {}, self.metrics.reduce()
+            return params, {}, {}
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -407,7 +417,7 @@ class DifferentiableLearner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         **kwargs,
-    ) -> Iterable:
+    ) -> Optional[Iterable]:
         """Provides a batch iterator."""
 
         # Data iterator provided.
@@ -458,8 +468,27 @@ class DifferentiableLearner(Checkpointable):
             for module_id in list(batch.policy_batches.keys()):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
+            # Deliberately NOT `Learner`'s `_should_skip_update` + group sync: this runs
+            # inside the meta-learner's inner loop on every rank and computes gradients
+            # with `torch.autograd.grad`, which never engages DDP's all-reduce, so a
+            # lone skip is lockstep-safe and a collective here would only add a sync
+            # point per inner step.
             if not batch.policy_batches:
-                return {}
+                if log_once("differentiable_learner_empty_train_batch"):
+                    logger.warning(
+                        "The train batch of this DifferentiableLearner is empty (no "
+                        "timesteps for any module). This can happen if sampled episodes "
+                        "are lost (e.g., due to EnvRunner or node failures) or if "
+                        "`policies_to_train` excludes all modules. Skipping this inner "
+                        "update: no gradients are computed and the parameters are passed "
+                        "through unchanged."
+                    )
+                self.metrics.log_value(
+                    (ALL_MODULES, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME),
+                    1,
+                    reduce="lifetime_sum",
+                )
+                return None
 
             batch = self._set_slicing_by_batch_id(batch, value=True)
 
