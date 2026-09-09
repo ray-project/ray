@@ -24,9 +24,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DECIMAL_PRECISION = 38
-DEFAULT_DECIMAL_SCALE = 10
-
 
 def _pick_best_arrow_field_for_order_by(schema: pyarrow.Schema) -> str:
     if len(schema) == 0:
@@ -47,9 +44,7 @@ def _arrow_to_clickhouse_type(field: pyarrow.Field) -> str:
     """Convert a PyArrow field to an appropriate ClickHouse column type."""
     t = field.type
     if pat.is_decimal(t):
-        precision = t.precision or DEFAULT_DECIMAL_PRECISION
-        scale = t.scale or DEFAULT_DECIMAL_SCALE
-        return f"Decimal({precision}, {scale})"
+        return f"Decimal({t.precision}, {t.scale})"
     if pat.is_boolean(t):
         return "UInt8"
     if pat.is_int8(t):

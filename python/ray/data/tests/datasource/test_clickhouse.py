@@ -653,6 +653,13 @@ class TestClickHouseDatasink:
             for clause in expected_clauses:
                 assert clause in create_sql
 
+    def test_generate_create_table_sql_preserves_zero_decimal_scale(self, datasink):
+        schema = pa.schema([("amount", pa.decimal128(9, 0))])
+
+        create_sql = datasink._generate_create_table_sql(schema)
+
+        assert "`amount` Decimal(9, 0)" in create_sql
+
     @pytest.mark.parametrize(
         "provided_schema,block_fields,expected_create_columns",
         [
