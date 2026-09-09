@@ -1861,6 +1861,217 @@ def test_s3_config_recovers_endpoint_and_creds(s3_fs):
     assert cfg["anonymous"] is False
 
 
+class _FakeS3FileSystem:
+    """Stand-in for pyarrow's ``S3FileSystem``: ``_s3_config`` only reads
+    ``fs.__reduce__()[1][0]``. A real client would run the AWS SDK chain (and
+    probe instance metadata) on the test host, which is exactly what these tests
+    control instead."""
+
+    def __init__(self, opts):
+        self._opts = opts
+
+    def __reduce__(self):
+        return (_FakeS3FileSystem, (self._opts,))
+
+
+@pytest.fixture
+def clean_aws_env(monkeypatch):
+    """No ambient AWS_* env, no shared credentials file, empty decision cache."""
+    from ray.data._internal.datasource_v2 import native_metadata
+
+    for key in list(os.environ):
+        if key.startswith("AWS_"):
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/aws/credentials")
+    native_metadata._AMBIENT_AWS_CREDS_CACHE.clear()
+    yield native_metadata
+    native_metadata._AMBIENT_AWS_CREDS_CACHE.clear()
+
+
+def _spy_imds(monkeypatch, native_metadata, reachable):
+    calls = []
+
+    def probe(timeout_s=1.0):
+        calls.append(timeout_s)
+        return reachable
+
+    monkeypatch.setattr(native_metadata, "_imds_reachable", probe)
+    return calls
+
+
+def test_s3_config_unsigned_when_credential_chain_is_empty(monkeypatch, clean_aws_env):
+    """An S3FileSystem with no explicit creds on a host with no AWS credentials
+    anywhere (the GCE release runner) must connect UNSIGNED, as PyArrow's SDK
+    does — `object_store` would otherwise hard-fail in its instance-metadata
+    provider (release build 106477). The IMDS probe runs once per process."""
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=False)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem({"region": "us-west-2"}))
+    assert cfg["anonymous"] is True
+    assert cfg["access_key_id"] is None
+    assert cfg["region"] == "us-west-2"
+
+    clean_aws_env.s3_config(_FakeS3FileSystem({"region": "us-west-2"}))
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "env, imds",
+    [
+        ({"AWS_ACCESS_KEY_ID": "k", "AWS_SECRET_ACCESS_KEY": "s"}, False),
+        ({"AWS_CONTAINER_CREDENTIALS_RELATIVE_URI": "/v2/credentials/x"}, False),
+        ({"AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://localhost/creds"}, False),
+        (
+            {"AWS_WEB_IDENTITY_TOKEN_FILE": "/var/run/token", "AWS_ROLE_ARN": "arn:x"},
+            False,
+        ),
+        ({}, True),
+    ],
+    ids=["env-keys", "ecs-relative", "ecs-full", "web-identity", "imds-role"],
+)
+def test_s3_config_stays_signed_when_a_chain_link_exists(
+    monkeypatch, clean_aws_env, env, imds
+):
+    """Every credential link the Rust client resolves natively (via
+    `AmazonS3Builder::from_env` / its IMDS provider) keeps signing on with no
+    static keys injected; the IMDS probe only runs when nothing cheaper hit."""
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=imds)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem({}))
+    assert cfg["anonymous"] is False
+    assert cfg["access_key_id"] is None
+    assert len(calls) == (1 if not env else 0)
+
+
+def test_s3_config_reads_shared_credentials_file(monkeypatch, clean_aws_env, tmp_path):
+    """Keys in ~/.aws/credentials are the one chain link object_store cannot
+    read, so they are handed over as explicit keys; AWS_PROFILE selects the
+    section, the session token rides along, and IMDS is never probed."""
+    creds = tmp_path / "credentials"
+    creds.write_text(
+        "[default]\naws_access_key_id = DEF\naws_secret_access_key = DEFS\n"
+        "[other]\naws_access_key_id = OTH\naws_secret_access_key = OTHS\n"
+        "aws_session_token = OTHT\n"
+    )
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(creds))
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=False)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem({}))
+    assert (cfg["access_key_id"], cfg["secret_access_key"], cfg["session_token"]) == (
+        "DEF",
+        "DEFS",
+        None,
+    )
+
+    monkeypatch.setenv("AWS_PROFILE", "other")
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem({}))
+    assert (cfg["access_key_id"], cfg["secret_access_key"], cfg["session_token"]) == (
+        "OTH",
+        "OTHS",
+        "OTHT",
+    )
+    assert cfg["anonymous"] is False
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [{"anonymous": True}, {"access_key": "AK", "secret_key": "SK"}],
+    ids=["explicit-anonymous", "explicit-keys"],
+)
+def test_s3_config_explicit_filesystem_settings_skip_the_chain(
+    monkeypatch, clean_aws_env, opts
+):
+    """What the user put on the S3FileSystem is authoritative: no chain walk,
+    no IMDS probe, values passed through untouched."""
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=False)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem(opts))
+    assert cfg["anonymous"] is opts.get("anonymous", False)
+    assert cfg["access_key_id"] == opts.get("access_key")
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"access_key": "anonymous", "secret_key": ""},
+        {"access_key": "", "secret_key": "only-a-secret"},
+    ],
+    ids=["anonymous-at-uri", "secret-only"],
+)
+def test_s3_config_half_key_pair_means_unsigned(monkeypatch, clean_aws_env, opts):
+    """Ray's public-bucket convention `s3://anonymous@bucket/...` reaches pyarrow's
+    `from_uri` as access_key="anonymous" with an EMPTY secret and anonymous=False
+    (verified on pyarrow 24). The AWS SDK's V4 signer skips signing when either
+    half of the pair is empty, so PyArrow sends unsigned requests; object_store
+    rejected the half-pair with "Missing SecretAccessKey" (release build 106477,
+    image_classification_fixed_size rs). Mirror the SDK: unsigned, no probe."""
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=False)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem(opts))
+    assert cfg["anonymous"] is True
+    assert cfg["access_key_id"] is None
+    assert cfg["secret_access_key"] is None
+    assert calls == []
+
+
+def test_s3_config_honours_imds_disabled(monkeypatch, clean_aws_env):
+    """AWS_EC2_METADATA_DISABLED=true skips the probe (SDK semantics) and, with
+    nothing else in the chain, lands on unsigned requests."""
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    calls = _spy_imds(monkeypatch, clean_aws_env, reachable=True)
+
+    cfg = clean_aws_env.s3_config(_FakeS3FileSystem({}))
+    assert cfg["anonymous"] is True
+    assert calls == []
+
+
+def test_anonymous_at_uri_reads_unsigned_over_moto(s3_fs, s3_path):
+    """End to end for the `s3://anonymous@bucket/...` convention: pyarrow's
+    `from_uri` builds the half-pair filesystem, `s3_config` maps it to unsigned,
+    and the crate fetches the footer from moto without signing."""
+    import pyarrow.fs as pafs
+    import ray_data_arrow_rs
+
+    from ray.data._internal.datasource_v2 import native_metadata
+
+    table = _flat_table(1_000)
+    uri = _s3_write(table, s3_fs, s3_path, name="anon.parquet")
+    bucket, _, key = _unwrap_protocol(uri).partition("/")
+    moto = native_metadata.s3_config(s3_fs)  # the moto server's endpoint/region
+
+    fs, _ = pafs.FileSystem.from_uri(
+        f"s3://anonymous@{bucket}/{key}"
+        f"?endpoint_override={moto['endpoint']}&scheme=http&region={moto['region']}"
+    )
+    raw = fs.__reduce__()[1][0]
+    assert raw["access_key"] == "anonymous"
+    assert not raw["secret_key"]
+    assert not raw["anonymous"]
+
+    cfg = native_metadata.s3_config(fs)
+    assert cfg["anonymous"] is True
+    assert cfg["access_key_id"] is None
+    assert cfg["endpoint"] == moto["endpoint"]
+
+    md = ray_data_arrow_rs.read_metadata_s3(
+        bucket,
+        key,
+        cfg["region"],
+        cfg["anonymous"],
+        endpoint=cfg["endpoint"],
+        access_key_id=cfg["access_key_id"],
+        secret_access_key=cfg["secret_access_key"],
+        session_token=cfg["session_token"],
+        allow_http=cfg["allow_http"],
+        virtual_hosted_style=cfg["virtual_hosted_style"],
+    )
+    assert md.num_rows == table.num_rows
+
+
 def test_read_metadata_s3_matches_pyarrow(s3_fs, s3_path):
     """`read_metadata_s3` fetches the footer over the moto endpoint (same config
     recovery as the data path) and returns the same schema + row-group counts as

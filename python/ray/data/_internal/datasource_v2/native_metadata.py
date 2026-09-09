@@ -17,8 +17,11 @@ separate, unstarted piece of work; until then, a native read still pays one foot
 read here on top of the one ``ListFiles`` already did.
 """
 
+import configparser
+import logging
 import os
 import threading
+import urllib.request
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
@@ -42,6 +45,15 @@ if TYPE_CHECKING:
 # fresh client while the stale entry ages out of the size-capped table.
 _S3_STORE_CACHE: Dict[Tuple, Any] = {}
 _S3_STORE_CACHE_LOCK = threading.Lock()
+
+logger = logging.getLogger(__name__)
+
+# Per-process memo of the ambient-credential decision (`_ambient_aws_credentials`),
+# keyed on a fingerprint of the AWS_* env so the (slow) IMDS probe runs at most
+# once per process per environment.
+_AMBIENT_AWS_CREDS_CACHE: Dict[Tuple, Optional[dict]] = {}
+_AMBIENT_AWS_CREDS_LOCK = threading.Lock()
+_IMDS_DEFAULT_ENDPOINT = "http://169.254.169.254"
 # Real jobs hold one or two entries (one per bucket x config); the cap only
 # bounds a long-lived worker against credential-rotation churn.
 _S3_STORE_CACHE_MAX_ENTRIES = 8
@@ -60,6 +72,135 @@ def native_metadata_supported_filesystem(
     from pyarrow.fs import LocalFileSystem, S3FileSystem
 
     return filesystem is None or isinstance(filesystem, (LocalFileSystem, S3FileSystem))
+
+
+def _imds_reachable(timeout_s: float = 1.0) -> bool:
+    """Probe the EC2 instance metadata service (IMDS) the way the AWS SDK does:
+    IMDSv2 token PUT first, then the IMDSv1 role listing (containers with a hop
+    limit of 1 cannot complete the PUT). Any error or non-200 means unreachable.
+
+    Off AWS this is the whole story: GCE's metadata server answers the PUT with
+    405 and the GET with 404 (it wants a ``Metadata-Flavor`` header), a laptop
+    gets a connect timeout. Honours ``AWS_EC2_METADATA_SERVICE_ENDPOINT``.
+    """
+    base = (
+        os.environ.get("AWS_EC2_METADATA_SERVICE_ENDPOINT") or _IMDS_DEFAULT_ENDPOINT
+    ).rstrip("/")
+    attempts = (
+        (
+            "PUT",
+            f"{base}/latest/api/token",
+            {"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+        ),
+        ("GET", f"{base}/latest/meta-data/iam/security-credentials/", {}),
+    )
+    for method, url, headers in attempts:
+        req = urllib.request.Request(url, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            continue
+    return False
+
+
+def _shared_credentials_file_creds() -> Optional[dict]:
+    """Static keys from the AWS shared credentials file (``~/.aws/credentials`` or
+    ``AWS_SHARED_CREDENTIALS_FILE``) for ``AWS_PROFILE`` (else ``default``).
+
+    This is the one link of the SDK default chain the Rust ``object_store``
+    client cannot read itself, so the keys are handed over as explicit values.
+    ``credential_process`` / SSO profiles are not supported and count as absent.
+    """
+    path = os.environ.get("AWS_SHARED_CREDENTIALS_FILE") or os.path.expanduser(
+        "~/.aws/credentials"
+    )
+    if not os.path.isfile(path):
+        return None
+    profile = (
+        os.environ.get("AWS_PROFILE")
+        or os.environ.get("AWS_DEFAULT_PROFILE")
+        or "default"
+    )
+    parser = configparser.RawConfigParser()
+    try:
+        parser.read(path)
+        section = dict(parser.items(profile))
+    except Exception:
+        return None
+    key_id = section.get("aws_access_key_id")
+    secret = section.get("aws_secret_access_key")
+    if not (key_id and secret):
+        return None
+    return {
+        "access_key_id": key_id,
+        "secret_access_key": secret,
+        "session_token": section.get("aws_session_token") or None,
+    }
+
+
+def _ambient_aws_credentials() -> Optional[dict]:
+    """Decide, like the AWS SDK default chain PyArrow runs, whether *any* ambient
+    AWS credentials exist for an ``S3FileSystem`` that carries none explicitly.
+
+    Returns, in chain order:
+
+    * ``{}`` when a link the Rust client resolves natively (via
+      ``AmazonS3Builder::from_env``) is present: static env keys, ECS container
+      credentials, EKS web identity, or a reachable EC2 instance metadata role;
+    * a dict of static keys when they come from the shared credentials file,
+      which the Rust client cannot parse;
+    * ``None`` when the whole chain is empty. PyArrow's SDK then sends UNSIGNED
+      requests (public buckets keep working); ``object_store`` instead hard-fails
+      inside its instance-metadata provider (release build 106477, GCE:
+      ``PUT http://169.254.169.254/latest/api/token`` -> 405). The caller maps
+      ``None`` to ``anonymous=True`` to restore that parity.
+
+    Memoised per process per env fingerprint; the IMDS probe (~1 s off AWS) is
+    the only slow step and runs at most once.
+    """
+    env = os.environ
+    fingerprint = (
+        bool(env.get("AWS_ACCESS_KEY_ID")),
+        bool(env.get("AWS_SECRET_ACCESS_KEY")),
+        bool(env.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")),
+        bool(env.get("AWS_CONTAINER_CREDENTIALS_FULL_URI")),
+        bool(env.get("AWS_WEB_IDENTITY_TOKEN_FILE")),
+        bool(env.get("AWS_ROLE_ARN")),
+        env.get("AWS_PROFILE"),
+        env.get("AWS_DEFAULT_PROFILE"),
+        env.get("AWS_SHARED_CREDENTIALS_FILE"),
+        env.get("AWS_EC2_METADATA_DISABLED"),
+        env.get("AWS_EC2_METADATA_SERVICE_ENDPOINT"),
+    )
+    with _AMBIENT_AWS_CREDS_LOCK:
+        if fingerprint in _AMBIENT_AWS_CREDS_CACHE:
+            return _AMBIENT_AWS_CREDS_CACHE[fingerprint]
+        if env.get("AWS_ACCESS_KEY_ID") and env.get("AWS_SECRET_ACCESS_KEY"):
+            result: Optional[dict] = {}
+        elif (creds := _shared_credentials_file_creds()) is not None:
+            result = creds
+        elif env.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") or env.get(
+            "AWS_CONTAINER_CREDENTIALS_FULL_URI"
+        ):
+            result = {}
+        elif env.get("AWS_WEB_IDENTITY_TOKEN_FILE") and env.get("AWS_ROLE_ARN"):
+            result = {}
+        elif (
+            env.get("AWS_EC2_METADATA_DISABLED", "").lower() != "true"
+            and _imds_reachable()
+        ):
+            result = {}
+        else:
+            result = None
+            logger.info(
+                "arrow-rs S3: no AWS credentials in the environment, shared "
+                "credentials file, container/web-identity settings or instance "
+                "metadata; sending unsigned requests, as PyArrow's AWS SDK does."
+            )
+        _AMBIENT_AWS_CREDS_CACHE[fingerprint] = result
+        return result
 
 
 def s3_config(fs: "S3FileSystem") -> dict:
@@ -89,13 +230,40 @@ def s3_config(fs: "S3FileSystem") -> dict:
     # the endpoint override is an http:// URL, so trust the endpoint URL first.
     allow_http = (str(endpoint).startswith("http://")) or opts.get("scheme") == "http"
 
+    anonymous = bool(opts.get("anonymous", False))
+    access_key_id = _val("access_key")
+    secret_access_key = _val("secret_key")
+    session_token = _val("session_token")
+    if not anonymous and bool(access_key_id) != bool(secret_access_key):
+        # Half a key pair. Ray's public-bucket convention `s3://anonymous@bucket/…`
+        # reaches pyarrow's `from_uri` as access_key="anonymous" with an EMPTY
+        # secret (pyarrow 24 `__reduce__`: access_key set, secret_key unset,
+        # anonymous False). The AWS SDK's V4 signer skips signing when either
+        # half is empty, so PyArrow sends unsigned requests; object_store rejects
+        # the half-pair ("Missing SecretAccessKey", release build 106477). Mirror
+        # the SDK: unsigned.
+        anonymous = True
+        access_key_id = secret_access_key = session_token = None
+    if not anonymous and not access_key_id:
+        # No explicit creds: PyArrow resolved the SDK default chain internally
+        # and `__reduce__` does not expose the result, so re-run the same chain
+        # here (see `_ambient_aws_credentials`). An empty chain means PyArrow
+        # is sending unsigned requests, so the crate must too.
+        ambient = _ambient_aws_credentials()
+        if ambient is None:
+            anonymous = True
+        elif ambient:
+            access_key_id = ambient["access_key_id"]
+            secret_access_key = ambient["secret_access_key"]
+            session_token = ambient["session_token"]
+
     return {
         "region": _val("region") or "us-east-1",
-        "anonymous": bool(opts.get("anonymous", False)),
+        "anonymous": anonymous,
         "endpoint": endpoint,
-        "access_key_id": _val("access_key"),
-        "secret_access_key": _val("secret_key"),
-        "session_token": _val("session_token"),
+        "access_key_id": access_key_id,
+        "secret_access_key": secret_access_key,
+        "session_token": session_token,
         "allow_http": allow_http,
         "virtual_hosted_style": bool(opts.get("force_virtual_addressing", False)),
     }

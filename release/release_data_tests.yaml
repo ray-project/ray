@@ -8,8 +8,9 @@
   cluster:
     byod:
       # TESTING COMMIT ONLY (revert before opening the PR): build + install the
-      # Rust ray_data_arrow_rs crate into every data-test image so the flipped
-      # use_arrow_rs_parquet_reader default (context.py) has a crate to load.
+      # Rust ray_data_arrow_rs crate into every data-test image so the `rs` arm
+      # of the two-arm matrix (RAY_DATA_USE_ARROW_RS_PARQUET_READER=1 per cell,
+      # gen_2x2_release_tests.py) has a crate to load; the `pa` arm ignores it.
       # Inherited by every test that does not define its own byod.post_build_script.
       post_build_script: byod_arrow_rs_parquet.sh
       runtime_env:

@@ -1861,7 +1861,13 @@ fn build_s3_store(
     allow_http: bool,
     virtual_hosted_style: bool,
 ) -> Result<Arc<dyn ObjectStore>, object_store::Error> {
-    let mut sb = AmazonS3Builder::new()
+    // `from_env()` seeds the builder from the AWS_* environment (static keys,
+    // ECS container creds, EKS web identity, region/endpoint) — the links of the
+    // SDK default chain PyArrow resolves. `new()` ignored all of them and went
+    // straight to the EC2 instance-metadata provider, which hard-fails off AWS
+    // (GCE answers the IMDSv2 token PUT with 405; release build 106477). The
+    // explicit values recovered from the S3FileSystem below always win.
+    let mut sb = AmazonS3Builder::from_env()
         .with_bucket_name(bucket)
         .with_region(region)
         .with_virtual_hosted_style_request(virtual_hosted_style);
@@ -1871,16 +1877,29 @@ fn build_s3_store(
     if allow_http {
         sb = sb.with_allow_http(true);
     }
-    if anonymous {
+    // Parity with the AWS SDK's V4 signer, which skips signing when EITHER half
+    // of the key pair is empty: Ray's public-bucket convention
+    // `s3://anonymous@bucket/...` reaches pyarrow's `from_uri` as access key
+    // "anonymous" with no secret, and PyArrow then sends unsigned requests.
+    // object_store would reject the half-pair ("Missing SecretAccessKey";
+    // release build 106477, image_classification_fixed_size rs).
+    let key_id = access_key_id.filter(|s| !s.is_empty());
+    let secret = secret_access_key.filter(|s| !s.is_empty());
+    if anonymous || key_id.is_some() != secret.is_some() {
         // No signing — public buckets. Any creds are irrelevant.
         sb = sb.with_skip_signature(true);
     } else {
-        // Explicit static creds if the S3FileSystem carried them; otherwise the
-        // builder falls back to the AWS credential chain (env / IMDS role).
-        if let Some(kid) = access_key_id.filter(|s| !s.is_empty()) {
+        // Explicit static creds if the S3FileSystem carried them (or the Python
+        // side read them from the shared credentials file, which object_store
+        // cannot parse); otherwise the env-seeded chain above applies (env keys
+        // -> container -> web identity -> IMDS role). An EMPTY chain never
+        // reaches here: `native_metadata.s3_config` probes it and maps "no
+        // credentials anywhere" to `anonymous=true`, matching the unsigned
+        // requests PyArrow's SDK sends in that case.
+        if let Some(kid) = key_id {
             sb = sb.with_access_key_id(kid);
         }
-        if let Some(s) = secret_access_key.filter(|s| !s.is_empty()) {
+        if let Some(s) = secret {
             sb = sb.with_secret_access_key(s);
         }
         if let Some(t) = session_token.filter(|s| !s.is_empty()) {
