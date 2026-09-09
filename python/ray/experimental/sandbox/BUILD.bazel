@@ -47,9 +47,12 @@ py_test_module_list(
 )
 
 # Needs a real GPU + nvidia-ctk. Only scheduled on a GPU CI runner -- see
-# .buildkite/core.rayci.yml's "core: sandbox gpu tests" job.
+# .buildkite/core.rayci.yml's "core: sandbox gpu tests" job. These pull a
+# CUDA base image plus the cuda-sample image and boot gVisor with
+# nvproxy, so size=large gives a slow registry enough headroom not to
+# show up as a flaky timeout.
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = ["tests/test_gvisor_gpu.py"],
     tags = [
         "gpu",
@@ -64,8 +67,11 @@ py_test_module_list(
 
 # Needs 4 real GPUs + nvidia-ctk. Only scheduled on a gpu-large CI runner --
 # see .buildkite/core.rayci.yml's "core: sandbox multi-gpu tests" job.
+# These pull a CUDA base image plus the cuda-sample image and boot gVisor
+# with nvproxy, so size=large gives a slow registry enough headroom not
+# to show up as a flaky timeout.
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = ["tests/test_gvisor_multi_gpu.py"],
     tags = [
         "multi_gpu",
