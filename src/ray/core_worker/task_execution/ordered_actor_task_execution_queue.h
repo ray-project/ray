@@ -67,9 +67,10 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Executes as many queued tasks as are ready to execute.
   void ExecuteQueuedTasks();
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
-  /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  /// Accept the given TaskToExecute or reject it if the task attempt is
+  /// canceled via CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(const TaskAttempt &task_attempt,
+                                       TaskToExecute &request);
 
   void ExecuteRequest(TaskToExecute &&request);
 
@@ -119,11 +120,16 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
-  /// A map of actor task IDs -> is_canceled
-  /// Pending means tasks are queued or running.
-  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
+  /// A map of actor task attempts -> is_canceled
+  /// Pending means tasks are queued or running. Keyed by (task id, attempt
+  /// number) so that two attempts of one task are tracked independently.
+  absl::flat_hash_map<TaskAttempt, bool> pending_task_attempt_to_is_canceled
+      ABSL_GUARDED_BY(mu_);
 
   friend class OrderedActorTaskExecutionQueueTest;
+
+  FRIEND_TEST(OrderedActorTaskExecutionQueueTest,
+              CancelTaskIfFoundCancelsRemainingAttempt);
 };
 
 }  // namespace core

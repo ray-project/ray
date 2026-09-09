@@ -384,6 +384,80 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   ASSERT_EQ(n_rejected.load(), 1);
 }
 
+TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundCancelsRemainingAttempt) {
+  // Two attempts of one task can be pending at the same time (e.g. a retry
+  // submitted before the original attempt's RPC arrived, as in
+  // UnorderedActorTaskExecutionQueueTest.TestSameTaskMultipleAttemptsCancellation).
+  // Cancellation bookkeeping is per attempt, so discarding one attempt must
+  // not hide the other one from CancelTaskIfFound.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_rejected(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_rejected](const TaskToExecute &task, const Status &status) {
+    if (status.IsSchedulingCancelled()) {
+      n_rejected.fetch_add(1);
+    }
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::FromRandom(job_id);
+
+  // Attempt 0 arrives first (seq 0) and blocks waiting for its dependencies.
+  TaskSpecification task_spec_attempt_0;
+  task_spec_attempt_0.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_attempt_0.GetMutableMessage().set_task_id(task_id.Binary());
+  task_spec_attempt_0.GetMutableMessage().set_attempt_number(0);
+  task_spec_attempt_0.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      ObjectID::FromRandom().Binary());
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_attempt_0));
+
+  // Attempt 1 arrives with a later seq no, and the client has already
+  // processed up to seq 1: attempt 0 is discarded as stale while attempt 1
+  // stays queued. Attempt 1 is a retry (attempt number > 0), so it is held in
+  // the retry queue while its seq no is marked skippable.
+  TaskSpecification task_spec_attempt_1;
+  task_spec_attempt_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_attempt_1.GetMutableMessage().set_task_id(task_id.Binary());
+  task_spec_attempt_1.GetMutableMessage().set_attempt_number(1);
+  task_spec_attempt_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      ObjectID::FromRandom().Binary());
+  EnqueueWithFetch(queue, waiter, 2, 1, MakeTaskToExecute(task_spec_attempt_1));
+
+  // ray.cancel must still find the queued attempt.
+  ASSERT_TRUE(queue.CancelTaskIfFound(task_id));
+
+  // Attempt 1's dependencies arrive; it must be rejected as canceled, not run.
+  waiter.Complete(1);
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
+  ASSERT_EQ(n_executed.load(), 0);
+  ASSERT_EQ(n_rejected.load(), 1);
+  {
+    absl::MutexLock lock(&queue.mu_);
+    ASSERT_TRUE(queue.pending_task_attempt_to_is_canceled.empty());
+  }
+
+  queue.Stop();
+}
+
 TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   ObjectID obj = ObjectID::FromRandom();
   instrumented_io_context io_service;
