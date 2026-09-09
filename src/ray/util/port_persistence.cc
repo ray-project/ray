@@ -48,8 +48,14 @@ WaitForPersistedPort(const std::string &dir,
     return std::visit(overloaded{[](const StatusT::IOError &e) -> RetType {
                                    return StatusT::IOError(e.message());
                                  },
-                                 [](const StatusT::TimedOut &e) -> RetType {
-                                   return StatusT::TimedOut(e.message());
+                                 [&](const StatusT::TimedOut &e) -> RetType {
+                                   return StatusT::TimedOut(
+                                       e.message() + ". Timed out after " +
+                                       std::to_string(timeout_ms) +
+                                       " ms waiting for persisted port '" + port_name +
+                                       "'. The corresponding Ray agent may be slow to "
+                                       "start or may have failed "
+                                       "to start.");
                                  }},
                       result.error());
   }
