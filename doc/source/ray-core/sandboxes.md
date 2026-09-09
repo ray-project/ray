@@ -41,7 +41,17 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64.
 
-To give sandboxes GPU access, also install `nvidia-container-toolkit-base` on GPU worker nodes. This package provides `nvidia-ctk`, which Ray uses to generate a [CDI](https://github.com/cncf-tags/container-device-interface) spec each time a sandbox actor requests a GPU. No other configuration is required. See [GPU access](#gpu-access).
+To give sandboxes GPU access, also install `nvidia-container-toolkit-base` on GPU worker nodes. This package provides `nvidia-ctk`, which Ray uses to generate a [CDI](https://github.com/cncf-tags/container-device-interface) spec each time a sandbox actor requests a GPU.
+
+To install `nvidia-container-toolkit-base`, see the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+:::{note}
+* `nvidia-container-toolkit-base` must be version 1.18 or later.
+* gVisor is only supported on NVIDIA driver versions it explicitly recognizes; check yours with `runsc nvproxy list-supported-drivers`.
+* MIG isn't supported, since gVisor itself doesn't support it.
+:::
+
+See [GPU access](#gpu-access).
 
 ## Usage patterns and examples
 
