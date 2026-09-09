@@ -6,6 +6,9 @@ unsupported-option gating. They call ``ray.data.read_parquet`` which
 triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
+
+from dataclasses import dataclass
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -13,9 +16,6 @@ import pytest
 import ray
 from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
     FooterFileIndexer,
-)
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
@@ -126,22 +126,6 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
-
-
-def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):
-    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-
-    restore_ctx.use_datasource_v2 = True
-    original = restore_ctx.read_op_min_num_blocks
-    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
-
-    # The override should drive the ListFiles partitioner's bucket count
-    # for this read only — the global DataContext must not be mutated.
-    list_files_op = ds._logical_plan.dag.input_dependencies[0]
-    assert isinstance(list_files_op, ListFiles)
-    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
-    assert list_files_op.file_partitioner.num_buckets == 7
-    assert restore_ctx.read_op_min_num_blocks == original
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -317,9 +301,7 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
-def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(
-    tmp_path, restore_ctx, monkeypatch
-):
+def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_ctx):
     """With the footer indexer on, ``ListFiles`` pairs it with the bin packer.
 
     The packer sizes read units from footer stats, so ``override_num_blocks``
@@ -331,7 +313,6 @@ def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(
     )
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
 
     restore_ctx.use_datasource_v2 = True
     original = restore_ctx.read_op_min_num_blocks
@@ -344,6 +325,191 @@ def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(
     # partitioner groups them into read units.
     assert isinstance(list_files_op.file_partitioner, OnlineBinPacker)
     assert restore_ctx.read_op_min_num_blocks == original
+
+
+def _physical_row_groups(directory):
+    """``(path, rg_id)`` pairs and total rows from parquet footers on disk."""
+    pairs = []
+    total_rows = 0
+    for path in sorted(directory.glob("*.parquet")):
+        parquet_file = pq.ParquetFile(path)
+        total_rows += parquet_file.metadata.num_rows
+        pairs.extend((str(path), i) for i in range(parquet_file.num_row_groups))
+    return pairs, total_rows
+
+
+def _row_group_pairs(manifests):
+    """Expand each listing/bin row into ``(path, rg_id)`` pairs plus row count."""
+    pairs = []
+    total_rows = 0
+    for manifest in manifests:
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas):
+            assert md is not None and "row_group_ids" in md, (
+                "FooterFileIndexer must emit Parquet row-group metadata; "
+                "without it OnlineBinPacker falls back to whole-file bins"
+            )
+            pairs.extend((str(path), int(rg_id)) for rg_id in md["row_group_ids"])
+            total_rows += int(md["num_rows"])
+    return sorted(pairs), total_rows
+
+
+# 1 TiB: larger than any fixture row group, so coalescing merges a whole file
+# and packing with this cap puts every run in one shared bin.
+_UNLIMITED_BYTES = 1 << 40
+
+
+@dataclass(frozen=True)
+class _IndexerPackerCase:
+    num_files: int
+    rows_per_file: int
+    row_group_size: int
+    coalesce_bytes: int
+    max_bin_bytes: int
+    split_coalesced: bool
+    expected_bins: int
+
+    @property
+    def row_groups_per_file(self) -> int:
+        return self.rows_per_file // self.row_group_size
+
+    @property
+    def expected_listing_rows(self) -> int:
+        # Uncoalesced: one listing row per physical row group.
+        # Coalesced: one listing row per file.
+        if self.coalesce_bytes:
+            return self.num_files
+        return self.num_files * self.row_groups_per_file
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        # listing 12: f0:[0][1][2][3] f1:[0][1][2][3] f2:[0][1][2][3]
+        # bins     1: [ f0:0-3 | f1:0-3 | f2:0-3 ]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=3,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=0,
+                max_bin_bytes=_UNLIMITED_BYTES,
+                split_coalesced=False,
+                expected_bins=1,
+            ),
+            id="uncoalesced-light-files-share-one-bin",
+        ),
+        # listing 8: f0:[0][1][2][3] f1:[0][1][2][3]
+        # bins    8: [f0:0][f0:1][f0:2][f0:3] [f1:0][f1:1][f1:2][f1:3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,  # in number of rows
+                coalesce_bytes=0,
+                max_bin_bytes=1,
+                split_coalesced=False,
+                expected_bins=8,
+            ),
+            id="uncoalesced-tiny-bin-one-per-row-group",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    1: [ f0:0-3 | f1:0-3 ]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=_UNLIMITED_BYTES,
+                split_coalesced=False,
+                expected_bins=1,
+            ),
+            id="coalesced-files-share-one-bin",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    2: [f0:0-3] [f1:0-3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=1,
+                split_coalesced=False,
+                expected_bins=2,
+            ),
+            id="coalesced-tiny-bin-one-per-file",
+        ),
+        # listing 2: f0:[0 1 2 3] f1:[0 1 2 3]
+        # bins    8: [f0:0][f0:1][f0:2][f0:3] [f1:0][f1:1][f1:2][f1:3]
+        pytest.param(
+            _IndexerPackerCase(
+                num_files=2,
+                rows_per_file=20,
+                row_group_size=5,
+                coalesce_bytes=_UNLIMITED_BYTES,
+                max_bin_bytes=1,
+                split_coalesced=True,
+                expected_bins=8,
+            ),
+            id="split-coalesced-tiny-bin-one-per-row-group",
+        ),
+    ],
+)
+def test_footer_indexer_feeds_online_bin_packer(tmp_path, case: _IndexerPackerCase):
+    """Listing rows from ``FooterFileIndexer`` are what ``OnlineBinPacker`` packs.
+
+    The indexer emits one manifest row per row-group run; the packer groups
+    those runs into read units. Coalescing happens in the indexer, splitting
+    coalesced runs back at physical boundaries happens in the packer.
+    """
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+        OnlineBinPacker,
+    )
+
+    _write_row_groups(
+        tmp_path,
+        num_files=case.num_files,
+        rows_per_file=case.rows_per_file,
+        row_group_size=case.row_group_size,
+    )
+    physical, physical_rows = _physical_row_groups(tmp_path)
+    assert physical_rows == case.num_files * case.rows_per_file
+
+    indexer = FooterFileIndexer(
+        ignore_missing_paths=False,
+        num_workers=1,
+        coalesce_bytes=case.coalesce_bytes,
+        footer_batch_size=2,
+    )
+    listed = list(
+        indexer.list_files(
+            pa.array([str(tmp_path)]),
+            filesystem=LocalFileSystem(),
+            preserve_order=True,
+        )
+    )
+    listed_pairs, listed_rows = _row_group_pairs(listed)
+    assert sum(len(manifest) for manifest in listed) == case.expected_listing_rows
+    assert listed_pairs == physical
+    assert listed_rows == physical_rows
+
+    packer = OnlineBinPacker(case.max_bin_bytes, split_coalesced=case.split_coalesced)
+    bins = []
+    for manifest in listed:
+        packer.add_input(manifest)
+        while packer.has_partition():
+            bins.append(packer.next_partition())
+    packer.finalize()
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    packed_pairs, packed_rows = _row_group_pairs(bins)
+    assert len(bins) == case.expected_bins
+    assert packed_pairs == physical
+    assert packed_rows == physical_rows
 
 
 def _write_row_groups(path, *, num_files, rows_per_file, row_group_size):
@@ -381,7 +547,7 @@ def _walk(op):
         yield from _walk(child)
 
 
-def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypatch):
+def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     """``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
@@ -395,7 +561,6 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypat
     )
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -420,10 +585,7 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypat
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )
-def test_count_pushdown_preserves_list_files_fields(
-    tmp_path, restore_ctx, read_kwargs, monkeypatch
-):
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_kwargs):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -442,13 +604,10 @@ def test_count_pushdown_preserves_list_files_fields(
 
 
 @pytest.mark.parametrize("case", ["predicate", "limit"])
-def test_count_pushdown_declines_row_reducing_reads(
-    tmp_path, restore_ctx, case, monkeypatch
-):
+def test_count_pushdown_declines_row_reducing_reads(tmp_path, restore_ctx, case):
     """A row-reducing pushdown makes footer ``num_rows`` an overcount."""
     from ray.data.expressions import col
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -464,7 +623,7 @@ def test_count_pushdown_declines_row_reducing_reads(
     ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
 )
 def test_count_matches_rows(
-    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size, monkeypatch
+    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
 ):
     """End-to-end count correctness, including multi-row-group files.
 
@@ -472,7 +631,6 @@ def test_count_matches_rows(
     row per row-group run, so a multi-row-group file would otherwise be counted
     once per run.
     """
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     _write_row_groups(
         tmp_path,
         num_files=num_files,
@@ -485,10 +643,9 @@ def test_count_matches_rows(
     assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
 
 
-def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx, monkeypatch):
+def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):
     """The rebuilt indexer must keep ``skip_paths``, or the skipped file's rows
     are counted even though reading the dataset excludes them."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     a = tmp_path / "a.parquet"
     b = tmp_path / "b.parquet"
     _write(a, pa.table({"a": [1, 2]}))
@@ -500,12 +657,9 @@ def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx, monkeypatch):
     assert ds.count() == 2
 
 
-def test_count_pushdown_skip_paths_tolerates_missing_path(
-    tmp_path, restore_ctx, monkeypatch
-):
+def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx):
     """``skip_paths`` drops a named path before the existence check, so a
     skipped-but-missing path must not fail a pushed-down ``count()``."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     a = tmp_path / "a.parquet"
     _write(a, pa.table({"a": [1, 2]}))
     missing = str(tmp_path / "gone.parquet")
