@@ -556,6 +556,7 @@ def test_parse_topology_dims():
 def test_get_worker_dims_2d():
     """Test worker dimension lookup for 2D topologies."""
     assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology(" 2X4 ") == (1, 2)
     assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
     assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
 
@@ -563,6 +564,7 @@ def test_get_worker_dims_2d():
 def test_get_worker_dims_3d():
     """Test worker dimension lookup for 3D topologies."""
     assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology(" 2X2X2 ") == (1, 1, 2)
     assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
 
 
@@ -589,6 +591,7 @@ def test_get_default_chips_per_vm():
     [
         # 4x4 parent, 4 workers at positions (0,0), (1,0), (0,1), (1,1)
         (0, "4x4", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
+        (0, " 4X4 ", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
         (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "0"}),
         (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "1"}),
         (3, "4x4", {"ray.io/tpu-subslice-2x2": "3", "ray.io/tpu-subslice-2x4": "1"}),
