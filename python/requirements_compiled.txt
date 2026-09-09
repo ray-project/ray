@@ -1058,6 +1058,7 @@ lz4==4.4.5
     #   -r python/requirements/test-requirements.txt
     #   clickhouse-connect
     #   dask
+    #   mcap
 mako==1.3.11
     # via alembic
 markdown==3.10.2
@@ -1089,6 +1090,8 @@ matplotlib-inline==0.2.1
     # via
     #   ipykernel
     #   ipython
+mcap==1.4.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 mdit-py-plugins==0.3.5
     # via
     #   jupytext
@@ -2706,6 +2709,7 @@ zoopt==0.4.1
 zstandard==0.25.0
     # via
     #   clickhouse-connect
+    #   mcap
     #   pyiceberg
 
 # The following packages are considered to be unsafe in a requirements file:

@@ -388,6 +388,44 @@
       python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
 
+# Aggregations through the external (on-disk, file-transport) hash shuffle:
+# the SF1000 shuffle_v2 variants above with RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1.
+- name: "aggregate_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      shuffle_strategy: []
+      columns: []
+      bin_packing_bytes: []
+    adjustments:
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 536870912
+      - with:
+          shuffle_strategy: shuffle_v2
+          columns: "column02 column14"  # 7M groups
+          bin_packing_bytes: 67108864
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
+        # Footer read tuning.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+
 - name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
   matrix:
@@ -467,12 +505,10 @@
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
-# External (on-disk, file-transport) hash shuffle. map_groups is keyed
-# repartition under the hood, which is the one code path that honors
-# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE, so these mirror the shuffle_v2
-# map_groups variants above with the flag on. Separate entries (rather
-# than a matrix axis on the blocks above) keep the existing tests'
-# perf-history names intact.
+# map_groups (keyed repartition under the hood) through the external
+# hash shuffle: the shuffle_v2 map_groups variants above with the flag on.
+# Separate entries (rather than a matrix axis on the blocks above) keep the
+# existing tests' perf-history names intact.
 - name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
   python: "3.10"
   matrix:
@@ -585,6 +621,38 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
+        - RAY_max_direct_call_object_size=8192
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf1000]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 10800
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 1000
+
+# Joins through the external (on-disk, file-transport) hash shuffle:
+# the shuffle_v2 variants above with RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1.
+- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2_external"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
+        - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
         - RAY_max_direct_call_object_size=8192
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
