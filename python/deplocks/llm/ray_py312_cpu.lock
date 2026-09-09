@@ -891,11 +891,12 @@ importlib-metadata==6.11.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   opentelemetry-api
-jinja2==3.1.6 ; sys_platform != 'win32' \
+jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
+    #   -r python/requirements.txt
     #   memray
 jsonschema==4.24.1 \
     --hash=sha256:6b916866aa0b61437785f1277aa2cbd63512e8d4b47151072ef13292049b4627 \
@@ -990,7 +991,7 @@ markdown-it-py==2.2.0 \
     #   mdit-py-plugins
     #   rich
     #   textual
-markupsafe==3.0.3 ; sys_platform != 'win32' \
+markupsafe==3.0.3 \
     --hash=sha256:d6dd0be5b5b189d31db7cda48b91d7e0a9795f31430b7f271219ab30f1d3ac9d
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
