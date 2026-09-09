@@ -37,7 +37,7 @@ user-guides/pod-command
 user-guides/helm-chart-rbac
 user-guides/tls
 user-guides/network-policy
-user-guides/mtls
+user-guides/kuberay-mtls
 user-guides/k8s-autoscaler
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
