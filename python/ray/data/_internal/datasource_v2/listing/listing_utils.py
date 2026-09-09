@@ -52,8 +52,7 @@ def _build_pruners(
     if partition_filter is not None:
         pruners.append(PartitionPruner(partition_filter))
     if partition_pruner is not None:
-        # Derived from the downstream scanner, so it stacks with -- rather than
-        # replaces -- any user-supplied ``partition_filter``.
+        # Stacks with, rather than replaces, any user ``partition_filter``.
         pruners.append(partition_pruner)
     return pruners
 

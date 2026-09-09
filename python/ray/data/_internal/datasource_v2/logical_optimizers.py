@@ -152,11 +152,7 @@ class SupportsPartitionPruning(ABC):
     def pushed_partition_predicate(self) -> Optional["Expr"]:
         """The partition predicate this scanner will apply at read time, if any.
 
-        This is the accepted result of :meth:`prune_partitions`. Planning needs
-        it to tell whether the reader will discard whole files that listing
-        cannot know about.
-
-        Concrete rather than abstract, for the same reason as
+        Concrete rather than abstract, like
         :meth:`SupportsFilterPushdown.pushed_predicate`.
         """
         return None
@@ -164,10 +160,8 @@ class SupportsPartitionPruning(ABC):
     def pushed_partition_pruner(self) -> Optional["FilePruner"]:
         """A listing-time pruner equivalent to this scanner's partition predicate.
 
-        Returning one lets listing drop the same files the reader would drop,
-        which is what makes an early stop under a limit sound. Returning
         ``None`` means listing cannot reproduce the pruning, and planning
-        conservatively disables the limit instead.
+        drops the limit instead.
         """
         return None
 
@@ -208,18 +202,18 @@ def derive_list_files_pushdown(
         isinstance(scanner, SupportsPartitionPruning)
         and scanner.pushed_partition_predicate() is not None
     ):
-        # The reader will drop whole files on a partition predicate. Listing
-        # prunes on file statistics and partition columns are in the path, not
-        # the file, so listing cannot see that -- it would count every listed
-        # row towards the limit and stop early on files the reader then
-        # discards, losing rows.
-        #
-        # Giving listing the same path-based pruning removes the mismatch: it
-        # drops exactly the files the reader would, so every row it counts is a
-        # row that survives, and the early stop is sound.
+        # The reader drops whole files on a partition predicate, but listing
+        # prunes on file statistics and partition columns live in the path.
+        # Give listing the same path-based pruning, so every row it counts
+        # towards the limit is one the reader keeps.
         partition_pruner = scanner.pushed_partition_pruner()
         if partition_pruner is None:
-            # Cannot reproduce the pruning during listing (e.g. no partitioning
-            # spec), so fall back to not stopping early at all.
+            # Defensive: unreachable today. A scanner only accepts a partition
+            # predicate if it reported partition columns, and
+            # ``ArrowFileScanner`` reports none without a partitioning spec --
+            # the only case where it cannot build a pruner. Kept for other
+            # implementations (e.g. partition values from a catalog, not the
+            # path), where listing still must not stop early: failing safe
+            # costs a footer sweep, failing open loses rows.
             limit = None
     return predicate, projected_columns, limit, partition_pruner

@@ -51,12 +51,9 @@ class DeriveListFilesPushdown(Rule):
                     input_op.predicate is not predicate
                     or input_op.projected_columns != projected_columns
                     or input_op.limit != limit
-                    # Identity, like ``predicate`` above: ``Expr.__eq__``
-                    # builds an expression instead of answering a bool, so the
-                    # pruner wrapping one cannot be compared by value either.
-                    # A pruner is rebuilt per call, so this compares unequal
-                    # whenever there is one -- rebuilding a node that did not
-                    # change, never keeping one that did.
+                    # Identity like ``predicate``: ``Expr.__eq__`` builds an
+                    # expression, not a bool. Rebuilt per call, so this is
+                    # unequal whenever a pruner exists.
                     or input_op.partition_pruner is not partition_pruner
                 ):
                     input_op = replace(

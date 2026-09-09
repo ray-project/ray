@@ -185,8 +185,7 @@ class ArrowFileScanner(
     @override
     def pushed_partition_pruner(self) -> Optional["FilePruner"]:
         if self.partition_predicate is None or self.partitioning is None:
-            # Same guard as ``prune_manifest``: without a partitioning spec
-            # there are no partition values to evaluate against.
+            # No spec, no partition values -- same guard as ``prune_manifest``.
             return None
         return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 

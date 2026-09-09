@@ -460,10 +460,8 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
-    # Path-based pruning derived from the scanner's partition predicate. Unlike
-    # ``predicate`` above (row-group statistics, which cannot see partition
-    # columns) this drops whole files by their path, so listing prunes exactly
-    # what the reader would -- which is what makes ``limit`` safe here.
+    # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
+    # blind to partition columns), this is what makes ``limit`` safe here.
     partition_pruner: Optional["FilePruner"] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(

@@ -41,13 +41,9 @@ class PartitionPruner(FilePruner):
 class PartitionPredicatePruner(FilePruner):
     """Skip files whose partition values fail a pushed-down predicate.
 
-    The reader applies the same predicate to the same paths in
-    ``ArrowFileScanner.prune_manifest``. Evaluating it here as well is not
-    redundant work that could disagree: both go through
-    :meth:`PathPartitionParser.evaluate_predicate_on_partition`, so listing
-    drops exactly the files the reader would have dropped. That equality is
-    what lets a pushed-down limit stop listing early -- every row listing
-    counts belongs to a file the reader keeps.
+    Shares :meth:`PathPartitionParser.evaluate_predicate_on_partition` with
+    the reader's ``prune_manifest``, so listing drops exactly the files the
+    reader would -- which is what makes a pushed-down limit safe.
     """
 
     def __init__(self, partitioning: "Partitioning", predicate: "Expr"):
