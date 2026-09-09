@@ -154,27 +154,33 @@ steps:
     commands:
       - uv tool install anyscale-rtd-redirects==0.2.0
       # The doc_redirects tag selects on doc/redirects/*.yaml, but the commands below
-      # name current.yaml: multiple files compose in the order given, which a glob
-      # can't express. Fail closed if another redirect file appears, so it can't select
-      # this step and then go unvalidated. To add one, name it in both commands below in
-      # compose order, then update this guard.
+      # name master.yaml then current.yaml explicitly: multiple files compose in the
+      # order given (earlier files match first), which a glob can't express. master.yaml
+      # composes first so its exact /en/master/ rules are indexed ahead of current.yaml's
+      # broad page and wildcard rules (see doc/redirects/README.md). Fail closed if the
+      # set on disk isn't exactly these two files, so a new redirect file can't select
+      # this step and then go unvalidated, and a deleted master.yaml (its resting state
+      # between releases is an empty redirects list, not absence) is caught here. To add
+      # a file, name it in both commands below in compose order, then update this guard.
       #
       # The guard recurses rather than globbing a single level, because the tag rule
       # matches with fnmatch, whose `*` crosses `/`: doc/redirects/nested/foo.yaml
-      # selects this step, and a one-level glob wouldn't see it.
+      # selects this step, and a one-level glob wouldn't see it. `sort` makes the
+      # comparison independent of find's traversal order.
       - >
-        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
-        { echo "doc/redirects/ holds a .yaml file this check doesn't validate; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
+        test "$$(find doc/redirects -name '*.yaml' | sort)" = "$$(printf 'doc/redirects/current.yaml\ndoc/redirects/master.yaml\n')" ||
+        { echo "doc/redirects/ holds a .yaml set this check doesn't validate; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
       # diff-file resolves the base with `git show <ref>:<path>`. Fetch the PR's base
       # branch (master on non-PR builds) and diff against FETCH_HEAD, the same pattern
       # doc/test_no_new_rst.py uses: a clone with a restricted refspec may never create
       # a local origin/<base>.
       - git fetch -q origin "$${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
-      - rtd-redirects validate doc/redirects/current.yaml
-      - rtd-redirects diff-file --file doc/redirects/current.yaml --base FETCH_HEAD --head HEAD --repo .
+      - rtd-redirects validate --composed doc/redirects/master.yaml doc/redirects/current.yaml
+      - rtd-redirects diff-file --file doc/redirects/master.yaml doc/redirects/current.yaml --base FETCH_HEAD --head HEAD --repo .
 
-  # Merge-time sync: reconcile doc/redirects/current.yaml into the live
-  # anyscale-ray Read the Docs project. This is the only mutating step and the
+  # Merge-time sync: reconcile the composed doc/redirects/ set (master.yaml then
+  # current.yaml, earlier files matching first) into the live anyscale-ray Read
+  # the Docs project. This is the only mutating step and the
   # only one that holds an RtD token. It replaces the manual post-merge
   # `rtd-redirects apply` a maintainer runs today (see doc/redirects/README.md).
   #
@@ -200,8 +206,8 @@ steps:
   # gate is best-effort: if the parent commit can't be resolved (a shallow
   # checkout), it falls through to apply rather than risk skipping a real change.
   #
-  # Drift and deletion. `apply` converges the project to the file: a live
-  # redirect absent from current.yaml is deleted. That's the intended one-write-
+  # Drift and deletion. `apply` converges the project to the composed set: a live
+  # redirect absent from both files is deleted. That's the intended one-write-
   # path behavior reinforced by the dashboard-edit freeze, but 0.2.0 has no
   # --no-delete or --accept-drift guard, so a drifted project reconciles hard on
   # the first automated run. The local-first manual-apply phase exists to shake
@@ -228,12 +234,13 @@ steps:
             exit 0
           fi
         fi
-      # Same fail-closed guard as the validate step: current.yaml is the only file
-      # the compose order below names. To add another, name it here and in the
-      # apply command in compose order, then update this guard.
+      # Same fail-closed guard as the validate step: the apply command below names
+      # master.yaml then current.yaml in compose order, so the set on disk must be
+      # exactly those two files. To add another, name it here and in the apply command
+      # in compose order, then update this guard.
       - >
-        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
-        { echo "doc/redirects/ holds a .yaml file this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
+        test "$$(find doc/redirects -name '*.yaml' | sort)" = "$$(printf 'doc/redirects/current.yaml\ndoc/redirects/master.yaml\n')" ||
+        { echo "doc/redirects/ holds a .yaml set this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
       - uv tool install anyscale-rtd-redirects==0.2.0
       # Dedicated, least-privilege secret: `oss-ci/rtd-api-token` holds only the
       # anyscale-ray RtD bot token, is read by no other step, and grants no access
@@ -246,4 +253,4 @@ steps:
       - |
         set +x
         export RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/rtd-api-token --query SecretString --output text)"
-      - rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --yes --strict
+      - rtd-redirects apply --project anyscale-ray --file doc/redirects/master.yaml doc/redirects/current.yaml --yes --strict

@@ -1,0 +1,32 @@
+# doc/redirects/master.yaml
+#
+# Release-gated redirects for the staged next-release docs, served at
+# /en/master/ on docs.ray.io. Entries here compose BEFORE current.yaml (see the
+# compose order in .buildkite/doc.rayci.yml and the "Two files" section of the
+# README), so an exact rule for a /en/master/ URL is indexed ahead of the broad
+# page and wildcard rules in current.yaml and wins for that URL.
+#
+# Use this file when a redirect should go live on the next-release docs
+# (/en/master/) but must not change /en/latest/ or any published version yet.
+# Prefer `type: exact` with fully qualified /en/master/ `from:` and `to:` paths,
+# so the rule fires only on the master version and leaves /latest untouched.
+#
+# For a redirect that should apply to /latest and every version right away, use
+# a version-less `type: page` rule in current.yaml instead.
+#
+# Release day: fold these entries into current.yaml, rewriting /en/master/
+# destinations to /en/latest/ where that is the intended stable behavior, then
+# reset this file to an empty `redirects: []` for the next cycle. The README's
+# "Release day" section has the step-by-step.
+#
+# Example (uncomment and adapt; the empty `redirects: []` below is the resting
+# state between release cycles):
+#
+# redirects:
+# - from: /en/master/data/old-guide.html
+#   to: /en/master/data/new-guide.html
+#   type: exact
+#   description: "Stage rename for the next release; fold to /en/latest on release"
+
+schema_version: 1
+redirects: []
