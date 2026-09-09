@@ -31,6 +31,9 @@ from ray.tune.schedulers import (
     TrialScheduler,
 )
 from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
+from ray.tune.schedulers.util import (
+    _set_search_properties_backwards_compatible,
+)
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
@@ -1368,6 +1371,68 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 hyperparam_mutations={"float_factor": tune.sample_from(lambda: 100.0)}
             )
 
+    def testIntegerPerturbationDirection(self):
+        """An integer hyperparameter has to be able to grow, and must not reach zero.
+
+        `int()` truncates toward zero, so with the default factors `* 1.2` was thrown
+        away for every value below 5 while `* 0.8` always landed lower: the parameter
+        could only ratchet down, and 0 absorbed it because every factor leaves 0 alone.
+        """
+
+        def perturb(value, factor):
+            new_config, _ = _explore(
+                {"v": value},
+                {"v": lambda: value},
+                0.0,  # never resample, always apply a perturbation factor
+                perturbation_factors=(factor, factor),
+                custom_explore_fn=None,
+            )
+            return new_config["v"]
+
+        for value in range(1, 9):
+            # A factor above one never shrinks, a factor below one never grows.
+            self.assertGreaterEqual(perturb(value, 1.2), value)
+            self.assertLessEqual(perturb(value, 0.8), value)
+            # Shrinking a positive integer must not land on the absorbing zero.
+            self.assertGreater(perturb(value, 0.8), 0)
+
+        for value in range(3, 9):
+            # Growing has to reach a larger value once the factor moves it by at
+            # least half a step, rather than rounding straight back down.
+            self.assertGreater(perturb(value, 1.2), value)
+
+    def testBooleanPerturbationKeepsItsType(self):
+        """`bool` is a subclass of `int`, so the integer branch would eat a flag.
+
+        Truncation also made the flag one-directional: `True * 0.8` is `0.8`, which
+        `int()` floors to `0`, while `False * anything` is `0`, so a boolean could
+        ratchet from True to False and never back. Multiplying a flag by a
+        perturbation factor means nothing, so perturbation leaves it alone and
+        `resample_probability` is the only thing that flips it.
+        """
+
+        def perturb(value, factor, resample_probability=0.0):
+            new_config, _ = _explore(
+                {"v": value},
+                {"v": tune.choice([True, False])},
+                resample_probability,
+                perturbation_factors=(factor, factor),
+                custom_explore_fn=None,
+            )
+            return new_config["v"]
+
+        for value in (True, False):
+            for factor in (0.8, 1.2):
+                perturbed = perturb(value, factor)
+                self.assertIsInstance(perturbed, bool)
+                self.assertEqual(perturbed, value)
+
+        # Resampling still hands back a real bool, and is the path that can flip it.
+        random.seed(0)
+        resampled = [perturb(True, 0.8, resample_probability=1.0) for _ in range(20)]
+        self.assertTrue(all(isinstance(v, bool) for v in resampled))
+        self.assertIn(False, resampled)
+
     def testPerturbationValues(self):
         def assertProduces(fn, values):
             random.seed(0)
@@ -2572,6 +2637,44 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(
             lambda: PopulationBasedTraining(hyperparam_mutations={"ignored": [1]})
         )
+
+
+class SchedulerSetSearchPropertiesSuite(unittest.TestCase):
+    def testLegacySchedulerFallsBackToTwoArgSignature(self):
+        class LegacyScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode):
+                return True
+
+        self.assertTrue(
+            _set_search_properties_backwards_compatible(
+                LegacyScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
+        )
+
+    def testCurrentSchedulerReceivesSpec(self):
+        received = {}
+
+        class CurrentScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode, **spec):
+                received.update(spec)
+                return True
+
+        self.assertTrue(
+            _set_search_properties_backwards_compatible(
+                CurrentScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
+        )
+        self.assertEqual(received, {"num_samples": 4})
+
+    def testUnrelatedTypeErrorIsNotSwallowed(self):
+        class BrokenScheduler(FIFOScheduler):
+            def set_search_properties(self, metric, mode, **spec):
+                raise TypeError("unsupported operand type(s)")
+
+        with self.assertRaises(TypeError):
+            _set_search_properties_backwards_compatible(
+                BrokenScheduler().set_search_properties, "loss", "min", num_samples=4
+            )
 
 
 if __name__ == "__main__":

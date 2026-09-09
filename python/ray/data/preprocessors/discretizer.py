@@ -522,6 +522,19 @@ def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: boo
             maxes[column_name] = value
 
     for column in mins.keys():
+        # A column with no observed values has no minimum or maximum, so there
+        # is no range to divide into bins and no defensible output to produce.
+        # Refuse, naming the column, in the same style as the infinity check in
+        # `_translate_min_max_number_of_bins_to_bin_edges` below -- which cannot
+        # do this check itself, since it is not told which column it is binning.
+        # Reaching it with None raises `TypeError: unsupported operand type(s)
+        # for +: 'NoneType' and 'float'` instead.
+        if mins[column] is None or maxes[column] is None:
+            raise ValueError(
+                f"Column {column} has no values to bin. Check the data used to "
+                "fit the discretizer."
+            )
+
         stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
             mn=mins[column],
             mx=maxes[column],

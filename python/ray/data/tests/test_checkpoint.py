@@ -18,6 +18,9 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    UDFTimeScope,
+)
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
@@ -1549,6 +1552,7 @@ def test_checkpoint_map_transformer(
     filtered_blocks = map_transformer.apply_transform(
         input_blocks=[block],
         ctx=TaskContext(task_idx=0, op_name="test_checkpoint"),
+        udf_time_scope=UDFTimeScope(),
     )
 
     filtered_block = next(iter(filtered_blocks))

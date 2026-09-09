@@ -121,7 +121,16 @@ steps:
     key: doc_linkcheck
     instance_type: medium
     commands:
-      - make -C doc/ linkcheck_all
+      # `|| true` so a broken link doesn't stop the report step below. The step
+      # stays soft_fail, and the report script owns turning the output into a
+      # Slack alert. linkcheck_all writes _build/linkcheck/output.json.
+      - make -C doc/ linkcheck_all || true
+      # Re-checks reported-broken external links and posts the confirmed ones to
+      # Slack. It reads the webhook from DOCS_LINKCHECK_SLACK_WEBHOOK and, when
+      # that env var is unset, prints the confirmed list and skips the alert, so
+      # this is safe to land before the secret is provisioned. Wiring the secret
+      # (via ci/env/setup_credentials.py) is the remaining follow-up.
+      - python ci/ray_ci/doc/linkcheck_report.py doc/_build/linkcheck/output.json
     depends_on: docbuild
     job_env: docbuild-py3.11
     tags:

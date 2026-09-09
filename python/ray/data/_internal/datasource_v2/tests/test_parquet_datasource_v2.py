@@ -12,22 +12,12 @@ import pyarrow.parquet as pq
 import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ParquetFileChunker,
-    ParquetFileChunkMetadata,
     ParquetRowGroupChunkMetadata,
-    WholeFileChunker,
     create_chunk_metadata,
-)
-from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _calculate_row_group_range,
-    _fragments_from_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
-)
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
@@ -222,237 +212,17 @@ def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
     assert rows_by_fragment == {"with_b.parquet": 2, "without_b.parquet": 0}
 
 
-def test_datasource_defaults_to_parquet_file_chunker(tmp_path):
-    """``ParquetDatasourceV2`` plugs ``ParquetFileChunker`` into its indexer."""
+def test_datasource_uses_footer_indexer(tmp_path):
+    """``ParquetDatasourceV2`` uses the footer-based indexer for row-group reads."""
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
 
     datasource = ParquetDatasourceV2([str(file_path)])
-    indexer = datasource._get_file_indexer()
-    assert isinstance(indexer.file_chunker, ParquetFileChunker)
-
-
-def test_datasource_accepts_custom_chunker(tmp_path):
-    """An explicit ``file_chunker`` override propagates to the indexer."""
-    file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
-
-    custom = WholeFileChunker()
-    datasource = ParquetDatasourceV2([str(file_path)], file_chunker=custom)
-    indexer = datasource._get_file_indexer()
-    assert indexer.file_chunker is custom
-
-
-@pytest.mark.parametrize(
-    "total_row_groups,total_num_chunks,expected_ranges",
-    [
-        # Even distribution.
-        (10, 2, [(0, 5), (5, 10)]),
-        (12, 3, [(0, 4), (4, 8), (8, 12)]),
-        (20, 4, [(0, 5), (5, 10), (10, 15), (15, 20)]),
-        # Uneven distribution: earlier chunks get extra row groups.
-        (10, 3, [(0, 4), (4, 7), (7, 10)]),
-        (11, 3, [(0, 4), (4, 8), (8, 11)]),
-        (13, 4, [(0, 4), (4, 7), (7, 10), (10, 13)]),
-        # Edge cases — over-estimated chunk counts must produce ``None``.
-        (1, 1, [(0, 1)]),
-        (1, 2, [(0, 1), None]),
-        (0, 1, [None]),
-        (5, 10, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)] + [None] * 5),
-    ],
-)
-def test_calculate_row_group_range_distribution(
-    total_row_groups, total_num_chunks, expected_ranges
-):
-    """Row-group distribution across chunks is even and covers everything."""
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        expected = (
-            expected_ranges[chunk_idx] if chunk_idx < len(expected_ranges) else None
-        )
-        assert (
-            result == expected
-        ), f"Chunk {chunk_idx}: expected {expected}, got {result}"
-
-    # No gaps, no overlaps, every row group covered exactly once.
-    covered = set()
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        if result is not None:
-            start, end = result
-            chunk_rows = set(range(start, end))
-            assert not (covered & chunk_rows)
-            covered.update(chunk_rows)
-    assert covered == set(range(total_row_groups))
-
-
-def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
-    table = pa.table({"id": list(range(num_rows))})
-    pq.write_table(table, path, row_group_size=row_group_size)
-    return table
-
-
-def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
-    """``_fragments_from_chunk_metadata`` slices a file fragment per chunk."""
-    import pyarrow.dataset as pds
-
-    file_path = str(tmp_path / "multi.parquet")
-    # 1000 rows, 100 row groups (row_group_size=10).
-    _write_multi_row_group_parquet(file_path, num_rows=1000, row_group_size=10)
-
-    dataset = pds.dataset(file_path, format="parquet")
-    (fragment,) = dataset.get_fragments()
-    assert fragment.metadata.num_row_groups == 100
-
-    # 100 row groups split into 4 chunks -> 25 row groups each.
-    chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=4
-    )
-    sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
-    assert len(sub_fragments) == 25
-    # chunk_idx=1, 25 rows/chunk * 10 rows/row_group = starting offset 250.
-    expected_offset = 250
-    for sub, offset in sub_fragments:
-        assert len(sub.row_groups) == 1
-        assert offset == expected_offset
-        expected_offset += sub.metadata.row_group(sub.row_groups[0].id).num_rows
-
-
-def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
-    tmp_path,
-):
-    """Over-estimated chunk indices fall off the end → no sub-fragments."""
-    import pyarrow.dataset as pds
-
-    file_path = str(tmp_path / "single.parquet")
-    # 5 rows, single row group.
-    _write_multi_row_group_parquet(file_path, num_rows=5, row_group_size=5)
-
-    dataset = pds.dataset(file_path, format="parquet")
-    (fragment,) = dataset.get_fragments()
-
-    # chunk_idx=4 with 5 chunks but only 1 row group → no sub-fragments.
-    chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=4, total_num_chunks=5
-    )
-    assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
-
-
-def _read_via_reader(reader, manifest):
-    return list(reader.read(manifest))
-
-
-def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
-    """End-to-end: a manifest with per-chunk rows is read into the same rows
-    as a single whole-file manifest."""
-    file_path = str(tmp_path / "data.parquet")
-    expected_rows = 200
-    _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
-    file_size = os.path.getsize(file_path)
-
-    reader_whole = ParquetFileReader()
-    whole_manifest = FileManifest.construct_manifest(
-        paths=[file_path], sizes=[file_size], chunk_metadatas=[None]
-    )
-    whole_tables = _read_via_reader(reader_whole, whole_manifest)
-    whole_rows = pa.concat_tables(whole_tables).column("id").to_pylist()
-
-    chunker = ParquetFileChunker(target_chunk_size=1024)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
-
-    paths = [file_path] * len(chunks)
-    chunk_metadatas = [md for md, _ in chunks]
-    chunk_sizes = [sz for _, sz in chunks]
-    chunked_manifest = FileManifest.construct_manifest(
-        paths=paths, sizes=chunk_sizes, chunk_metadatas=chunk_metadatas
-    )
-
-    reader_chunked = ParquetFileReader()
-    chunked_tables = _read_via_reader(reader_chunked, chunked_manifest)
-    chunked_rows = pa.concat_tables(chunked_tables).column("id").to_pylist()
-
-    assert sorted(chunked_rows) == sorted(whole_rows) == list(range(expected_rows))
-
-
-def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
-    """Row hashes must remain unique across chunked sub-fragments of the
-    same file.
-
-    Regression: ``_read_fragments_sequential`` previously reseeded
-    ``offset=0`` for every fragment. Since chunked sub-fragments share
-    ``fragment.path``, ``_compute_row_hashes(path, 0, n)`` collided across
-    row groups of the same file.
-    """
-    file_path = str(tmp_path / "data.parquet")
-    expected_rows = 200
-    _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
-    file_size = os.path.getsize(file_path)
-
-    chunker = ParquetFileChunker(target_chunk_size=1024)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
-
-    paths = [file_path] * len(chunks)
-    chunk_metadatas = [md for md, _ in chunks]
-    chunk_sizes = [sz for _, sz in chunks]
-    chunked_manifest = FileManifest.construct_manifest(
-        paths=paths, sizes=chunk_sizes, chunk_metadatas=chunk_metadatas
-    )
-
-    reader = ParquetFileReader(include_row_hash=True)
-    chunked_tables = list(reader.read(chunked_manifest))
-    hashes = pa.concat_tables(chunked_tables).column("row_hash").to_pylist()
-    assert len(hashes) == expected_rows
-    assert (
-        len(set(hashes)) == expected_rows
-    ), "row_hash must be unique across chunked sub-fragments of one file"
-
-
-def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
-    """Out-of-range chunk metadata is silently dropped — no exception, no rows."""
-    file_path = str(tmp_path / "tiny.parquet")
-    _write_multi_row_group_parquet(file_path, num_rows=5, row_group_size=5)
-
-    file_size = os.path.getsize(file_path)
-    # ``ParquetFileChunker`` over-estimates here; keep only the over-estimated
-    # tail (chunk_idx >= 1) to assert the reader yields no tables.
-    chunker = ParquetFileChunker(target_chunk_size=128)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1
-
-    paths = [file_path] * (len(chunks) - 1)
-    out_of_range_metadatas = [md for md, _ in chunks[1:]]
-    sizes = [sz for _, sz in chunks[1:]]
-    manifest = FileManifest.construct_manifest(
-        paths=paths, sizes=sizes, chunk_metadatas=out_of_range_metadatas
-    )
-
-    reader = ParquetFileReader()
-    tables = list(reader.read(manifest))
-    # All sub-fragments are out-of-range -> 0 tables emitted.
-    assert sum(t.num_rows for t in tables) == 0
-
-
-def test_datasource_uses_footer_indexer_when_flag_is_set(tmp_path, monkeypatch):
-    """The footer-based indexer is opt-in; the blind chunker stays the default."""
-    file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
-    datasource = ParquetDatasourceV2([str(file_path)])
-
-    assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
-
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     assert isinstance(datasource._get_file_indexer(), FooterFileIndexer)
 
 
-def test_footer_indexer_skip_paths_excludes_listed_file(tmp_path, monkeypatch):
+def test_footer_indexer_skip_paths_excludes_listed_file(tmp_path):
     """``skip_paths`` must reach ``FooterFileIndexer`` or excluded files are read."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     keep = tmp_path / "keep.parquet"
     skip = tmp_path / "skip.parquet"
     _write_parquet(str(keep), pa.table({"a": [1]}))
@@ -470,9 +240,8 @@ def test_footer_indexer_skip_paths_excludes_listed_file(tmp_path, monkeypatch):
     assert [info.path for info in infos] == [datasource.paths[0]]
 
 
-def test_footer_indexer_skip_paths_ignores_missing_named_path(tmp_path, monkeypatch):
+def test_footer_indexer_skip_paths_ignores_missing_named_path(tmp_path):
     """A skip-only missing path must not fail listing on the footer indexer."""
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     keep = tmp_path / "keep.parquet"
     missing = str(tmp_path / "gone.parquet")
     _write_parquet(str(keep), pa.table({"a": [1]}))
@@ -557,7 +326,6 @@ def test_footer_indexer_forwards_preserve_order_to_footer_reads(
     leaves manifest order -- and therefore bin packing and downstream read-task
     order -- dependent on footer IO timing.
     """
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "2")
     # More files than one footer batch holds, so several dispatches are recorded.
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
@@ -592,7 +360,6 @@ def test_footer_indexer_preserves_listing_order_across_batches(
     ``read_footers`` orders a single batch; the driver's FIFO drain of dispatched
     batches is what makes the overall manifest order the listing order.
     """
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "3")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
     paths = []
@@ -675,3 +442,9 @@ def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
     hashes = pa.concat_tables(reader.read(manifest)).column("row_hash").to_pylist()
     assert len(hashes) == expected_rows
     assert len(set(hashes)) == expected_rows
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
