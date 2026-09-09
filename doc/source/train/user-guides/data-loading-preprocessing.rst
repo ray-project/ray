@@ -1,5 +1,5 @@
 .. meta::
-   :description: Load and preprocess data for Ray Train with Ray Data: ingest, transform, split across workers, and consume shards in the training function.
+   :description: Load and preprocess data for Ray Train with Ray Data: ingest, transform, split across workers, consume shards in the training function, and debug data loading bottlenecks.
 
 .. _data-ingest-torch:
 
@@ -568,8 +568,105 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
 This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
 
+.. _train-debugging-data-loading-bottlenecks:
+
+Debugging data loading bottlenecks
+----------------------------------
+
+When training throughput is lower than you expect, the first question to answer is whether the training loop is actually waiting on data. The **Data Ingestion** row of the Ray Train dashboard answers that question, and then narrows down where the time goes.
+
+To view these panels, set up Prometheus and Grafana for your cluster as described in the :ref:`Ray Dashboard documentation <observability-getting-started>`, open the Ray Train dashboard, and find the **Data Ingestion** row. Every panel in the row is computed over a ``$window`` interval that you set with the window dropdown at the top of the dashboard, defaulting to ``1m``. Use a shorter window to catch short-lived spikes and a longer window to smooth out noise.
+
+The panels form a top-down drill-down. Each step only matters if the previous step showed a problem, so most investigations stop after step 1 or step 2.
+
+Step 1: Is training stalling on data loading?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Check **Max Exposed Data Loading Time**. This panel reports the per-batch data loading time that the training loop is actually blocked on, taken as the maximum across ranks so that it reflects the slowest rank.
+
+Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden.
+
+- **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
+- **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
+
+Step 2: Which stage is responsible?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows the share of per-batch data loading time spent in each stage of the data loader, in the order the loader runs them:
+
+.. list-table::
+    :header-rows: 1
+    :widths: 20 80
+
+    * - Stage
+      - What it covers
+    * - Production wait
+      - Waiting for the upstream Ray Data pipeline to produce the next block. Points at the data pipeline rather than at the training worker.
+    * - Data transfer
+      - Resolving and transferring blocks to the training worker, including cross-node object store transfers.
+    * - Batching
+      - Building batches out of blocks, including slicing and local shuffle buffer operations.
+    * - Format
+      - Converting blocks to the requested batch format, such as NumPy or pandas.
+    * - Collate
+      - Running your ``collate_fn``.
+    * - Finalize
+      - Running your ``finalize_fn``, which for GPU training is typically the host-to-device transfer.
+
+The dominant band is where the time goes. A large **production wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+
+.. note::
+
+    This panel breaks down *total* data loading time, including the portion that pipelining hides behind training, and it always adds up to 100%. Read it only after step 1 shows a non-zero exposed time. Otherwise, none of the stages are contributing to training stall.
+
+Step 3: Is the stage systemically slow, or is one rank straggling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every stage has a matching per-rank panel: **Production Wait Time by Rank**, **Data Transfer Time by Rank**, **Batching Time by Rank**, **Format Time by Rank**, **Collate Time by Rank**, and **Finalize Time by Rank**. Open the one for the stage that step 2 pointed at.
+
+- **Uniformly high across all ranks.** The stage is systemically slow, and the fixes in :ref:`train-ingest-performance-tips` apply to the run as a whole.
+- **One rank far above the rest.** That rank is a straggler. Because distributed training synchronizes across ranks on every step, a single slow rank holds back the entire run, so a straggler costs you much more than its share of the work. Common causes are poor data locality, where blocks are consistently fetched from a remote node, and a hot node where the training worker competes with Ray Data tasks for CPU.
+
+Monitoring ingest throughput
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two more panels sit alongside the drill-down as general health metrics rather than as steps in it:
+
+- **Data Ingest Throughput by Rank**: rows per second each rank consumes from its data loader. Use it to learn the steady-state ingest rate of a healthy run, so that you can spot drops and imbalance across ranks later.
+- **Data Production Throughput**: rows per second the Ray Data pipeline delivers to the training workers. This panel only reports data for datasets that are split across workers, which is controlled by the ``datasets_to_split`` argument of :class:`DataConfig <ray.train.DataConfig>`, so datasets you excluded from splitting show nothing here.
+
+Comparing the two is worthwhile. If production throughput consistently runs ahead of aggregate ingest throughput, the pipeline is producing faster than training consumes, and the excess accumulates in the object store. See :ref:`balancing-data-production-consumption`.
+
+Choosing a fix
+~~~~~~~~~~~~~~
+
+.. list-table::
+    :header-rows: 1
+    :widths: 45 55
+
+    * - What the drill-down showed
+      - Where to look next
+    * - Collate dominates the breakdown
+      - :ref:`avoid-heavy-collate-fn` and :ref:`scaling_collation_functions`
+    * - Data transfer or format dominates the breakdown
+      - :ref:`prefetching-batches`
+    * - Production wait dominates the breakdown
+      - :ref:`adding-cpu-only-nodes` and :ref:`dataset_cache_performance`
+    * - Production throughput consistently exceeds ingest throughput
+      - :ref:`balancing-data-production-consumption`
+    * - A single rank straggles
+      - :ref:`isolating-ray-data-worker-processes`
+    * - Batching dominates and you use a large local shuffle buffer
+      - :ref:`map_batches_shuffle`
+
+For lower-level, per-operator timings that these panels don't cover, see the :ref:`Ray Data dashboard <ray-data-dashboard>` and :ref:`Ray Data stats <ray-data-stats>`.
+
+.. _train-ingest-performance-tips:
+
 Performance tips
 ----------------
+
+.. _prefetching-batches:
 
 Prefetching batches
 ~~~~~~~~~~~~~~~~~~~
@@ -604,6 +701,8 @@ For example, the following code prefetches 10 batches at a time for each trainin
         datasets={"train": ds},
     )
     my_trainer.fit()
+
+.. _avoid-heavy-collate-fn:
 
 Avoid heavy transformation in collate_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -654,6 +753,8 @@ Transformations that you want to run per-epoch, such as randomization, should go
     # Pass train_ds to the Trainer
 
 
+.. _adding-cpu-only-nodes:
+
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, Ray's native support for heterogeneous resources enables you to simply add more CPU-only nodes to your cluster, and Ray Data automatically scales out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
@@ -661,6 +762,8 @@ If the GPU training is bottlenecked on expensive CPU preprocessing and the prepr
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+
+.. _isolating-ray-data-worker-processes:
 
 Isolating Ray Data worker processes from training nodes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
