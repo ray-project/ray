@@ -2,7 +2,7 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.datatype import DataType
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, run_tpch_benchmark
+from common import parse_tpch_args, load_table, run_tpch_benchmark, record_dataset
 
 
 def main(args):
@@ -81,7 +81,7 @@ def main(args):
             col("o_orderpriority").not_in(high_priorities).cast(DataType.int64()),
         )
 
-        _ = (
+        _ = record_dataset(
             joined.groupby("l_shipmode")
             .aggregate(
                 Sum(on="high_line_count", alias_name="high_line_count"),

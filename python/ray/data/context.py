@@ -111,6 +111,40 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
+# Prototype flag: route the V2 Parquet read path through the experimental
+# arrow-rs (Rust) reader instead of PyArrow. Only takes effect when
+# ``use_datasource_v2`` is also set. Requires the native ``ray_data_arrow_rs``
+# module to be installed. Defaults to False.
+DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
+    # Opt-in: the shipping default stays False because the native module is not
+    # part of the Ray wheel. The two-arm release matrix selects the reader per
+    # test with this env var (release/nightly_tests/dataset/arrow_rs_probe/
+    # gen_2x2_release_tests.py), paired with byod_arrow_rs_parquet.sh, which
+    # installs the crate into the release image.
+    "RAY_DATA_USE_ARROW_RS_PARQUET_READER",
+    False,
+)
+
+# With the arrow-rs reader: set glibc's M_TRIM_THRESHOLD to 0 (via mallopt) in
+# each worker process on first native read, so freed decode heap returns to
+# the OS immediately instead of accumulating as idle-worker USS under task
+# churn (measured +492 MiB over ~100 tasks on fused read->write; the trim
+# lever removed it entirely — arrow_rs_docs findings M48). Linux/glibc only;
+# a no-op elsewhere. Default False until the lever's wall cost is certified.
+DEFAULT_ARROW_RS_MALLOC_TRIM = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM", False)
+
+# With the arrow-rs reader: call glibc ``malloc_trim(0)`` ONCE at the end of
+# each read task's stream, handing that task's freed decode heap back to the OS
+# without touching the allocator's thresholds while it decodes. The mallopt
+# variant above collapses the same idle-worker floor but costs 24-36% wall,
+# because any explicit M_TRIM_THRESHOLD also disables glibc's dynamic mmap
+# threshold so every large decode buffer goes mmap/munmap (arrow_rs_docs
+# findings M61/M64). Linux/glibc only; a no-op elsewhere. Default True since
+# 2026-09-08: on the release fleet it closed every arrow-rs retention row at
+# ~rs wall (findings M101, build 106096) and replicated x3 on the gate cells
+# with no wall price (M124, build 106284); set the env var to 0 to ablate.
+DEFAULT_ARROW_RS_MALLOC_TRIM_EOS = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS", True)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -637,6 +671,12 @@ class DataContext:
             override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
             V2). Parquet is the only reader migrated to V2 so far; the others
             read through V1 for now regardless of this flag.
+        use_arrow_rs_parquet_reader: Prototype flag. When True (and
+            ``use_datasource_v2`` is also True), ``ParquetScanner.create_reader()``
+            returns the experimental arrow-rs (Rust) reader
+            (``ArrowRsParquetFileReader``) instead of the PyArrow
+            ``ParquetFileReader``. Requires the native ``ray_data_arrow_rs``
+            module. Defaults to False.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -960,6 +1000,9 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    use_arrow_rs_parquet_reader: bool = DEFAULT_USE_ARROW_RS_PARQUET_READER
+    arrow_rs_malloc_trim: bool = DEFAULT_ARROW_RS_MALLOC_TRIM
+    arrow_rs_malloc_trim_eos: bool = DEFAULT_ARROW_RS_MALLOC_TRIM_EOS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

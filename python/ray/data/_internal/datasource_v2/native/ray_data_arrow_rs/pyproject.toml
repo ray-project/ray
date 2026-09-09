@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ray_data_arrow_rs"
+version = "0.1.0"
+description = "Experimental arrow-rs Parquet reader for Ray Data (prototype)"
+requires-python = ">=3.9"
+classifiers = ["Programming Language :: Rust"]
+
+[tool.maturin]
+# Build a plain extension module (no separate Python package dir).
+module-name = "ray_data_arrow_rs.ray_data_arrow_rs"
+features = ["pyo3/extension-module"]

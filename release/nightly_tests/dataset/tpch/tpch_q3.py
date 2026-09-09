@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -77,7 +83,7 @@ def main(args):
         )
 
         # Aggregate by order key, order date, and ship priority
-        _ = (
+        _ = record_dataset(
             ds.groupby(["o_orderkey", "o_orderdate", "o_shippriority"])
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key=["revenue", "o_orderdate"], descending=[True, False])

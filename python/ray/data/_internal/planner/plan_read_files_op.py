@@ -21,6 +21,7 @@ same dispatch shape V1 uses for ``plan_read_op_with_checkpoint_filter``.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -30,11 +31,12 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    CustomOpStatsReportFn,
     MapTransformer,
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block
+from ray.data.block import Block, ReadFilesTaskStats
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -57,8 +59,33 @@ def plan_read_files_op(
     scanner = op.scanner
     block_udf = op.block_udf
 
-    def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+    def do_read(
+        blocks: Iterable[Block],
+        _: TaskContext,
+        report_custom_op_stats: CustomOpStatsReportFn,
+    ) -> Iterable[Block]:
+        task_start_s = time.perf_counter()
         reader = scanner.create_reader()
+        # Reader-level per-task aggregates (bytes/batches the decoder actually
+        # produced, time spent inside its iterator, largest single table),
+        # folded into per-task distributions by
+        # ``OpRuntimeMetrics.on_task_finished``. The driver reads them off the
+        # FINAL output block's ``TaskExecWorkerStats``, and whether a block is
+        # emitted after this generator's last resume depends on how the
+        # shaping buffer's flush happens to align with the reader's batch
+        # sizes — so a single report at end-of-task is silently dropped on
+        # some (reader-dependent!) shapes. Instead, report ONE stats object up
+        # front and update it in place as batches flow: every block's
+        # snapshot carries the totals so far, and the final block's carries
+        # (at least) everything up to the last yielded table.
+        task_stats = ReadFilesTaskStats()
+        report_custom_op_stats(task_stats)
+        decode_wall_s = 0.0
+        decoded_bytes = decoded_batches = decoded_rows = peak_batch_bytes = 0
+        manifests = 0
+        trim_wall_s = 0.0
+        yield_wall_s = 0.0
+        first_table_wall_s = 0.0
         # File-level predicate pruning (partition predicates pushed down
         # onto the scanner) runs per incoming manifest block. Only
         # ``FileScanner`` subclasses expose ``prune_manifest``; the base
@@ -70,10 +97,73 @@ def plan_read_files_op(
                 manifest = scanner.prune_manifest(manifest)
             if len(manifest) == 0:
                 continue
-            for table in reader.read(manifest):
-                if block_udf is not None:
-                    table = block_udf(table)
-                yield table
+            manifests += 1
+            table_iter = iter(reader.read(manifest))
+            # One-table lookahead: a block's stats snapshot is pickled when
+            # the block leaves the task, and a table that completes a block
+            # (buffer >= target, below the 1.5x slice limit -> emitted whole,
+            # no remainder) is followed by NO flush block. Anything learned
+            # only when the stream ends -- the reader's end-of-stream drain
+            # (arrow-rs malloc_trim wall) -- therefore has to be folded in
+            # BEFORE the last table is yielded, which means pulling the next
+            # table first. Memory-neutral: the previous table stayed bound in
+            # this frame during the next decode anyway.
+            pending = None
+            while True:
+                start_s = time.perf_counter()
+                try:
+                    table = next(table_iter)
+                except StopIteration:
+                    # The reader's finalizer (incl. the eos trim) ran inside
+                    # this next(); its wall is inside decode_wall_s.
+                    decode_wall_s += time.perf_counter() - start_s
+                    trim_wall_s += reader.pop_task_stats().get("trim_wall_s", 0.0)
+                    task_stats._update(
+                        decode_wall_s=decode_wall_s,
+                        trim_wall_s=trim_wall_s,
+                        yield_wall_s=yield_wall_s,
+                    )
+                    break
+                except BaseException:
+                    # A table already decoded when a LATER next() fails must
+                    # still reach the output (same as before the lookahead,
+                    # when it had been yielded before that next() ran) so a
+                    # task tolerated via ``max_errored_blocks`` keeps it.
+                    if pending is not None:
+                        y0 = time.perf_counter()
+                        yield pending
+                        yield_wall_s += time.perf_counter() - y0
+                        pending = None
+                    raise
+                decode_wall_s += time.perf_counter() - start_s
+                if decoded_batches == 0:
+                    first_table_wall_s = time.perf_counter() - task_start_s
+                nbytes = table.nbytes
+                decoded_bytes += nbytes
+                decoded_batches += 1
+                decoded_rows += table.num_rows
+                if nbytes > peak_batch_bytes:
+                    peak_batch_bytes = nbytes
+                task_stats._update(
+                    decode_wall_s=decode_wall_s,
+                    decoded_bytes=decoded_bytes,
+                    decoded_batches=decoded_batches,
+                    decoded_rows=decoded_rows,
+                    peak_batch_bytes=peak_batch_bytes,
+                    manifests=manifests,
+                    yield_wall_s=yield_wall_s,
+                    first_table_wall_s=first_table_wall_s,
+                )
+                if pending is not None:
+                    y0 = time.perf_counter()
+                    yield pending
+                    yield_wall_s += time.perf_counter() - y0
+                pending = block_udf(table) if block_udf is not None else table
+            if pending is not None:
+                y0 = time.perf_counter()
+                yield pending
+                yield_wall_s += time.perf_counter() - y0
+                task_stats._update(yield_wall_s=yield_wall_s)
 
     return MapOperator.create(
         MapTransformer(
@@ -84,6 +174,7 @@ def plan_read_files_op(
                     output_block_size_option=OutputBlockSizeOption.of(
                         target_max_block_size=data_context.target_max_block_size,
                     ),
+                    should_report_custom_op_stats=True,
                 ),
             ]
         ),

@@ -45,6 +45,7 @@ ignore-missing-imports = [
     "pytest.*",
     "pytest_lazy_fixtures.*",
     "ray.core.generated.*",
+    "ray_data_arrow_rs.*",
     "raydp.*",
     "rich.*",
     "snappy.*",

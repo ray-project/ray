@@ -1,0 +1,532 @@
+"""Generate the arrow-rs 2x2 release-test entries (item 29).
+
+Every A/B so far compared multi-node fleets only, and none of the ~20 A/B #5
+P0 regressions reproduces single-node (M78) -- so the surviving suspects are
+things only the release regime has: long-lived-worker allocator retention and
+autoscaler pool dynamics. This generator builds the discriminating experiment:
+each regressed test runs as FOUR release entries on ONE branch/image,
+
+    {arrow-rs, pyarrow} x {its original fleet, one fat node}
+
+so topology is isolated with zero branch or image skew. Reader is toggled
+per-entry by prefixing the run script with RAY_DATA_USE_ARROW_RS_PARQUET_READER
+(env_bool in python/ray/data/context.py honors the env var over the branch's
+flipped-True default; the flag branches inside the read task, so tasks -- not
+images -- decide). Topology is toggled per-entry via cluster_compute:
+single-node cells swap the fleet yaml for single_node_{cpu,all_to_all}_compute
+.yaml (one m5.24xlarge, 96 vCPU / 384 GiB -- at or above the aggregate of the
+m5.2xlarge CPU fleets; the 512-vCPU all-to-all and 800-vCPU joins fleets have
+no single-node equal, which under-provisions BOTH arms equally).
+
+What the generated entries change vs their parents, and nothing else:
+  * name      <parent with spaces as '+'>_2x2_{rs|pa}_{multi|single}
+  * frequency manual (never scheduled; trigger explicitly)
+  * script    reader env-var prefix
+  * single cells only: single-node compute yaml, RAYTEST_FAIL_ON_SPILLING=0
+    (one node spills where a fleet spreads), wait_for_nodes dropped,
+    timeout doubled (capped at 4h).
+
+Reading results: the pa_multi cell must reproduce the A/B baseline (5-run
+history) -- if it doesn't, the branch or image contaminated the experiment and
+the whole run is void. Then: regression present in multi but absent in single,
+with the decoder eliminators (decoded bytes/task, peak batch bytes) at parity
+=> release-regime mechanism (retention / pool dynamics), not the decoder.
+
+Two matrices share this machinery (--matrix); the name scheme stays
+<parent>_2x2_<arm>_<topology> for both so one results-DB name history and one
+Buildkite filter (name:.*_2x2_.*) cover them:
+
+  2x2    {rs, pa} x {multi, single} over every target (item 29; build 105711).
+  alloc  DEFAULT. {pa, rs} on the original fleet over the memory, sustained
+         and control targets plus three wall targets kept as the release-scale
+         confirmation of the M97/M98 wall fix; single-node cells only where
+         the single-node reading is itself the question (ALLOC_SINGLE_TOO);
+         the two cells that must replicate inside one build run x3
+         (ALLOC_REPEATED). History: builds 106096 / 106284 ran this matrix
+         with two extra arms, rstrim (RAY_DATA_ARROW_RS_MALLOC_TRIM=1, the
+         mallopt mechanism probe, retired M108) and rseos
+         (RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=1, one malloc_trim(0) per read
+         task stream). rseos closed every retention row at ~rs wall (M101) and
+         its one wall outlier did not replicate (M124), so on 2026-09-08 the
+         eos trim became the arrow-rs default (context.py) -- the rs arm now
+         IS the former rseos arm and the extra arms are gone. Reading: pa
+         cells must reproduce the build history or the window is
+         contaminated; decoded-bytes/peak-batch dists must match across arms
+         (the trim touches no decode path); any rs/pa ratio >= 1.15 is a fix
+         item (arrow_rs_docs/findings.md M104 gates).
+  full   The reader-default decision run (TODO 39): the alloc matrix above
+         PLUS {pa, rs} on the original fleet for EVERY other test in the
+         file, so the whole data suite runs two-armed in one window on one
+         branch/image (the earlier full-suite A/Bs #3-#5 needed two builds
+         of two branches). Superset of alloc with the same cell names, so
+         the 2x2 results-DB history continues; the extra cells are labelled
+         [suite] in the block. Tests that never read Parquet run both arms
+         too -- they are the arm-neutral controls.
+
+Usage (from anywhere; rewrites its marker block in release_data_tests.yaml):
+    python gen_2x2_release_tests.py                # regenerate alloc + validate
+    python gen_2x2_release_tests.py --matrix 2x2   # the original 2x2 instead
+    python gen_2x2_release_tests.py --matrix full  # whole suite, two arms
+    python gen_2x2_release_tests.py --check        # validate the file as it is
+
+The resolver below (deep_update / matrix / variations / {{var}} substitution)
+mirrors release/ray_release/config.py:parse_test_definition, which is not
+importable outside Bazel (jsonschema/runfiles deps).
+"""
+
+import argparse
+import copy
+import itertools
+import os
+import re
+
+import yaml
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RELEASE_DIR = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+TESTS_YAML = os.path.join(RELEASE_DIR, "release_data_tests.yaml")
+DATASET_DIR = os.path.join(RELEASE_DIR, "nightly_tests", "dataset")
+
+BEGIN = "# === BEGIN arrow-rs 2x2 (generated by arrow_rs_probe/gen_2x2_release_tests.py; do not edit by hand) ==="
+END = "# === END arrow-rs 2x2 ==="
+
+READER_ENV = "RAY_DATA_USE_ARROW_RS_PARQUET_READER"
+TIMEOUT_CAP_S = 14400
+
+# The A/B #5 P0 ledger (arrow_rs_docs/2026-08-27.md section 11; names as the
+# results DB spells them, '+' where the yaml matrix value has spaces), plus
+# three controls. Category is documentation only -- all cells run identically.
+#
+# Renamed 2026-09-08 when the branch moved onto master: the suite dropped every
+# ``*_autoscaling_*`` variant (fixed-size twins stand in; the two rlp / map_groups
+# autoscaling cells fold into their fixed-size rows) and renamed the
+# ``hash_shuffle_v2`` strategy ``shuffle_v2`` (#65411). The pre-rename names are
+# what builds <= 106426 and the docs up to 2026-09-08.md carry.
+TARGETS = {
+    # wall-time regressions
+    "tpch_q10_fixed_size_shuffle_v2": "wall",
+    "tpch_q3_fixed_size_shuffle_v2": "wall",
+    "tpch_q22_fixed_size_hash_shuffle": "wall",
+    "tpch_q14_fixed_size_hash_shuffle": "wall",
+    "tpch_q18_fixed_size_shuffle_v2": "wall",
+    "joins_sf100_right_outer": "wall",
+    "read_parquet_fixed_size": "wall",
+    "map_groups_fixed_size_hash_shuffle_column02+column14": "wall",
+    # peak-memory regressions (tUSS / wUSS peak)
+    "read_large_parquet_fixed_size": "memory",
+    "write_parquet": "memory",
+    "tpch_q6_fixed_size_hash_shuffle": "memory",
+    "tpch_q6_fixed_size_shuffle_v2": "memory",
+    "tpch_q17_fixed_size_hash_shuffle": "memory",
+    "tpch_q17_fixed_size_shuffle_v2": "memory",
+    "map_groups_fixed_size_hash_shuffle_column08+column13+column14": "memory",
+    "wide_schema_pipeline_objects": "memory",
+    # sustained-wUSS (retention signature, M77)
+    "map_groups_fixed_size_shuffle_v2_column08+column13+column14": "sustained",
+    "map_groups_fixed_size_shuffle_v2_column02+column14": "sustained",
+    "map_groups_fixed_size_sort_shuffle_pull_based_column02+column14": "sustained",
+    "joins_sf100_inner": "sustained",
+    "joins_sf100_left_outer": "sustained",
+    "joins_sf100_full_outer": "sustained",
+    "wide_schema_pipeline_primitives": "sustained",
+    "mix.8ds_equal": "sustained",
+    # controls: parity or arrow-rs-win in A/B #5 -- if these move, suspect the
+    # experiment, not the reader
+    "aggregate_groups_fixed_size_hash_shuffle_column08+column13+column14": "control",
+    "tpch_q12_fixed_size_hash_shuffle": "control",
+    "iter_batches_pyarrow": "control",
+}
+
+# Fleet -> single-fat-node analog. all_to_all keeps the big-disk variant (one
+# node absorbs the spill a fleet spreads); joins' 100-node fleet maps there
+# too for the same reason.
+SINGLE_COMPUTE = {
+    "fixed_size_all_to_all_compute.yaml": "single_node_all_to_all_compute.yaml",
+    "fixed_size_100_cpu_compute.yaml": "single_node_all_to_all_compute.yaml",
+    "fixed_size_cpu_compute.yaml": "single_node_cpu_compute.yaml",
+    "dataset_mixing/compute_8_cpu.yaml": "single_node_cpu_compute.yaml",
+}
+
+# Arm -> the env prefix prepended to the parent's run script. The rs arm is
+# the reader as shipped: since 2026-09-08 that includes the end-of-stream
+# malloc_trim (python/ray/data/context.py DEFAULT_ARROW_RS_MALLOC_TRIM_EOS =
+# True), so no allocator knob is spelled out here. Add an explicit
+# RAY_DATA_ARROW_RS_MALLOC_TRIM_EOS=0 arm only to ablate it.
+ARMS = {
+    "pa": f"{READER_ENV}=0",
+    "rs": f"{READER_ENV}=1",
+}
+
+# alloc matrix: wall targets dropped except these three -- the release-scale
+# confirmation of the M97/M98 per-task-S3-client fix (box: 2.88->0.88,
+# 2.15->0.77, 1.22->0.90) on the three wall shapes with the cleanest history.
+ALLOC_WALL_KEEP = (
+    "read_parquet_fixed_size",
+    "tpch_q18_fixed_size_shuffle_v2",
+    "map_groups_fixed_size_hash_shuffle_column02+column14",
+)
+# alloc matrix: single-node cells only where single-node IS the question --
+# the rlp per-task USS self-regression (M75/M86) and the col02 OOM cliff (M90).
+ALLOC_SINGLE_TOO = (
+    "read_large_parquet_fixed_size",
+    "map_groups_fixed_size_hash_shuffle_column02+column14",
+)
+
+# alloc matrix: gate cells that must replicate inside ONE build (TODO 34f: the
+# col02 rseos fleet cell ran 2.37 once; one run cannot separate a slowed task
+# from an autoscaler that packed 44 workers/node) -- emitted with
+# ``repeated_run`` so the release runner schedules N steps per cell (the form
+# has no repeat field; release/ray_release/buildkite/step.py reads this key).
+ALLOC_REPEATED = {
+    "map_groups_fixed_size_hash_shuffle_column02+column14": 3,
+    "read_large_parquet_fixed_size": 3,
+}
+
+MATRICES = ("2x2", "alloc", "full")
+DEFAULT_MATRIX = "alloc"
+
+
+def matrix_cells(matrix, parents=()):
+    """(target, arm, topology) triples for one matrix, in emitted order.
+
+    ``parents`` (resolved non-generated test names, '+' for spaces, file
+    order) is only consulted by the ``full`` matrix.
+    """
+    if matrix == "full":
+        cells = matrix_cells("alloc")
+        covered = {t for t, _, _ in cells}
+        for parent in parents:
+            if parent in covered:
+                continue
+            covered.add(parent)
+            cells += [(parent, a, "multi") for a in ARMS]
+        return cells
+    if matrix == "2x2":
+        return [
+            (t, a, s)
+            for t in TARGETS
+            for a in ("rs", "pa")
+            for s in ("multi", "single")
+        ]
+    if matrix == "alloc":
+        cells = []
+        for target, category in TARGETS.items():
+            if category == "wall" and target not in ALLOC_WALL_KEEP:
+                continue
+            topologies = (
+                ("multi", "single") if target in ALLOC_SINGLE_TOO else ("multi",)
+            )
+            cells += [(target, a, s) for a in ARMS for s in topologies]
+        return cells
+    raise ValueError(f"unknown matrix {matrix!r}; one of {MATRICES}")
+
+
+def parse_2x2_name(name):
+    """'foo_2x2_rstrim_single' -> ('foo', 'rstrim', 'single'); None if not ours."""
+    m = re.fullmatch(rf"(.+)_2x2_({'|'.join(ARMS)})_(multi|single)", name)
+    return (m.group(1), m.group(2), m.group(3)) if m else None
+
+
+def block_matrix(text):
+    """Which matrix the file's marker block was generated with (None if absent)."""
+    m = re.search(rf"^{re.escape(BEGIN)}\n# matrix: (\w+)$", text, re.M)
+    return m.group(1) if m else None
+
+
+# --------------------------------------------------------------------------
+# Vendored from release/ray_release/config.py + util.py (see module docstring)
+# --------------------------------------------------------------------------
+
+
+def _deep_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, dict):
+            d[k] = _deep_update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
+
+def _substitute_variable(data, variable, replacement):
+    data = copy.deepcopy(data)
+    pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
+    for key, value in data.items():
+        if isinstance(value, dict):
+            data[key] = _substitute_variable(value, variable, replacement)
+        elif isinstance(value, list):
+            data[key] = [re.sub(pattern, replacement, s) for s in value]
+        elif isinstance(value, str):
+            data[key] = re.sub(pattern, replacement, value)
+    return data
+
+
+def resolve_tests(test_definitions):
+    """parse_test_definition, minus jsonschema validation and the Test class."""
+    defaults, tests = {}, []
+    for test_definition in test_definitions:
+        if test_definition["name"] == "DEFAULTS":
+            defaults = copy.deepcopy(test_definition)
+            continue
+        test_definition = _deep_update(copy.deepcopy(defaults), test_definition)
+        if "variations" in test_definition:
+            variations = test_definition.pop("variations")
+            for variation in variations:
+                variation = copy.deepcopy(variation)
+                test = copy.deepcopy(test_definition)
+                test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
+                tests.append(_deep_update(test, variation))
+        elif "matrix" in test_definition:
+            matrix = test_definition.pop("matrix")
+            variables = tuple(matrix["setup"].keys())
+            for combination in itertools.product(*matrix["setup"].values()):
+                test = test_definition
+                for variable, value in zip(variables, combination):
+                    test = _substitute_variable(test, variable, str(value))
+                tests.append(test)
+            for adjustment in matrix.pop("adjustments", []):
+                test = test_definition
+                for variable, value in adjustment["with"].items():
+                    test = _substitute_variable(test, variable, str(value))
+                tests.append(test)
+        else:
+            tests.append(test_definition)
+    return defaults, tests
+
+
+# --------------------------------------------------------------------------
+# Entry generation
+# --------------------------------------------------------------------------
+
+
+def _strip_defaults(entry, defaults):
+    """Drop what DEFAULTS will deep_update back in identically at parse time."""
+    entry = copy.deepcopy(entry)
+    for key in ("group", "working_dir", "team"):
+        if entry.get(key) == defaults.get(key):
+            entry.pop(key, None)
+    byod = entry.get("cluster", {}).get("byod", {})
+    default_byod = defaults.get("cluster", {}).get("byod", {})
+    for key in ("type", "post_build_script"):
+        if byod.get(key) == default_byod.get(key):
+            byod.pop(key, None)
+    return entry
+
+
+def make_cell(resolved, defaults, arm, topology, matrix=DEFAULT_MATRIX):
+    """One generated entry: parent test x arm (env prefix) x topology."""
+    base = _strip_defaults(resolved, defaults)
+    base_name = base["name"].replace(" ", "+")
+    compute = base["cluster"]["cluster_compute"]
+    if topology == "single" and compute not in SINGLE_COMPUTE:
+        raise ValueError(f"{base_name}: no single-node analog for {compute}")
+
+    cell = copy.deepcopy(base)
+    cell["name"] = f"{base_name}_2x2_{arm}_{topology}"
+    cell["frequency"] = "manual"
+    # Keys use the '+' form (parent names carry spaces), like TARGETS.
+    if matrix in ("alloc", "full") and base_name in ALLOC_REPEATED:
+        cell["repeated_run"] = ALLOC_REPEATED[base_name]
+    # Parent scripts come from ">" folded scalars and carry a trailing
+    # newline; strip so the emitted string is single-line.
+    script = cell["run"]["script"].strip()
+    cell["run"]["script"] = f"{ARMS[arm]} {script}"
+    if topology == "single":
+        cell["cluster"]["cluster_compute"] = SINGLE_COMPUTE[compute]
+        env = cell["cluster"].get("byod", {}).get("runtime_env")
+        if env is not None:
+            cell["cluster"]["byod"]["runtime_env"] = [
+                "RAYTEST_FAIL_ON_SPILLING=0"
+                if e.startswith("RAYTEST_FAIL_ON_SPILLING=")
+                else e
+                for e in env
+            ]
+        cell["run"].pop("wait_for_nodes", None)
+        cell["run"]["timeout"] = min(cell["run"]["timeout"] * 2, TIMEOUT_CAP_S)
+    # Reorder for readable yaml (dicts keep insertion order); whatever else the
+    # parent carries (env: gce, a non-default group / working_dir) follows.
+    front = ("name", "frequency", "repeated_run", "python", "cluster", "run")
+    ordered = {key: cell[key] for key in front if key in cell}
+    ordered.update({key: value for key, value in cell.items() if key not in front})
+    return ordered
+
+
+_BLOCK_HEADERS = {
+    "2x2": [
+        "# 4 cells per A/B #5 P0 regression: {rs,pa} x {original fleet, one fat",
+        "# node}.",
+    ],
+    "alloc": [
+        "# {pa, rs} on the original fleet over the memory / sustained / control",
+        "# targets + 3 wall-fix confirmations; single cells only for the two shapes",
+        "# whose single-node reading is the question; two gate cells x3. rs = the",
+        "# arrow-rs reader as shipped, which since 2026-09-08 includes the",
+        "# end-of-stream malloc_trim (former rseos arm; rstrim retired, M108).",
+    ],
+    "full": [
+        "# The reader-default decision run (TODO 39): the alloc matrix (memory /",
+        "# sustained / control targets + 3 wall-fix confirmations, 4 single cells,",
+        "# two gate cells x3) PLUS {pa, rs} on the original fleet for every other",
+        "# test in this file ([suite] cells) -- the whole data suite two-armed in",
+        "# one window on one branch/image. rs = the arrow-rs reader as shipped",
+        "# (eos malloc_trim included); pa = RAY_DATA_USE_ARROW_RS_PARQUET_READER=0.",
+    ],
+}
+
+
+def _carries_crate(test, defaults):
+    """A test whose byod overrides DEFAULTS' post_build_script builds an image
+    without the crate, so its rs arm would silently be PyArrow: not a cell."""
+    return test["cluster"]["byod"].get("post_build_script") == defaults["cluster"][
+        "byod"
+    ].get("post_build_script")
+
+
+def parent_names(resolved_tests, defaults):
+    """Resolved, non-generated, crate-carrying test names in file order
+    ('+' for spaces)."""
+    return [
+        t["name"].replace(" ", "+")
+        for t in resolved_tests
+        if not parse_2x2_name(t["name"]) and _carries_crate(t, defaults)
+    ]
+
+
+def crateless_names(resolved_tests, defaults):
+    """The parents the full matrix leaves out, for the block header."""
+    return [
+        t["name"].replace(" ", "+")
+        for t in resolved_tests
+        if not parse_2x2_name(t["name"]) and not _carries_crate(t, defaults)
+    ]
+
+
+def render_block(defaults, resolved_tests, matrix):
+    by_name = {t["name"].replace(" ", "+"): t for t in resolved_tests}
+    cells = matrix_cells(matrix, parent_names(resolved_tests, defaults))
+    missing = sorted({t for t, _, _ in cells} - set(by_name))
+    if missing:
+        raise SystemExit(f"targets not found in release_data_tests.yaml: {missing}")
+
+    lines = [BEGIN, f"# matrix: {matrix}"]
+    lines += _BLOCK_HEADERS[matrix]
+    if matrix == "full":
+        lines += [
+            "# Left out (own byod.post_build_script, so the image has no crate and",
+            "# both arms would be PyArrow):",
+        ] + [f"#   {name}" for name in crateless_names(resolved_tests, defaults)]
+    lines += [
+        "# frequency:manual -- trigger explicitly, all arms in one window (M75:",
+        "# readings drift across windows). Regenerate with:",
+        "#     python nightly_tests/dataset/arrow_rs_probe/gen_2x2_release_tests.py"
+        + ("" if matrix == DEFAULT_MATRIX else f" --matrix {matrix}"),
+        "",
+    ]
+    current = None
+    for target, arm, topology in cells:
+        if target != current:
+            current = target
+            lines.append(f"# --- {target}  [{TARGETS.get(target, 'suite')}] ---")
+        cell = make_cell(by_name[target], defaults, arm, topology, matrix)
+        lines.append(
+            yaml.safe_dump(
+                [cell], sort_keys=False, default_flow_style=False, width=88
+            ).rstrip()
+        )
+        lines.append("")
+    lines.append(END)
+    return "\n".join(lines) + "\n"
+
+
+def strip_block(text):
+    if BEGIN not in text:
+        return text
+    head, rest = text.split(BEGIN, 1)
+    if END not in rest:
+        raise SystemExit("found BEGIN marker without END marker; fix by hand")
+    _, tail = rest.split(END, 1)
+    return head.rstrip("\n") + "\n" + tail.lstrip("\n")
+
+
+def validate(defaults, resolved_tests, matrix):
+    names = [t["name"] for t in resolved_tests]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, f"duplicate resolved test names: {dupes}"
+
+    generated = [t for t in resolved_tests if parse_2x2_name(t["name"])]
+    expected = {
+        f"{t}_2x2_{a}_{s}"
+        for t, a, s in matrix_cells(matrix, parent_names(resolved_tests, defaults))
+    }
+    got = {t["name"] for t in generated}
+    assert got == expected, (
+        f"generated set mismatch: missing={sorted(expected - got)} "
+        f"extra={sorted(got - expected)}"
+    )
+    for test in generated:
+        name = test["name"]
+        _, arm, topology = parse_2x2_name(name)
+        assert test["frequency"] == "manual", name
+        assert test["run"]["script"].startswith(f"{ARMS[arm]} "), name
+        # The trim is the reader's default now; an allocator knob spelled into
+        # a cell would silently turn the matrix back into an ablation.
+        assert "MALLOC_TRIM" not in test["run"]["script"], name
+        compute = test["cluster"]["cluster_compute"]
+        # cluster_compute is relative to the test's working_dir (a few parents
+        # sit in nightly_tests/ rather than nightly_tests/dataset/).
+        compute_dir = os.path.join(RELEASE_DIR, test["working_dir"])
+        assert os.path.exists(
+            os.path.join(compute_dir, compute)
+        ), f"{name}: compute file missing: {compute}"
+        if topology == "single":
+            assert compute.startswith("single_node_"), name
+            assert "wait_for_nodes" not in test["run"], name
+            env = test["cluster"].get("byod", {}).get("runtime_env", [])
+            assert "RAYTEST_FAIL_ON_SPILLING=1" not in env, name
+        # DEFAULTS must still supply the crate build + node-mem monitor.
+        assert test["cluster"]["byod"]["post_build_script"] == (
+            defaults["cluster"]["byod"]["post_build_script"]
+        ), name
+        env = test["cluster"]["byod"]["runtime_env"]
+        assert "RAY_DATA_BENCH_NODE_MEM_MONITOR=1" in env, name
+    return len(generated)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check", action="store_true", help="validate the current file, do not rewrite"
+    )
+    parser.add_argument(
+        "--matrix",
+        choices=MATRICES,
+        help=f"which matrix to emit (default {DEFAULT_MATRIX}); with --check, "
+        "defaults to the one recorded in the file's block header",
+    )
+    args = parser.parse_args()
+
+    text = open(TESTS_YAML).read()
+    matrix = (
+        args.matrix or (block_matrix(text) if args.check else None) or DEFAULT_MATRIX
+    )
+    if not args.check:
+        stripped = strip_block(text)
+        defaults, resolved = resolve_tests(yaml.safe_load(stripped))
+        block = render_block(defaults, resolved, matrix)
+        text = stripped.rstrip("\n") + "\n\n" + block
+        with open(TESTS_YAML, "w") as fh:
+            fh.write(text)
+
+    defaults, resolved = resolve_tests(yaml.safe_load(open(TESTS_YAML)))
+    count = validate(defaults, resolved, matrix)
+    cells = matrix_cells(matrix, parent_names(resolved, defaults))
+    n_targets = len({t for t, _, _ in cells})
+    n_single = sum(1 for _, _, s in cells if s == "single")
+    print(
+        f"OK [{matrix}]: {count} generated entries ({n_targets} targets, "
+        f"{len(ARMS)} arms, {count - n_single} multi + "
+        f"{n_single} single), {len(resolved)} resolved tests total, all names unique"
+    )
+
+
+if __name__ == "__main__":
+    main()

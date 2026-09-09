@@ -9,6 +9,8 @@ from benchmark import (
     BenchmarkMetric,
     RuntimeEnvSetupTracker,
     collect_dataset_stats,
+    collect_operator_metrics,
+    consume_ref_bundles,
     benchmark_py_modules,
 )
 from torchvision.models import ResNet50_Weights, resnet50
@@ -121,9 +123,15 @@ def main(args):
         total_images = 0
 
         # NOTE: We're iterating over ref-bundles to avoid pulling blocks into the
-        #       driver, therefore making it a factor impacting benchmark performance
-        for bundle in ds.iter_internal_ref_bundles():
+        #       driver, therefore making it a factor impacting benchmark performance.
+        #       consume_ref_bundles is that same iteration with capture_executor=True,
+        #       which keeps the stats read below from being a snapshot taken after
+        #       the first bundle.
+        def tally(bundle):
+            nonlocal total_images
             total_images += bundle.num_rows()
+
+        consume_ref_bundles(ds, tally)
 
         holder["ds"] = ds
         holder["total_images"] = total_images
@@ -157,7 +165,11 @@ def main(args):
         print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
-    results = collect_dataset_stats(holder["ds"])
+    results = {
+        **collect_dataset_stats(holder["ds"]),
+        # Per-operator wall/output/USS+RSS breakdown alongside the dataset stats.
+        **collect_operator_metrics(holder["ds"]),
+    }
     results.update(
         {
             BenchmarkMetric.THROUGHPUT.value: throughput,
