@@ -25,12 +25,12 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+((?:[A-Z]+\s+)*[A-Z0-9]*\d[A-Z0-9]*)")
 
 # Timeout for shelling out to `nvidia-ctk` during CDI spec generation
-# (generate_cdi_spec below). This runs synchronously in whichever process
-# calls it, so it must not be generous: `nvidia-ctk cdi generate` only
-# enumerates local driver/device state, no network I/O, and normally
-# completes in well under a second. This bounds a hung/misbehaving
-# nvidia-ctk to a short, user-visible failure instead of a long stall.
-_NVIDIA_CTK_TIMEOUT_SECONDS = 5
+# (generate_cdi_spec below). Multi-GPU nodes can see driver/device
+# probing overhead push past several seconds, but 60s doesn't cost much
+# in the common case either. `nvidia-ctk cdi generate` normally
+# completes in well under a second, so this only bounds a hung or
+# misbehaving nvidia-ctk to a longer-but-still-bounded failure.
+_NVIDIA_CTK_TIMEOUT_SECONDS = 60
 
 # Populated by generate_cdi_spec on its first successful call, then reused
 # for the rest of the process. Ray core's own GPU resource detection
