@@ -37,9 +37,9 @@ Ray implements distributed reference counting so that any ``ObjectRef`` in scope
 .. _object-store-memory-size:
 
 Object store memory size
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray sizes each node's object store at 30% of that node's available memory, up to a maximum of 200 GB. On Linux, Ray also caps the object store at the size of ``/dev/shm``, because that's where it allocates object store memory. The 200 GB maximum means a large-memory node gets a 200 GB object store rather than 30% of its total memory. For example, a node with 2 TB of RAM gets a 200 GB object store, not 600 GB.
+By default, Ray sizes each node's object store at 30% of that node's available memory, up to a maximum of 200 GB. On Linux, Ray also caps the object store at 95% of the size of ``/dev/shm``, because that's where it allocates object store memory. The 200 GB maximum means a large-memory node gets a 200 GB object store rather than 30% of its total memory. For example, a node with 2 TB of RAM gets a 200 GB object store, not 600 GB.
 
 To set an absolute size, pass ``--object-store-memory`` to ``ray start`` or ``object_store_memory`` to ``ray.init()``. Both take a number of bytes.
 
