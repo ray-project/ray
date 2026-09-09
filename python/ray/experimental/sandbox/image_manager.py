@@ -87,6 +87,28 @@ def _apply_gpu_cdi_edits(spec: Dict[str, Any], gpu_ids: List[str]) -> None:
             f"Failed to configure GPU access via CDI: {err}"
         ) from err
 
+    # TODO(klueska): Special case override to allow NVIDIA GPU
+    # CDI-injected libraries to be found, since update-ldcache stays
+    # disabled under gVisor (see --disable-hook=update-ldcache above).
+    # Remove once https://github.com/NVIDIA/nvidia-container-toolkit/pull/2059
+    # lands and is backported to a 1.18.x release, letting that hook run
+    # under gVisor again.
+    env = spec.get("process", {}).get("env", [])
+    libcuda_dir = next(
+        (e.split("=", 1)[1] for e in env if e.startswith("NVIDIA_CTK_LIBCUDA_DIR=")),
+        None,
+    )
+    if libcuda_dir:
+        ld_library_path = next(
+            (e.split("=", 1)[1] for e in env if e.startswith("LD_LIBRARY_PATH=")),
+            None,
+        )
+        new_value = (
+            f"{libcuda_dir}:{ld_library_path}" if ld_library_path else libcuda_dir
+        )
+        env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
+        env.append(f"LD_LIBRARY_PATH={new_value}")
+
 
 class BaseImageManager(ABC):
     """Abstract Base Class defining the contract for Container Image Managers.
