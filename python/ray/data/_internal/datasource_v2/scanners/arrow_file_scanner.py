@@ -205,5 +205,6 @@ class ArrowFileScanner(
         )
 
         block = manifest.as_block()
-        pruned_block = block.take(keep_indices)
+        # An untyped empty list infers null indices: ArrowNotImplementedError.
+        pruned_block = block.take(pa.array(keep_indices, type=pa.int64()))
         return FileManifest(pruned_block)
