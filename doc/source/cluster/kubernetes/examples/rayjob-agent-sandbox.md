@@ -8,7 +8,7 @@ myst:
 
 # Sandboxed code execution with Ray and Agent Sandbox
 
-This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment, and how to suspend and resume sandboxes between agent turns to reclaim their capacity while they're idle. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
+This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment, and how to suspend and resume sandboxes between agent turns to reclaim their capacity while they're idle. This example uses GKE and gVisor, but you can modify it to work with other sandbox runtimes.
 
 The setup below enables memory-snapshot suspend and resume by default. Suspension is opt-in at runtime, and sandboxes behave normally until you suspend one. Each snapshot-specific setup piece is noted, so you can skip it if you only want sandboxed code execution.
 
@@ -16,21 +16,21 @@ The setup below enables memory-snapshot suspend and resume by default. Suspensio
 
 ## What is Agent Sandbox?
 
-[Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) is a Kubernetes project to streamline the management of sandboxes on Kubernetes. Agent sandbox provides declarative Kubernetes APIs that can be used with KubeRay to manage sandbox environments that can be invoked from a Ray cluster.
+[Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) is a Kubernetes project to streamline the management of sandboxes on Kubernetes. Agent Sandbox provides declarative Kubernetes APIs that can be used with KubeRay to manage sandbox environments that can be invoked from a Ray cluster.
 
-Agent sandbox is compatible with multiple runtimes that offer strong isolation guarantees such as [gVisor](https://github.com/google/gvisor) and [Kata containers](https://github.com/kata-containers/kata-containers). Consider using Ray and Agent Sandbox for agentic RL use-cases where you need to securely execute code generated from a model during its post-training phase.
+Agent Sandbox is compatible with multiple runtimes that offer strong isolation guarantees such as [gVisor](https://github.com/google/gvisor) and [Kata containers](https://github.com/kata-containers/kata-containers). Consider using Ray and Agent Sandbox for agentic reinforcement learning (RL) use cases where you need to securely execute code generated from a model during its post-training phase.
 
-Agent Sandbox provides a collection of declarative Kubernetes APIs to easily manage Sandbox runtimes. This example uses the following custom resources provided by Agent Sandbox:
-- `Sandbox`: This is the foundational unit, it manages a single Pod with a stable hostname and network identity. Unlike standard Pods, a Sandbox can be configured with persistent storage via volumeClaimTemplates that survives restarts
-- `SandboxClaim`: Allows users to create `Sandboxes` from a `SandboxTemplate`, abstracting away the details of the underlying Sandbox configuration. 
-- `SandboxTemplate`: Provides a way to define reusable templates for creating `Sandboxes`, making it easier to manage large numbers of similar `Sandboxes`.
-- `SandboxWarmPool`: Manages a pool of pre-warmed `Sandboxes` that can be quickly (<200ms) allocated to users, reducing the time it takes to get a new Sandbox up and running.   
+Agent Sandbox provides a collection of declarative Kubernetes APIs to manage Sandbox runtimes. This example uses the following custom resources provided by Agent Sandbox:
+- `Sandbox`: the foundational unit. It manages a single Pod with a stable hostname and network identity. Unlike standard Pods, a Sandbox can be configured with persistent storage through `volumeClaimTemplates` that survives restarts.
+- `SandboxClaim`: creates `Sandboxes` from a `SandboxTemplate`, abstracting away the details of the underlying Sandbox configuration.
+- `SandboxTemplate`: defines reusable templates for creating `Sandboxes`, making it easier to manage large numbers of similar `Sandboxes`.
+- `SandboxWarmPool`: manages a pool of pre-warmed `Sandboxes` that can be allocated to users in under 200 ms, reducing the time it takes to get a new Sandbox up and running.
 
-The Agent Sandbox project also provides a [Python SDK](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client) which can be used from within Ray actors to invoke Sandbox creation and secure code execution on sandboxes.
+The Agent Sandbox project also provides a [Python SDK](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/clients/python/agentic-sandbox-client) that you can use from Ray actors to create Sandboxes and run code securely inside them.
 
 ## Why suspend and resume sandboxes?
 
-In agentic RL rollouts, a sandbox is typically held for a whole multi-turn trajectory but only executes commands for a small fraction of that time: a turn runs a few seconds of code, then waits many seconds for model inference. The sandbox is idle, but its pod still holds its full CPU and memory reservation, which is what bounds cluster density.
+In agentic RL rollouts, a sandbox is typically held for a whole multi-turn trajectory but only executes commands for a small fraction of that time. A turn runs a few seconds of code, then waits many seconds for model inference. The sandbox is idle, but its pod still holds its full CPU and memory reservation, which is what bounds cluster density.
 
 The turn boundary is the natural suspend signal. The orchestrator, here a Ray actor, knows the exact moment it has a command result and is waiting on the model. Suspending at that boundary returns the pod's reservation to the scheduler for the duration of the inference call. Resuming restores the sandbox before the next turn's command arrives.
 
@@ -43,7 +43,7 @@ Use plain `operatingMode` pause and resume when the sandbox's durable state live
 
 ## Deploying KubeRay with Agent Sandbox
 
-The following example creates a KubeRay RayJob, which runs a Ray job that uses the Agent Sandbox SDK to invoke code execution in a secure sandbox. It is highly recommended to keep Pods used for sandboxing decoupled from the Ray cluster itself.
+The following example creates a KubeRay RayJob, which runs a Ray job that uses the Agent Sandbox SDK to invoke code execution in a secure sandbox. Keep Pods used for sandboxing decoupled from the Ray cluster itself.
 
 ### Step 1: Create a GKE cluster and node pools
 
@@ -60,7 +60,7 @@ gcloud container clusters create <YOUR_CLUSTER_NAME> \
 
 See [Prepare for Pod snapshots](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/pod-snapshots-prepare) for enabling the feature on an existing cluster.
 
-Create two separate node pools, one for KubeRay provisioned Pods and one for Sandbox pods using the gVisor runtime. The gVisor pool uses `n2-standard-4` because E2 machines don't support whole-pod snapshots. Any machine type works if you skipped Pod Snapshots:
+Create two separate node pools, one for KubeRay-provisioned Pods and one for sandbox Pods using the gVisor runtime. The gVisor pool uses `n2-standard-4` because E2 machines don't support whole-pod snapshots. Any machine type works if you skipped Pod Snapshots:
 
 ```bash
 gcloud container node-pools create ray-worker-pool \
@@ -80,7 +80,7 @@ gcloud container node-pools create ray-gvisor-pool \
 
 Follow the instructions in [KubeRay operator](kuberay-operator-deploy) to install the KubeRay operator.
 
-### Step 3: Deploy Agent Sandbox 
+### Step 3: Deploy Agent Sandbox
 
 Install the Custom Resource Definitions (CRDs), controllers, and extensions from the official Agent Sandbox release. This guide uses `v1.0.0`, the minimum version for the SDK's snapshot extension:
 
@@ -93,7 +93,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/downl
 
 ### Step 4: Apply RBAC permissions for the Ray workers
 
-The Agent Sandbox Python SDK running inside Ray Workers needs to talk to the Kubernetes API to claim and delete sandboxes. In this example we will use the default service account token in the default namespace to grant Ray workers the ability to spawn Sandboxes:
+The Agent Sandbox Python SDK running inside Ray workers needs to talk to the Kubernetes API to claim and delete sandboxes. This example uses the default service account token in the default namespace to grant Ray workers the ability to create Sandboxes.
 
 Create a file named `rbac.yaml` with the following content:
 ```yaml
@@ -144,10 +144,10 @@ Run the following command to create sandbox infrastructure using Agent Sandbox:
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/sandbox.yaml
 ```
 
-The following resources are created:
-- `SandboxTemplate`: defines the per-sandbox podSpec. The Pod is configured to use gVisor, sets `automountServiceAccountToken: false` so untrusted code inside the sandbox cannot read a Kubernetes ServiceAccount token, and sets `networkPolicyManagement: Unmanaged` because the NetworkPolicy below is stricter than the controller's Secure Default. The template also labels every sandbox pod with `app: python-runtime-pool` so other selectors (the NetworkPolicy podSelector, your own `kubectl get` queries) can target them by a stable, human-readable label.
-- `SandboxWarmPool` (`python-runtime-pool`): keeps 6 pre-booted sandbox pods ready so the Ray actors' claims complete in under 200ms.
-- `NetworkPolicy` (`python-runtime-pool-restrict-egress`): default-denies egress for every sandbox pod except DNS. This is what provides concrete containment, ensuring packets are dropped by the CNI at the node rather than relying on cluster-default policies.
+The command creates the following resources:
+- `SandboxTemplate`: defines the per-sandbox podSpec. The Pod is configured to use gVisor, sets `automountServiceAccountToken: false` so untrusted code inside the sandbox cannot read a Kubernetes ServiceAccount token, and sets `networkPolicyManagement: Unmanaged` because the NetworkPolicy below is stricter than the controller's Secure Default. The template also labels every sandbox Pod with `app: python-runtime-pool` so other selectors, such as the NetworkPolicy podSelector or your own `kubectl get` queries, can target them by a stable, human-readable label.
+- `SandboxWarmPool` (`python-runtime-pool`): keeps six pre-booted sandbox Pods ready so the Ray actors' claims complete in under 200 ms.
+- `NetworkPolicy` (`python-runtime-pool-restrict-egress`): default-denies egress for every sandbox pod except DNS. This provides concrete containment: the CNI drops packets at the node rather than relying on cluster-default policies.
 
 Verify the warm pool pods are running:
 
@@ -155,7 +155,7 @@ Verify the warm pool pods are running:
 kubectl get pods -l app=python-runtime-pool
 ```
 
-Based on the configuration of the SandboxWarmpool, we expect 6 gVisor Pods to be running:
+The SandboxWarmPool configuration keeps six gVisor Pods running:
 
 ```bash
 GVISOR_POD=$(kubectl get pod -l app=python-runtime-pool -o jsonpath='{.items[0].metadata.name}')
@@ -187,7 +187,7 @@ gcloud storage buckets add-iam-policy-binding "gs://<BUCKET_NAME>" \
     --role="roles/storage.objectUser"
 ```
 
-And grant the GKE Pod Snapshot controller access to the bucket:
+Grant the GKE Pod Snapshot controller access to the bucket:
 
 ```bash
 gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
@@ -198,10 +198,10 @@ gcloud projects add-iam-policy-binding "<PROJECT_ID>" \
 
 Then download [`sandbox-snapshot.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/snapshots/sandbox-snapshot.yaml), replace `SNAPSHOT_BUCKET_NAME` with your bucket name, and apply it. It creates:
 
-- `ServiceAccount` (`sandbox-snapshot-ksa`) — the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it, and the egress policy below closes the metadata-server path to the pool's cloud credentials.
-- `PodSnapshotStorageConfig` — points Pod Snapshots at your bucket.
-- `PodSnapshotPolicy` — selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The SDK requires the grouping rule because it guarantees a sandbox restores only from its own snapshots.
-- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`) — 4 pre-warmed gVisor sandboxes, separate from the pool above. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while the suspend and resume example's Ray actors connect to the sandbox pod IP directly. On a NetworkPolicy-enforcing cluster the managed policy would block them. The manifest instead ships its own `python-snapshot-pool-restrict-egress` NetworkPolicy: default-deny egress with DNS only, which blocks untrusted code from reaching the GKE metadata server and using the pool's Workload Identity credentials. Snapshot checkpoints are unaffected because uploads run through the node-side snapshot agent.
+- `ServiceAccount` (`sandbox-snapshot-ksa`): the identity the sandbox pods run as, used by Pod Snapshots to write to the bucket. The token is not mounted into the sandbox container, so untrusted code can't use it, and the egress policy below closes the metadata-server path to the pool's cloud credentials.
+- `PodSnapshotStorageConfig`: points Pod Snapshots at your bucket.
+- `PodSnapshotPolicy`: selects the pool's pods, uses `manual` triggers (the SDK creates `PodSnapshotManualTrigger` resources), and groups snapshots by the `agents.x-k8s.io/sandbox-name-hash` label. The SDK requires the grouping rule because it guarantees a sandbox restores only from its own snapshots.
+- `SandboxTemplate` and `SandboxWarmPool` (`python-snapshot-pool`): four pre-warmed gVisor sandboxes, separate from the pool above. The template sets `networkPolicyManagement: Unmanaged` because the controller's default Managed policy only admits ingress via the sandbox-router, while the suspend and resume example's Ray actors connect to the sandbox pod IP directly. On a NetworkPolicy-enforcing cluster the managed policy would block them. The manifest instead ships its own `python-snapshot-pool-restrict-egress` NetworkPolicy: default-deny egress with DNS only, which blocks untrusted code from reaching the GKE metadata server and using the pool's Workload Identity credentials. Snapshot checkpoints are unaffected because uploads run through the node-side snapshot agent.
 
 ```bash
 kubectl apply -f sandbox-snapshot.yaml
@@ -217,10 +217,10 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 ```
 
 The RayJob is configured to do the following:
-1. Create a RayCluster 
-2. Submit a Ray job that runs `sandboxed_code_execution.py` on the Ray cluster
-3. The driver script will run Ray actors that use the Agent Sandbox Python SDK to invoke Sandbox creation. 
-4. Once the Sandbox environments are created, the actor will execute some code in the sandboxed environment and verify its output. 
+1. Create a RayCluster.
+2. Submit a Ray job that runs `sandboxed_code_execution.py` on the Ray cluster.
+3. Run Ray actors in the driver script that use the Agent Sandbox Python SDK to create Sandboxes.
+4. Execute code in each sandboxed environment from the actors and verify the output.
 
 ### Step 7: Verify the output
 
@@ -234,9 +234,9 @@ kubectl get pods -l job-name=agent-sandbox-code-execution-demo
 kubectl logs -f -l job-name=agent-sandbox-code-execution-demo
 ```
 
-Once the job starts, two `SandboxExecutor` Ray actors each claim one pod from `python-runtime-pool` (the SDK reports per-actor adoption latency, sub-200ms when the warm pool is healthy). Every Python snippet that follows runs inside the sandbox pod, never on the Ray worker. gVisor isolates the syscall surface, the `python-runtime-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call. 
+Once the job starts, two `SandboxExecutor` Ray actors each claim one Pod from `python-runtime-pool`. The SDK reports per-actor adoption latency, which stays under 200 ms when the warm pool is healthy. Every Python snippet that follows runs inside the sandbox pod, never on the Ray worker. gVisor isolates the syscall surface, the `python-runtime-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call.
 
-Expected output (abridged):
+Expected output, abridged:
 
 ```
 Starting 2 SandboxExecutors...
@@ -324,7 +324,7 @@ You can also watch the machinery directly while the job runs:
 # Snapshots being written per sandbox
 kubectl get podsnapshots.podsnapshot.gke.io
 
-# Suspend/resume reflected on the Sandbox resources
+# Suspend and resume state reflected on the Sandbox resources
 kubectl get sandboxes -o custom-columns=NAME:.metadata.name,MODE:.spec.operatingMode
 ```
 
