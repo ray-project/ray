@@ -184,7 +184,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
     return;
   }
 
-  AddDeadNodeToCache(node);
+  const bool node_retained = AddDeadNodeToCache(node);
   auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->mutable_death_info()->CopyFrom(request.node_death_info());
@@ -204,8 +204,11 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
       },
       "GcsNodeManager.PublishNodeDeathOnUnregister");
 
-  auto on_put_done = [this, node](const Status &status) {
+  auto on_put_done = [this, node, node_id, node_retained](const Status &status) {
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
+    if (!node_retained) {
+      gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
+    }
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -707,7 +710,7 @@ void GcsNodeManager::InternalOnNodeFailure(
     auto node = RemoveNodeFromCache(
         node_id, death_info, rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
 
-    AddDeadNodeToCache(node);
+    const bool node_retained = AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
     node_info_delta.set_node_id(node->node_id());
     node_info_delta.set_state(node->state());
@@ -742,13 +745,17 @@ void GcsNodeManager::InternalOnNodeFailure(
         },
         "GcsNodeManager.PublishNodeDeathOnFailure");
 
-    auto on_done =
-        [this, node_table_updated_callback, node](const Status &status) mutable {
-          WriteNodeExportEvent(*node, /*is_register_event*/ false);
-          if (node_table_updated_callback != nullptr) {
-            node_table_updated_callback();
-          }
-        };
+    auto on_done = [this, node_table_updated_callback, node, node_id, node_retained](
+                       const Status &status) mutable {
+      WriteNodeExportEvent(*node, /*is_register_event*/ false);
+      if (!node_retained) {
+        gcs_table_storage_->NodeTable().Delete(node_id,
+                                               {[](const auto &) {}, io_context_});
+      }
+      if (node_table_updated_callback != nullptr) {
+        node_table_updated_callback();
+      }
+    };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
   } else if (node_table_updated_callback != nullptr) {
@@ -789,18 +796,36 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       sorted_dead_node_list_.begin(),
       sorted_dead_node_list_.end(),
       [](const auto &left, const auto &right) { return left.second < right.second; });
+  const size_t capacity = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  while (dead_nodes_.size() > capacity) {
+    RAY_CHECK_EQ(dead_nodes_.size(), sorted_dead_node_list_.size());
+    RAY_CHECK(!sorted_dead_node_list_.empty());
+    const NodeID node_id = sorted_dead_node_list_.front().first;
+    RAY_CHECK(dead_nodes_.contains(node_id));
+    gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
+    dead_nodes_.erase(node_id);
+    sorted_dead_node_list_.pop_front();
+  }
 }
 
-void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
-  if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    const auto &node_id = sorted_dead_node_list_.front().first;
+bool GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
+  const size_t capacity = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  if (capacity == 0) {
+    return false;
+  }
+  if (dead_nodes_.size() >= capacity) {
+    RAY_CHECK_EQ(dead_nodes_.size(), sorted_dead_node_list_.size());
+    RAY_CHECK(!sorted_dead_node_list_.empty());
+    const NodeID node_id = sorted_dead_node_list_.front().first;
+    RAY_CHECK(dead_nodes_.contains(node_id));
     gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
-    dead_nodes_.erase(sorted_dead_node_list_.front().first);
+    dead_nodes_.erase(node_id);
     sorted_dead_node_list_.pop_front();
   }
   auto node_id = NodeID::FromBinary(node->node_id());
-  dead_nodes_.emplace(node_id, node);
+  RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
   sorted_dead_node_list_.emplace_back(node_id, node->end_time_ms());
+  return true;
 }
 
 void GcsNodeManager::PublishNodeInfoToPubsub(const NodeID &node_id,

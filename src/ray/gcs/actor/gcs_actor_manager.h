@@ -373,7 +373,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// entry is evicted.
   ///
   /// \param actor The killed actor to snapshot.
-  void AddDestroyedActorObservabilityData(const GcsActor &actor);
+  /// \return Whether the actor was retained.
+  bool AddDestroyedActorObservabilityData(const GcsActor &actor);
 
   rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
     rpc::ActorTableData actor_delta;

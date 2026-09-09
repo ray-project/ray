@@ -31,4 +31,12 @@ TEST_F(RayConfigTest, ConvertValueTrimsVectorElements) {
   ASSERT_EQ(output, expected_output);
 }
 
+TEST_F(RayConfigTest, AcceptsZeroObservabilityCacheCapacities) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_node_cached_count": 0,)"
+                                   R"("maximum_gcs_destroyed_actor_cached_count": 0})");
+
+  EXPECT_EQ(RayConfig::instance().maximum_gcs_dead_node_cached_count(), 0u);
+  EXPECT_EQ(RayConfig::instance().maximum_gcs_destroyed_actor_cached_count(), 0u);
+}
+
 }  // namespace ray

@@ -24,6 +24,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
@@ -43,6 +44,15 @@ class RecordingPublisher : public pubsub::FakePublisher {
 
  private:
   std::atomic_int *publish_count_;
+};
+
+class TestGcsInitData : public gcs::GcsInitData {
+ public:
+  using gcs::GcsInitData::GcsInitData;
+
+  void SetNodeTableData(absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_data) {
+    node_table_data_ = std::move(node_data);
+  }
 };
 
 class GcsNodeManagerTest : public ::testing::Test {
@@ -272,6 +282,93 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
   while (io_context_->poll() > 0) {
   }
   ASSERT_FALSE(fake_ray_event_recorder_->FlushBuffer().empty());
+}
+
+TEST_F(GcsNodeManagerTest, TestZeroDeadNodeRetention) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_node_cached_count": 0})");
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  const NodeID node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+
+  rpc::UnregisterNodeRequest request;
+  request.set_node_id(node->node_id());
+  request.mutable_node_death_info()->set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  rpc::UnregisterNodeReply reply;
+  node_manager.HandleUnregisterNode(
+      request,
+      &reply,
+      [](ray::Status, std::function<void()>, std::function<void()>) {},
+      "");
+  while (io_context_->poll() > 0) {
+  }
+
+  EXPECT_TRUE(node_manager.GetAllDeadNodes().empty());
+  bool checked = false;
+  gcs_table_storage_->NodeTable().Get(
+      node_id,
+      {[&checked](Status status, std::optional<rpc::GcsNodeInfo> node_info) {
+         EXPECT_TRUE(status.ok());
+         EXPECT_FALSE(node_info.has_value());
+         checked = true;
+       },
+       *io_context_});
+  while (io_context_->poll() > 0) {
+  }
+  EXPECT_TRUE(checked);
+  RayConfig::instance().initialize("");
+}
+
+TEST_F(GcsNodeManagerTest, TestInitializeWithZeroDeadNodeRetention) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_node_cached_count": 0})");
+  auto node = GenNodeInfo();
+  node->set_state(rpc::GcsNodeInfo::DEAD);
+  node->set_end_time_ms(1);
+  const NodeID node_id = NodeID::FromBinary(node->node_id());
+  gcs_table_storage_->NodeTable().Put(
+      node_id, *node, {[](const auto &) {}, *io_context_});
+  while (io_context_->poll() > 0) {
+  }
+
+  TestGcsInitData init_data(*gcs_table_storage_);
+  init_data.SetNodeTableData({{node_id, *node}});
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  node_manager.Initialize(init_data);
+  while (io_context_->poll() > 0) {
+  }
+
+  EXPECT_TRUE(node_manager.GetAllDeadNodes().empty());
+  bool checked = false;
+  gcs_table_storage_->NodeTable().Get(
+      node_id,
+      {[&checked](Status status, std::optional<rpc::GcsNodeInfo> node_info) {
+         EXPECT_TRUE(status.ok());
+         EXPECT_FALSE(node_info.has_value());
+         checked = true;
+       },
+       *io_context_});
+  while (io_context_->poll() > 0) {
+  }
+  EXPECT_TRUE(checked);
+  RayConfig::instance().initialize("");
 }
 
 TEST_F(GcsNodeManagerTest, TestManagement) {

@@ -263,7 +263,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// evicted.
   ///
   /// \param node The node which is dead.
-  void AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
+  /// \return Whether the node was retained.
+  bool AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Remove a node from alive nodes cache. The node's death information will also be set.

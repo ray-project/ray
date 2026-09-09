@@ -1103,8 +1103,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   mutable_actor_table_data->set_timestamp(time);
 
   const bool is_restartable = IsActorRestartable(*mutable_actor_table_data);
+  bool actor_retained = false;
   if (!is_restartable) {
-    AddDestroyedActorObservabilityData(*it->second);
+    actor_retained = AddDestroyedActorObservabilityData(*it->second);
     // Now that the lightweight observability snapshot is stored, drop the
     // shared_ptr in registered_actors_. The heavy GcsActor (with task_spec_
     // and lease_spec_) is freed at this point since it has no other owner.
@@ -1130,12 +1131,16 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor_id,
         actor_table_data,
         is_restartable,
+        actor_retained,
         done_callback = std::move(done_callback)](Status status) {
          if (done_callback) {
            done_callback();
          }
          gcs_publisher_->PublishActor(actor_id,
                                       GenActorDataOnlyWithStates(*actor_table_data));
+         if (!is_restartable && !actor_retained) {
+           gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
+         }
          if (!is_restartable) {
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
@@ -1760,6 +1765,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   std::vector<ActorID> dead_actors;
+  std::vector<std::pair<ActorID, const rpc::ActorTableData *>> actor_history;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
     // We only load actors which are supposed to be alive:
     //   - Actors whose state != DEAD.
@@ -1820,13 +1826,29 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      // Populate the observability cache from persisted actors. Bump the state counter.
-      destroyed_actor_observability_data_.emplace(actor_id, actor_table_data);
-      actor_state_counter_->Increment(
-          {actor_table_data.state(), actor_table_data.class_name()});
-      sorted_destroyed_actor_observability_list_.emplace_back(
-          actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
+      actor_history.emplace_back(actor_id, &actor_table_data);
     }
+  }
+  std::sort(actor_history.begin(),
+            actor_history.end(),
+            [](const auto &left, const auto &right) {
+              return left.second->timestamp() < right.second->timestamp();
+            });
+  const size_t capacity =
+      RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  const size_t first_retained_index =
+      actor_history.size() - std::min(capacity, actor_history.size());
+  for (size_t index = first_retained_index; index < actor_history.size(); ++index) {
+    const auto &[actor_id, actor_table_data] = actor_history[index];
+    destroyed_actor_observability_data_.emplace(actor_id, *actor_table_data);
+    actor_state_counter_->Increment(
+        {actor_table_data->state(), actor_table_data->class_name()});
+    sorted_destroyed_actor_observability_list_.emplace_back(
+        actor_id, static_cast<int64_t>(actor_table_data->timestamp()));
+  }
+  for (size_t index = 0; index < first_retained_index; ++index) {
+    const auto &[actor_id, actor_table_data] = actor_history[index];
+    gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
   }
   if (!dead_actors.empty()) {
     gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors,
@@ -1981,9 +2003,16 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
   }
 }
 
-void GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) {
-  if (destroyed_actor_observability_data_.size() >=
-      RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
+bool GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) {
+  const size_t capacity =
+      RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  if (capacity == 0) {
+    return false;
+  }
+  if (destroyed_actor_observability_data_.size() >= capacity) {
+    RAY_CHECK_EQ(destroyed_actor_observability_data_.size(),
+                 sorted_destroyed_actor_observability_list_.size());
+    RAY_CHECK(!sorted_destroyed_actor_observability_list_.empty());
     const auto &evict_id = sorted_destroyed_actor_observability_list_.front().first;
 
     // Mirror GcsActor::~GcsActor: decrement the counter for non-DEAD states on eviction.
@@ -2000,11 +2029,12 @@ void GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) 
   }
 
   const auto &actor_id = actor.GetActorID();
-  if (destroyed_actor_observability_data_.emplace(actor_id, actor.GetActorTableData())
-          .second) {
-    sorted_destroyed_actor_observability_list_.emplace_back(
-        actor_id, static_cast<int64_t>(actor.GetActorTableData().timestamp()));
-  }
+  RAY_CHECK(
+      destroyed_actor_observability_data_.emplace(actor_id, actor.GetActorTableData())
+          .second);
+  sorted_destroyed_actor_observability_list_.emplace_back(
+      actor_id, static_cast<int64_t>(actor.GetActorTableData().timestamp()));
+  return true;
 }
 
 void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor) {

@@ -227,6 +227,11 @@ class GcsActorManagerTest : public ::testing::Test {
                : nullptr;
   }
 
+  Status CreateActor(const rpc::CreateActorRequest &request,
+                     gcs::CreateActorCallback callback) {
+    return gcs_actor_manager_->CreateActor(request, std::move(callback));
+  }
+
   void OnNodeDead(const NodeID &node_id) {
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_node_id(node_id.Binary());
@@ -273,6 +278,11 @@ class GcsActorManagerTest : public ::testing::Test {
 
   size_t RegisteredActorCount(const gcs::GcsActorManager &actor_manager) const {
     return actor_manager.registered_actors_.size();
+  }
+
+  bool DestroyedActorHistoryEmpty(const gcs::GcsActorManager &actor_manager) const {
+    return actor_manager.destroyed_actor_observability_data_.empty() &&
+           actor_manager.sorted_destroyed_actor_observability_list_.empty();
   }
 
   std::shared_ptr<gcs::GcsActor> GetRegisteredActor(
@@ -580,6 +590,75 @@ TEST_F(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter) {
 
   // Cache is still at the configured cap.
   ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 10u);
+}
+
+TEST_F(GcsActorManagerTest, TestZeroDestroyedActorRetention) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_destroyed_actor_cached_count": 0})");
+  auto registered_actor = RegisterActor(JobID::FromInt(1));
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+  RAY_CHECK_OK(CreateActor(create_actor_request,
+                           [](const std::shared_ptr<gcs::GcsActor> &,
+                              const rpc::PushTaskReply &,
+                              const Status &) {}));
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+  actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  const ActorID actor_id = actor->GetActorID();
+
+  ASSERT_TRUE(worker_client_->Reply());
+  drain_io_context();
+
+  EXPECT_TRUE(DestroyedActorHistoryEmpty(*gcs_actor_manager_));
+  bool checked = false;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&checked](Status status, std::optional<rpc::ActorTableData> actor_data) {
+         EXPECT_TRUE(status.ok());
+         EXPECT_FALSE(actor_data.has_value());
+         checked = true;
+       },
+       io_service_});
+  drain_io_context();
+  EXPECT_TRUE(checked);
+  RayConfig::instance().initialize(R"({"maximum_gcs_destroyed_actor_cached_count": 10})");
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeWithZeroDestroyedActorRetention) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_destroyed_actor_cached_count": 0})");
+  const JobID job_id = JobID::FromInt(1);
+  const ActorID actor_id = ActorID::Of(job_id, TaskID::FromRandom(job_id), /*counter=*/0);
+  rpc::ActorTableData actor_data;
+  actor_data.set_actor_id(actor_id.Binary());
+  actor_data.set_state(rpc::ActorTableData::DEAD);
+  actor_data.set_max_restarts(0);
+  actor_data.set_timestamp(1);
+  gcs_table_storage_->ActorTable().Put(
+      actor_id, actor_data, {[](const auto &) {}, io_service_});
+  drain_io_context();
+
+  TestGcsInitData init_data(*gcs_table_storage_);
+  init_data.SetActorTableData({{actor_id, actor_data}});
+  auto actor_manager = CreateActorManagerForInitializeTest();
+  actor_manager->Initialize(init_data);
+  drain_io_context();
+
+  EXPECT_TRUE(DestroyedActorHistoryEmpty(*actor_manager));
+  bool checked = false;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&checked](Status status, std::optional<rpc::ActorTableData> actor_data) {
+         EXPECT_TRUE(status.ok());
+         EXPECT_FALSE(actor_data.has_value());
+         checked = true;
+       },
+       io_service_});
+  drain_io_context();
+  EXPECT_TRUE(checked);
+  RayConfig::instance().initialize(R"({"maximum_gcs_destroyed_actor_cached_count": 10})");
 }
 
 TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {
