@@ -54,7 +54,6 @@ namespace ray {
 namespace go {
 
 // Forward declaration
-struct CSerializedObjectArray;
 class TaskArgument;
 
 /**
@@ -137,39 +136,6 @@ class TaskExecutorOperations {
    */
   bool HasExecutorCallback() const;
 
-  /**
-   * @brief Execute a task synchronously
-   *
-   * This method submits a task and returns the results. It's used for
-   * direct task execution (not through the callback mechanism).
-   *
-   * @param function_descriptor Function descriptor components
-   * @param args Task arguments
-   * @param num_returns Number of return values
-   * @return Vector of result objects (empty on error)
-   * @throws std::exception on error
-   */
-  std::vector<std::shared_ptr<ray::RayObject>> ExecuteTask(
-      const std::vector<std::string> &function_descriptor,
-      const std::vector<std::unique_ptr<ray::go::TaskArgument>> &args,
-      int num_returns);
-
-  /**
-   * @brief Execute an actor task synchronously
-   *
-   * @param actor_id Target actor ID
-   * @param function_descriptor Function descriptor components
-   * @param args Task arguments
-   * @param num_returns Number of return values
-   * @return Vector of result objects (empty on error)
-   * @throws std::exception on error
-   */
-  std::vector<std::shared_ptr<ray::RayObject>> ExecuteActorTask(
-      const ray::ActorID &actor_id,
-      const std::vector<std::string> &function_descriptor,
-      const std::vector<std::unique_ptr<ray::go::TaskArgument>> &args,
-      int num_returns);
-
  private:
   TaskExecutorOperations() = default;
   ~TaskExecutorOperations() = default;
@@ -191,6 +157,14 @@ class TaskExecutorOperations {
   mutable std::mutex callback_mutex_;
   TaskExecutionCallback executor_callback_{nullptr};
 };
+
+/**
+ * @brief Creates an error object with the given message and error type.
+ * The object carries the error type in its metadata and the message in its
+ * data buffer, using the same encoding the Go side parses.
+ */
+std::shared_ptr<ray::RayObject> CreateErrorObject(const std::string &error_message,
+                                                  ray::rpc::ErrorType error_type);
 
 }  // namespace go
 }  // namespace ray

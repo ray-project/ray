@@ -147,10 +147,11 @@ std::shared_ptr<ray::RayObject> RuntimeOperations::AllocateObject(
   if (!object.HasData()) {
     RAY_LOG(DEBUG) << "AllocateObject: metadata-only object, "
                    << "object_id=" << object_id.Hex();
-    // Return a new RayObject with the same metadata but no data
-    return std::make_shared<ray::RayObject>(object.GetMetadata(),
-                                            /*data=*/nullptr,
-                                            object.GetNestedRefs());
+    // Return a new RayObject with the same metadata but no data.
+    // RayObject's three-argument constructor is (data, metadata, nested_refs),
+    // so the data slot must be null and the metadata second.
+    return std::make_shared<ray::RayObject>(
+        /*data=*/nullptr, object.GetMetadata(), object.GetNestedRefs());
   }
 
   // Case 2: Object has actual data, allocate in Go heap

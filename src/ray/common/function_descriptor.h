@@ -429,9 +429,16 @@ class FunctionDescriptorBuilder {
                                      const std::string &caller = "",
                                      const std::string &class_name = "");
 
-  /// Build a GoFunctionDescriptor.
-  ///
-  /// \return a ray::GoFunctionDescriptor
+  /**
+   * @brief Build a GoFunctionDescriptor.
+   *
+   * @param module_name Module name of the function's package.
+   * @param package_path Package path of the function's package.
+   * @param function_name Function name (or class name for actor constructors).
+   * @param method_name Method name for actor method calls (empty otherwise).
+   *
+   * \return a ray::GoFunctionDescriptor
+   */
   static FunctionDescriptor BuildGo(const std::string &module_name,
                                     const std::string &package_path,
                                     const std::string &function_name,

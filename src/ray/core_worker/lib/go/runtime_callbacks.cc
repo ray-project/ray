@@ -27,6 +27,7 @@
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/lib/go/cgo_wrapper.h"
 #include "ray/core_worker/lib/go/native_task_executor.h"
+#include "ray/core_worker/lib/go/task_executor_ops.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 
@@ -223,10 +224,37 @@ CreateTaskExecutionCallback() {
         // and abort the worker.
         return ray::Status::CreationTaskError(*application_error);
       }
-      // Tasks without return slots cannot carry an error object; record the
-      // failure via the application error instead of failing the worker.
-      RAY_LOG(ERROR) << *application_error
-                     << "; task has no return slots to carry an error object";
+      // For tasks with return slots, surface the failure as an error object
+      // in every slot (the upstream contract for user exceptions: OK status +
+      // application_error + populated returns). Returning OK with empty slots
+      // would trip RAY_CHECK(objects_valid) in TaskReceiver and abort the
+      // worker. Zero-return tasks cannot carry an error object; the failure
+      // is conveyed via the application error alone.
+      if (!returns->empty()) {
+        for (auto &ret : *returns) {
+          auto error_object = ray::go::CreateErrorObject(
+              *application_error, ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+          int64_t task_output_inlined_bytes = 0;
+          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+              ret.first,
+              error_object->GetData()->Size(),
+              error_object->GetMetadata(),
+              /*contained_ids=*/{},
+              caller_address,
+              &task_output_inlined_bytes,
+              &ret.second));
+          if (ret.second != nullptr && error_object->GetData() != nullptr) {
+            memcpy(ret.second->GetData()->Data(),
+                   error_object->GetData()->Data(),
+                   error_object->GetData()->Size());
+          }
+          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+              ret.first, ret.second, ray::ObjectID::Nil(), caller_address));
+        }
+      } else {
+        RAY_LOG(ERROR) << *application_error
+                       << "; task has no return slots to carry an error object";
+      }
       return ray::Status::OK();
     }
 

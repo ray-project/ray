@@ -97,47 +97,6 @@ void RegisterGoTaskExecutorCallback(void);
 // This function should be called once during Go runtime initialization.
 void CNativeTaskExecutor_RegisterCallback(GoTaskExecutorCallback callback);
 
-// CNativeTaskExecutor_Execute executes a normal task directly.
-//
-// Parameters:
-//   function_descriptor - Array of function descriptor strings
-//   function_descriptor_count - Number of elements in function_descriptor array
-//   args - Array of function arguments
-//   args_count - Number of arguments
-//   num_returns - Number of expected return values
-//
-// Returns:
-//   CSerializedObjectArray* containing execution results, or NULL on failure.
-//   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray *CNativeTaskExecutor_Execute(const char **function_descriptor,
-                                                    int function_descriptor_count,
-                                                    const CFunctionArg *args,
-                                                    int args_count,
-                                                    int num_returns);
-
-// CNativeTaskExecutor_ExecuteActorTask executes an actor task.
-//
-// Parameters:
-//   actor_id_data - Binary data of actor ID
-//   actor_id_size - Size of actor ID binary data
-//   function_descriptor - Array of function descriptor strings
-//   function_descriptor_count - Number of elements in function_descriptor array
-//   args - Array of function arguments
-//   args_count - Number of arguments
-//   num_returns - Number of expected return values
-//
-// Returns:
-//   CSerializedObjectArray* containing execution results, or NULL on failure.
-//   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray *CNativeTaskExecutor_ExecuteActorTask(
-    const char *actor_id_data,
-    int actor_id_size,
-    const char **function_descriptor,
-    int function_descriptor_count,
-    const CFunctionArg *args,
-    int args_count,
-    int num_returns);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

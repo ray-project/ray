@@ -173,7 +173,16 @@ const char *CFunctionArg_GetValueMetadata(const CFunctionArg *arg);
 // Get value argument metadata size
 int CFunctionArg_GetValueMetadataSize(const CFunctionArg *arg);
 
-// Set reference argument (for FUNCTION_ARG_TYPE_REFERENCE)
+/**
+ * @brief Sets a by-reference argument (FUNCTION_ARG_TYPE_REFERENCE) pointing
+ * at an object owned by another worker.
+ *
+ * @param arg Target CFunctionArg.
+ * @param object_id_data Binary ObjectID bytes (copied).
+ * @param object_id_size Size of the ObjectID bytes.
+ * @param owner_address Serialized owner address protobuf (copied).
+ * @param owner_address_size Size of the owner address bytes.
+ */
 void CFunctionArg_SetReference(CFunctionArg *arg,
                                const char *object_id_data,
                                int object_id_size,

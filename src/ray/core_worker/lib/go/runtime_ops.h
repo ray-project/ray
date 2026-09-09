@@ -95,6 +95,16 @@ class RuntimeOperations {
   RuntimeOperations &operator=(const RuntimeOperations &) = delete;
 
   // Internal helper methods
+
+  /**
+   * @brief Creates the CoreWorker with the caller's cluster identity.
+   *
+   * @param options Runtime initialization options.
+   * @param cluster_id Cluster ID resolved by Initialize (caller-supplied for
+   * workers, fetched-or-Nil for drivers).
+   * @param fetch_cluster_id_if_nil Whether GCS connect should fetch the cluster
+   * ID when it is Nil (drivers only).
+   */
   void InitializeCoreWorker(const RuntimeInitializeOptions &options,
                             const ray::ClusterID &cluster_id,
                             bool fetch_cluster_id_if_nil);
