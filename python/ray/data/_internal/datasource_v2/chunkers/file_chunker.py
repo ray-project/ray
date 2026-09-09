@@ -94,6 +94,16 @@ class FileChunker(abc.ABC):
     - Parquet files can be chunked by row groups
     """
 
+    @property
+    def requires_file_io(self) -> bool:
+        """Whether chunk planning opens and reads file contents.
+
+        Most chunkers derive ranges from the listed file size alone. Formats
+        that inspect headers or footers override this so ``ListFiles`` can use
+        normal backpressure instead of its metadata-only fast path.
+        """
+        return False
+
     @abc.abstractmethod
     def generate_chunk_metadatas(
         self, path: str, file_size: int

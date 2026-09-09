@@ -24,10 +24,16 @@ import logging
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+    _split_blocks,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
@@ -75,22 +81,41 @@ def plan_read_files_op(
                     table = block_udf(table)
                 yield table
 
-    return MapOperator.create(
-        MapTransformer(
-            [
-                BlockMapTransformFn(
-                    do_read,
-                    is_udf=False,
-                    output_block_size_option=OutputBlockSizeOption.of(
-                        target_max_block_size=data_context.target_max_block_size,
-                    ),
-                ),
-            ]
+    read_transform = BlockMapTransformFn(
+        do_read,
+        is_udf=False,
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_max_block_size=data_context.target_max_block_size,
         ),
+    )
+
+    def read_and_split(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            factor = FileManifest(block).output_split_factor
+            # Shape first so a large file stays bounded, then split each output
+            # block. Never coalesce the additional splits back together.
+            outputs = read_transform([block], ctx)
+            yield from _split_blocks(outputs, factor) if factor > 1 else outputs
+
+    partitioner = op.input_dependencies[0].file_partitioner
+    explicit_block_target = (
+        isinstance(partitioner, RoundRobinPartitioner)
+        and partitioner.requires_global_input
+    )
+    transform = (
+        BlockMapTransformFn(read_and_split, disable_block_shaping=True)
+        if explicit_block_target
+        else read_transform
+    )
+    return MapOperator.create(
+        MapTransformer([transform]),
         upstream,
         data_context,
         name=op.name,
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
         isolate_workers=data_context.isolate_read_workers,
+        # As with V1's additional split factor, preserve the split boundary so
+        # downstream tasks can consume the requested number of output blocks.
+        supports_fusion=not explicit_block_target,
     )

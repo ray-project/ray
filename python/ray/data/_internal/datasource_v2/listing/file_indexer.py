@@ -36,6 +36,11 @@ class FileIndexer(ABC):
         """The file chunker that this indexer uses."""
         ...
 
+    @property
+    def requires_file_io(self) -> bool:
+        """Whether listing reads file contents in addition to file metadata."""
+        return self.file_chunker.requires_file_io
+
     @abstractmethod
     def list_files(
         self,

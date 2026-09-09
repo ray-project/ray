@@ -30,6 +30,21 @@ class InMemorySizeEstimator(ABC):
 
 
 @DeveloperAPI
+class IdentityInMemorySizeEstimator(InMemorySizeEstimator):
+    """Use the manifest's on-disk sizes as the in-memory size estimate.
+
+    This value is a task-bucketing weight, not an upper bound on decoded Arrow
+    memory. It matches the legacy file-based datasource estimate for formats
+    like CSV whose decoded size isn't cheaply available during distributed
+    file listing. More specialized formats can provide a fixed expansion ratio
+    or a metadata-aware estimator instead.
+    """
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        return manifest.file_sizes
+
+
+@DeveloperAPI
 class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
     """Estimates in-memory sizes by reading files.
 

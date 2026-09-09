@@ -49,6 +49,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
+    from pyarrow.fs import FileSystem
 
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,74 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
+
+
+class _SnappyInputStream(io.RawIOBase):
+    """Incrementally decode Snappy without materializing the decompressed file."""
+
+    def __init__(self, file, decompressor):
+        super().__init__()
+        self._file = file
+        self._decompressor = decompressor
+        self._pending = memoryview(b"")
+        self._eof = False
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        if self.closed:
+            raise ValueError("read of closed Snappy stream")
+        if not buffer:
+            return 0
+        written = 0
+        while written < len(buffer):
+            if self._pending:
+                size = min(len(buffer) - written, len(self._pending))
+                buffer[written : written + size] = self._pending[:size]
+                self._pending = self._pending[size:]
+                written += size
+            elif self._eof:
+                break
+            else:
+                compressed = self._file.read(64 * 1024)
+                if compressed:
+                    decoded = self._decompressor.decompress(compressed)
+                else:
+                    decoded = self._decompressor.flush()
+                    self._eof = True
+                self._pending = memoryview(decoded)
+        return written
+
+    def close(self):
+        try:
+            if not self.closed:
+                self._file.close()
+                self._pending = memoryview(b"")
+        finally:
+            super().close()
+
+
+def _file_to_snappy_stream(
+    file: "pyarrow.NativeFile",
+    filesystem: "FileSystem",
+) -> "pyarrow.PythonFile":
+    """Decompress a streaming Snappy file into an Arrow-readable stream."""
+    import pyarrow as pa
+    import snappy
+    from pyarrow.fs import HadoopFileSystem
+
+    base_filesystem = (
+        filesystem.unwrap()
+        if isinstance(filesystem, RetryingPyFileSystem)
+        else filesystem
+    )
+    decompressor = (
+        snappy.HadoopStreamDecompressor()
+        if isinstance(base_filesystem, HadoopFileSystem)
+        else snappy.StreamDecompressor()
+    )
+    return pa.PythonFile(_SnappyInputStream(file, decompressor), mode="r")
 
 
 @DeveloperAPI
@@ -398,18 +467,7 @@ class FileBasedDatasource(Datasource):
         file: "pyarrow.NativeFile",
         filesystem: "RetryingPyFileSystem",
     ) -> "pyarrow.PythonFile":
-        import pyarrow as pa
-        import snappy
-        from pyarrow.fs import HadoopFileSystem
-
-        stream = io.BytesIO()
-        if isinstance(filesystem.unwrap(), HadoopFileSystem):
-            snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
-        else:
-            snappy.stream_decompress(src=file, dst=stream)
-        stream.seek(0)
-
-        return pa.PythonFile(stream, mode="r")
+        return _file_to_snappy_stream(file, filesystem)
 
     def _open_input_source(
         self,
