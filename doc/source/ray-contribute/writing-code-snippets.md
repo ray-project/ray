@@ -279,6 +279,49 @@ If your output is hard to test and you don't want to display a sample output, ex
     print("This output is hidden and untested")
 ```
 
+## How to test a Serve deployment example
+
+An example that starts a Ray Serve deployment needs more than an output check. A deployment can fail to start, or come up unhealthy, while an HTTP request against it still returns a response and the snippet's printed output still matches. An assert on the response alone passes in both cases, so it doesn't protect the example.
+
+To catch these failures, poll `serve.status()` until the application reaches `RUNNING`, and raise if it reaches `DEPLOY_FAILED` or `UNHEALTHY`, or if it doesn't converge before a timeout.
+
+```python
+import time
+
+from ray import serve
+from ray.serve.schema import ApplicationStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+
+status = ApplicationStatus.NOT_STARTED
+timeout_seconds = 180
+start_time = time.time()
+
+while status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds:
+    status = serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+    if status in [ApplicationStatus.DEPLOY_FAILED, ApplicationStatus.UNHEALTHY]:
+        raise AssertionError(f"Deployment failed with status: {status}")
+    time.sleep(1)
+
+if status != ApplicationStatus.RUNNING:
+    raise AssertionError(
+        f"Deployment failed to reach RUNNING status within {timeout_seconds}s. "
+        f"Current status: {status}"
+    )
+```
+
+Run the deployment with `serve.run(app, blocking=False)` in the tested file so the script continues to the poll instead of blocking on the running application. Finish with `serve.shutdown()` so the deployment doesn't leak into the next test.
+
+Keep the poll out of the rendered snippet so readers copy only the deployment code. Write the example as a standalone module, mark the part to show with comment anchors, and *literalinclude* only that range. CI runs the whole module, validation included.
+
+```
+.. literalinclude:: ./doc_code/serve_deployment_example.py
+    :language: python
+    :start-after: __example_start__
+    :end-before: __example_end__
+```
+
+For a working example, see `doc/source/llm/doc_code/serve/qwen/qwen_example.py` and `llm_yaml_config_example.py` in the same directory. Both render only the deployment snippet in the Serve LLM docs while CI runs the full module, including the status poll and the `serve.shutdown()` cleanup.
+
 ## How to test examples with GPUs
 
 To configure Bazel to run an example with GPUs, complete the following steps:
