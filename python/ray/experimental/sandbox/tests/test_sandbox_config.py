@@ -137,23 +137,24 @@ def test_gpu_ids_rejects_ids_outside_ray_assignment():
             SandboxConfig(image="python:3.10-slim", gpu_ids=["1"])
 
 
-@pytest.mark.parametrize(
-    "get_gpu_ids_kwargs",
-    [
-        {"return_value": []},
-        {"side_effect": RuntimeError("not in a task")},
-    ],
-    ids=["empty", "no_ray_context"],
-)
-def test_gpu_ids_rejected_when_ray_get_gpu_ids_is_empty(get_gpu_ids_kwargs):
+def test_gpu_ids_rejected_when_ray_get_gpu_ids_is_empty():
     """gpu_ids requires ray.get_gpu_ids() to be non-empty for the calling
     actor/task -- that's the only way to confirm a requested id is
     actually this actor/task's to use, and there's no fallback if it's
-    empty. Rejected outright whether because num_gpus was never requested
-    (empty list) or there's no Ray task/actor context at all (e.g.
-    SandboxRuntime used standalone from a plain script)."""
-    with patch("ray.get_gpu_ids", **get_gpu_ids_kwargs):
-        with pytest.raises(ValueError, match="ray.get_gpu_ids"):
+    empty (e.g. num_gpus was never requested)."""
+    with patch("ray.get_gpu_ids", return_value=[]):
+        with pytest.raises(ValueError, match="returned no"):
+            SandboxConfig(image="python:3.10-slim", gpu_ids=["0"])
+
+
+def test_gpu_ids_propagates_ray_get_gpu_ids_errors():
+    """Distinct from the empty-result case above: ray.get_gpu_ids() itself
+    raising (e.g. no Ray task/actor context, such as SandboxRuntime used
+    standalone from a plain script) must not be swallowed and reported as
+    a plain empty result -- that would misreport an unresolvable call as
+    "Ray assigned no GPUs", hiding the real problem."""
+    with patch("ray.get_gpu_ids", side_effect=RuntimeError("not in a task")):
+        with pytest.raises(RuntimeError, match="not in a task"):
             SandboxConfig(image="python:3.10-slim", gpu_ids=["0"])
 
 

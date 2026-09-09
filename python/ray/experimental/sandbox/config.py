@@ -196,10 +196,7 @@ class SandboxConfig:
                 f"gpu_ids must contain only non-empty strings, got {self.gpu_ids!r}."
             )
 
-        try:
-            assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
-        except Exception:
-            assigned_gpu_ids = []
+        assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
         if not assigned_gpu_ids:
             # ray.get_gpu_ids() is Ray's own scheduler bookkeeping of what
             # this actor/task was actually granted -- the only way to
