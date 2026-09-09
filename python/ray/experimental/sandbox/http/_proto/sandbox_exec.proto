@@ -1,0 +1,111 @@
+// Vendored command-router contract for the Ray Sandbox gRPC facade.
+//
+// Minimal subset of the third-party service the facade implements; see
+// sandbox_control.proto. Do not renumber fields. Regenerate the stubs after
+// editing (see README.md).
+
+syntax = "proto3";
+
+package modal.task_command_router;
+
+enum TaskExecStdioFileDescriptor {
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT = 0;
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR = 1;
+}
+
+message TaskExecStartRequest {
+  string task_id = 1;
+  string exec_id = 2;
+  repeated string command_args = 3;
+  optional uint32 timeout_secs = 6;
+  optional string workdir = 7;
+  repeated string secret_ids = 8;
+  map<string, string> env = 12;
+}
+
+message TaskExecStartResponse {}
+
+message TaskExecStdioReadRequest {
+  string exec_id = 2;
+  uint64 offset = 3;
+  TaskExecStdioFileDescriptor file_descriptor = 4;
+}
+
+message TaskExecStdioReadResponse {
+  bytes data = 1;
+}
+
+message TaskExecStdinWriteRequest {
+  string exec_id = 2;
+  uint64 offset = 3;
+  bytes data = 4;
+  bool eof = 5;
+}
+
+message TaskExecStdinWriteResponse {}
+
+message TaskExecStdinWriteStreamStart {
+  string task_id = 1;
+  string exec_id = 2;
+  uint64 offset = 3;
+}
+
+message TaskExecStdinWriteStreamEnd {}
+
+message TaskExecStdinWriteStreamRequest {
+  oneof payload {
+    TaskExecStdinWriteStreamStart start = 1;
+    bytes data = 2;
+    TaskExecStdinWriteStreamEnd end = 3;
+  }
+}
+
+message TaskExecStdinWriteStreamResponse {}
+
+message TaskExecStdinStatusRequest {
+  string exec_id = 2;
+}
+
+message TaskExecStdinStatusResponse {
+  uint64 num_bytes_written = 1;
+  bool closed = 2;
+}
+
+message TaskExecPollRequest {
+  string exec_id = 2;
+}
+
+message TaskExecPollResponse {
+  oneof exit_status {
+    int32 code = 1;
+  }
+}
+
+message TaskExecWaitRequest {
+  string exec_id = 2;
+}
+
+message TaskExecWaitResponse {
+  oneof exit_status {
+    int32 code = 1;
+  }
+}
+
+message TaskSetNetworkAccessRequest {}
+
+message TaskSetNetworkAccessResponse {}
+
+service TaskCommandRouter {
+  rpc TaskExecStart(TaskExecStartRequest) returns (TaskExecStartResponse);
+  rpc TaskExecStdioRead(TaskExecStdioReadRequest)
+      returns (stream TaskExecStdioReadResponse);
+  rpc TaskExecStdinWrite(TaskExecStdinWriteRequest) returns (TaskExecStdinWriteResponse);
+  rpc TaskExecStdinWriteStream(stream TaskExecStdinWriteStreamRequest)
+      returns (TaskExecStdinWriteStreamResponse);
+  rpc TaskExecStdinStatus(TaskExecStdinStatusRequest)
+      returns (TaskExecStdinStatusResponse);
+  rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
+  rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
+  rpc TaskSetNetworkAccess(TaskSetNetworkAccessRequest)
+      returns (TaskSetNetworkAccessResponse);
+}
