@@ -51,6 +51,30 @@ def test_sandbox_gpu_each_sandbox_gets_a_distinct_gpu():
             ray.kill(actor)
 
 
+def test_sandbox_gpu_sees_all_assigned_gpus():
+    """A single sandbox given num_gpus=2 sees exactly both GPUs -- the
+    other tests in this file only ever give a sandbox one GPU each, so
+    none of them exercise multiple frontend device nodes injected into
+    the same CDI spec."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    actor = Sandbox.options(num_gpus=2).remote(
+        image="nvidia/cuda:12.4.0-base-ubuntu22.04",
+    )
+    try:
+        result = ray.get(
+            actor.exec.remote("nvidia-smi --query-gpu=uuid --format=csv,noheader")
+        )
+        assert result.exit_code == 0, result.stderr
+        uuids = [line for line in result.stdout.strip().splitlines() if line]
+        assert len(uuids) == 2, f"expected exactly 2 GPUs visible, got {uuids}"
+        assert len(set(uuids)) == 2, f"expected 2 distinct GPUs, got {uuids}"
+    finally:
+        ray.get(actor.delete.remote())
+        ray.kill(actor)
+
+
 def test_sandbox_create_gpu_each_sandbox_gets_a_distinct_gpu():
     """Same as test_sandbox_gpu_each_sandbox_gets_a_distinct_gpu, but via
     create(num_gpus=1) rather than Sandbox.options(num_gpus=1).remote()
