@@ -56,6 +56,25 @@ def test_sandbox_create_gpu_nvidia_smi_sees_assigned_gpu():
         ray.kill(actor)
 
 
+def test_sandbox_gpu_nvidia_smi_runs_on_non_debian_image():
+    """Runs nvidia-smi in a sandbox on a RHEL UBI9-minimal image, whose
+    default library search path (/usr/lib64) differs from the other
+    tests' Debian-based images."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    actor = Sandbox.options(num_gpus=1).remote(
+        image="redhat/ubi9-minimal:latest",
+    )
+    try:
+        result = ray.get(actor.exec.remote("nvidia-smi"))
+        assert result.exit_code == 0, result.stderr
+        assert "NVIDIA-SMI" in result.stdout
+    finally:
+        ray.get(actor.delete.remote())
+        ray.kill(actor)
+
+
 def test_sandbox_gpu_cuda_vectoradd_runs_a_real_kernel():
     """nvidia-smi (the other tests in this file) only exercises NVML --
     read-only device queries, no CUDA context. This runs NVIDIA's standard
