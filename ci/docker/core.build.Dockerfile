@@ -24,21 +24,25 @@ EOF
 
 # nvidia-container-toolkit-base (nvidia-ctk), needed by
 # ray.experimental.sandbox's real GPU/CDI tests (gVisor --nvproxy; see
-# .buildkite/core.rayci.yml's "core: sandbox gpu tests" job).
+# .buildkite/core.rayci.yml's "core: sandbox gpu tests" job). Only
+# BUILD_VARIANT=gpubuild runs these tests, so CPU build variants skip
+# this rather than pulling in the extra external repo for nothing.
 RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
-apt-get update -qq
-apt-get install -y -qq gnupg
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-  | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-  > /etc/apt/sources.list.d/nvidia-container-toolkit.list
-apt-get update -qq
-apt-get install -y -qq nvidia-container-toolkit-base
-rm -rf /var/lib/apt/lists/*
+if [ "$BUILD_VARIANT" = "gpubuild" ]; then
+  apt-get update -qq
+  apt-get install -y -qq gnupg
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+    | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+    | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+    > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  apt-get update -qq
+  apt-get install -y -qq nvidia-container-toolkit-base
+  rm -rf /var/lib/apt/lists/*
+fi
 
 EOF
