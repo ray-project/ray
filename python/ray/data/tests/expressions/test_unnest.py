@@ -1,4 +1,5 @@
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -257,6 +258,56 @@ def test_unnest_is_registered_with_expr_visitor():
     assert not expr._is_pyarrow_convertible()
     with pytest.raises(TypeError, match="expands to multiple columns"):
         expr.to_pyarrow()
+
+
+def test_expand_projection_default_and_overrides():
+    """``Expr.expand_projection`` is the plan-time hook for expressions that
+    stand for more than one output column."""
+    from ray.data.expressions import star
+
+    schema = pa.schema([("stats", pa.struct([("h", pa.int64()), ("w", pa.int64())]))])
+
+    # The default: an ordinary expression is exactly one column, so it comes
+    # back untouched. (Identity, not ``==``: ``Expr.__eq__`` builds a
+    # comparison expression rather than answering a question.)
+    ordinary = col("stats")
+    default = ordinary.expand_projection(schema)
+    assert len(default) == 1 and default[0] is ordinary
+
+    # ``UnnestExpr`` overrides it: one aliased field access per struct field.
+    expanded = unnest(col("stats")).expand_projection(schema)
+    assert [e.name for e in expanded] == ["h", "w"]
+
+    # ``StarExpr`` opts out. Expanding a star rewrites sibling entries, which
+    # a per-expression hook cannot do, so it returns itself and the whole-list
+    # ``expand_star_exprs`` pass handles it.
+    star_expr = star()
+    star_result = star_expr.expand_projection(schema)
+    assert len(star_result) == 1 and star_result[0] is star_expr
+
+
+def test_expand_projection_exprs_dispatches_on_the_hook():
+    """The driver knows nothing about ``UnnestExpr`` — it just calls the hook.
+    A future multi-column expression (a regex column selector, say) only has
+    to override ``expand_projection`` to work everywhere unnest does."""
+    from ray.data.expressions import Expr, expand_projection_exprs
+
+    @dataclass(frozen=True, eq=False, repr=False)
+    class _PairOfColumns(Expr):
+        """Stands in for any future expression yielding several columns."""
+
+        data_type: DataType = field(
+            default_factory=lambda: DataType(object), init=False
+        )
+
+        def structurally_equals(self, other: Any) -> bool:
+            return isinstance(other, _PairOfColumns)
+
+        def expand_projection(self, input_schema: Optional["pa.Schema"]) -> List[Expr]:
+            return [col("a").alias("x"), col("b").alias("y")]
+
+    expanded = expand_projection_exprs([col("keep"), _PairOfColumns()], None)
+    assert [e.name for e in expanded] == ["keep", "x", "y"]
 
 
 if __name__ == "__main__":
