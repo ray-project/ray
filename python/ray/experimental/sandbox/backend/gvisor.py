@@ -34,42 +34,47 @@ _RUNSC_ROOT = "/tmp/runsc"
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
 # network="public" gives each sandbox a private user+network namespace pair
-# bridged by pasta (passt) user-mode networking, the rootless Podman shape:
+# bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
-# namespaces; pasta attaches to them from the pod side, so its uplink is the
-# pod's interface, and runs in the foreground inside the sandbox's process
-# group; runsc runs inside via nsenter as mapped root. runsc still gets
-# --network=host, but "host" is now private to the sandbox: binds cannot
+# namespaces; slirp4netns attaches to them from the pod side, so its uplink
+# is the pod's network, and runs in the foreground inside the sandbox's
+# process group; runsc runs inside via nsenter as mapped root. runsc still
+# gets --network=host, but "host" is now private to the sandbox: binds cannot
 # collide with or be reached by the pod or other sandboxes, while egress
-# leaves through pasta's tap. Mount and pid namespaces stay shared, so the
-# bundle and runsc's control sockets under _RUNSC_ROOT keep working for
+# leaves through slirp4netns's tap. Mount and pid namespaces stay shared, so
+# the bundle and runsc's control sockets under _RUNSC_ROOT keep working for
 # pod-side state/exec/kill/delete.
 #
-# pasta relays every outbound connection through the pod's own sockets, so
-# the sandbox can reach any address the pod can reach: other Ray nodes
-# (including the head node's GCS and dashboard), other pods, and internal
-# services. pasta has no destination filter; network="none" remains the
-# boundary for untrusted code.
+# slirp4netns NATs every flow through a fresh, kernel-assigned host port, so
+# flows from different sandboxes can never share a host socket (pasta, which
+# preserves UDP source ports with SO_REUSEADDR, delivered one sandbox's
+# replies to another when their source ports collided). It relays through
+# the pod's own sockets, so the sandbox can reach any address the pod can
+# reach: other Ray nodes (including the head node's GCS and dashboard),
+# other pods, and internal services. There is no destination filter;
+# network="none" remains the boundary for untrusted code.
 #
 # These flags are the isolation property; tests pin the exact list:
-#   --config-net  copy the pod interface's addressing/routes onto the tap.
-#   -t/-u none    never republish namespace binds on the pod.
-#   -T/-U none    no loopback splicing: pod-local services stay
-#                 unreachable from the sandbox's 127.0.0.1.
-#   --no-map-gw   don't remap gateway-addressed traffic to the pod loopback.
-#   -4            IPv4 only, matching the generated resolv.conf.
-_PASTA_FLAGS = [
-    "--config-net",
-    "-t",
-    "none",
-    "-u",
-    "none",
-    "-T",
-    "none",
-    "-U",
-    "none",
-    "--no-map-gw",
-    "-4",
+#   --configure              bring the tap up: network + 100, gateway + 2.
+#   --cidr=198.18.0.0/24     the RFC 2544 benchmarking range: it is never
+#                            routed on the internet and, unlike the
+#                            slirp4netns default 10.0.2.0/24, does not
+#                            overlap pod or service CIDRs, which would be
+#                            on-link in the sandbox instead of NAT'd.
+#   --mtu=65520              the largest MTU slirp4netns supports.
+#   --disable-host-loopback  no path from the sandbox to the pod's loopback.
+#   --disable-dns            no built-in resolver: the sandbox sees only the
+#                            generated resolv.conf, nothing of the host's.
+#   --enable-seccomp         a syscall filter on the slirp4netns process.
+#                            (--enable-sandbox is not used: its setegid(0)
+#                            fails inside a --map-root-user namespace.)
+_SLIRP4NETNS_FLAGS = [
+    "--configure",
+    "--cidr=198.18.0.0/24",
+    "--mtu=65520",
+    "--disable-host-loopback",
+    "--disable-dns",
+    "--enable-seccomp",
 ]
 
 
@@ -88,14 +93,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
-            missing = [b for b in ("pasta", "nsenter") if not shutil.which(b)]
+            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
             if missing:
                 raise SandboxCreationError(
                     "network='public' isolates each sandbox in its own network "
-                    "namespace via pasta (passt), but "
+                    "namespace via slirp4netns, but "
                     f"{', '.join(repr(b) for b in missing)} was not found in "
-                    "PATH. Install the passt package (and util-linux) on the "
-                    "node image."
+                    "PATH. Install slirp4netns (distro package, or a static "
+                    "build from github.com/rootless-containers/slirp4netns) "
+                    "and util-linux on the node image."
                 )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
@@ -166,7 +172,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-        # start_new_session puts the namespace holder, pasta, and runsc run
+        # start_new_session puts the namespace holder, slirp4netns, and runsc run
         # in one process group so cleanup can kill the whole tree; they share
         # the stderr log so startup failures (missing /dev/net/tun, no
         # uplink) surface through the SandboxCreationError path below.
@@ -217,8 +223,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 time.sleep(0.1)
         except Exception:
             # Delete runsc's container state, then kill the whole group:
-            # under pasta, a bare proc.kill() would orphan the namespace
-            # holder and pasta.
+            # under slirp4netns, a bare proc.kill() would orphan the namespace
+            # holder and slirp4netns.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
@@ -234,7 +240,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "cwd": container_cwd,
             "config": config,
             # The process group leader whose tree holds the sandbox and,
-            # for network="public", the namespace holder and pasta.
+            # for network="public", the namespace holder and slirp4netns.
             "proc": proc,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
@@ -260,7 +266,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
 
             # Always take the whole group: after `runsc run` exits, the
-            # namespace holder and pasta (network="public") are still alive
+            # namespace holder and slirp4netns (network="public") are still alive
             # in it.
             if proc:
                 self._terminate_tree(proc)
@@ -421,7 +427,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Best-effort ``runsc delete -force`` for teardown paths.
 
         Bounded by a timeout: a wedged gVisor (the usual reason a create
-        timed out) must not block the process-group kill and pasta reap
+        timed out) must not block the process-group kill and slirp4netns reap
         that follow, which is what actually frees the sandbox.
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
@@ -433,14 +439,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _build_run_command(
         self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
     ) -> List[str]:
-        """Build the full `runsc run` argv, pasta-wrapped for network="public".
+        """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or pasta installed.
+        assert the exact command without runsc or slirp4netns installed.
         """
         args = self._runsc_base_args(config)
-        use_pasta = config.network == "public"
-        if use_pasta and "--rootless" in args:
+        use_netns = config.network == "public"
+        if use_netns and "--rootless" in args:
             # runsc runs as mapped root inside the holder's user namespace;
             # --rootless would nest a second user namespace whose
             # /proc/<pid>/root magic links the gofer cannot dereference.
@@ -457,11 +463,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             args.extend(["--network", runsc_network])
         args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
-        if use_pasta:
+        if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
-            pasta_pidfile = shlex.quote(os.path.join(root_dir, "pasta.pid"))
+            ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
             runsc = " ".join(shlex.quote(a) for a in args)
-            pasta = " ".join(["pasta", *_PASTA_FLAGS])
+            slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
             script = (
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
@@ -474,15 +480,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
-                # pasta attaches from the pod side and stays in the
+                # slirp4netns attaches from the pod side and stays in the
                 # foreground, so it lives and dies with this process group.
-                # It writes --pid once initialised: that is the go signal.
-                f"{pasta} --foreground --pid {pasta_pidfile} "
-                "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user & "
-                "PASTA=$!; "
-                f"for i in $(seq 1 100); do [ -s {pasta_pidfile} ] && break; "
-                "kill -0 $PASTA 2>/dev/null || break; sleep 0.1; done; "
-                f'[ -s {pasta_pidfile} ] || {{ echo "pasta failed to start" >&2; exit 1; }}; '
+                # It writes "1" to --ready-fd once the tap is configured:
+                # that is the go signal.
+                f"{slirp} --ready-fd=3 --netns-type=path "
+                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
+                f"3>{ready_file} & "
+                "SLIRP=$!; "
+                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
                 f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
             )
             return ["bash", "-c", script]
@@ -492,7 +500,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """SIGKILL the sandbox process group and reap the Popen.
 
         The run Popen is started with ``start_new_session=True``, so its pid
-        is the group id for the namespace holder, pasta, runsc run, and the
+        is the group id for the namespace holder, slirp4netns, runsc run, and the
         sandbox process.
         """
         try:
