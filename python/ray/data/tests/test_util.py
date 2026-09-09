@@ -369,6 +369,51 @@ def test_iterate_with_retry_unwrap_cause():
     assert attempts == 1
 
 
+@pytest.mark.parametrize("retryable", [False, True])
+def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    monkeypatch.setattr("random.random", lambda: 1)
+
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise OSError(
+                "When testing for existence of bucket 'anyscale-prod8d57fcce877a': "
+                "AWS Error ACCESS_DENIED during HeadBucket operation: No response body."
+            )
+
+    max_attempts = 3
+    with pytest.raises(OSError) as exc_info:
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get file info for ['data/file.parquet']",
+                match=["ACCESS_DENIED"] if retryable else ["SLOW_DOWN"],
+                max_attempts=max_attempts,
+            )
+        )
+
+    message = str(exc_info.value)
+    assert "ACCESS_DENIED" in message
+    if retryable:
+        assert attempts == 3
+        assert "after 3/3 attempts" in message
+    else:
+        assert attempts == 1
+        assert "after 1/1 attempts" in message
+    assert "permissions error" in message
+    assert "s3fs.S3FileSystem()" in message
+    assert "refreshing your credentials" in message
+
+
 def test_iterate_with_retry_matches_class_name():
     """Patterns can match the exception class name (e.g., 'RateLimit')."""
 
