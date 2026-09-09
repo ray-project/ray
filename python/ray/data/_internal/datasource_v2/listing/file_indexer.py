@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Uni
 
 import numpy as np
 from pyarrow.fs import FileSystem
+from typing_extensions import override
 
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
@@ -216,6 +217,7 @@ class NonSamplingFileIndexer(FileIndexer):
         """
         return self._file_chunker
 
+    @override
     def as_whole_file_indexer(self) -> "NonSamplingFileIndexer":
         """A plain per-file indexer sharing this one's traversal config.
 

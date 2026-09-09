@@ -59,6 +59,7 @@ class ArrowFileScanner(
             return set()
         return set(self.partitioning.field_names or [])
 
+    @override
     def metadata_row_count_is_exact(self) -> bool:
         """``True`` when no row-reducing pushdown is set on this scanner.
 

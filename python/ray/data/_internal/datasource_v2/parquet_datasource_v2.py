@@ -248,6 +248,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         )
 
     @property
+    @override
     def schema_needs_file_sample(self) -> bool:
         return True
 
