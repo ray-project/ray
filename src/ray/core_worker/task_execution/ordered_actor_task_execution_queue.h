@@ -76,6 +76,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   bool IsTaskCanceledLocked(const TaskID &task_id) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Drop one attempt's cancellation entry, and the task's entry with it once no
+  /// attempt of that task is pending.
+  void EraseTaskAttemptLocked(const TaskID &task_id, int32_t attempt_number)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   void ExecuteRequest(TaskToExecute &&request);
 
   /// Per-concurrency-group ordering state.
@@ -124,11 +129,13 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
-  /// A map of actor task attempts -> is_canceled
-  /// Pending means tasks are queued or running. Keyed by (task id, attempt
-  /// number) so that two attempts of one task are tracked independently.
-  absl::flat_hash_map<TaskAttempt, bool> pending_task_attempt_to_is_canceled
-      ABSL_GUARDED_BY(mu_);
+  /// A map of actor task ids -> attempt number -> is_canceled
+  /// Pending means tasks are queued or running. Attempts of one task are tracked
+  /// independently, because two of them can be pending at the same time. A task's
+  /// entry is erased once none of its attempts is pending, so an entry that exists
+  /// always holds at least one attempt.
+  absl::flat_hash_map<TaskID, absl::flat_hash_map<int32_t, bool>>
+      pending_task_attempt_to_is_canceled ABSL_GUARDED_BY(mu_);
 
   friend class OrderedActorTaskExecutionQueueTest;
 };
