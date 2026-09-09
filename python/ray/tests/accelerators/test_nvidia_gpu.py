@@ -103,6 +103,15 @@ def test_gpu_name_to_accelerator_type(name, expected):
     assert NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(name) == expected
 
 
+@pytest.fixture(autouse=True)
+def reset_cdi_spec_cache():
+    """generate_cdi_spec caches its result for the process lifetime; each
+    test needs a fresh nvidia-ctk call rather than a prior test's cache."""
+    nvidia_gpu._cdi_spec_cache = None
+    yield
+    nvidia_gpu._cdi_spec_cache = None
+
+
 def test_generate_cdi_spec_no_nvidia_ctk_binary():
     with patch("shutil.which", return_value=None):
         assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
@@ -132,6 +141,39 @@ def test_generate_cdi_spec_success():
         assert kwargs["timeout"] == nvidia_gpu._NVIDIA_CTK_TIMEOUT_SECONDS
         assert kwargs["check"] is True
         assert kwargs["capture_output"] is True
+
+
+def test_generate_cdi_spec_caches_success():
+    """A second call reuses the first's result instead of shelling out to
+    nvidia-ctk again."""
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ) as mock_run:
+        first = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        second = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        assert first == second == {"kind": "nvidia.com/gpu", "devices": []}
+        assert mock_run.call_count == 1
+
+
+def test_generate_cdi_spec_does_not_cache_failure():
+    """A failed generation isn't cached, so the next call retries rather
+    than getting stuck returning None for the rest of the process."""
+    with patch("shutil.which", return_value=None):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
+
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
 
 
 def test_generate_cdi_spec_unparseable_output():

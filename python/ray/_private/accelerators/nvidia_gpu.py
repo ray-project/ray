@@ -26,13 +26,21 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+((?:[A-Z]+\s+)*[A-Z0-9]*\d[A-Z0-9]*
 
 # Timeout for shelling out to `nvidia-ctk` during CDI spec generation
 # (generate_cdi_spec below). This runs synchronously in whichever process
-# calls it — each sandbox-creating worker generates and caches its own copy
-# in memory (see ray._common.cdi.get_spec / cdi_lib.CDISpec.generate)
-# — so it must not be generous: `nvidia-ctk cdi generate` only enumerates
-# local driver/device state, no network I/O, and normally completes in
-# well under a second. This bounds a hung/misbehaving nvidia-ctk to a
-# short, user-visible failure instead of a long stall.
+# calls it, so it must not be generous: `nvidia-ctk cdi generate` only
+# enumerates local driver/device state, no network I/O, and normally
+# completes in well under a second. This bounds a hung/misbehaving
+# nvidia-ctk to a short, user-visible failure instead of a long stall.
 _NVIDIA_CTK_TIMEOUT_SECONDS = 5
+
+# Populated by generate_cdi_spec on its first successful call, then reused
+# for the rest of the process. Ray core's own GPU resource detection
+# (Node._resource_and_label_spec in ray._private.node) follows the same
+# shape: resolved once per raylet/worker process via NVML and never
+# re-polled at runtime, so there's nothing to invalidate this against
+# short of a process restart. A failed generation is deliberately not
+# cached, so a transient nvidia-ctk failure doesn't stick for the rest of
+# the process.
+_cdi_spec_cache: Optional[Dict] = None
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -172,9 +180,8 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         Keeps this simple to swap for a real CDI generator library later —
         no file format/location to keep compatible — and sidesteps sharing
         a generated spec across processes (each process that needs one
-        just generates its own; `nvidia-ctk cdi generate` normally
-        completes in well under a second, so this is cheap enough not to
-        need cross-process caching).
+        generates its own once, then caches it for its own lifetime; see
+        _cdi_spec_cache).
 
         Future improvement: today this shells out to nvidia-ctk, but a
         Python-native generator (NVML enumeration, driver library
@@ -199,6 +206,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             "GPU CDI support is unavailable on this node", not a fatal
             error.
         """
+        global _cdi_spec_cache
+        if _cdi_spec_cache is not None:
+            return _cdi_spec_cache
+
         nvidia_ctk_path = shutil.which("nvidia-ctk")
         if nvidia_ctk_path is None:
             logger.warning(
@@ -242,7 +253,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             return None
 
         try:
-            return json.loads(result.stdout)
+            spec = json.loads(result.stdout)
         except json.JSONDecodeError as e:
             logger.warning(f"nvidia-ctk produced unparseable CDI spec output: {e}")
             return None
+
+        _cdi_spec_cache = spec
+        return _cdi_spec_cache

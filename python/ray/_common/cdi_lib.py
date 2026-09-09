@@ -61,12 +61,6 @@ it's the piece that could be lifted out wholesale into a standalone
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-# In-memory cache of generated CDI specs, by kind, for CDISpec.generate.
-# Never written to disk. A None value means generation was attempted and
-# failed (cached too, so it isn't retried for every subsequent caller in
-# this process); a fresh process gets a clean retry.
-_generated_spec_cache: Dict[str, Optional[Dict[str, Any]]] = {}
-
 # OCI hook stage names that a CDI spec's containerEdits.hooks may target.
 _OCI_HOOK_STAGES = (
     "prestart",
@@ -102,22 +96,14 @@ class CDISpec:
         kind: str,
         generate_fn: Callable[[], Optional[Dict[str, Any]]],
     ) -> Optional["CDISpec"]:
-        """Generate (or return the cached) CDI spec of the given kind via
-        `generate_fn`. The full policy any vendor-specific "get my CDI
-        spec" function (e.g. `ray._common.cdi.get_spec`) needs,
-        parameterized so it doesn't have to be reimplemented per vendor.
+        """Generate a CDI spec of the given kind via `generate_fn`. The
+        full policy any vendor-specific "get my CDI spec" function (e.g.
+        `ray._common.cdi.get_spec`) needs, parameterized so it doesn't
+        have to be reimplemented per vendor.
 
-        Caches the parsed result **in memory only, never written to
-        disk** — deliberately, so this stays simple to swap for a real
-        CDI generator library later (see the future-improvement notes on
-        `generate_fn` implementations, e.g.
-        `ray._private.accelerators.nvidia_gpu.generate_cdi_spec`) without
-        this cache format needing to track whatever encoding that library
-        happens to use for a saved spec. A failed generation (`generate_fn`
-        raising or returning None) is cached too, so it isn't retried for
-        every subsequent caller in the same process; a fresh process gets
-        a clean retry. Nothing here provides cross-process caching — see
-        `ray._common.cdi`'s module docstring for why that's fine.
+        Never caches: calls `generate_fn` fresh every time, and never
+        writes anything to disk. Caching, if a caller wants it, is that
+        caller's own policy decision, not this library's.
 
         Args:
             kind: CDI kind to generate for, e.g. "nvidia.com/gpu".
@@ -127,11 +113,7 @@ class CDISpec:
         Returns:
             A `CDISpec`, or None if generation failed.
         """
-        if kind in _generated_spec_cache:
-            spec = _generated_spec_cache[kind]
-        else:
-            spec = generate_fn()
-            _generated_spec_cache[kind] = spec
+        spec = generate_fn()
         return cls(kind, spec) if spec is not None else None
 
     def select_devices(self, ids: List[str]) -> List[Dict[str, Any]]:

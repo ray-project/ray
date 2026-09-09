@@ -13,9 +13,9 @@ from ray._common import cdi_lib
 
 
 def get_spec(resource_name: str) -> Optional[cdi_lib.CDISpec]:
-    """Generate (or return the cached) CDI spec for the accelerator
-    currently resolved for `resource_name` (e.g. "GPU" -> whichever of
-    NVIDIA/AMD/Apple/Metax is actually on this node).
+    """Generate the CDI spec for the accelerator currently resolved for
+    `resource_name` (e.g. "GPU" -> whichever of NVIDIA/AMD/Apple/Metax is
+    actually on this node).
 
     Args:
         resource_name: The Ray resource name to resolve an accelerator

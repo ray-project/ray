@@ -61,41 +61,21 @@ def sample_cdi_spec(tmp_path):
     return _sample_cdi_spec(dev_node_path, str(mount_host_path), str(hook_path))
 
 
-def test_cdi_spec_generate_is_vendor_agnostic(monkeypatch):
+def test_cdi_spec_generate_is_vendor_agnostic():
     """CDISpec.generate isn't NVIDIA-specific: a hypothetical non-NVIDIA
     vendor module would call this the same way ray._common.cdi.get_spec
     does, just with its own kind/generate_fn. Never touches disk -- purely
     in-memory."""
-    other_kind = "acme.com/widget"
-    monkeypatch.setattr(cdi_lib, "_generated_spec_cache", {})
-
-    generate_calls = []
 
     def fake_generate():
-        generate_calls.append(1)
-        return {"kind": other_kind, "devices": []}
+        return {"kind": "example.com/device", "devices": []}
 
-    resolved = cdi_lib.CDISpec.generate(other_kind, fake_generate)
-    assert resolved.kind == other_kind
-    assert len(generate_calls) == 1
-
-    # Second call hits the in-memory cache; generation isn't invoked again.
-    resolved_again = cdi_lib.CDISpec.generate(other_kind, fake_generate)
-    assert resolved_again.kind == other_kind
-    assert len(generate_calls) == 1
+    resolved = cdi_lib.CDISpec.generate("example.com/device", fake_generate)
+    assert resolved.kind == "example.com/device"
 
 
-def test_cdi_spec_generate_returns_none_and_caches_failure(monkeypatch):
-    monkeypatch.setattr(cdi_lib, "_generated_spec_cache", {})
-    generate_calls = []
-
-    def fail_generate():
-        generate_calls.append(1)
-        return None
-
-    assert cdi_lib.CDISpec.generate("acme.com/widget", fail_generate) is None
-    assert cdi_lib.CDISpec.generate("acme.com/widget", fail_generate) is None
-    assert len(generate_calls) == 1
+def test_cdi_spec_generate_returns_none_on_failure():
+    assert cdi_lib.CDISpec.generate("example.com/device", lambda: None) is None
 
 
 def test_select_devices(sample_cdi_spec):
