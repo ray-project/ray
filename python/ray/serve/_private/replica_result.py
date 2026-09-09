@@ -246,9 +246,10 @@ class ActorReplicaResult(ReplicaResult):
             self._obj_ref._on_completed(callback)  # type: ignore[union-attr]
 
     def cancel(self):
-        if self._cancel_consume_wait is not None:
-            self._cancel_consume_wait()
-            self._cancel_consume_wait = None
+        cancel_consume_wait = self._cancel_consume_wait
+        self._cancel_consume_wait = None
+        if cancel_consume_wait is not None:
+            cancel_consume_wait()
         if self._obj_ref_gen is not None:
             ray.cancel(self._obj_ref_gen)
         else:
