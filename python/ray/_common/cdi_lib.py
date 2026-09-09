@@ -1,61 +1,42 @@
-"""Minimal, vendor-agnostic CDI (Container Device Interface) spec generator
-and OCI-spec merger.
+"""Generates CDI (Container Device Interface) specs and merges their
+device edits into an OCI runtime spec, vendor-agnostically.
 
-Implements just the subset of the CDI spec
-(https://github.com/cncf-tags/container-device-interface/blob/main/SPEC.md)
-needed here: generating a spec (via a vendor-supplied callback), looking up
-devices of a given "kind" (e.g. "nvidia.com/gpu"), and merging their
-`containerEdits` into a hand-built OCI runtime spec (config.json) — the same
-merge a CDI-aware container runtime (containerd/CRI-O/Podman) performs
-internally.
+CDI (https://github.com/cncf-tags/container-device-interface) is a
+CNCF-sponsored standard for injecting complex devices like GPUs into
+containers without runtime-specific logic. Docker, containerd, CRI-O,
+Podman, and Singularity/Apptainer all support it, and in Kubernetes
+it's both what device plugins produce and the foundation Dynamic
+Resource Allocation (DRA) builds on. A CDI spec names a device "kind"
+(e.g. "nvidia.com/gpu") and lists the OCI runtime edits (env vars,
+device nodes, mounts, hooks) each of its devices needs. This module
+implements just enough of the spec to generate one, look up devices by
+kind, and merge their edits into an OCI runtime spec (the same merge a
+CDI-aware runtime performs internally).
 
-Deliberately does not read a spec from disk (e.g. `/etc/cdi`): an on-disk
-spec written by tooling outside Ray (e.g. a stock `nvidia-ctk cdi generate`
-run by an NVIDIA GPU Operator daemonset) isn't guaranteed to carry whatever
-flags a given accelerator manager's own `generate_cdi_spec()` depends on
-for correctness (e.g. NVIDIA's gVisor-compatibility flags) — see
-`ray._common.cdi.get_spec`. Always generating avoids silently picking
-up an incompatible spec.
+This module is modeled on the canonical Go implementation for CDI at
+https://github.com/cncf-tags/container-device-interface/tree/main/pkg/cdi.
+Unlike that implementation, this one always generates a spec fresh, via
+a vendor-supplied callback, rather than reading one from disk. Reading
+from disk would mean depending on some external tool having already
+generated and placed a correct spec there; generating it directly
+keeps that entirely within Ray's own control.
 
-Lives under `ray/_common/`, not `ray/_private/` or under
-`ray.experimental.sandbox`: `ray/_common/README.md` reserves `_common` for
-non-public APIs shared between Ray Core and the libraries (Serve, Train,
-Data, Tune, and experimental features like Sandboxes) — libraries must not
-depend on `ray._private` directly, and this is depended on by a library
-(`ray.experimental.sandbox`, via `ray._common.cdi`), which is enough on its
-own to rule out `ray._private` as this module's home.
+Ideally this module would build on a canonical Python CDI
+implementation. None exists, so it hand-rolls the subset it needs
+instead.
 
-Genuinely vendor-agnostic in scope, not just NVIDIA-shaped with room to
-grow: `CDISpec.generate`/`select_devices` both take `kind` as a plain
-parameter, and know nothing about any specific accelerator vendor.
-`ray._common.cdi` builds NVIDIA GPU support (and, mechanically, any future
-vendor's) on top of this by resolving `kind` from
-`ray._private.accelerators.get_accelerator_manager_for_resource` — the same
-mechanism that already decides a node's "GPU" resource means NVIDIA vs.
-AMD vs. Apple vs. Metax.
+Callers shouldn't call into this module directly. Instead, they make
+calls to `ray._common.cdi.get_spec`, passing it a resource type (e.g.
+"GPU"). This resource type then gets resolved by Ray to the right
+accelerator manager (e.g. `NvidiaGPUAcceleratorManager`), whose
+`generate_cdi_spec` gets passed in as the callback this module needs.
+Once a `CDISpec` is in hand, `select_devices` looks up specific
+devices by id, and `apply_edits` merges their `containerEdits` into an
+OCI runtime spec in place.
 
-Also raises its own `CDIError` rather than a sandbox-specific exception,
-even though sandbox's NVIDIA GPU support is its only consumer today: CDI
-itself is vendor-agnostic and not tied to sandboxes at all (a different
-accelerator vendor, or a non-sandbox use case) would need this same
-generation/merging logic, and coupling it to
-`ray.experimental.sandbox.exceptions.SandboxCreationError` would force that
-use case to either import from the sandbox module or duplicate this code.
-Callers that want their own error type translate `CDIError` at their own
-boundary — see `ray.experimental.sandbox.image_manager` for that
-translation.
-
-There is no existing Python implementation of CDI to depend on — the
-reference implementation (tags.cncf.io/container-device-interface) is
-Go-only. A Rust port exists under the same CNCF org
-(github.com/cncf-tags/container-device-interface-rs) and could in principle
-be wrapped for Python via PyO3/maturin as a compiled extension rather than a
-subprocess call; that's the natural path if CDI use in Ray grows beyond this
-one alpha module, but it means standing up a new cross-compiled-wheel
-toolchain Ray's build doesn't have today, so this module hand-rolls just the
-subset it needs for now. Being vendor-agnostic (no NVIDIA/Ray specifics),
-it's the piece that could be lifted out wholesale into a standalone
-`python-cdi` package later.
+Lives in `ray/_common/`, not `ray/_private/`, since libraries like
+`ray.experimental.sandbox` depend on it and can't depend on
+`ray._private` directly.
 """
 
 import os
