@@ -96,22 +96,22 @@ def try_prepare_chunked_tensor_take(
         Otherwise, ``None`` so the caller can use the standard Arrow fallback.
     """
     if not ENABLE_CHUNKED_TENSOR_TAKE:
-        return _log_preparation_fallback(column, _TakeFallbackReason.FEATURE_DISABLED)
+        return _log_take_fallback(_TakeFallbackReason.FEATURE_DISABLED, column=column)
     if column.num_chunks <= 1:
-        return _log_preparation_fallback(column, _TakeFallbackReason.SINGLE_CHUNK)
+        return _log_take_fallback(_TakeFallbackReason.SINGLE_CHUNK, column=column)
     if column.null_count > 0:
-        return _log_preparation_fallback(column, _TakeFallbackReason.CONTAINS_NULLS)
+        return _log_take_fallback(_TakeFallbackReason.CONTAINS_NULLS, column=column)
 
     tensor_type = column.type
     try:
         layout = _prepare_tensor_layout(tensor_type)
     except (NotImplementedError, TypeError, ValueError):
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT
+        return _log_take_fallback(
+            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
         )
     if layout is None:
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT
+        return _log_take_fallback(
+            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
         )
     values_per_row, row_bytes, value_dtype = layout
 
@@ -121,21 +121,21 @@ def try_prepare_chunked_tensor_take(
         source_chunks=column.num_chunks,
         max_output_rows=max_output_rows,
     ):
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.BELOW_SIZE_THRESHOLD
+        return _log_take_fallback(
+            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
         )
 
     offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
     offset_capacity_rows = np.iinfo(offset_dtype).max // values_per_row
     if max_output_rows > offset_capacity_rows:
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW
+        return _log_take_fallback(
+            _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
         )
 
     chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
     if len(chunks) <= 1:
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS
+        return _log_take_fallback(
+            _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS, column=column
         )
 
     subbatch_rows = max(
@@ -155,8 +155,8 @@ def try_prepare_chunked_tensor_take(
                 value_dtype,
             )
             if view is None:
-                return _log_preparation_fallback(
-                    column, _TakeFallbackReason.UNSAFE_CHUNK_STORAGE
+                return _log_take_fallback(
+                    _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
                 )
             chunk_views.append(view)
             chunk_starts.append(row_offset)
@@ -166,8 +166,8 @@ def try_prepare_chunked_tensor_take(
         TypeError,
         ValueError,
     ):
-        return _log_preparation_fallback(
-            column, _TakeFallbackReason.UNSAFE_CHUNK_STORAGE
+        return _log_take_fallback(
+            _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
         )
 
     plan = PreparedChunkedTensorTake(
@@ -190,18 +190,27 @@ def try_prepare_chunked_tensor_take(
     return plan
 
 
-def _log_preparation_fallback(
-    column: pa.ChunkedArray, reason: _TakeFallbackReason
+def _log_take_fallback(
+    reason: _TakeFallbackReason, *, column: Optional[pa.ChunkedArray] = None
 ) -> None:
-    """Debug-log one stable preparation reason and return the fallback value."""
-    logger.debug(
-        "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
-        "chunks=%s, type=%s",
-        reason.value,
-        len(column),
-        column.num_chunks,
-        column.type,
-    )
+    """Debug-log a column or request rejection and return the fallback value.
+
+    Args:
+        reason: Why the fast path declined the column or request.
+        column: Rejected source column, when the reason is column-specific.
+            Omit for request-level failures such as unsupported indices.
+    """
+    if column is None:
+        logger.debug("Chunked tensor take fast path not used: reason=%s", reason.value)
+    else:
+        logger.debug(
+            "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
+            "chunks=%s, type=%s",
+            reason.value,
+            len(column),
+            column.num_chunks,
+            column.type,
+        )
     return None
 
 

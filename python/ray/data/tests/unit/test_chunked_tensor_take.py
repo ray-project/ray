@@ -468,12 +468,17 @@ def test_chunked_tensor_take_fallback_reasons(reason, monkeypatch, caplog):
     assert f"reason={reason.value}," in caplog.text
 
 
-def test_take_table_logs_unsupported_indices(monkeypatch, caplog):
-    monkeypatch.setattr(transform_pyarrow.logger, "handlers", [caplog.handler])
+@pytest.mark.parametrize("indices", [np.array([-1], dtype=np.int64), np.array(1)])
+def test_take_table_logs_unsupported_indices(indices, monkeypatch, caplog):
+    monkeypatch.setattr(chunked_tensor_take.logger, "handlers", [caplog.handler])
     column, _ = _chunked_tensor(1024, 256, 4)
-    with caplog.at_level("DEBUG", logger=transform_pyarrow.__name__):
-        with pytest.raises(pa.ArrowIndexError):
-            take_table(pa.table({"tensor": column}), np.array([-1], dtype=np.int64))
+    single_chunk_table = pa.table({"tensor": column.combine_chunks()})
+    with pytest.raises(Exception) as standard_error:
+        take_table(single_chunk_table, indices)
+
+    with caplog.at_level("DEBUG", logger=chunked_tensor_take.__name__):
+        with pytest.raises(type(standard_error.value)):
+            take_table(pa.table({"tensor": column}), indices)
 
     assert f"reason={_TakeFallbackReason.UNSUPPORTED_INDICES.value}" in caplog.text
 
