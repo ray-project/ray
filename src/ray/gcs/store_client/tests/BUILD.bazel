@@ -202,10 +202,13 @@ ray_cc_test(
     },
     tags = ["team:core"],
     deps = [
+        "//:hiredis",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/util:raii",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

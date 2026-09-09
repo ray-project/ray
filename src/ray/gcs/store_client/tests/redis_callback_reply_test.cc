@@ -274,9 +274,16 @@ TEST(TestNormalizeRedisCommandLabel, UppercasesAsciiVerb) {
   EXPECT_EQ(NormalizeRedisCommandLabel("hSeTnX"), "HSETNX");
 }
 
-TEST(TestNormalizeRedisCommandLabel, UnknownCommandsMapToOther) {
-  EXPECT_EQ(NormalizeRedisCommandLabel(""), kOtherRedisCommandLabel);
-  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), kOtherRedisCommandLabel);
-  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(128, 'x')), kOtherRedisCommandLabel);
+TEST(TestNormalizeRedisCommandLabel, PreservesUnlistedCommands) {
+  EXPECT_EQ(NormalizeRedisCommandLabel("HGETALL"), "HGETALL");
+  EXPECT_EQ(NormalizeRedisCommandLabel("newcommand"), "NEWCOMMAND");
+  EXPECT_EQ(NormalizeRedisCommandLabel(""), "");
+}
+
+TEST(TestNormalizeRedisCommandLabel, TruncatesAtSixteenBytes) {
+  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(15, 'x')), std::string(15, 'X'));
+  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(16, 'x')), std::string(16, 'X'));
+  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(17, 'x')), std::string(16, 'X'));
+  EXPECT_EQ(NormalizeRedisCommandLabel(std::string(128, 'x')), std::string(16, 'X'));
 }
 }  // namespace ray::gcs

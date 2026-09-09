@@ -91,12 +91,17 @@ class RedisAsyncContext {
   /// \param argc Number of arguments.
   /// \param argv Array with arguments.
   /// \param argvlen Array with each argument's length.
+  /// \param on_accepted Optional notification called synchronously with privdata
+  /// after hiredis accepts the command, while the reply-handling mutex is held.
+  /// Not retained or called on rejection. Must not reenter this context, invoke
+  /// user callbacks, or throw; keep it short to avoid delaying Redis IO.
   /// \return Status
   Status RedisAsyncCommandArgv(redisCallbackFn *fn,
                                void *privdata,
                                int argc,
                                const char **argv,
-                               const size_t *argvlen);
+                               const size_t *argvlen,
+                               void (*on_accepted)(void *) = nullptr);
 
  private:
   /// This mutex is used to protect `redis_async_context`.
@@ -139,6 +144,7 @@ class RedisAsyncContext {
   friend void CallbackAddWrite(void *);
   friend void CallbackDelWrite(void *);
   friend void CallbackCleanup(void *);
+  friend class RedisAsyncContextTest;
 };
 }  // namespace gcs
 }  // namespace ray

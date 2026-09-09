@@ -792,7 +792,6 @@ TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
       const std::string &command = tags.at("Command");
       const std::string &table_name = tags.at("TableName");
       EXPECT_TRUE(allowed_commands.contains(command)) << "unexpected Command " << command;
-      EXPECT_NE(command, kOtherRedisCommandLabel);
       EXPECT_TRUE(allowed_tables.contains(table_name))
           << "unexpected TableName " << table_name;
       // The rendered Redis key carries the storage namespace, which is a

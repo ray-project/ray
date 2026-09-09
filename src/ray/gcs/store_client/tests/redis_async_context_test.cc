@@ -14,10 +14,19 @@
 
 #include "ray/gcs/store_client/redis_async_context.h"
 
+#include <atomic>
+#include <chrono>
+#include <future>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <thread>
+#include <utility>
 
+#include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -35,6 +44,8 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+using namespace std::chrono_literals;  // NOLINT
+
 instrumented_io_context io_service;
 
 void ConnectCallback(const redisAsyncContext *c, int status) {
@@ -72,6 +83,12 @@ class RedisAsyncContextTest : public ::testing::Test {
   RedisAsyncContextTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   virtual ~RedisAsyncContextTest() { TestSetupUtil::ShutDownRedisServers(); }
+
+ protected:
+  static bool TrySubmissionLock(RedisAsyncContext &context) {
+    std::unique_lock<std::mutex> lock(context.mutex_, std::try_to_lock);
+    return lock.owns_lock();
+  }
 };
 
 TEST_F(RedisAsyncContextTest, TestRedisCommands) {
@@ -136,7 +153,6 @@ TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
       &metrics,
       "NODE");
   request->Run();
-  ASSERT_EQ(local_io_service->poll_one(), 1u);
 
   EXPECT_TRUE(request_bytes.GetTagToValue().empty());
   EXPECT_TRUE(response_bytes.GetTagToValue().empty());
@@ -147,6 +163,193 @@ TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
   context.reset();
   local_io_service.reset();
   request.reset();
+}
+
+TEST_F(RedisAsyncContextTest, SubmissionNotificationHoldsReplyLock) {
+  instrumented_io_context local_io_service;
+  ray::Clock clock;
+  std::promise<void> release;
+  struct Submission {
+    instrumented_io_context &io_service;
+    std::shared_future<void> release;
+    std::promise<void> started;
+    std::promise<bool> replied;
+    std::atomic<bool> accepted{false};
+    std::thread::id notification_thread;
+  } submission{local_io_service, release.get_future().share()};
+  RedisContext context(local_io_service, clock);
+  ASSERT_TRUE(context.Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "").ok());
+
+  auto started = submission.started.get_future();
+  auto replied = submission.replied.get_future();
+  std::thread submitter([&]() {
+    const char *argv[] = {"PING"};
+    const size_t argvlen[] = {4};
+    EXPECT_TRUE(context.async_context()
+                    .RedisAsyncCommandArgv(
+                        [](redisAsyncContext *, void *raw_reply, void *privdata) {
+                          auto &state = *static_cast<Submission *>(privdata);
+                          // Observe the raw hiredis callback, before any user callback
+                          // can be posted to an event loop.
+                          state.replied.set_value(raw_reply != nullptr && state.accepted);
+                          state.io_service.stop();
+                        },
+                        &submission,
+                        1,
+                        argv,
+                        argvlen,
+                        [](void *privdata) {
+                          auto &state = *static_cast<Submission *>(privdata);
+                          state.notification_thread = std::this_thread::get_id();
+                          state.started.set_value();
+                          state.release.wait();
+                          state.accepted = true;
+                        })
+                    .ok());
+  });
+  auto cleanup = absl::MakeCleanup([&]() {
+    release.set_value();
+    submitter.join();
+  });
+  ASSERT_EQ(started.wait_for(5s), std::future_status::ready);
+  EXPECT_EQ(submission.notification_thread, submitter.get_id());
+  // No IO thread is running yet, so only the submitter could hold this lock.
+  // Probe from a different thread: try_lock on one's own std::mutex is undefined.
+  EXPECT_FALSE(TrySubmissionLock(context.async_context()));
+  std::move(cleanup).Invoke();
+  EXPECT_TRUE(TrySubmissionLock(context.async_context()));
+
+  local_io_service.run_for(5s);
+  ASSERT_EQ(replied.wait_for(0s), std::future_status::ready);
+  EXPECT_TRUE(replied.get());
+}
+
+TEST_F(RedisAsyncContextTest, SubmissionDoesNotWaitForIoWithOrWithoutMetrics) {
+  for (const bool enabled : {false, true}) {
+    SCOPED_TRACE(enabled);
+    instrumented_io_context local_io_service;
+    ray::Clock clock;
+    observability::FakeCounter request_bytes;
+    observability::FakeCounter response_bytes;
+    observability::FakeCounter command_count;
+    bool completed = false;
+    RedisMetrics metrics{request_bytes, response_bytes, command_count};
+    RedisContext context(
+        local_io_service, clock, enabled ? std::make_optional(metrics) : std::nullopt);
+    ASSERT_TRUE(
+        context.Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "").ok());
+    local_io_service.stop();
+    context.RunArgvAsync(
+        {"hgetall", "payload-test"},
+        [&](std::shared_ptr<CallbackReply> reply) {
+          EXPECT_TRUE(reply->ReadAsStringArray().empty());
+          completed = true;
+          local_io_service.stop();
+        },
+        "NODE");
+    // The command must already be queued in hiredis even with a stopped event
+    // loop and metrics disabled, when there are no counters to observe.
+    auto *queued = context.async_context().GetRawRedisAsyncContext()->replies.tail;
+    ASSERT_NE(queued, nullptr);
+    EXPECT_EQ(queued->fn, RedisRequestContext::RedisResponseFn);
+    EXPECT_NE(queued->privdata, nullptr);
+    const absl::flat_hash_map<std::string, std::string> tags{{"Command", "HGETALL"},
+                                                             {"TableName", "NODE"}};
+    if (enabled) {
+      EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 19.0);
+      EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
+    } else {
+      EXPECT_TRUE(request_bytes.GetTagToValue().empty());
+      EXPECT_TRUE(command_count.GetTagToValue().empty());
+    }
+    EXPECT_TRUE(response_bytes.GetTagToValue().empty());
+
+    local_io_service.restart();
+    local_io_service.run_for(5s);
+    EXPECT_TRUE(completed);
+    if (enabled) {
+      EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 0.0);
+    } else {
+      EXPECT_TRUE(response_bytes.GetTagToValue().empty());
+    }
+  }
+}
+
+TEST_F(RedisAsyncContextTest, RejectedSubmissionThenSuccessCountsOnce) {
+  instrumented_io_context local_io_service;
+  ray::Clock clock;
+  observability::FakeCounter request_bytes;
+  observability::FakeCounter response_bytes;
+  observability::FakeCounter command_count;
+  bool completed = false;
+  RedisContext context(local_io_service,
+                       clock,
+                       RedisMetrics{request_bytes, response_bytes, command_count});
+  ASSERT_TRUE(context.Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "").ok());
+  auto *raw = context.async_context().GetRawRedisAsyncContext();
+  // hiredis rejects a command while disconnecting, without registering its
+  // callback. Clear the flag before driving IO so the delayed retry can succeed.
+  raw->c.flags |= REDIS_DISCONNECTING;
+  context.RunArgvAsync(
+      {"PING"},
+      [&](std::shared_ptr<CallbackReply> reply) {
+        EXPECT_EQ(reply->ReadAsStatus().message(), "PONG");
+        completed = true;
+        local_io_service.stop();
+      },
+      kNoTable);
+  raw->c.flags &= ~REDIS_DISCONNECTING;
+  EXPECT_TRUE(request_bytes.GetTagToValue().empty());
+  EXPECT_TRUE(command_count.GetTagToValue().empty());
+  EXPECT_TRUE(response_bytes.GetTagToValue().empty());
+
+  local_io_service.run_for(5s);
+  ASSERT_TRUE(completed);
+  const absl::flat_hash_map<std::string, std::string> tags{{"Command", "PING"},
+                                                           {"TableName", "NONE"}};
+  EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 4.0);
+  EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
+  EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 4.0);
+}
+
+TEST_F(RedisAsyncContextTest, NullReplyRetryDoesNotRecountAcceptedCommand) {
+  instrumented_io_context local_io_service;
+  ray::Clock clock;
+  observability::FakeCounter request_bytes;
+  observability::FakeCounter response_bytes;
+  observability::FakeCounter command_count;
+  bool completed = false;
+  RedisContext context(local_io_service,
+                       clock,
+                       RedisMetrics{request_bytes, response_bytes, command_count});
+  ASSERT_TRUE(context.Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "").ok());
+  context.RunArgvAsync(
+      {"PING"},
+      [&](std::shared_ptr<CallbackReply> reply) {
+        EXPECT_EQ(reply->ReadAsStatus().message(), "PONG");
+        completed = true;
+        local_io_service.stop();
+      },
+      kNoTable);
+  const absl::flat_hash_map<std::string, std::string> tags{{"Command", "PING"},
+                                                           {"TableName", "NONE"}};
+  EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 4.0);
+  EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
+
+  auto *queued = context.async_context().GetRawRedisAsyncContext()->replies.tail;
+  ASSERT_NE(queued, nullptr);
+  ASSERT_EQ(queued->fn, RedisRequestContext::RedisResponseFn);
+  // Simulate a lost reply for just the first accepted attempt. Let hiredis
+  // consume its callback normally, so the retry is the only outstanding request.
+  queued->fn = [](redisAsyncContext *ac, void *raw_reply, void *privdata) {
+    EXPECT_NE(raw_reply, nullptr);
+    RedisRequestContext::RedisResponseFn(ac, nullptr, privdata);
+  };
+  local_io_service.run_for(5s);
+  ASSERT_TRUE(completed);
+  EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 4.0);
+  EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
+  EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 4.0);
 }
 }  // namespace gcs
 }  // namespace ray

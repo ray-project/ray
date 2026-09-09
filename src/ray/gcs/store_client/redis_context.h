@@ -132,12 +132,9 @@ using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 /// \return The payload bytes it carries, 0 for replies that carry none.
 size_t ResponsePayloadBytes(const redisReply &reply);
 
-/// Command label for Redis verbs outside the fixed set used by GCS.
-inline constexpr std::string_view kOtherRedisCommandLabel = "OTHER";
-
-/// Normalizes a Redis verb against the fixed set used by GCS. Matching is
-/// case-insensitive; an unknown verb maps to kOtherRedisCommandLabel so the
-/// metric's Command label has bounded cardinality.
+/// Uses the first 16 bytes of a Redis verb, normalized to uppercase ASCII.
+/// This bounds label length, not cardinality; production verbs must remain
+/// code-controlled. New commands do not require updating a metrics allowlist.
 ///
 /// \param verb The Redis command verb to normalize.
 /// \return An owned, normalized label value.
@@ -182,13 +179,12 @@ struct RedisRequestContext {
                               void *raw_reply,
                               void *privdata);
 
-  /// Schedule one submission attempt on the Redis io_service. Serializing the
-  /// submission with hiredis response callbacks keeps this self-owned context
-  /// alive until all post-submission bookkeeping is complete.
+  /// Submit one attempt directly from the calling thread. Request metrics are
+  /// recorded under the submission lock before a reply can delete this context.
   void Run();
 
  private:
-  void RunOnRedisIoService();
+  static void RecordRequestMetrics(void *privdata);
 
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;

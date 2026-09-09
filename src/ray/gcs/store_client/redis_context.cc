@@ -34,7 +34,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
-#include "absl/strings/match.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -47,19 +47,7 @@ namespace gcs {
 
 namespace {
 
-constexpr std::string_view kKnownRedisCommands[] = {"HSET",
-                                                    "HSETNX",
-                                                    "HGET",
-                                                    "HMGET",
-                                                    "HDEL",
-                                                    "HEXISTS",
-                                                    "HSCAN",
-                                                    "SCAN",
-                                                    "INCRBY",
-                                                    "DEL",
-                                                    "UNLINK",
-                                                    "PING",
-                                                    "INFO"};
+constexpr size_t kMaxRedisCommandLabelLength = 16;
 
 }  // namespace
 
@@ -107,12 +95,9 @@ size_t ResponsePayloadBytes(const redisReply &reply) {
 }
 
 std::string NormalizeRedisCommandLabel(std::string_view verb) {
-  for (const auto known_command : kKnownRedisCommands) {
-    if (absl::EqualsIgnoreCase(verb, known_command)) {
-      return std::string(known_command);
-    }
-  }
-  return std::string(kOtherRedisCommandLabel);
+  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
+  absl::AsciiStrToUpper(&label);
+  return label;
 }
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
@@ -317,11 +302,6 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
 }
 
 void RedisRequestContext::Run() {
-  io_service_.dispatch([this]() { RunOnRedisIoService(); }, "RedisRequestContext.Run");
-}
-
-void RedisRequestContext::RunOnRedisIoService() {
-  RAY_CHECK(io_service_.get_executor().running_in_this_thread());
   if (pending_retries_ == 0) {
     RAY_LOG(FATAL) << "Failed to run redis cmds: [" << absl::StrJoin(redis_cmds_, " ")
                    << "] for " << RayConfig::instance().num_redis_request_retries()
@@ -331,23 +311,37 @@ void RedisRequestContext::RunOnRedisIoService() {
   --pending_retries_;
 
   Status status = redis_context_->RedisAsyncCommandArgv(
-      RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
-
-  if (status.ok() && metrics_ != nullptr && !request_metrics_recorded_) {
-    // Record once when hiredis first accepts this logical command for sending.
-    // A reply error can retry the command, but retransmissions do not change
-    // either metric.
-    metrics_->request_payload_bytes_sum.Record(
-        static_cast<double>(request_payload_bytes_),
-        {{"Command", command_label_}, {"TableName", table_label_}});
-    metrics_->command_count_counter.Record(
-        1, {{"Command", command_label_}, {"TableName", table_label_}});
-    request_metrics_recorded_ = true;
+      RedisResponseFn,
+      this,
+      argv_.size(),
+      argv_.data(),
+      argc_.data(),
+      metrics_ != nullptr ? RecordRequestMetrics : nullptr);
+  if (status.ok()) {
+    // The submission lock has been released, so a reply on the IO thread may
+    // already have deleted this request. Do not access any members here.
+    return;
   }
 
-  if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+  // A rejected submission has no hiredis callback. Use the owned Status for
+  // diagnostics; the raw context may have been freed since submission returned.
+  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
+  RedisResponseFn(nullptr, nullptr, this);
+}
+
+void RedisRequestContext::RecordRequestMetrics(void *privdata) {
+  auto *request = static_cast<RedisRequestContext *>(privdata);
+  if (request->request_metrics_recorded_) {
+    return;
   }
+  // Called under the same lock as hiredis reply handling, before a reply can
+  // delete the request. Count the first accepted submission, not its retries.
+  request->metrics_->request_payload_bytes_sum.Record(
+      static_cast<double>(request->request_payload_bytes_),
+      {{"Command", request->command_label_}, {"TableName", request->table_label_}});
+  request->metrics_->command_count_counter.Record(
+      1, {{"Command", request->command_label_}, {"TableName", request->table_label_}});
+  request->request_metrics_recorded_ = true;
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
