@@ -55,7 +55,6 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
-
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
@@ -647,7 +646,7 @@ def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
             if rpc_val <= 0:
                 raise ValueError
             return rpc_val
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError(
                 f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, got: {val!r}"
             )
