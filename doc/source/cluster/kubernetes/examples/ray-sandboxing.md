@@ -146,7 +146,7 @@ res = ray.get(sb.exec.remote("python3 -c 'import urllib.request; urllib.request.
 print(res.exit_code)  # Non-zero exit code
 ```
 
-With `network="public"`, each sandbox gets internet egress from its own private network namespace, bridged by [pasta](https://passt.top): sandboxes can bind the same port concurrently without conflicting, and can't reach each other or the Pod's own services. They can still reach anything else the node can reach, including other Pods and internal cluster services, so keep `network="none"` for untrusted code. This mode needs the `pasta` binary on the worker's `$PATH` and `/dev/net/tun` available in the Ray container (present on standard GKE `containerd` node pools).
+With `network="public"`, each sandbox gets internet egress from its own private network namespace, bridged by [slirp4netns](https://github.com/rootless-containers/slirp4netns): sandboxes can bind the same port concurrently without conflicting, and can't reach each other or the Pod's own services. They can still reach anything else the node can reach, including other Pods and internal cluster services, so keep `network="none"` for untrusted code. This mode needs the `slirp4netns` binary on the worker's `$PATH` and `/dev/net/tun` available in the Ray container (present on standard GKE `containerd` node pools).
 
 ---
 
@@ -163,14 +163,13 @@ FROM rayproject/ray:2.58.0-py312
 
 USER root
 
-# Install wget, download gVisor runsc and pasta (for network="public"),
-# and install both into the system PATH. passt.top static builds are
-# x86_64-only; on arm64 nodes install the distro's passt package instead.
+# Install wget, download gVisor runsc and slirp4netns (for network="public"),
+# and install both into the system PATH.
 RUN apt-get update && apt-get install -y --no-install-recommends wget && \
     ARCH=$(uname -m) && \
     wget "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" -O /usr/local/bin/runsc && \
-    wget "https://passt.top/builds/latest/x86_64/pasta" -O /usr/local/bin/pasta && \
-    chmod a+rx /usr/local/bin/runsc /usr/local/bin/pasta && \
+    wget "https://github.com/rootless-containers/slirp4netns/releases/download/v1.3.5/slirp4netns-${ARCH}" -O /usr/local/bin/slirp4netns && \
+    chmod a+rx /usr/local/bin/runsc /usr/local/bin/slirp4netns && \
     rm -rf /var/lib/apt/lists/*
 
 USER ray
