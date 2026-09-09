@@ -850,12 +850,16 @@ RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
     else None
 )
 
-RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    # Guarded by the truthiness check below; the two get() calls can't be
-    # narrowed by mypy.
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
-    else None
+# Connection timeout to a replica, in seconds. Replicas are in-cluster, so a
+# connect that takes seconds means the node is gone rather than busy; bounding
+# it lets `retry-on conn-failure` + `option redispatch` reach another replica
+# while the request still has budget.
+#
+# Set to 0 to disable. HAProxy stores an unset timeout as 0, so `timeout
+# connect 0s` is indistinguishable from omitting the directive: an infinite
+# connect timeout, plus HAProxy's "missing timeouts" startup warning.
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", 5
 )
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
@@ -908,7 +912,7 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # redispatch + the `backup` fallback take over. Health checks revive a false
 # positive in ~0.5s. Backup/fallback servers are never observed.
 RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
-    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "0"
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
