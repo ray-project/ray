@@ -18,11 +18,13 @@ from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup as V1WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
+    DEFAULT_MEGASCALE_PORT,
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
+from ray.util.tpu import get_tpu_coordinator_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -191,19 +193,43 @@ def _validate_tpu_resources(worker_group: BaseWorkerGroup):
             "Note that the PyTorch TPU runtime binds each process to a single TPU device."
         )
 
-    if hasattr(worker_group, "get_worker_group_context"):
-        num_slices = worker_group.get_worker_group_context().num_slices
-        if num_slices > 1:
-            # TODO (ryanaoleary): Once TorchTPU supports multi-slice, remove this ValueError
-            # and implement multi-slice TPU coordinator setup.
-            raise ValueError(
-                "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported. "
-                "For now, please restrict Torch TPU training to a single slice."
-            )
+
+def _set_tpu_multislice_env_vars(tpu_env_vars: Dict[str, str]) -> None:
+    """Sets multi-slice coordination environment variables for the worker process.
+
+    Assigns a unique MEGASCALE_PORT per local worker (base_port + LOCAL_RANK)
+    to prevent port bind collisions when multiple workers share a single TPU host.
+    """
+    os.environ.update(tpu_env_vars)
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    base_port = int(tpu_env_vars.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
+    os.environ["MEGASCALE_PORT"] = str(base_port + local_rank)
 
 
 class _TorchBackend(Backend):
     share_cuda_visible_devices: bool = True
+
+    def _setup_tpu_multislice(
+        self, worker_group: BaseWorkerGroup, master_addr: str, num_slices: int
+    ) -> None:
+        """Configures MegaScale coordination environment variables across workers for multi-slice TPU training."""
+        workers_per_slice = max(1, len(worker_group) // num_slices)
+        coordinator_port = str(os.environ.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
+
+        futures = [
+            worker_group.execute_single_async(
+                i,
+                _set_tpu_multislice_env_vars,
+                tpu_env_vars=get_tpu_coordinator_env_vars(
+                    coordinator_address=f"{master_addr}:{coordinator_port}",
+                    num_slices=num_slices,
+                    slice_id=min(i // workers_per_slice, num_slices - 1),
+                    coordinator_port=coordinator_port,
+                ),
+            )
+            for i in range(len(worker_group))
+        ]
+        ray.get(futures)
 
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: TorchConfig):
         if dist.is_available():
@@ -226,8 +252,6 @@ class _TorchBackend(Backend):
                 0, get_address_and_port
             )
 
-            if backend == "tpu_dist":
-                _validate_tpu_resources(worker_group)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -249,6 +273,16 @@ class _TorchBackend(Backend):
             # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
             if not isinstance(worker_group, V1WorkerGroup):
                 worker_group.execute(_set_torch_distributed_env_vars)
+
+            if backend == "tpu_dist":
+                _validate_tpu_resources(worker_group)
+                num_slices = (
+                    worker_group.get_worker_group_context().num_slices
+                    if hasattr(worker_group, "get_worker_group_context")
+                    else 1
+                )
+                if num_slices > 1:
+                    self._setup_tpu_multislice(worker_group, master_addr, num_slices)
 
             setup_futures = []
             for i in range(len(worker_group)):
