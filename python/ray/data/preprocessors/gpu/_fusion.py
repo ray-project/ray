@@ -17,9 +17,8 @@ from ray.data.preprocessors.gpu.ops import (
     GPUSimpleImputer,
     GPUStandardScaler,
     _ordinal_map_from_stats,
-    _power_transform_values,
-    _standard_scale_values,
 )
+from ray.data.preprocessors.scaler import _EPSILON
 
 if TYPE_CHECKING:
     import cudf
@@ -38,20 +37,61 @@ class _FusedGPUNumericColumnOp(_GPUPhysicalOp):
     def _transform_cudf(
         self, df: cudf.DataFrame, context: Optional[_GPUTransformContext] = None
     ) -> cudf.DataFrame:
-        """Apply a compatible sequence of numeric transforms on one working frame."""
-        values = df[self._columns].astype("float64")
+        """Apply compatible numeric transforms to one dense CuPy array."""
+        import cudf
+        import cupy as cp
+
+        values = df[self._columns].astype("float64").to_cupy(na_value=cp.nan)
 
         for preprocessor in self._preprocessors:
             if isinstance(preprocessor, GPUPowerTransformer):
-                values = _power_transform_values(
-                    values, preprocessor.power, preprocessor.method
-                )
+                power = preprocessor.power
+                if preprocessor.method == "yeo-johnson":
+                    positive = values >= 0
+                    if power != 0:
+                        positive_values = (cp.power(values + 1, power) - 1) / power
+                    else:
+                        positive_values = cp.log(values + 1)
+
+                    if power != 2:
+                        negative_values = -(cp.power(-values + 1, 2 - power) - 1) / (
+                            2 - power
+                        )
+                    else:
+                        negative_values = -cp.log(-values + 1)
+
+                    values = cp.where(positive, positive_values, negative_values)
+                elif power != 0:
+                    values = (cp.power(values, power) - 1) / power
+                else:
+                    values = cp.log(values)
             elif isinstance(preprocessor, GPUStandardScaler):
-                values = _standard_scale_values(
-                    values, preprocessor.columns, preprocessor.stats_
+                means = cp.asarray(
+                    [
+                        (
+                            float(preprocessor.stats_.get(f"mean({column})"))
+                            if preprocessor.stats_.get(f"mean({column})") is not None
+                            else cp.nan
+                        )
+                        for column in preprocessor.columns
+                    ],
+                    dtype=cp.float64,
                 )
+                stds = cp.asarray(
+                    [
+                        (
+                            float(preprocessor.stats_.get(f"std({column})"))
+                            if preprocessor.stats_.get(f"std({column})") is not None
+                            and preprocessor.stats_.get(f"std({column})") >= _EPSILON
+                            else 1.0
+                        )
+                        for column in preprocessor.columns
+                    ],
+                    dtype=cp.float64,
+                )
+                values = (values - means) / stds
             elif isinstance(preprocessor, GPUSimpleImputer):
-                fill_values: Dict[str, Any] = {}
+                fill_values: List[Any] = []
                 for column in preprocessor.columns:
                     value = preprocessor._get_fill_value(column)
                     if value is None:
@@ -59,8 +99,9 @@ class _FusedGPUNumericColumnOp(_GPUPhysicalOp):
                             f"Column {column} has no fill value. "
                             "Check the data used to fit the SimpleImputer."
                         )
-                    fill_values[column] = value
-                values = values.fillna(fill_values)
+                    fill_values.append(value)
+                fill_array = cp.asarray(fill_values, dtype=values.dtype).reshape(1, -1)
+                values = cp.where(cp.isnan(values), fill_array, values)
             else:
                 raise TypeError(
                     f"Unsupported fused GPU numeric transform: {preprocessor!r}."
@@ -70,7 +111,9 @@ class _FusedGPUNumericColumnOp(_GPUPhysicalOp):
             if output_dtype is not None:
                 values = values.astype(output_dtype)
 
-        df[list(self._output_columns)] = values
+        output = cudf.DataFrame(values, columns=list(self._output_columns))
+        output.index = df.index
+        df[list(self._output_columns)] = output
         return df
 
     def _gpu_modified_columns(self) -> List[str]:
