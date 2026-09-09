@@ -25,6 +25,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     TENSOR_TAKE_SCRATCH_CAP_BYTES,
+    _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
 
@@ -423,8 +424,58 @@ def test_chunked_tensor_take_logs_preparation_decisions(monkeypatch):
     assert try_prepare_chunked_tensor_take(narrow, max_output_rows=128) is None
     assert try_prepare_chunked_tensor_take(eligible, max_output_rows=128) is not None
 
-    assert any("reason=below_size_threshold" in message for message in messages)
+    reason = _TakeFallbackReason.BELOW_SIZE_THRESHOLD
+    assert any(f"reason={reason.value}" in message for message in messages)
     assert any("fast path prepared" in message for message in messages)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        _TakeFallbackReason.FEATURE_DISABLED,
+        _TakeFallbackReason.SINGLE_CHUNK,
+        _TakeFallbackReason.CONTAINS_NULLS,
+        _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT,
+        _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW,
+        _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS,
+    ],
+)
+def test_chunked_tensor_take_fallback_reasons(reason, monkeypatch, caplog):
+    monkeypatch.setattr(chunked_tensor_take.logger, "handlers", [caplog.handler])
+    column, _ = _chunked_tensor(1024, 256, 4)
+    max_output_rows = 128
+    if reason == _TakeFallbackReason.FEATURE_DISABLED:
+        monkeypatch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
+    elif reason == _TakeFallbackReason.SINGLE_CHUNK:
+        column = pa.chunked_array([column.combine_chunks()])
+    elif reason == _TakeFallbackReason.CONTAINS_NULLS:
+        column = _tensor_with_null(child_null=False)
+    elif reason == _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT:
+        column = pa.chunked_array([[1], [2]])
+    elif reason == _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW:
+        max_output_rows = np.iinfo(np.int64).max // 256 + 1
+    elif reason == _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS:
+        column = pa.chunked_array(
+            [column.combine_chunks(), column.chunk(0).slice(0, 0)]
+        )
+
+    with caplog.at_level("DEBUG", logger=chunked_tensor_take.__name__):
+        assert (
+            try_prepare_chunked_tensor_take(column, max_output_rows=max_output_rows)
+            is None
+        )
+
+    assert f"reason={reason.value}," in caplog.text
+
+
+def test_take_table_logs_unsupported_indices(monkeypatch, caplog):
+    monkeypatch.setattr(transform_pyarrow.logger, "handlers", [caplog.handler])
+    column, _ = _chunked_tensor(1024, 256, 4)
+    with caplog.at_level("DEBUG", logger=transform_pyarrow.__name__):
+        with pytest.raises(pa.ArrowIndexError):
+            take_table(pa.table({"tensor": column}), np.array([-1], dtype=np.int64))
+
+    assert f"reason={_TakeFallbackReason.UNSUPPORTED_INDICES.value}" in caplog.text
 
 
 def test_take_table_prepares_each_column_once(monkeypatch):
@@ -887,7 +938,8 @@ def test_unexpected_chunked_tensor_take_errors_propagate(monkeypatch, error_type
         try_prepare_chunked_tensor_take(column, max_output_rows=1)
 
 
-def test_chunked_tensor_take_falls_back_for_truncated_buffers():
+def test_chunked_tensor_take_falls_back_for_truncated_buffers(monkeypatch, caplog):
+    monkeypatch.setattr(chunked_tensor_take.logger, "handlers", [caplog.handler])
     column, _ = _chunked_tensor(1024, 256, 4)
     chunks = list(column.chunks)
     chunk_index = next(index for index, chunk in enumerate(chunks) if len(chunk) > 0)
@@ -902,7 +954,11 @@ def test_chunked_tensor_take_falls_back_for_truncated_buffers():
     chunks[chunk_index] = truncated_chunk
     truncated_column = _ArrowProxy(column, chunks=tuple(chunks))
 
-    assert try_prepare_chunked_tensor_take(truncated_column, max_output_rows=1) is None
+    with caplog.at_level("DEBUG", logger=chunked_tensor_take.__name__):
+        assert (
+            try_prepare_chunked_tensor_take(truncated_column, max_output_rows=1) is None
+        )
+    assert f"reason={_TakeFallbackReason.UNSAFE_CHUNK_STORAGE.value}," in caplog.text
 
 
 def test_chunked_tensor_take_checks_view_pointer_range():

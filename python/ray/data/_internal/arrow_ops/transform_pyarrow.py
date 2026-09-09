@@ -18,6 +18,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     PreparedChunkedTensorTake,
+    _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -280,7 +281,8 @@ def _prepare_chunked_tensor_takes(
         max_output_rows = len(indices)
     except TypeError:
         logger.debug(
-            "Chunked tensor take fast path not used: reason=unsupported_indices"
+            "Chunked tensor take fast path not used: reason=%s",
+            _TakeFallbackReason.UNSUPPORTED_INDICES.value,
         )
         return {}
 
@@ -322,8 +324,8 @@ def take_table(
             normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
             if normalized_indices is None:
                 logger.debug(
-                    "Chunked tensor take fast path not used: "
-                    "reason=unsupported_indices"
+                    "Chunked tensor take fast path not used: reason=%s",
+                    _TakeFallbackReason.UNSUPPORTED_INDICES.value,
                 )
         else:
             normalized_indices = None

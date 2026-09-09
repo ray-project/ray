@@ -1,5 +1,6 @@
 import logging
 import math
+from enum import Enum
 from itertools import chain
 from typing import Any, NamedTuple, Optional, Tuple
 
@@ -34,6 +35,25 @@ _MIN_FAST_PAYLOAD_BYTES = 1024 * 1024
 # empty chunks it must inspect. Require enough source payload per chunk unless
 # the requested output itself is large enough to amortize that work.
 _MIN_FAST_BYTES_PER_CHUNK = 128 * 1024
+
+
+class _TakeFallbackReason(str, Enum):
+    """Reasons column preparation or request normalization declines the fast path.
+
+    Tensor layout covers the Ray V1/V2 type, numeric scalar, and fixed shape.
+    Chunk storage covers child offsets/nulls, logical offsets, and buffer bounds.
+    Unsupported indices include invalid values as well as unsupported types.
+    """
+
+    FEATURE_DISABLED = "feature_disabled"
+    SINGLE_CHUNK = "single_chunk"
+    CONTAINS_NULLS = "contains_nulls"
+    UNSUPPORTED_TENSOR_LAYOUT = "unsupported_tensor_layout"
+    BELOW_SIZE_THRESHOLD = "below_size_threshold"
+    OUTPUT_OFFSET_OVERFLOW = "output_offset_overflow"
+    FEWER_THAN_TWO_NONEMPTY_CHUNKS = "fewer_than_two_nonempty_chunks"
+    UNSAFE_CHUNK_STORAGE = "unsafe_chunk_storage"
+    UNSUPPORTED_INDICES = "unsupported_indices"
 
 
 def try_prepare_chunked_tensor_take(
@@ -76,19 +96,23 @@ def try_prepare_chunked_tensor_take(
         Otherwise, ``None`` so the caller can use the standard Arrow fallback.
     """
     if not ENABLE_CHUNKED_TENSOR_TAKE:
-        return _log_preparation_fallback(column, "feature_disabled")
+        return _log_preparation_fallback(column, _TakeFallbackReason.FEATURE_DISABLED)
     if column.num_chunks <= 1:
-        return _log_preparation_fallback(column, "single_chunk")
+        return _log_preparation_fallback(column, _TakeFallbackReason.SINGLE_CHUNK)
     if column.null_count > 0:
-        return _log_preparation_fallback(column, "contains_nulls")
+        return _log_preparation_fallback(column, _TakeFallbackReason.CONTAINS_NULLS)
 
     tensor_type = column.type
     try:
         layout = _prepare_tensor_layout(tensor_type)
     except (NotImplementedError, TypeError, ValueError):
-        return _log_preparation_fallback(column, "unsupported_tensor_layout")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT
+        )
     if layout is None:
-        return _log_preparation_fallback(column, "unsupported_tensor_layout")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT
+        )
     values_per_row, row_bytes, value_dtype = layout
 
     if not _passes_size_gates(
@@ -97,16 +121,22 @@ def try_prepare_chunked_tensor_take(
         source_chunks=column.num_chunks,
         max_output_rows=max_output_rows,
     ):
-        return _log_preparation_fallback(column, "below_size_threshold")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.BELOW_SIZE_THRESHOLD
+        )
 
     offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
     offset_capacity_rows = np.iinfo(offset_dtype).max // values_per_row
     if max_output_rows > offset_capacity_rows:
-        return _log_preparation_fallback(column, "output_offset_overflow")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW
+        )
 
     chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
     if len(chunks) <= 1:
-        return _log_preparation_fallback(column, "fewer_than_two_nonempty_chunks")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS
+        )
 
     subbatch_rows = max(
         1,
@@ -125,7 +155,9 @@ def try_prepare_chunked_tensor_take(
                 value_dtype,
             )
             if view is None:
-                return _log_preparation_fallback(column, "unsafe_chunk_storage")
+                return _log_preparation_fallback(
+                    column, _TakeFallbackReason.UNSAFE_CHUNK_STORAGE
+                )
             chunk_views.append(view)
             chunk_starts.append(row_offset)
             row_offset += len(chunk)
@@ -134,7 +166,9 @@ def try_prepare_chunked_tensor_take(
         TypeError,
         ValueError,
     ):
-        return _log_preparation_fallback(column, "unsafe_chunk_storage")
+        return _log_preparation_fallback(
+            column, _TakeFallbackReason.UNSAFE_CHUNK_STORAGE
+        )
 
     plan = PreparedChunkedTensorTake(
         tensor_type=tensor_type,
@@ -156,12 +190,14 @@ def try_prepare_chunked_tensor_take(
     return plan
 
 
-def _log_preparation_fallback(column: pa.ChunkedArray, reason: str) -> None:
+def _log_preparation_fallback(
+    column: pa.ChunkedArray, reason: _TakeFallbackReason
+) -> None:
     """Debug-log one stable preparation reason and return the fallback value."""
     logger.debug(
         "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
         "chunks=%s, type=%s",
-        reason,
+        reason.value,
         len(column),
         column.num_chunks,
         column.type,
