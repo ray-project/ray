@@ -275,6 +275,7 @@ ray_cc_library(
         ":gcs_table_storage",
         ":grpc_service_interfaces",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/common:ray_config",
         "//src/ray/common:runtime_env",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/observability:metric_interface",

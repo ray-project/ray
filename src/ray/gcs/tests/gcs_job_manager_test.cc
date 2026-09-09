@@ -14,13 +14,17 @@
 
 #include "ray/gcs/gcs_job_manager.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_kv_manager.h"
@@ -31,9 +35,25 @@
 
 namespace ray {
 
+class HookedInMemoryStoreClient : public gcs::InMemoryStoreClient {
+ public:
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override {
+    gcs::InMemoryStoreClient::AsyncBatchDelete(table_name, keys, std::move(callback));
+    auto hook = batch_delete_hook;
+    if (hook) {
+      hook(table_name);
+    }
+  }
+
+  std::function<void(const std::string &)> batch_delete_hook;
+};
+
 class GcsJobManagerTest : public ::testing::Test {
  public:
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
+    RayConfig::instance().initialize("{}");
     std::promise<bool> promise;
     thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -45,7 +65,8 @@ class GcsJobManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
+    in_memory_store_client_ = std::make_shared<HookedInMemoryStoreClient>();
+    store_client_ = in_memory_store_client_;
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
@@ -82,8 +103,59 @@ class GcsJobManagerTest : public ::testing::Test {
   }
 
  protected:
+  void AddJob(const JobID &job_id) {
+    auto request = GenAddJobRequest(job_id, "namespace");
+    rpc::AddJobReply reply;
+    std::promise<void> promise;
+    gcs_job_manager_->HandleAddJob(
+        *request,
+        &reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().get();
+  }
+
+  void MarkJobFinished(const JobID &job_id) {
+    rpc::MarkJobFinishedRequest request;
+    request.set_job_id(job_id.Binary());
+    rpc::MarkJobFinishedReply reply;
+    std::promise<void> promise;
+    gcs_job_manager_->HandleMarkJobFinished(
+        request,
+        &reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().get();
+  }
+
+  absl::flat_hash_map<JobID, rpc::JobTableData> GetJobs() {
+    std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> promise;
+    gcs_table_storage_->JobTable().GetAll(
+        {[&promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+           promise.set_value(std::move(jobs));
+         },
+         io_service_});
+    return promise.get_future().get();
+  }
+
+  void RemoveJobReference(const JobID &job_id) {
+    std::promise<void> promise;
+    io_service_.post(
+        [this, job_id, &promise] {
+          function_manager_->RemoveJobReference(job_id);
+          promise.set_value();
+        },
+        "GcsJobManagerTest.RemoveJobReference");
+    promise.get_future().get();
+  }
+
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
+  std::shared_ptr<HookedInMemoryStoreClient> in_memory_store_client_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -100,7 +172,7 @@ class GcsJobManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_running_job_gauge_;
   ray::observability::FakeCounter fake_finished_job_counter_;
   ray::observability::FakeGauge fake_job_duration_in_seconds_gauge_;
-  Clock clock_;
+  FakeClock clock_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -800,6 +872,274 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   };
 
   EXPECT_TRUE(WaitForCondition(condition, 2000));
+}
+
+TEST_F(GcsJobManagerTest, TestFinishedJobEviction) {
+  RayConfig::instance().initialize(R"({
+    "maximum_gcs_dead_job_cached_count": 2,
+    "maximum_gcs_deletion_batch_size": 1
+  })");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  auto add_and_finish_job = [this](const JobID &job_id) {
+    clock_.AdvanceTime(absl::Milliseconds(1));
+    auto add_job_request = GenAddJobRequest(job_id, "namespace");
+    rpc::AddJobReply add_reply;
+    std::promise<void> add_promise;
+    gcs_job_manager_->HandleAddJob(
+        *add_job_request,
+        &add_reply,
+        [&add_promise](Status, std::function<void()>, std::function<void()>) {
+          add_promise.set_value();
+        });
+    add_promise.get_future().get();
+
+    rpc::MarkJobFinishedRequest finish_request;
+    finish_request.set_job_id(job_id.Binary());
+    rpc::MarkJobFinishedReply finish_reply;
+    std::promise<void> finish_promise;
+    gcs_job_manager_->HandleMarkJobFinished(
+        finish_request,
+        &finish_reply,
+        [&finish_promise](Status, std::function<void()>, std::function<void()>) {
+          finish_promise.set_value();
+        });
+    finish_promise.get_future().get();
+  };
+
+  auto get_jobs = [this]() {
+    std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> promise;
+    gcs_table_storage_->JobTable().GetAll(
+        {[&promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+           promise.set_value(std::move(jobs));
+         },
+         io_service_});
+    return promise.get_future().get();
+  };
+
+  const auto job1 = JobID::FromInt(1);
+  const auto job2 = JobID::FromInt(2);
+  const auto job3 = JobID::FromInt(3);
+  add_and_finish_job(job1);
+  add_and_finish_job(job2);
+  add_and_finish_job(job3);
+
+  ASSERT_TRUE(WaitForCondition([&get_jobs]() { return get_jobs().size() == 2; }, 2000));
+  const auto jobs = get_jobs();
+  EXPECT_FALSE(jobs.contains(job1));
+  EXPECT_TRUE(jobs.contains(job2));
+  EXPECT_TRUE(jobs.contains(job3));
+}
+
+TEST_F(GcsJobManagerTest, TestPinnedFinishedJobTriggersEvictionOfOlderJob) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 1})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto old_job = JobID::FromInt(1);
+  const auto pinned_job = JobID::FromInt(2);
+  AddJob(old_job);
+  MarkJobFinished(old_job);
+
+  AddJob(pinned_job);
+  function_manager_->AddJobReference(pinned_job);
+  MarkJobFinished(pinned_job);
+
+  ASSERT_TRUE(WaitForCondition([this]() { return GetJobs().size() == 1; }, 2000));
+  const auto jobs = GetJobs();
+  EXPECT_FALSE(jobs.contains(old_job));
+  EXPECT_TRUE(jobs.contains(pinned_job));
+
+  RemoveJobReference(pinned_job);
+}
+
+TEST_F(GcsJobManagerTest, TestRestoreFinishedJobsUsesJobIdAsTieBreaker) {
+  RayConfig::instance().initialize(R"({
+    "maximum_gcs_dead_job_cached_count": 2,
+    "maximum_gcs_deletion_batch_size": 1
+  })");
+
+  std::vector<JobID> job_ids{JobID::FromInt(3), JobID::FromInt(1), JobID::FromInt(2)};
+  for (const auto &job_id : job_ids) {
+    rpc::JobTableData job_data;
+    job_data.set_job_id(job_id.Binary());
+    job_data.set_is_dead(true);
+    job_data.set_end_time(100);
+    std::promise<void> promise;
+    gcs_table_storage_->JobTable().Put(job_id,
+                                       job_data,
+                                       {[&promise](Status status) {
+                                          EXPECT_TRUE(status.ok());
+                                          promise.set_value();
+                                        },
+                                        io_service_});
+    promise.get_future().get();
+  }
+
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  std::promise<void> load_promise;
+  gcs_init_data.AsyncLoad({[&load_promise] { load_promise.set_value(); }, io_service_});
+  load_promise.get_future().get();
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  std::sort(job_ids.begin(), job_ids.end(), [](const JobID &left, const JobID &right) {
+    return left.Binary() < right.Binary();
+  });
+  const auto expected_evicted_job = job_ids.front();
+
+  auto get_jobs = [this]() {
+    std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> promise;
+    gcs_table_storage_->JobTable().GetAll(
+        {[&promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+           promise.set_value(std::move(jobs));
+         },
+         io_service_});
+    return promise.get_future().get();
+  };
+  ASSERT_TRUE(WaitForCondition([&get_jobs]() { return get_jobs().size() == 2; }, 2000));
+
+  std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> jobs_promise;
+  gcs_table_storage_->JobTable().GetAll(
+      {[&jobs_promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+         jobs_promise.set_value(std::move(jobs));
+       },
+       io_service_});
+  const auto jobs = jobs_promise.get_future().get();
+  ASSERT_EQ(jobs.size(), 2);
+  EXPECT_FALSE(jobs.contains(expected_evicted_job));
+}
+
+TEST_F(GcsJobManagerTest, TestFinishedJobWithActorReferenceIsPinned) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 1})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  auto add_and_finish_pinned_job = [this](const JobID &job_id) {
+    auto add_job_request = GenAddJobRequest(job_id, "namespace");
+    rpc::AddJobReply add_reply;
+    std::promise<void> add_promise;
+    gcs_job_manager_->HandleAddJob(
+        *add_job_request,
+        &add_reply,
+        [&add_promise](Status, std::function<void()>, std::function<void()>) {
+          add_promise.set_value();
+        });
+    add_promise.get_future().get();
+
+    // Simulate the reference held by an actor from this job. Marking the driver as
+    // finished releases only the job's own reference.
+    function_manager_->AddJobReference(job_id);
+    rpc::MarkJobFinishedRequest finish_request;
+    finish_request.set_job_id(job_id.Binary());
+    rpc::MarkJobFinishedReply finish_reply;
+    std::promise<void> finish_promise;
+    gcs_job_manager_->HandleMarkJobFinished(
+        finish_request,
+        &finish_reply,
+        [&finish_promise](Status, std::function<void()>, std::function<void()>) {
+          finish_promise.set_value();
+        });
+    finish_promise.get_future().get();
+  };
+
+  const auto job1 = JobID::FromInt(1);
+  const auto job2 = JobID::FromInt(2);
+  add_and_finish_pinned_job(job1);
+  add_and_finish_pinned_job(job2);
+
+  auto get_job_count = [this]() {
+    std::promise<size_t> promise;
+    gcs_table_storage_->JobTable().GetAll(
+        {[&promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+           promise.set_value(jobs.size());
+         },
+         io_service_});
+    return promise.get_future().get();
+  };
+  EXPECT_EQ(get_job_count(), 2);
+
+  auto remove_job_reference = [this](const JobID &job_id) {
+    std::promise<void> promise;
+    io_service_.post(
+        [this, job_id, &promise] {
+          function_manager_->RemoveJobReference(job_id);
+          promise.set_value();
+        },
+        "GcsJobManagerTest.RemoveJobReference");
+    promise.get_future().get();
+  };
+
+  // Once the first job loses its final actor reference, it becomes the oldest
+  // evictable record and the cap is enforced again.
+  remove_job_reference(job1);
+  EXPECT_TRUE(
+      WaitForCondition([&get_job_count]() { return get_job_count() == 1; }, 2000));
+
+  std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> jobs_promise;
+  gcs_table_storage_->JobTable().GetAll(
+      {[&jobs_promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+         jobs_promise.set_value(std::move(jobs));
+       },
+       io_service_});
+  const auto jobs = jobs_promise.get_future().get();
+  EXPECT_FALSE(jobs.contains(job1));
+  EXPECT_TRUE(jobs.contains(job2));
+
+  remove_job_reference(job2);
+}
+
+TEST_F(GcsJobManagerTest, TestReferenceAddedDuringEvictionRestoresJobRecord) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 0})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto job_id = JobID::FromInt(1);
+  AddJob(job_id);
+
+  std::promise<void> reference_added_promise;
+  in_memory_store_client_->batch_delete_hook =
+      [this, job_id, &reference_added_promise](const std::string &table_name) {
+        if (table_name != rpc::TablePrefix_Name(rpc::TablePrefix::JOB)) {
+          return;
+        }
+        in_memory_store_client_->batch_delete_hook = nullptr;
+        function_manager_->AddJobReference(job_id);
+        reference_added_promise.set_value();
+      };
+
+  MarkJobFinished(job_id);
+  reference_added_promise.get_future().get();
+
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().size() == 1; }, 2000));
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+  EXPECT_NE(gcs_job_manager_->GetJobConfig(job_id), nullptr);
+
+  RemoveJobReference(job_id);
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().empty(); }, 2000));
+}
+
+TEST_F(GcsJobManagerTest, TestMarkJobFinishedRetryKeepsActorReference) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 0})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto job_id = JobID::FromInt(1);
+  AddJob(job_id);
+  function_manager_->AddJobReference(job_id);
+
+  MarkJobFinished(job_id);
+  MarkJobFinished(job_id);
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+
+  RemoveJobReference(job_id);
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().empty(); }, 2000));
 }
 
 }  // namespace ray

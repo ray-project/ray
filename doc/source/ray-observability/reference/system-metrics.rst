@@ -42,6 +42,9 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - `ray_gcs_finished_job_evictions_total`
+     - None
+     - Cumulative number of finished driver records evicted from the GCS job table by the configured retention limit.
    * - `ray_memory_manager_worker_eviction_total`
      - `Type`, `Name`
      - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
