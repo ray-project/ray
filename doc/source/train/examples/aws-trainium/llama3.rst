@@ -79,7 +79,7 @@ Run the following command to set up the Ray cluster:
    kubectl apply -f 1-llama3-finetune-trn1-create-raycluster.yaml
 
 
-Accessing Ray Dashboard
+Accessing Ray dashboard
 -----------------------
 Port forward from the cluster to see the state of the Ray dashboard and
 then view it on `http://localhost:8265 <http://localhost:8265/>`__.
@@ -106,7 +106,7 @@ The Ray cluster is now ready to handle workloads. Initiate the data preparation 
 
    kubectl apply -f 3-llama3-finetune-trn1-rayjob-submit-finetuning-job.yaml
 
-3. Monitor the jobs via the Ray Dashboard
+3. Monitor the jobs via the Ray dashboard
 
 
 For detailed information on each of the steps above, see the `AWS documentation link <https://github.com/aws-neuron/aws-neuron-eks-samples/blob/master/llama3.1_8B_finetune_ray_ptl_neuron/README.md/>`__.

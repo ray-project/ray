@@ -15,6 +15,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
 logger = get_logger(__name__)
 
 
+# TODO (jeffreywang): Support multimodal chat. Since vllm-project/vllm#48145 the
+# renderer builds the engine input from the forwarded ids alone, skipping the
+# chat rendering that turns images/audio into ``multi_modal_data``. The engine
+# then gets placeholder tokens with no ``multi_modal_data`` to resolve them.
 def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
