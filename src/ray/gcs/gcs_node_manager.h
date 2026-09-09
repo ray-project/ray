@@ -222,24 +222,18 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   void Initialize(const GcsInitData &gcs_init_data);
 
   /// Cache the local head node in-memory while passive (called by
-  /// LeaderGatedNodeInfoHandler). Only the head node may be cached.
+  /// LeaderGatedNodeInfoHandler). Only the head node may be cached. No-op if this GCS
+  /// is already the leader or the node is already tracked in alive_nodes_/dead_nodes_.
   ///
   /// \param node_info The local head node info to cache.
-  void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
-    RAY_CHECK(node_info.is_head_node())
-        << "CachePassiveLocalNode must only cache the local head node.";
-    // The handler's passive check and this call are not atomic: leader election
-    // may promote this GCS in between. If we are already the leader, the promotion
-    // path owns node registration, so drop the now-redundant cache.
-    if (is_leader_fn_()) {
-      return;
-    }
-    NodeID node_id = NodeID::FromBinary(node_info.node_id());
-    RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
-                     "registration in-memory. node_id: "
-                  << node_id;
+  void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info);
+
+  /// Drop the cached passive local head node, if any.
+  /// TODO: currently only called in tests; wire it into the real promotion path
+  /// once that is implemented.
+  void ClearPassiveLocalNode() {
     absl::MutexLock lock(&mutex_);
-    passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+    passive_local_node_.reset();
   }
 
   std::string DebugString() const;
@@ -310,6 +304,28 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \return the node if it is alive. Optional empty value if it is not alive.
   std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GetAliveNodeFromCache(
       const ray::NodeID &node_id) const ABSL_SHARED_LOCKS_REQUIRED(mutex_);
+
+  /// Whether a specific node id should be surfaced from the passive local node
+  /// cache by the visibility RPCs.
+  ///
+  /// \param node_id The queried node id.
+  /// \return true if the cached passive local head node has this id and is safe to
+  /// surface.
+  bool IsPassiveLocalNode(const ray::NodeID &node_id) const
+      ABSL_SHARED_LOCKS_REQUIRED(mutex_) {
+    return passive_local_node_ != nullptr &&
+           NodeID::FromBinary(passive_local_node_->node_id()) == node_id &&
+           !alive_nodes_.contains(node_id) && !dead_nodes_.contains(node_id);
+  }
+
+  /// Whether the passive local node cache currently holds a node that should be
+  /// surfaced by the visibility RPCs.
+  ///
+  /// \return true if a surfaceable passive local head node is cached.
+  bool HasSurfaceablePassiveLocalNode() const ABSL_SHARED_LOCKS_REQUIRED(mutex_) {
+    return passive_local_node_ != nullptr &&
+           IsPassiveLocalNode(NodeID::FromBinary(passive_local_node_->node_id()));
+  }
 
   /// Handle a node failure. This will mark the failed node as dead in gcs
   /// node table.
@@ -430,7 +446,13 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   std::string session_name_;
   ClockInterface &clock_;
   const std::function<bool()> is_leader_fn_;
-  std::shared_ptr<rpc::GcsNodeInfo> passive_local_node_;
+  /// In-memory cache of the local head node while this GCS is passive. Written by
+  /// CachePassiveLocalNode() (not persisted to Redis) and surfaced by the un-gated
+  /// visibility RPCs (CheckAlive/GetAllNodeInfo/GetAllNodeAddressAndLiveness) so the
+  /// head is visible before promotion. Cleared on promotion via ClearPassiveLocalNode();
+  /// readers also skip it once alive_nodes_/dead_nodes_ tracks the id, so it is never
+  /// double-counted.
+  std::shared_ptr<rpc::GcsNodeInfo> passive_local_node_ ABSL_GUARDED_BY(mutex_);
 
   // Debug info.
   enum CountType {

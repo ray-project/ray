@@ -167,9 +167,7 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
     const auto node_id = NodeID::FromBinary(id);
     // CheckAlive is un-gated on a passive GCS (cluster-bootstrap allowlist), so it
     // must report passive_local_node_ alive for visibility only.
-    const bool is_alive = alive_nodes_.contains(node_id) ||
-                          (passive_local_node_ != nullptr &&
-                           NodeID::FromBinary(passive_local_node_->node_id()) == node_id);
+    const bool is_alive = alive_nodes_.contains(node_id) || IsPassiveLocalNode(node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 
@@ -288,8 +286,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       continue;
     }
   }
+  const bool has_surfaceable_passive_node = HasSurfaceablePassiveLocalNode();
   const size_t total_num_nodes =
-      alive_nodes_.size() + dead_nodes_.size() + (passive_local_node_ != nullptr ? 1 : 0);
+      alive_nodes_.size() + dead_nodes_.size() + (has_surfaceable_passive_node ? 1 : 0);
   int64_t num_added = 0;
 
   if (request.node_selectors_size() > 0 && only_node_id_filters) {
@@ -301,8 +300,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
         if (iter != alive_nodes_.end()) {
           *reply->add_node_info_list() = *iter->second;
           ++num_added;
-        } else if (passive_local_node_ != nullptr &&
-                   NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
+        } else if (IsPassiveLocalNode(node_id)) {
           *reply->add_node_info_list() = *passive_local_node_;
           ++num_added;
         }
@@ -341,8 +339,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     if (!request.has_state_filter() ||
         request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
       check_and_add_head_node(alive_nodes_);
-      if (num_added == 0 && passive_local_node_ != nullptr &&
-          passive_local_node_->is_head_node()) {
+      if (num_added == 0 && has_surfaceable_passive_node) {
         *reply->add_node_info_list() = *passive_local_node_;
         ++num_added;
       }
@@ -359,6 +356,23 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   }
 
   const bool has_node_selectors = request.node_selectors_size() > 0;
+  // True if the request has no selectors (return all nodes) or the node matches any
+  // selector by id, name, ip address, or head-node flag.
+  auto node_matches_request_filters = [&](const NodeID &node_id,
+                                          const rpc::GcsNodeInfo &node_info) {
+    return !has_node_selectors || node_ids.contains(node_id) ||
+           node_names.contains(node_info.node_name()) ||
+           node_ip_addresses.contains(node_info.node_manager_address()) ||
+           (is_head_node_filter.has_value() &&
+            node_info.is_head_node() == is_head_node_filter.value());
+  };
+  auto add_node_to_response = [&](const rpc::GcsNodeInfo &node_info) {
+    NodeID node_id = NodeID::FromBinary(node_info.node_id());
+    if (num_added < limit && node_matches_request_filters(node_id, node_info)) {
+      *reply->add_node_info_list() = node_info;
+      num_added += 1;
+    }
+  };
   auto add_to_response =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
@@ -366,42 +380,21 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
           if (num_added >= limit) {
             break;
           }
-          if (!has_node_selectors || node_ids.contains(node_id) ||
-              node_names.contains(node_info_ptr->node_name()) ||
-              node_ip_addresses.contains(node_info_ptr->node_manager_address()) ||
-              (is_head_node_filter.has_value() &&
-               node_info_ptr->is_head_node() == is_head_node_filter.value())) {
-            *reply->add_node_info_list() = *node_info_ptr;
-            num_added += 1;
-          }
+          add_node_to_response(*node_info_ptr);
         }
       };
-
-  // GetAllNodeInfo is un-gated on a passive GCS (cluster-bootstrap allowlist), so
-  // it must surface passive_local_node_ in listings for visibility only
-  auto check_and_add_passive_node = [&]() {
-    if (passive_local_node_ != nullptr && num_added < limit) {
-      NodeID node_id = NodeID::FromBinary(passive_local_node_->node_id());
-      if (!has_node_selectors || node_ids.contains(node_id) ||
-          node_names.contains(passive_local_node_->node_name()) ||
-          node_ip_addresses.contains(passive_local_node_->node_manager_address()) ||
-          (is_head_node_filter.has_value() &&
-           passive_local_node_->is_head_node() == is_head_node_filter.value())) {
-        *reply->add_node_info_list() = *passive_local_node_;
-        num_added += 1;
-      }
-    }
-  };
 
   if (request.has_state_filter()) {
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
       if (!has_node_selectors) {
-        reply->mutable_node_info_list()->Reserve(
-            alive_nodes_.size() + (passive_local_node_ != nullptr ? 1 : 0));
+        reply->mutable_node_info_list()->Reserve(alive_nodes_.size() +
+                                                 (has_surfaceable_passive_node ? 1 : 0));
       }
       add_to_response(alive_nodes_);
-      check_and_add_passive_node();
+      if (has_surfaceable_passive_node) {
+        add_node_to_response(*passive_local_node_);
+      }
       break;
     case rpc::GcsNodeInfo::DEAD:
       if (!has_node_selectors) {
@@ -416,10 +409,12 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   } else {
     if (!has_node_selectors) {
       reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size() +
-                                               (passive_local_node_ != nullptr ? 1 : 0));
+                                               (has_surfaceable_passive_node ? 1 : 0));
     }
     add_to_response(alive_nodes_);
-    check_and_add_passive_node();
+    if (has_surfaceable_passive_node) {
+      add_node_to_response(*passive_local_node_);
+    }
     add_to_response(dead_nodes_);
   }
 
@@ -451,6 +446,7 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     const std::function<void(rpc::GcsNodeAddressAndLiveness &&)> &callback) const {
   absl::ReaderMutexLock lock(&mutex_);
   int64_t num_added = 0;
+  const bool has_surfaceable_passive_node = HasSurfaceablePassiveLocalNode();
 
   if (!node_ids.empty()) {
     // optimized path if request only wants specific node ids
@@ -463,8 +459,7 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
         if (iter != alive_nodes_.end()) {
           callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
           ++num_added;
-        } else if (passive_local_node_ != nullptr &&
-                   NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
+        } else if (IsPassiveLocalNode(node_id)) {
           callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
           ++num_added;
         }
@@ -480,6 +475,12 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     return;
   }
 
+  auto add_node_address = [&](const rpc::GcsNodeInfo &node_info) {
+    if (num_added < limit) {
+      callback(ConvertToGcsNodeAddressAndLiveness(node_info));
+      num_added += 1;
+    }
+  };
   auto add_with_callback =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
@@ -487,25 +488,17 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
           if (num_added >= limit) {
             break;
           }
-          callback(ConvertToGcsNodeAddressAndLiveness(*node_info_ptr));
-          num_added += 1;
+          add_node_address(*node_info_ptr);
         }
       };
-
-  // GetAllNodeAddressAndLiveness is un-gated on a passive GCS (cluster-bootstrap
-  // allowlist), so it must surface passive_local_node_. for visibility only.
-  auto check_and_add_passive_node = [&]() {
-    if (passive_local_node_ != nullptr && num_added < limit) {
-      callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
-      num_added += 1;
-    }
-  };
 
   if (state_filter.has_value()) {
     switch (state_filter.value()) {
     case rpc::GcsNodeInfo::ALIVE:
       add_with_callback(alive_nodes_);
-      check_and_add_passive_node();
+      if (has_surfaceable_passive_node) {
+        add_node_address(*passive_local_node_);
+      }
       break;
     case rpc::GcsNodeInfo::DEAD:
       add_with_callback(dead_nodes_);
@@ -516,7 +509,9 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     }
   } else {
     add_with_callback(alive_nodes_);
-    check_and_add_passive_node();
+    if (has_surfaceable_passive_node) {
+      add_node_address(*passive_local_node_);
+    }
     add_with_callback(dead_nodes_);
   }
 }
@@ -602,13 +597,6 @@ bool GcsNodeManager::IsNodeDead(const ray::NodeID &node_id) const {
 
 bool GcsNodeManager::IsNodeAlive(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
-  // Counts passive_local_node_ as alive so the visibility RPCs un-gated on a
-  // passive GCS (CheckAlive/GetAllNodeInfo, the cluster-bootstrap allowlist) can
-  // report it.
-  if (passive_local_node_ != nullptr &&
-      NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
-    return true;
-  }
   return alive_nodes_.contains(node_id);
 }
 
@@ -638,6 +626,25 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
         "health check failed due to missing too many heartbeats");
   }
   return death_info;
+}
+
+void GcsNodeManager::CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+  RAY_CHECK(node_info.is_head_node())
+      << "CachePassiveLocalNode must only cache the local head node.";
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  absl::MutexLock lock(&mutex_);
+  // Check under mutex_ so the leader check and the cache write are a single critical
+  // section.
+  if (is_leader_fn_()) {
+    return;
+  }
+  if (alive_nodes_.contains(node_id) || dead_nodes_.contains(node_id)) {
+    return;
+  }
+  RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
+                   "registration in-memory. node_id: "
+                << node_id;
+  passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
