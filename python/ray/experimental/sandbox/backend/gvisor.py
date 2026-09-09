@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ray._common import cdi
 from ray.experimental.sandbox.backend.base import (
@@ -124,8 +124,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "build from github.com/rootless-containers/slirp4netns) "
                     "and util-linux on the node image."
                 )
+
+        # Only `run` needs the CDI-resolved runsc args (e.g. --nvproxy);
+        # exec/kill/delete/state talk to the already-booted sentry over a
+        # control socket and never reference them.
+        # Resolved here rather than inside _build_run_command so a bad CDI
+        # spec fails before pull_image does any work, and so
+        # _build_run_command stays pure argv construction.
+        gpu_run_args = []
         if config.gpu_ids:
-            self._check_gpu_cdi_kind_supported()
+            gpu_run_args = self._resolve_gpu_run_args()
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -192,7 +200,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         overlay_dir = os.path.join(root_dir, "overlay")
         os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config, root_dir, overlay_dir, sandbox_id, gpu_run_args
+        )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -444,8 +454,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
         ):
             args.append("--ignore-cgroups")
-        if config.gpu_ids:
-            args.extend(self._gpu_cdi_flags())
         args.extend(["--root", _RUNSC_ROOT])
         return args
 
@@ -463,7 +471,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        overlay_dir: str,
+        sandbox_id: str,
+        gpu_run_args: Sequence[str] = (),
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
@@ -471,6 +484,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         assert the exact command without runsc or slirp4netns installed.
         """
         args = self._runsc_base_args(config)
+        args.extend(gpu_run_args)
         use_netns = config.network == "public"
         if use_netns and "--rootless" in args:
             # runsc runs as mapped root inside the holder's user namespace;
@@ -539,20 +553,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except (subprocess.TimeoutExpired, ValueError):
             pass
 
-    def _check_gpu_cdi_kind_supported(self) -> None:
-        """Fail fast if gpu_ids was requested but no CDI spec exists, or
-        this node's GPU CDI kind isn't one runsc's GPU passthrough has
-        been validated against — see _CDI_KIND_RUNSC_FLAGS. Checked before
-        any sandbox state is created (in particular, before create_sandbox
-        pulls/extracts the container image), so a request that's certain
-        to fail doesn't pay for that work first, and there's nothing to
-        clean up on failure either way.
-
-        Raises the same message prepare_oci_bundle's own CDI-spec check
-        (image_manager._apply_gpu_cdi_edits) would eventually raise --
-        shared as NO_GPU_CDI_SPEC_MESSAGE so the two stay in sync. That
-        check still runs too: it's the generic OCI-spec builder's own
-        guarantee, independent of whichever backend calls it.
+    def _resolve_gpu_run_args(self) -> List[str]:
+        """The runsc flag(s) this node's resolved GPU CDI kind needs
+        (e.g. --nvproxy for NVIDIA). Raises if no CDI spec exists, or
+        the kind isn't one runsc's GPU passthrough has been validated
+        against -- see _CDI_KIND_RUNSC_FLAGS.
         """
         spec = cdi.get_spec("GPU")
         if spec is None:
@@ -565,23 +570,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"doesn't support yet (only {tuple(_CDI_KIND_RUNSC_FLAGS)} "
                 f"has been validated)."
             )
-
-    def _gpu_cdi_flags(self) -> List[str]:
-        """runsc flag(s) needed for this node's GPU CDI kind (e.g.
-        --nvproxy for NVIDIA). create_sandbox's own
-        _check_gpu_cdi_kind_supported already validated the kind before
-        prepare_oci_bundle was ever called, so the lookup here is expected
-        to always hit.
-
-        Re-fetches the kind via cdi.get_spec("GPU") rather than
-        threading it through from create_sandbox: cheap either way, since
-        this hits cdi_lib.CDISpec.generate's in-memory cache rather than a
-        fresh generation, for any call after the first one create_sandbox
-        already made.
-        """
-        spec = cdi.get_spec("GPU")
-        kind = spec.kind if spec else None
-        return list(_CDI_KIND_RUNSC_FLAGS.get(kind, ()))
+        return list(_CDI_KIND_RUNSC_FLAGS[kind])
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")

@@ -298,24 +298,12 @@ def test_gvisor_backend_nvproxy_flag():
     cfg_no_gpu = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
     assert "--nvproxy" not in backend._runsc_base_args(cfg_no_gpu)
 
-    with patch(
-        "ray._common.cdi.get_spec",
-        return_value=cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
-    ):
-        assert "--nvproxy" in backend._runsc_base_args(_gpu_sandbox_config())
-
-
-def test_gvisor_backend_cdi_flags_are_kind_driven_not_hardcoded():
-    """The runsc flag selection isn't a blanket 'gpu_ids set -> --nvproxy':
-    it looks up the resolved CDI kind generically (see
-    gvisor._CDI_KIND_RUNSC_FLAGS), so a kind with no known runsc flag
-    requirement gets none, not --nvproxy by default."""
-    backend = GVisorSandboxBackend()
-    with patch(
-        "ray._common.cdi.get_spec",
-        return_value=cdi_lib.CDISpec("acme.com/widget", {"devices": []}),
-    ):
-        assert "--nvproxy" not in backend._runsc_base_args(_gpu_sandbox_config())
+    cfg_gpu = _gpu_sandbox_config()
+    assert "--nvproxy" not in backend._runsc_base_args(cfg_gpu)
+    cmd = backend._build_run_command(
+        cfg_gpu, "/tmp/rd", "/tmp/rd/overlay", "sb-1", ["--nvproxy"]
+    )
+    assert "--nvproxy" in cmd
 
 
 def test_gvisor_backend_rejects_unsupported_gpu_cdi_kind():
