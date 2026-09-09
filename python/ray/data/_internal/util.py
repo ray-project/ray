@@ -1540,10 +1540,13 @@ def _annotate_exception_with_retry_context(
             "credentials, or use s3fs with boto3 (pass "
             "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
         )
-    if exc.args and isinstance(exc.args[0], str):
-        exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
-    else:
-        exc.args = exc.args + (suffix,)
+    try:
+        if exc.args and isinstance(exc.args[0], str):
+            exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
+        else:
+            exc.args = exc.args + (suffix,)
+    except Exception:
+        pass
 
 
 def iterate_with_retry(
@@ -1606,8 +1609,8 @@ def iterate_with_retry(
                 _annotate_exception_with_retry_context(
                     e,
                     description=description,
-                    attempts=attempt + 1 if is_retryable else 1,
-                    max_attempts=max_attempts if is_retryable else 1,
+                    attempts=attempt + 1,
+                    max_attempts=max_attempts,
                     total_backoff_s=total_backoff_s,
                     exception_str=error_str,
                 )
