@@ -36,6 +36,7 @@ from ray.data._internal.dataset_repr import (
     build_dataset_ascii_repr,
     build_dataset_summary_repr,
 )
+from ray.data._internal.datasource.bigquery_credentials import BigQueryClientProvider
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -6154,6 +6155,7 @@ class Dataset:
         overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        client_provider: Optional["BigQueryClientProvider"] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
 
@@ -6193,6 +6195,8 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            client_provider: An optional custom BigQueryClientProvider
+                for injecting custom credentials or client options.
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
@@ -6212,6 +6216,7 @@ class Dataset:
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
+            client_provider=client_provider,
         )
         self.write_datasink(
             datasink,

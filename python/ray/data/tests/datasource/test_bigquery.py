@@ -10,6 +10,7 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
+from ray.data._internal.datasource.bigquery_credentials import BigQueryClientProvider
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -24,6 +25,25 @@ _TEST_BQ_DATASET_ID = "mockdataset"
 _TEST_BQ_TABLE_ID = "mocktable"
 _TEST_BQ_DATASET = _TEST_BQ_DATASET_ID + "." + _TEST_BQ_TABLE_ID
 _TEST_BQ_TEMP_DESTINATION = _TEST_GCP_PROJECT_ID + ".tempdataset.temptable"
+
+
+class _FakeProvider(BigQueryClientProvider):
+    def __init__(self, bq_client=None, storage_client=None):
+        self._bq = bq_client
+        self._storage = storage_client
+
+    def get_client(self, project_id: str):
+        if getattr(self, "_bq", None) is not None:
+            return self._bq
+        return mock.MagicMock()
+
+    def get_read_client(self, project_id: str):
+        if getattr(self, "_storage", None) is not None:
+            return self._storage
+        return mock.MagicMock()
+
+    def __reduce__(self):
+        return (_FakeProvider, ())
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +89,7 @@ def bq_client_full_mock(monkeypatch):
     client_mock.delete_table = bq_delete_table_mock
     client_mock.query = bq_query_mock
 
-    monkeypatch.setattr(bigquery, "Client", client_mock)
+    # Remove monkeypatch to Google Cloud libraries; use provider injection instead.
     return client_mock
 
 
@@ -87,7 +107,7 @@ def bqs_client_full_mock(monkeypatch):
 
     client_mock.create_read_session = bqs_create_read_session
 
-    monkeypatch.setattr(bigquery_storage, "BigQueryReadClient", client_mock)
+    # Remove monkeypatch to Google Cloud libraries; use provider injection instead.
     client_mock.reset_mock()
     return client_mock
 
@@ -119,10 +139,13 @@ class TestReadBigQuery:
         "parallelism",
         [1, 2, 3, 4, 10, 100],
     )
-    def test_create_read_tasks(self, parallelism):
+    def test_create_read_tasks(
+        self, parallelism, bq_client_full_mock, bqs_client_full_mock
+    ):
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
+            client_provider=_FakeProvider(bq_client_full_mock, bqs_client_full_mock),
         )
         read_tasks_list = bq_ds.get_read_tasks(parallelism)
         assert len(read_tasks_list) == parallelism
@@ -131,10 +154,17 @@ class TestReadBigQuery:
         "parallelism",
         [1, 2, 3, 4, 10, 100],
     )
-    def test_create_reader_query(self, parallelism, bq_query_result_mock):
+    def test_create_reader_query(
+        self,
+        parallelism,
+        bq_query_result_mock,
+        bq_client_full_mock,
+        bqs_client_full_mock,
+    ):
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             query="SELECT * FROM mockdataset.mocktable",
+            client_provider=_FakeProvider(bq_client_full_mock, bqs_client_full_mock),
         )
         read_tasks_list = bq_ds.get_read_tasks(parallelism)
         bq_query_result_mock.assert_called_once()
@@ -148,21 +178,29 @@ class TestReadBigQuery:
         self,
         parallelism,
         bq_query_result_mock_fail,
+        bq_client_full_mock,
+        bqs_client_full_mock,
     ):
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             query="SELECT * FROM mockdataset.mocktable",
+            client_provider=_FakeProvider(bq_client_full_mock, bqs_client_full_mock),
         )
         with pytest.raises(exceptions.BadRequest):
             bq_ds.get_read_tasks(parallelism)
         bq_query_result_mock_fail.assert_called()
 
-    def test_dataset_query_kwargs_provided(self):
+    def test_dataset_query_kwargs_provided(
+        self, bq_client_full_mock, bqs_client_full_mock
+    ):
         with pytest.raises(ValueError) as exception:
             BigQueryDatasource(
                 project_id=_TEST_GCP_PROJECT_ID,
                 dataset=_TEST_BQ_DATASET,
                 query="SELECT * FROM mockdataset.mocktable",
+                client_provider=_FakeProvider(
+                    bq_client_full_mock, bqs_client_full_mock
+                ),
             )
         expected_message = (
             "Query and dataset kwargs cannot both be provided"
@@ -170,11 +208,14 @@ class TestReadBigQuery:
         )
         assert str(exception.value) == expected_message
 
-    def test_create_reader_dataset_not_found(self):
+    def test_create_reader_dataset_not_found(
+        self, bq_client_full_mock, bqs_client_full_mock
+    ):
         parallelism = 4
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="nonexistentdataset.mocktable",
+            client_provider=_FakeProvider(bq_client_full_mock, bqs_client_full_mock),
         )
         with pytest.raises(ValueError) as exception:
             bq_ds.get_read_tasks(parallelism)
@@ -183,11 +224,14 @@ class TestReadBigQuery:
         )
         assert str(exception.value) == expected_message
 
-    def test_create_reader_table_not_found(self):
+    def test_create_reader_table_not_found(
+        self, bq_client_full_mock, bqs_client_full_mock
+    ):
         parallelism = 4
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="mockdataset.nonexistenttable",
+            client_provider=_FakeProvider(bq_client_full_mock, bqs_client_full_mock),
         )
         with pytest.raises(ValueError) as exception:
             bq_ds.get_read_tasks(parallelism)
@@ -204,10 +248,11 @@ class TestWriteBigQuery:
     def _extract_write_result(self, stats: Iterator[Block]):
         return dict(next(stats).iloc[0])
 
-    def test_write(self, ray_get_mock):
+    def test_write(self, ray_get_mock, bq_client_full_mock):
         bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
+            client_provider=_FakeProvider(bq_client_full_mock),
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
@@ -230,10 +275,11 @@ class TestWriteBigQuery:
             ),
         )
 
-    def test_write_dataset_exists(self, ray_get_mock):
+    def test_write_dataset_exists(self, ray_get_mock, bq_client_full_mock):
         bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="existingdataset" + "." + _TEST_BQ_TABLE_ID,
+            client_provider=_FakeProvider(bq_client_full_mock),
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
@@ -255,7 +301,7 @@ class TestWriteBigQuery:
             ),
         )
 
-    def test_write_empty_block(self, ray_get_mock):
+    def test_write_empty_block(self, ray_get_mock, bq_client_full_mock):
         """Test that writing a zero-sized block doesn't crash.
 
         See https://github.com/ray-project/ray/issues/51892
@@ -263,6 +309,7 @@ class TestWriteBigQuery:
         bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
+            client_provider=_FakeProvider(bq_client_full_mock),
         )
         # Create an empty block with schema but no rows
         block = pa.Table.from_arrays([pa.array([], type=pa.int64())], names=["data"])
@@ -276,6 +323,14 @@ class TestWriteBigQuery:
         # write() always calls ray.get(), but with an empty list since the
         # zero-row block is filtered out (no remote write tasks launched).
         ray_get_mock.assert_called_once_with([])
+
+
+def test_custom_client_provider_is_used():
+    mock_bq = mock.MagicMock()
+    mock_storage = mock.MagicMock()
+    provider = _FakeProvider(mock_bq, mock_storage)
+    ray.data.read_bigquery("my_project", dataset="ds.table", client_provider=provider)
+    mock_bq.get_dataset.assert_called()
 
 
 if __name__ == "__main__":

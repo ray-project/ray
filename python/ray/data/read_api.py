@@ -25,6 +25,9 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
+from ray.data._internal.datasource.bigquery_credentials import (
+    BigQueryClientProvider,
+)
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
@@ -1470,6 +1473,7 @@ def read_bigquery(
     memory: Optional[float] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    client_provider: Optional["BigQueryClientProvider"] = None,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -1534,6 +1538,10 @@ def read_bigquery(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        client_provider: An optional custom
+            :class:`~ray.data._internal.datasource.bigquery_credentials.BigQueryClientProvider`
+            for injecting custom credentials or client options. When omitted,
+            Application Default Credentials are used.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -1550,7 +1558,12 @@ def read_bigquery(
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
     """  # noqa: E501
-    datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
+    datasource = BigQueryDatasource(
+        project_id=project_id,
+        dataset=dataset,
+        query=query,
+        client_provider=client_provider,
+    )
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
