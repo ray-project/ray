@@ -1,6 +1,7 @@
 import os
 import socket
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -324,14 +325,14 @@ def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
 
 
 def _host_ip() -> str:
-    """The worker's primary IPv4, which pasta copies onto each sandbox's tap."""
+    """The worker's primary IPv4."""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect(("8.8.8.8", 80))
         return sock.getsockname()[0]
 
 
-def _pasta_pids() -> set:
-    """PIDs of running pasta processes."""
+def _slirp4netns_pids() -> set:
+    """PIDs of running slirp4netns processes."""
     pids = set()
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
@@ -340,15 +341,16 @@ def _pasta_pids() -> set:
             argv0 = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
         except OSError:
             continue
-        if os.path.basename(argv0) == b"pasta":
+        if os.path.basename(argv0) == b"slirp4netns":
             pids.add(entry.name)
     return pids
 
 
-def test_build_run_command_public_wraps_with_pasta():
-    """The pasta flags are the isolation property and the chain's shape is the
-    topology, so pin both: holder namespaces first, pasta attached from the pod
-    side in the foreground, runsc entered as mapped root (never --rootless)."""
+def test_build_run_command_public_wraps_with_slirp4netns():
+    """The slirp4netns flags are the isolation property and the chain's shape
+    is the topology, so pin both: holder namespaces first, slirp4netns attached
+    from the pod side in the foreground, runsc entered as mapped root (never
+    --rootless)."""
     cmd = _run_argv("public")
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
@@ -359,13 +361,14 @@ def test_build_run_command_public_wraps_with_pasta():
     assert script.endswith("run --bundle /tmp/rd sb-1")
     for fragment in (
         "/tmp/rd/netns.pid",
-        # pasta stays in the sandbox's process group (--foreground) and its
-        # pidfile, written once initialised, gates the runsc start.
-        "pasta --config-net -t none -u none -T none -U none --no-map-gw -4 "
-        "--foreground --pid /tmp/rd/pasta.pid "
-        "--netns /proc/$NSPID/ns/net --userns /proc/$NSPID/ns/user &",
-        "kill -0 $PASTA",
-        "[ -s /tmp/rd/pasta.pid ] ||",
+        # slirp4netns stays in the sandbox's process group and its ready
+        # file, written once the tap is configured, gates the runsc start.
+        "slirp4netns --configure --cidr=198.18.0.0/24 --mtu=65520 --disable-host-loopback "
+        "--disable-dns --enable-seccomp --ready-fd=3 "
+        "--netns-type=path /proc/$NSPID/ns/net tap0 "
+        "--userns-path /proc/$NSPID/ns/user 3>/tmp/rd/slirp4netns.ready &",
+        "kill -0 $SLIRP",
+        "[ -s /tmp/rd/slirp4netns.ready ] ||",
         # The holder wait fast-fails if the holder dies and refuses an
         # empty NSPID (which would resolve to /proc//ns/net).
         "kill -0 $HOLDER",
@@ -400,29 +403,29 @@ def test_build_run_command_other_modes_unwrapped(network, rootless):
     """Every mode but "public" keeps today's bare runsc invocation."""
     cmd = _run_argv(network, rootless=rootless)
     assert cmd[0] == "runsc"
-    assert "pasta" not in cmd
+    assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
 
 
-def test_create_sandbox_requires_pasta(monkeypatch):
-    """A missing pasta fails fast — before the image pull — with remediation."""
+def test_create_sandbox_requires_slirp4netns(monkeypatch):
+    """A missing slirp4netns fails fast, before the image pull, with remediation."""
 
     class _NoPullImageManager:
         def pull_image(self, *args, **kwargs):
-            raise AssertionError("image pull must not run when pasta is missing")
+            raise AssertionError("image pull must not run when slirp4netns is missing")
 
     monkeypatch.setattr(
         "ray.experimental.sandbox.backend.gvisor.shutil.which",
-        lambda name: None if name == "pasta" else f"/usr/bin/{name}",
+        lambda name: None if name == "slirp4netns" else f"/usr/bin/{name}",
     )
     backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(_public_config())
-    assert all(hint in str(err.value) for hint in ("pasta", "passt"))
+    assert "slirp4netns" in str(err.value)
 
 
-def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
+def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener, the bind never surfaces in
     the worker's namespace, and neither sandbox can reach the other's."""
@@ -451,8 +454,9 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
             with pytest.raises(OSError):
                 socket.create_connection((target, 2222), timeout=3).close()
 
-        # No address names one sandbox from another: pasta --config-net gives
-        # every sandbox the worker's own IP, so from sb2 that IP is sb2 itself.
+        # No address names one sandbox from another: every sandbox is
+        # 198.18.0.100 in its own namespace, and the worker's IP reaches the
+        # worker, which has nothing on 2222.
         res = backend.exec_command(
             sb2, f"wget -q -T 3 -O - http://{host_ip}:2222/token", timeout=30
         )
@@ -463,7 +467,7 @@ def test_netns_concurrent_same_port_bind_and_isolation(ensure_pasta):
             backend.delete_sandbox(sb)
 
 
-def test_netns_egress_and_dns(ensure_pasta):
+def test_netns_egress_and_dns(ensure_slirp4netns):
     """Egress and the generated resolv.conf work from inside the netns."""
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(_public_config())
@@ -477,25 +481,113 @@ def test_netns_egress_and_dns(ensure_pasta):
         backend.delete_sandbox(sb)
 
 
-def test_netns_teardown_reaps_pasta(ensure_pasta):
-    """delete_sandbox ends the pasta process tree and removes all state."""
-    before = _pasta_pids()
+def test_netns_teardown_reaps_slirp4netns(ensure_slirp4netns):
+    """delete_sandbox ends the slirp4netns process tree and removes all state."""
+    before = _slirp4netns_pids()
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(_public_config())
     meta = backend._sandbox_metadata[sb]
     assert meta["proc"].poll() is None
-    assert _pasta_pids() > before
+    assert _slirp4netns_pids() > before
 
     backend.delete_sandbox(sb)
     assert meta["proc"].poll() is not None
-    assert _pasta_pids() == before
+    assert _slirp4netns_pids() == before
     assert not os.path.exists(meta["root_dir"])
     assert sb not in backend._sandbox_metadata
 
 
-def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
-    """A failed create (bad image) leaves no pasta process behind."""
-    before = _pasta_pids()
+_UDP_CLIENT = r"""
+import socket, struct, sys, time
+
+name, sport, resolver = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("0.0.0.0", sport))
+s.settimeout(0.5)
+
+
+def query(qname):
+    labels = b"".join(bytes([len(p)]) + p.encode() for p in qname.split("."))
+    header = struct.pack("!HHHHHH", 0x1234, 0x0100, 1, 0, 0, 0)
+    return header + labels + b"\x00" + struct.pack("!HH", 1, 1)
+
+
+def qname_of(resp):
+    off, parts = 12, []
+    while resp[off]:
+        n = resp[off]
+        parts.append(resp[off + 1 : off + 1 + n].decode())
+        off += 1 + n
+    return ".".join(parts)
+
+
+own = foreign = 0
+deadline = time.time() + 8
+i = 0
+while time.time() < deadline:
+    s.sendto(query(f"{name}{i}.example.com"), (resolver, 53))
+    i += 1
+    try:
+        while True:
+            data, _ = s.recvfrom(4096)
+            if qname_of(data).startswith(name):
+                own += 1
+            else:
+                foreign += 1
+    except socket.timeout:
+        pass
+print(f"own={own} foreign={foreign}")
+"""
+
+
+def test_netns_udp_flows_do_not_cross(ensure_slirp4netns):
+    """Two sandboxes sending UDP from the same source port to the same server
+    must never receive each other's replies (pasta did: it preserved the
+    source port on the host with SO_REUSEADDR, so the kernel handed one
+    sandbox's replies to the other)."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(image="python:3.10-slim", network="public")
+    sandboxes = [backend.create_sandbox(cfg) for _ in range(2)]
+    try:
+        for sb in sandboxes:
+            backend.write_file(sb, "/tmp/client.py", _UDP_CLIENT)
+        names = ("aa", "bb")
+        results = {}
+
+        def run(sb, name):
+            try:
+                results[name] = backend.exec_command(
+                    sb, f"python3 /tmp/client.py {name} 5000 8.8.8.8", timeout=60
+                )
+            except Exception as exc:  # surfaced in the main thread below
+                results[name] = exc
+
+        threads = [
+            threading.Thread(target=run, args=(sb, name))
+            for sb, name in zip(sandboxes, names)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert set(results) == set(names), results
+        for name in names:
+            res = results[name]
+            if isinstance(res, Exception):
+                raise res
+            assert res.exit_code == 0, res.stderr
+            counts = dict(kv.split("=") for kv in res.stdout.split())
+            assert counts["foreign"] == "0", (name, res.stdout)
+            assert int(counts["own"]) > 0, (name, res.stdout)
+    finally:
+        for sb in sandboxes:
+            backend.delete_sandbox(sb)
+
+
+def test_netns_create_failure_leaves_no_slirp4netns(ensure_slirp4netns):
+    """A failed create (bad image) leaves no slirp4netns process behind."""
+    before = _slirp4netns_pids()
     backend = GVisorSandboxBackend()
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(
@@ -503,7 +595,7 @@ def test_netns_create_failure_leaves_no_pasta(ensure_pasta):
                 image="nonexistent_invalid_image_12345:latest", network="public"
             )
         )
-    assert _pasta_pids() == before
+    assert _slirp4netns_pids() == before
 
 
 if __name__ == "__main__":

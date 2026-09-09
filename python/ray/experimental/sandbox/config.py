@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
-# network namespace bridged by pasta (internet egress only; ports and
+# network namespace bridged by slirp4netns (internet egress only; ports and
 # loopback are private to the sandbox) plus a generated, host-independent
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
@@ -99,13 +99,13 @@ class SandboxConfig:
         network: Network mode (default: "none" — no network access).
             "public" (recommended for internet access) gives internet egress
             from a network namespace private to the sandbox, bridged by
-            pasta: ports and loopback are per-sandbox, nothing in the
+            slirp4netns: ports and loopback are per-sandbox, nothing in the
             sandbox is reachable from the host or from other sandboxes, and
             /etc/resolv.conf is generated from ``dns``, inheriting nothing
             from the host resolver. The sandbox can still reach any network
             address the node can reach, including other Ray nodes and
             internal services, so use "none" for untrusted code. Requires
-            the ``pasta`` binary on the node. "host" gives full host network
+            the ``slirp4netns`` binary on the node. "host" gives full host network
             identity — the host's resolv.conf, internal networks, and a
             port space shared with the worker and every other host-mode
             sandbox.
