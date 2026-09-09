@@ -194,7 +194,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
       instances.push_back(std::max(new_total, FixedPoint(0)));
     }
     if (!instances.empty()) {
-      local_view->SetAvailableInstances(resource_id, std::move(instances));
+      local_view->SetAvailableResource(resource_id, std::move(instances));
     }
   }
 }

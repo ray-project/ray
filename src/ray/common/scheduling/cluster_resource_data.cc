@@ -177,12 +177,7 @@ std::set<scheduling::ResourceID> NodeResources::GetAvailableResourceIds() const 
 }
 
 void NodeResources::SetAvailableResource(scheduling::ResourceID resource_id,
-                                         FixedPoint value) {
-  available.Set(resource_id, {value});
-}
-
-void NodeResources::SetAvailableInstances(scheduling::ResourceID resource_id,
-                                          std::vector<FixedPoint> instances) {
+                                         std::vector<FixedPoint> instances) {
   available.Set(resource_id, std::move(instances));
 }
 

@@ -31,8 +31,8 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
-  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::CPU(), {available_cpu});
+  resources.SetAvailableResource(ResourceID::Memory(), {available_memory});
   size_t num_gpu = static_cast<size_t>(total_gpu);
   if (num_gpu > 0) {
     std::vector<FixedPoint> gpu_instances;
@@ -42,9 +42,9 @@ NodeResources CreateNodeResources(double available_cpu,
       gpu_instances.push_back(FixedPoint(std::max(per_instance, 0.0)));
       remaining_avail -= per_instance;
     }
-    resources.SetAvailableInstances(ResourceID::GPU(), std::move(gpu_instances));
+    resources.SetAvailableResource(ResourceID::GPU(), std::move(gpu_instances));
   } else if (available_gpu > 0) {
-    resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
+    resources.SetAvailableResource(ResourceID::GPU(), {available_gpu});
   }
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
@@ -256,7 +256,7 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.SetAvailableResource(ResourceID::CPU(), 2.0);
+  resources.SetAvailableResource(ResourceID::CPU(), {2.0});
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
@@ -265,17 +265,17 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::CPU(), {1.0});
     resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
-    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
-    resources.SetAvailableInstances(ResourceID::GPU(), {FixedPoint(1), FixedPoint(0)});
-    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), {1.0});
+    resources.SetAvailableResource(ResourceID::Memory(), {0.25});
+    resources.SetAvailableResource(ResourceID::GPU(), {FixedPoint(1), FixedPoint(0)});
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), {50});
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -286,10 +286,10 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Skip GPU
     NodeResources resources;
-    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
-    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
-    resources.SetAvailableInstances(ResourceID::GPU(), {FixedPoint(0), FixedPoint(0)});
-    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), {1.0});
+    resources.SetAvailableResource(ResourceID::Memory(), {0.25});
+    resources.SetAvailableResource(ResourceID::GPU(), {FixedPoint(0), FixedPoint(0)});
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), {50});
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)

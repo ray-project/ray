@@ -362,12 +362,9 @@ class NodeResources {
   /// Get the set of resource IDs that have explicit available entries.
   std::set<scheduling::ResourceID> GetAvailableResourceIds() const;
 
-  /// Set a single resource's available to an explicit scalar value.
-  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
-
-  /// Set a single resource's available to explicit per-instance values.
-  void SetAvailableInstances(scheduling::ResourceID resource_id,
-                             std::vector<FixedPoint> instances);
+  /// Set a single resource's available to a per-instance vector.
+  void SetAvailableResource(scheduling::ResourceID resource_id,
+                            std::vector<FixedPoint> instances);
 
   /// Add per-instance values for a resource to available.
   void AddAvailableInstances(scheduling::ResourceID resource_id,

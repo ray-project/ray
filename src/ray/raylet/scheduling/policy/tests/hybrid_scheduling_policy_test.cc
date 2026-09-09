@@ -32,8 +32,8 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
-  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::CPU(), {available_cpu});
+  resources.SetAvailableResource(ResourceID::Memory(), {available_memory});
   size_t num_gpu = static_cast<size_t>(total_gpu);
   if (num_gpu > 0) {
     std::vector<FixedPoint> gpu_instances;
@@ -43,9 +43,9 @@ NodeResources CreateNodeResources(double available_cpu,
       gpu_instances.push_back(FixedPoint(std::max(per_instance, 0.0)));
       remaining_avail -= per_instance;
     }
-    resources.SetAvailableInstances(ResourceID::GPU(), std::move(gpu_instances));
+    resources.SetAvailableResource(ResourceID::GPU(), std::move(gpu_instances));
   } else if (available_gpu > 0) {
-    resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
+    resources.SetAvailableResource(ResourceID::GPU(), {available_gpu});
   }
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
