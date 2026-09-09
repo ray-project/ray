@@ -15,7 +15,6 @@
 #pragma once
 
 #include <functional>
-#include <memory>
 #include <utility>
 
 #include "ray/common/status.h"
@@ -24,15 +23,6 @@
 
 namespace ray {
 namespace gcs {
-
-// Helper macro to send reply status. Wrapped in do/while(0) so the multi-statement
-// body behaves as a single statement in any context (e.g. an unbraced if/else).
-#define GCS_PROXY_SEND_REPLY(send_reply_callback, reply, status)        \
-  do {                                                                  \
-    reply->mutable_status()->set_code(static_cast<int>(status.code())); \
-    reply->mutable_status()->set_message(status.message());             \
-    send_reply_callback(ray::Status::OK(), nullptr, nullptr);           \
-  } while (0)
 
 // Macros to define a leader-gated proxy handler override in one line each.
 // Request/Reply must be fully-qualified (e.g. rpc::AddJobRequest). Suffixes:
@@ -46,7 +36,7 @@ namespace gcs {
   void Method(Request request, Reply *reply, rpc::SendReplyCallback send_reply_callback) \
       override {                                                                         \
     if (!is_leader_fn_()) {                                                              \
-      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());            \
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());              \
       return;                                                                            \
     }                                                                                    \
     handler_.Method(std::move(request), reply, std::move(send_reply_callback));          \
@@ -58,7 +48,7 @@ namespace gcs {
               rpc::SendReplyCallback send_reply_callback,                      \
               const std::string &grpc_peer) override {                         \
     if (!is_leader_fn_()) {                                                    \
-      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());  \
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());    \
       return;                                                                  \
     }                                                                          \
     handler_.Method(                                                           \
@@ -133,12 +123,12 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
       const rpc::GcsNodeInfo &node_info = request.node_info();
       if (!node_info.is_head_node()) {
         // Reject remote worker node registrations on passive GCS
-        GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
         return;
       }
       // Cache the local head node in-memory without persisting to Redis
       cache_local_node_fn_(node_info);
-      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       return;
     }
     // Forward to the underlying handler on active GCS
@@ -495,8 +485,8 @@ class LeaderGatedRaySyncerHandler : public syncer::RaySyncerStreamHandler {
  public:
   using HandlerType = syncer::RaySyncerStreamHandler;
   LeaderGatedRaySyncerHandler(syncer::RaySyncerStreamHandler &handler,
-                              std::function<bool()> is_leader_fn)
-      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
+                              std::function<bool()> /*is_leader_fn*/)
+      : handler_(handler) {}
 
   // Allowed on passive GCS. It must not be gated because of the legitimate stream between
   // the local raylet and the GCS on the passive head node. Any NEW method added to
@@ -508,10 +498,8 @@ class LeaderGatedRaySyncerHandler : public syncer::RaySyncerStreamHandler {
 
  private:
   syncer::RaySyncerStreamHandler &handler_;
-  const std::function<bool()> is_leader_fn_;
 };
 
-#undef GCS_PROXY_SEND_REPLY
 #undef GCS_GATED_RPC
 #undef GCS_GATED_RPC_PEER
 #undef GCS_ALLOWED_RPC

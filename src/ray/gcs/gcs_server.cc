@@ -399,11 +399,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::RegisterRpcServices() {
   const int64_t max_rpcs = RayConfig::instance().gcs_max_active_rpcs_per_handler();
 
-  // Leader-gated services: MaybeGate() wraps each handler so a passive GCS
-  // rejects mutating RPCs with Status::GcsPassive() while forwarding bootstrap/
-  // read RPCs. When leader election is off, IsLeader() is always true and every
-  // RPC is forwarded unchanged. Per-RPC gated/allowed status lives in
-  // gcs_leader_gated_handlers.h.
+  // Leader-gated services: MaybeGate() wraps each handler when leader election is
+  // enabled, so a passive GCS rejects mutating RPCs with Status::GcsPassive()
+  // while forwarding bootstrap/read RPCs. When leader election is off, MaybeGate()
+  // returns the real handler directly with zero overhead. Per-RPC gated/allowed
+  // status lives in gcs_leader_gated_handlers.h.
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
       MaybeGate(gated_node_info_handler_,

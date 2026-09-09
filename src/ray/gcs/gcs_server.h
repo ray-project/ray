@@ -154,15 +154,20 @@ class GcsServer {
   }
 
  protected:
-  // Builds the leader-gated handler to pass to a GrpcService's RegisterService.
-  // Given the real handler, returns a `GatedT` proxy that forwards each RPC only
-  // when IsLeader() is true and otherwise rejects it (see GatedT for per-RPC
-  // policy). With leader election off IsLeader() is always true, so this is a
-  // transparent pass-through.
+  // Returns the handler to register for a GrpcService. When leader election is
+  // disabled the real handler is used directly (no wrapper, no per-RPC leader
+  // check), so non-HA clusters behave exactly as before with zero overhead.
+  // When enabled, the real handler is wrapped in a `GatedT` proxy (stored in `slot`
+  // to outlive the GrpcService, which holds it by reference) that rejects the
+  // service's mutating RPCs while passive. Any `extra` args are forwarded to
+  // the proxy constructor.
   template <typename GatedT, typename RealHandlerT, typename... ExtraArgs>
   typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
                                           RealHandlerT &real_handler,
                                           ExtraArgs &&...extra) {
+    if (!config_.ray_leader_elect_enabled) {
+      return real_handler;
+    }
     slot = std::make_unique<GatedT>(
         real_handler, [this]() { return IsLeader(); }, std::forward<ExtraArgs>(extra)...);
     return *slot;
@@ -318,8 +323,7 @@ class GcsServer {
   std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
 
   // Leader-gated proxy handlers. Each wraps the real service handler and, on a
-  // passive GCS, rejects that service's mutating RPCs. They are owned here so they
-  // outlive the GrpcServices that reference them. See RegisterRpcServices().
+  // passive GCS, rejects that service's mutating RPCs.
   std::unique_ptr<LeaderGatedNodeInfoHandler> gated_node_info_handler_;
   std::unique_ptr<LeaderGatedActorInfoHandler> gated_actor_info_handler_;
   std::unique_ptr<LeaderGatedJobInfoHandler> gated_job_info_handler_;
