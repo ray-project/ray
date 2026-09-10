@@ -24,7 +24,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_num_of_hosts,
     _worker_group_replicas,
     finalizer_patch,
-    idle_terminate_patch,
+    idle_suspend_patch,
     worker_delete_patch,
     worker_replica_patch,
 )
@@ -44,10 +44,11 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
-AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
-NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
-NO_DRIVER_TIMEOUT_POLICY_KEY = "noDriverTimeoutPolicy"
+IDLE_TERMINATION_OPTIONS_KEY = "idleTerminationOptions"
+IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY = "timeoutSeconds"
+IDLE_TERMINATION_OPTIONS_POLICY_KEY = "policy"
 NO_DRIVER_TIMEOUT_FINALIZER = "ray.io/no-driver-idle-termination"
+IDLE_SUSPEND_KEY = "idleSuspend"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -510,11 +511,11 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._ippr_provider.sync_with_raylets()
 
     def _refresh_no_driver_config(self) -> None:
-        """Reads noDriverTimeoutSeconds and noDriverTimeoutPolicy from the RayCluster CR."""
-        opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
-        secs = opts.get(NO_DRIVER_TIMEOUT_SECONDS_KEY)
+        """Reads IdleTerminationOptions from the RayCluster CR."""
+        opts = self._ray_cluster["spec"].get(IDLE_TERMINATION_OPTIONS_KEY, {})
+        secs = opts.get(IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY)
         self._no_driver_timeout_seconds = float(secs) if secs is not None else None
-        policy = opts.get(NO_DRIVER_TIMEOUT_POLICY_KEY, "Delete")
+        policy = opts.get(IDLE_TERMINATION_OPTIONS_POLICY_KEY, "Suspend")
         self._no_driver_policy = policy
 
     @property
@@ -803,13 +804,13 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             return None
 
-        spec_idle_terminate = self._ray_cluster.get("spec", {}).get("idleTerminate")
-        if spec_idle_terminate:
-            logger.info(f"spec.IdleTerminate is already true in {self._cluster_name}")
+        spec_idle_suspend = self._ray_cluster.get("spec", {}).get(IDLE_SUSPEND_KEY)
+        if spec_idle_suspend:
+            logger.info(f"spec.idleSuspend is already true in {self._cluster_name}")
             return None
 
-        # Merge-patch spec.idleTerminate=true if noDriverTimeoutPolicy is Suspend
-        payload = idle_terminate_patch(True)
+        # Merge-patch spec.idleSuspend=true when the policy is Suspend.
+        payload = idle_suspend_patch(True)
 
         try:
             patched_raycluster = self._k8s_api_client.patch(
@@ -817,20 +818,19 @@ class KubeRayProvider(ICloudInstanceProvider):
                 payload,
                 content_type="application/merge-patch+json",
             )
-
-            if patched_raycluster.get("spec", {}).get("idleTerminate") is not True:
+            if patched_raycluster.get("spec", {}).get(IDLE_SUSPEND_KEY) is not True:
                 logger.error(
-                    f"Unable to persist idleTerminate=true for {self._cluster_name}"
+                    f"Unable to persist {IDLE_SUSPEND_KEY}=true for {self._cluster_name}"
                 )
                 return None
 
         except Exception:
             logger.exception(
-                f"Failed to MERGE-PATCH suspend=true on RayCluster {self._cluster_name}",
+                f"Failed to MERGE-PATCH {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}",
             )
             return None
 
-        logger.info(f"Set idleTerminate=true on RayCluster {self._cluster_name}")
+        logger.info(f"Set {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}")
 
     def _get_head_pod_resource_version(self) -> str:
         """
