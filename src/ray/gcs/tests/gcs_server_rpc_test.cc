@@ -89,7 +89,8 @@ class GcsServerTest : public ::testing::Test {
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config, fake_metrics_, io_service_);
+    gcs_server_ = std::make_unique<gcs::GcsServer>(
+        config, fake_metrics_, io_service_, metric_context_);
     gcs_server_->Start();
 
     StartMainIOServiceThread();
@@ -329,6 +330,7 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
+  boost::asio::io_context metric_context_;
 
   // Client-related fields.
   std::unique_ptr<rpc::GcsRpcClient> client_;
@@ -641,7 +643,8 @@ class GcsServerWithThread {
  public:
   GcsServerWithThread(const gcs::GcsServerConfig &config,
                       const gcs::GcsServerMetrics &metrics)
-      : server_(std::make_unique<gcs::GcsServer>(config, metrics, io_service_)) {}
+      : server_(std::make_unique<gcs::GcsServer>(
+            config, metrics, io_service_, metric_context_)) {}
 
   ~GcsServerWithThread() { Stop(); }
 
@@ -695,6 +698,7 @@ class GcsServerWithThread {
 
  private:
   instrumented_io_context io_service_;
+  boost::asio::io_context metric_context_;
   std::unique_ptr<gcs::GcsServer> server_;
   std::unique_ptr<rpc::ClientCallManager> call_manager_;
   std::unique_ptr<rpc::GcsRpcClient> client_;
@@ -881,7 +885,7 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
   }
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> NodesInStorage() {
-    instrumented_io_context io_context("TestStorage");
+    instrumented_io_context io_context(false, false, "TestStorage");
     Clock clock;
     gcs::GcsTableStorage storage(MakeStoreClient(io_context, clock));
     absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> nodes;
@@ -897,7 +901,7 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
   }
 
   std::optional<std::string> StorageGet(const std::string &ns, const std::string &key) {
-    instrumented_io_context io_context("TestStorage");
+    instrumented_io_context io_context(false, false, "TestStorage");
     Clock clock;
     gcs::StoreClientInternalKV kv(MakeStoreClient(io_context, clock));
     bool done = false;
@@ -918,7 +922,7 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
   }
 
   void PutInStorage(const std::string &ns, const std::string &key, std::string value) {
-    instrumented_io_context io_context("TestStorage");
+    instrumented_io_context io_context(false, false, "TestStorage");
     Clock clock;
     gcs::StoreClientInternalKV kv(MakeStoreClient(io_context, clock));
     bool done = false;

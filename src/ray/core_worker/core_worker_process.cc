@@ -91,6 +91,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
+
   core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
@@ -280,7 +281,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        IsLocalhost(options.node_ip_address));
+                                        IsLocalhost(options.node_ip_address),
+                                        metric_context_);
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -869,6 +871,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         << "install_failure_signal_handler must be false because ray log is disabled.";
   }
 
+  metric_thread_ = std::thread([this /*, &metric_context_*/] {
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        metric_context_.get_executor());
+    SetThreadName("metric_recorder");
+    metric_context_.run();
+  });
+
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
@@ -956,6 +965,11 @@ CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
+  }
+
+  metric_context_.stop();
+  if (metric_thread_.joinable()) {
+    metric_thread_.join();
   }
 }
 

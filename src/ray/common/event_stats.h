@@ -14,13 +14,16 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
 #include <limits>
+#include <thread>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
+#include "ray/util/thread_utils.h"
 
 /// Count, queueing, and execution statistics for a given event.
 struct EventStats {
@@ -105,7 +108,9 @@ struct StatsHandle {
 class EventTracker {
  public:
   /// Initializes the global stats struct after calling the base constructor.
-  EventTracker() : global_stats_(std::make_shared<GuardedGlobalStats>()) {}
+  EventTracker(boost::asio::io_context &metric_context)
+      : global_stats_(std::make_shared<GuardedGlobalStats>()),
+        metric_context_(metric_context) {}
 
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
@@ -197,4 +202,6 @@ class EventTracker {
       ray::GetOperationRunTimeMsHistogramMetric()};
   ray::stats::Histogram operation_queue_time_ms_histogram_metric_{
       ray::GetOperationQueueTimeMsHistogramMetric()};
+
+  boost::asio::io_context &metric_context_;
 };

@@ -282,6 +282,7 @@ ray_cc_library(
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",
+        "@boost//:asio",
     ],
 )
 

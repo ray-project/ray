@@ -73,7 +73,9 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
       // Explicitly set empty token (no auth required)
       server_auth_token = std::make_shared<AuthenticationToken>("");
     }
-    grpc_server_.reset(new GrpcServer("test", 0, true, 1, 7200000, server_auth_token));
+
+    grpc_server_.reset(
+        new GrpcServer("test", 0, true, metric_context_, 1, 7200000, server_auth_token));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -155,6 +157,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
   TestServiceHandler test_service_handler_;
   instrumented_io_context handler_io_service_;
   std::unique_ptr<std::thread> handler_thread_;
+  boost::asio::io_context metric_context_;
   std::unique_ptr<GrpcServer> grpc_server_;
 
   instrumented_io_context client_io_service_;

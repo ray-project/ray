@@ -99,7 +99,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         fake_io_context_monitor_unhealthy_counter_,
     };
 
-    gcs_server_.reset(new gcs::GcsServer(config, gcs_server_metrics, *io_service_));
+    gcs_server_.reset(
+        new gcs::GcsServer(config, gcs_server_metrics, *io_service_, metric_context_));
     gcs_server_->Start();
     work_ = std::make_unique<
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
@@ -149,6 +150,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
+  boost::asio::io_context metric_context_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;

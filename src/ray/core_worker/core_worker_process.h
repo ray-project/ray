@@ -226,6 +226,9 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
   std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;
+
+  boost::asio::io_context metric_context_;
+  std::thread metric_thread_;
 };
 }  // namespace core
 }  // namespace ray

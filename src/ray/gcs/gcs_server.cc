@@ -80,14 +80,16 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                      const ray::gcs::GcsServerMetrics &metrics,
-                     instrumented_io_context &main_service)
+                     instrumented_io_context &main_service,
+                     boost::asio::io_context &metric_context)
     : metrics_(metrics),
-      io_context_provider_(main_service),
+      io_context_provider_(main_service, metric_context),
       config_(config),
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   IsLocalhost(config.node_ip_address),
+                  metric_context,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -189,7 +191,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false),
       // Leader election disabled => always the leader (legacy single-GCS behavior).
       // Enabled => start passive; promotion to leader is wired up in a later PR.
-      is_leader_(!config.enable_gcs_leader_election) {
+      is_leader_(!config.enable_gcs_leader_election),
+      metric_context_(metric_context) {
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
@@ -203,7 +206,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
-        clock_);
+        clock_,
+        metric_context_);
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client = std::make_shared<RedisStoreClient>(
@@ -247,7 +251,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
             RayConfig::instance().gcs_rocksdb_strand_buckets()),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
-        clock_);
+        clock_,
+        metric_context_);
     break;
 #endif
   default:
@@ -1013,7 +1018,8 @@ void GcsServer::InitKVManager() {
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
-        clock_);
+        clock_,
+        metric_context_);
     break;
 #if defined(__linux__)
   case (StorageType::ROCKSDB_PERSIST):
@@ -1030,7 +1036,8 @@ void GcsServer::InitKVManager() {
             RayConfig::instance().gcs_rocksdb_strand_buckets()),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
-        clock_);
+        clock_,
+        metric_context_);
     break;
 #endif
   default:
