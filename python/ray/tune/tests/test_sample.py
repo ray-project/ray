@@ -6,7 +6,7 @@ change your pytest running directory to ray/python/ray/tune/tests/
 
 import sys
 import unittest
-from collections import defaultdict
+from collections import Counter, defaultdict
 from unittest.mock import patch
 
 import numpy as np
@@ -203,31 +203,24 @@ class SearchSpaceTest(unittest.TestCase):
             ):
                 yield generated["config"]
 
-        with patch("ray.tune.search.sample.LEGACY_RNG", True):
-            global_seed_legacy = [
-                next(config_generator(random_state=None)) for _ in range(100)
-            ]
-            seed_legacy = [
-                next(config_generator(random_state=1000)) for _ in range(100)
-            ]
-            generator_legacy = [
-                next(config_generator(random_state=np.random.RandomState(1000)))
-                for _ in range(100)
-            ]
-            for i in range(100):
-                assertDictAlmostEqual(global_seed_legacy[0], global_seed_legacy[i])
-                assertDictAlmostEqual(global_seed_legacy[0], seed_legacy[i])
-                assertDictAlmostEqual(global_seed_legacy[0], generator_legacy[i])
-
-        if not ray.tune.search.sample.LEGACY_RNG:
-            seed_new = [next(config_generator(random_state=1000)) for _ in range(100)]
-            generator_new = [
-                next(config_generator(random_state=np.random.default_rng(1000)))
-                for _ in range(100)
-            ]
-            for i in range(100):
-                assertDictAlmostEqual(seed_new[0], seed_new[i])
-                assertDictAlmostEqual(seed_new[0], generator_new[i])
+        # The global `np.random` stream and an explicit `RandomState`, both seeded
+        # with 1000, draw the same variants.
+        global_seed = [next(config_generator(random_state=None)) for _ in range(100)]
+        legacy_generator = [
+            next(config_generator(random_state=np.random.RandomState(1000)))
+            for _ in range(100)
+        ]
+        # An int seed builds a `default_rng`, which has a stream of its own.
+        seed = [next(config_generator(random_state=1000)) for _ in range(100)]
+        generator = [
+            next(config_generator(random_state=np.random.default_rng(1000)))
+            for _ in range(100)
+        ]
+        for i in range(100):
+            assertDictAlmostEqual(global_seed[0], global_seed[i])
+            assertDictAlmostEqual(global_seed[0], legacy_generator[i])
+            assertDictAlmostEqual(seed[0], seed[i])
+            assertDictAlmostEqual(seed[0], generator[i])
 
     def testReproducibilityBasicVariantGenerator(self):
         config = self.config.copy()
@@ -244,91 +237,76 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max",
             num_samples=num_samples,
         )
-        with patch("ray.tune.search.sample.LEGACY_RNG", True):
-            np.random.seed(1000)
-            analysis_global_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
-                **params,
+        # The global `np.random` stream and an explicit `RandomState`, both seeded
+        # with 1000, generate the same trials.
+        np.random.seed(1000)
+        analysis_global_seed = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
+            **params,
+        )
+        np.random.seed(1000)
+        analysis_global_seed_2 = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
+            **params,
+        )
+        analysis_generator = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.RandomState(1000)
+            ),
+            **params,
+        )
+        analysis_generator_2 = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.RandomState(1000)
+            ),
+            **params,
+        )
+        for i in range(num_samples):
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_generator.trials[i].config,
             )
-            np.random.seed(1000)
-            analysis_global_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
-                **params,
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_global_seed_2.trials[i].config,
             )
-            analysis_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_generator_2.trials[i].config,
             )
-            analysis_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
-            )
-            analysis_generator = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.RandomState(1000)
-                ),
-                **params,
-            )
-            analysis_generator_2 = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.RandomState(1000)
-                ),
-                **params,
-            )
-            for i in range(num_samples):
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_seed.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_generator.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_global_seed_2.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_seed_2.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_generator_2.trials[i].config,
-                )
 
-        if not ray.tune.search.sample.LEGACY_RNG:
-            analysis_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+        # An int seed builds a `default_rng`, which has a stream of its own.
+        analysis_seed = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
+            **params,
+        )
+        analysis_seed_2 = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
+            **params,
+        )
+        analysis_generator = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.default_rng(1000)
+            ),
+            **params,
+        )
+        analysis_generator_2 = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.default_rng(1000)
+            ),
+            **params,
+        )
+        for i in range(num_samples):
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config, analysis_generator.trials[i].config
             )
-            analysis_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config, analysis_seed_2.trials[i].config
             )
-            analysis_generator = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.default_rng(1000)
-                ),
-                **params,
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config,
+                analysis_generator_2.trials[i].config,
             )
-            analysis_generator_2 = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.default_rng(1000)
-                ),
-                **params,
-            )
-            for i in range(num_samples):
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config, analysis_generator.trials[i].config
-                )
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config, analysis_seed_2.trials[i].config
-                )
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config,
-                    analysis_generator_2.trials[i].config,
-                )
 
     def testBoundedFloat(self):
         bounded = ray.tune.search.sample.Float(-4.2, 8.3)
@@ -477,6 +455,129 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertTrue(
                 all(isinstance(s, float) for s in array), msg=f"quniform array, q={q}"
             )
+
+    @staticmethod
+    def _quantized_integer_grid(lower, upper, q):
+        """The multiples of ``q`` in ``[lower, upper]``, which is what should be
+        sampled: the upper bound is inclusive for quantized integer domains."""
+        return [
+            k * q for k in range(int(np.ceil(lower / q)), int(np.floor(upper / q)) + 1)
+        ]
+
+    def testQuantizedIntegerGrid(self):
+        """A quantized integer domain samples the multiples of `q` in [lower, upper].
+
+        Both bounds are inclusive, so a bound that is itself a multiple of `q` is
+        drawable, and a bound that is not is rounded inwards to the nearest multiple
+        that is. `q == 1` is the documented exception: `qrandint`/`qlograndint` then
+        keep `randint`/`lograndint`'s exclusive upper bound.
+        """
+        random_state = np.random.RandomState(1000)
+
+        for lower, upper, q in [(2, 10, 2), (1, 11, 2), (1, 10, 3), (2, 20, 2)]:
+            grid = self._quantized_integer_grid(lower, upper, q)
+            for name in ("qrandint", "qlograndint"):
+                domain = getattr(tune, name)(lower, upper, q)
+                sampled = domain.sample(size=5000, random_state=random_state)
+                where = f"{name}({lower}, {upper}, {q})"
+                self.assertEqual(sorted(set(sampled)), grid, msg=where)
+
+        # Negative bounds, which `qlograndint` does not accept.
+        grid = self._quantized_integer_grid(-21, 12, 3)
+        sampled = tune.qrandint(-21, 12, 3).sample(size=5000, random_state=random_state)
+        self.assertEqual(sorted(set(sampled)), grid)
+
+        # A grid holding a single point is a valid domain of one value.
+        for name in ("qrandint", "qlograndint"):
+            domain = getattr(tune, name)(1, 9, 5)
+            sampled = domain.sample(size=100, random_state=random_state)
+            self.assertEqual(set(sampled), {5}, msg=name)
+
+        # `q == 1` keeps `randint`/`lograndint`'s exclusive upper bound.
+        for name in ("qrandint", "qlograndint"):
+            domain = getattr(tune, name)(1, 10, 1)
+            sampled = domain.sample(size=5000, random_state=random_state)
+            self.assertEqual(sorted(set(sampled)), list(range(1, 10)), msg=name)
+
+        # A range holding no multiple of `q` at all has nothing to sample.
+        with self.assertRaisesRegex(ValueError, "no multiple of the quantization"):
+            tune.qrandint(3, 4, 5).sample(random_state=random_state)
+
+    def testQuantizedFloatKeepsItsBounds(self):
+        """A quantized float domain samples the whole grid, both bounds included.
+
+        The bounds below are all divisible by `q` in exact arithmetic but not in
+        floating point - `0.6 / 0.3` is 2.0000000000000004 and `599.7 / 0.3` is
+        1998.9999999999998 which is why they are written as `k * q`. `Float.quantized`
+        accepts such bounds under `math.isclose`, so snapping them onto the grid has to
+        use the same tolerance, or a bound moves a whole step inwards and is lost.
+        """
+        random_state = np.random.RandomState(1000)
+
+        for first, last, q in [(3, 11, 0.1), (7, 13, 0.3), (3, 11, 0.05)]:
+            grid = [k * q for k in range(first, last + 1)]
+            domain = tune.quniform(first * q, last * q, q)
+            sampled = sorted(set(domain.sample(size=5000, random_state=random_state)))
+            where = f"quniform({first * q!r}, {last * q!r}, {q})"
+            self.assertEqual(len(sampled), len(grid), msg=where)
+            for got, expected in zip(sampled, grid):
+                self.assertAlmostEqual(got, expected, places=12, msg=where)
+
+    def testQuantizedIntegerUniform(self):
+        """`qrandint` draws every point of its grid with equal probability.
+
+        Each point should take 1 / len(grid) of the draws; `delta` allows for the
+        sampling error left at `size` draws from the seeded stream.
+        """
+        random_state = np.random.RandomState(1000)
+        size = 40000
+
+        for lower, upper, q in [(2, 10, 2), (-21, 12, 3), (0, 10, 5)]:
+            grid = self._quantized_integer_grid(lower, upper, q)
+            counts = Counter(
+                tune.qrandint(lower, upper, q).sample(
+                    size=size, random_state=random_state
+                )
+            )
+            expected = size / len(grid)
+            for value in grid:
+                self.assertAlmostEqual(
+                    counts[value] / expected,
+                    1.0,
+                    delta=0.05,
+                    msg=f"qrandint({lower}, {upper}, {q}) is not uniform at {value}",
+                )
+
+    def testQuantizedIntegerLogUniform(self):
+        """`qlograndint` is log-uniform over its grid, not over the raw integers.
+
+        It is `lograndint` over the grid indices, so index `k` covers [k, k + 1) in
+        log space and grid point `k * q` takes log((k + 1) / k) / log((last + 1) / first)
+        of the draws - a share that falls off as `k` grows, unlike a uniform grid.
+        """
+        random_state = np.random.RandomState(1000)
+        size = 40000
+
+        for lower, upper, q in [(1, 10, 2), (1, 128, 8), (2, 20, 2)]:
+            first = int(np.ceil(lower / q))
+            last = int(np.floor(upper / q))
+            counts = Counter(
+                tune.qlograndint(lower, upper, q).sample(
+                    size=size, random_state=random_state
+                )
+            )
+            log_range = np.log((last + 1) / first)
+            for k in range(first, last + 1):
+                expected = size * np.log((k + 1) / k) / log_range
+                self.assertAlmostEqual(
+                    counts[k * q] / expected,
+                    1.0,
+                    delta=0.15,
+                    msg=(
+                        f"qlograndint({lower}, {upper}, {q}) is not log-uniform "
+                        f"at {k * q}"
+                    ),
+                )
 
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
