@@ -524,7 +524,28 @@ def _call_udf_off_event_loop_thread(udf_call):
         asyncio.get_running_loop()
     except RuntimeError:
         return udf_call()
-    return _get_sync_udf_executor().submit(udf_call).result()
+    result = _get_sync_udf_executor().submit(udf_call).result()
+    # A sync UDF may return a generator, in which case the call above only
+    # created it: the UDF body runs when the generator is iterated. Drive the
+    # returned generator off of the event-loop thread as well.
+    # See https://github.com/ray-project/ray/issues/57729
+    if isinstance(result, GeneratorType):
+        return _iterate_off_event_loop_thread(result)
+    return result
+
+
+def _iterate_off_event_loop_thread(gen: GeneratorType) -> Iterator[Any]:
+    """Yield from ``gen``, running every resumption on a loop-free thread.
+
+    Only used when the UDF call was dispatched off of an event-loop thread, so
+    that generator UDFs behave the same as plain function UDFs.
+    """
+    while True:
+        try:
+            item = _call_udf_off_event_loop_thread(lambda: next(gen))
+        except StopIteration:
+            return
+        yield item
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
