@@ -30,6 +30,13 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+# Deprecated value of ``ShuffleStrategy.SHUFFLE_V2``, still accepted when
+# constructing the enum from a string (i.e. by
+# ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` or when assigning
+# ``DataContext.shuffle_strategy``).
+_DEPRECATED_SHUFFLE_V2_VALUE = "hash_shuffle_v2"
+
+
 @DeveloperAPI(stability="alpha")
 class ShuffleStrategy(str, enum.Enum):
     """Shuffle strategy determines shuffling algorithm employed by operations
@@ -38,8 +45,28 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
-    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
+    SHUFFLE_V2 = "shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
+
+    # Deprecated alias of ``SHUFFLE_V2`` (this strategy is no longer specific
+    # to hash-partitioning). Enum members sharing a value are aliases of each
+    # other, hence this resolves to ``SHUFFLE_V2`` itself and is excluded from
+    # iteration over the strategies.
+    HASH_SHUFFLE_V2 = "shuffle_v2"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == _DEPRECATED_SHUFFLE_V2_VALUE:
+            warnings.warn(
+                f"`{_DEPRECATED_SHUFFLE_V2_VALUE}` shuffle strategy is deprecated, "
+                f"please use `{cls.SHUFFLE_V2.value}` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+            return cls.SHUFFLE_V2
+
+        return None
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -84,10 +111,6 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
-# Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
-# uses its built-in default (currently 1 GiB).
-DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
-
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -102,9 +125,19 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
-DEFAULT_HASH_SHUFFLE_COMPRESSION = os.environ.get(
-    "RAY_DATA_HASH_SHUFFLE_COMPRESSION", "zstd"
-)
+
+def _deduce_default_shuffle_compression() -> str:
+    legacy_codec = os.environ.get("RAY_DATA_HASH_SHUFFLE_COMPRESSION")
+    if legacy_codec is not None:
+        logger.warning(
+            "RAY_DATA_HASH_SHUFFLE_COMPRESSION is deprecated, please use "
+            "RAY_DATA_SHUFFLE_COMPRESSION instead"
+        )
+
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+
+
+DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
 
 DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
@@ -118,6 +151,8 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
+DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -129,8 +164,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
-
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -388,6 +421,10 @@ class IcebergConfig:
         catalog_retried_errors: A list of substrings of error messages that
             should trigger a retry for Iceberg catalog operations. Includes common
             HTTP error codes and connection errors.
+        read_file_tasks_sequentially: Whether each Ray read task processes files
+            one at a time. Defaults to ``True`` to limit memory use. Set to
+            ``False`` for higher throughput when a task has many small files and
+            their combined input comfortably fits in memory.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
@@ -397,6 +434,7 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+    read_file_tasks_sequentially: bool = True
 
 
 @DeveloperAPI
@@ -520,14 +558,17 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
 
         return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
     else:
-        vs = [s for s in ShuffleStrategy]  # noqa: C416
+        try:
+            # NOTE: This also resolves deprecated aliases (like `hash_shuffle_v2`)
+            #       to their current strategy
+            return ShuffleStrategy(DEFAULT_SHUFFLE_STRATEGY)
+        except ValueError:
+            vs = [s.value for s in ShuffleStrategy]
 
-        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
-            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
-            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
-        )
-
-        return DEFAULT_SHUFFLE_STRATEGY
+            raise ValueError(
+                f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the "
+                f"[{','.join(vs)}] (got {DEFAULT_SHUFFLE_STRATEGY})"
+            ) from None
 
 
 def _default_fixed_shape_tensor_format():
@@ -584,7 +625,6 @@ class DataContext:
         large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
@@ -597,10 +637,6 @@ class DataContext:
             override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
             V2). Parquet is the only reader migrated to V2 so far; the others
             read through V1 for now regardless of this flag.
-        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
-            ``ParquetFileChunker`` when splitting large Parquet files into
-            multiple read tasks. When ``None``, the chunker's built-in default
-            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -726,8 +762,9 @@ class DataContext:
             See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
-        hash_shuffle_compression: Codec used to compress hash-shuffle
-            intermediate shards: "none", "lz4", or "zstd" (default "zstd").
+        shuffle_compression: Codec used to compress shuffle intermediate
+            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
         hash_shuffle_reduce_get_timeout_s: Timeout in seconds, for the
@@ -735,15 +772,21 @@ class DataContext:
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
-            shuffle input blocks before partitioning. Currently only applies
-            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
-            strategies ignore it. Input blocks are buffered per node and
+            shuffle input blocks before partitioning. Applies to the
+            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            Other shuffle strategies ignore it. Input blocks are buffered per
+            node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
             increase shuffle parallelism (useful for CPU-intensive shuffles)
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
+        use_external_hash_shuffle: Whether keyed ``repartition()``,
+            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
+            external (on-disk, file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
+            environment variable (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -836,8 +879,8 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Codec for hash-shuffle intermediate shards ("none", "lz4", or "zstd").
-    hash_shuffle_compression: str = DEFAULT_HASH_SHUFFLE_COMPRESSION
+    # Codec for shuffle intermediate shards ("none", "lz4", or "zstd").
+    shuffle_compression: str = DEFAULT_SHUFFLE_COMPRESSION
 
     # Shard refs each reduce task dereferences per ray.get() call.
     hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
@@ -847,7 +890,7 @@ class DataContext:
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
     # Target batch size (bytes) for coalescing shuffle input blocks before
-    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # partitioning (currently shuffle_v2 only); blocks are buffered per
     # node until this size is reached. 0 disables batching.
     shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
 
@@ -881,6 +924,11 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
+    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # When False, use the object-store path.
+    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -908,16 +956,10 @@ class DataContext:
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
-    eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
-    # chunker uses its built-in default (currently 1 GiB).
-    parquet_chunker_target_chunk_size: Optional[
-        int
-    ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -1230,8 +1272,36 @@ class DataContext:
         return self._shuffle_strategy
 
     @shuffle_strategy.setter
-    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
-        self._shuffle_strategy = value
+    def shuffle_strategy(self, value: Union[ShuffleStrategy, str]) -> None:
+        # NOTE: Coercing to the enum resolves deprecated aliases (like
+        #       `hash_shuffle_v2`) to their current strategy
+        self._shuffle_strategy = ShuffleStrategy(value)
+
+    # Deprecated alias of `shuffle_compression`
+    @property
+    def hash_shuffle_compression(self) -> str:
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=3)
+
+        return self.shuffle_compression
+
+    @hash_shuffle_compression.setter
+    def hash_shuffle_compression(self, value: str) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=4)
+
+        self.shuffle_compression = value
+
+    @staticmethod
+    def _warn_hash_shuffle_compression_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`hash_shuffle_compression` is deprecated, please configure "
+            "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:

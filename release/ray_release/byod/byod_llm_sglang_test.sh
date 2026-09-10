@@ -3,7 +3,8 @@
 # to run the llm sglang release tests
 
 set -exo pipefail
-pip3 uninstall -y vllm
+# Remove flashinfer along with vllm. vllm and sglang may have conflicting flashinfer versions.
+pip3 uninstall -y vllm flashinfer-python flashinfer-cubin flashinfer-jit-cache
 # 0.5.15 is the first release carrying the Ray metric backend wrappers
 # (sglang#26252) that SGLangServer's log_engine_metrics path relies on.
 pip3 install "sglang[all,ray]==0.5.15.post1"

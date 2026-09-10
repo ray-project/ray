@@ -240,8 +240,8 @@ enum ErrorType {
   // We use this error for object fetches that failed due to out of disk.
   OUT_OF_DISK_ERROR = 20;
   // This object is unreachable because the application explicitly freed it,
-  // using the internal free() call. We will only recover this object if it is
-  // needed for reconstruction of another downstream object.
+  // using the internal free() call. This call is now deprecated, but we still
+  // keep this error for backwards compatibility.
   OBJECT_FREED = 21;
   // We use this error for failure due to running out of memory.
   OUT_OF_MEMORY = 22;

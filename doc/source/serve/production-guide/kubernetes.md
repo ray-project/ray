@@ -58,7 +58,7 @@ To see an example, deploy the [Text ML example](serve-in-production-example). Th
 $ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
-To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
+To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see {doc}`Ray Clusters Key Concepts </cluster/key-concepts>` for more details on Ray clusters), as well as the service that can be used to query our application:
 
 ```console
 $ kubectl apply -f ray-service.text-ml.yaml
@@ -239,10 +239,10 @@ Set up ingress to expose your Serve application with a load balancer. See [this 
 :::
 
 ## Monitoring
-Monitor your Serve application using the Ray Dashboard.
-- Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
-- Learn about the Ray Serve Dashboard [here](serve-monitoring).
-- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
+Monitor your Serve application using the Ray dashboard.
+- Learn more about how to configure and manage the dashboard [here](observability-configure-manage-dashboard).
+- Learn about the Ray Serve dashboard [here](serve-monitoring).
+- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for the dashboard.
 - Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](persist-kuberay-custom-resource-logs) on Kubernetes.
 
 :::{note}

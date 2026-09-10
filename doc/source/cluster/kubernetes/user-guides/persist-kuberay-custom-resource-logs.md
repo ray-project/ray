@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Persist Ray pod logs off-cluster with sidecar or DaemonSet collection, using Fluent Bit, Loki, and Grafana."
+    description: "Persist Pod logs off-cluster with sidecar or DaemonSet collection, using Fluent Bit, Loki, and Grafana."
 ---
 
 (persist-kuberay-custom-resource-logs)=
@@ -13,7 +13,7 @@ Logs (both system and application logs) are useful for troubleshooting Ray appli
 Similar to Kubernetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides instructions on how to collect logs from Ray Clusters that are running on Kubernetes.
 
 ## Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect the logs.
 
 ## Log processing tools
 There are a number of open source log processing tools available within the Kubernetes ecosystem. This page shows how to extract Ray logs using [Fluent Bit][FluentBit]. Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
@@ -22,7 +22,7 @@ There are a number of open source log processing tools available within the Kube
 To write collected logs to a pod's filesystem ,use one of two logging strategies: **sidecar containers** or **daemonsets**. Read more about these logging patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers
-We provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide. You can process logs by configuring a log-processing sidecar for each Ray pod. Ray containers should be configured to share the `/tmp/ray` directory with the logging sidecar via a volume mount.
+We provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide. You can process logs by configuring a log-processing sidecar for each Pod. Ray containers should be configured to share the `/tmp/ray` directory with the logging sidecar via a volume mount.
 
 You can configure the sidecar to do either of the following:
 * Stream Ray logs to the sidecar's stdout.
@@ -33,7 +33,7 @@ Alternatively, it is possible to collect logs at the Kubernetes node level. To d
 
 (kuberay-fluentbit)=
 ## Setting up logging sidecars with Fluent Bit
-In this section, we give an example of how to set up log-emitting [Fluent Bit][FluentBit] sidecars for Ray pods to send logs to [Grafana Loki][GrafanaLoki], enabling centralized log management and querying.
+In this section, we give an example of how to set up log-emitting [Fluent Bit][FluentBit] sidecars for Pods to send logs to [Grafana Loki][GrafanaLoki], enabling centralized log management and querying.
 
 See the full config for a single-pod RayCluster with a logging sidecar [here][ConfigLink]. We now discuss this configuration and show how to deploy it.
 
@@ -110,7 +110,7 @@ Add the following volume mount to the Ray container's configuration.
 ```
 
 #### Adding the Fluent Bit sidecar
-Finally, add the Fluent Bit sidecar container to each Ray pod config in your RayCluster CR.
+Finally, add the Fluent Bit sidecar container to each Pod config in your RayCluster CR.
 
 ```yaml
         - name: fluentbit
@@ -312,7 +312,7 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
   :::
 
   :::{tab-item} KubeRay
-  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Ray Pod. Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
+  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Pod. Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
   :::
 
 

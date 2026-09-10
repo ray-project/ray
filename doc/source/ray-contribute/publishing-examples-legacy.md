@@ -38,7 +38,7 @@ Put your finished notebook under `content/`. Sphinx discovers `.ipynb`, `.md`, a
 * - Library
   - Where to register the page
 * - General examples
-  - Add the page to the `toctree` in `doc/source/ray-overview/examples/index.rst`.
+  - Add the page to the `toctree` in `doc/source/ray-overview/examples/index.md`.
 * - Ray Core
   - Add the page to the `toctree` in `doc/source/ray-core/examples/overview.rst` and add a row under the matching skill-level section.
 * - Ray Serve, Ray Data, Ray Train

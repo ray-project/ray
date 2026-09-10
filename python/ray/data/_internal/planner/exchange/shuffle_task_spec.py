@@ -4,6 +4,7 @@ from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
+import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -35,10 +36,13 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_seed: Optional[int] = None,
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]] = None,
     ):
+        upstream_map_fn_arg = (
+            ray.put(upstream_map_fn) if upstream_map_fn is not None else None
+        )
         super().__init__(
             map_args=[
                 target_shuffle_max_block_size,
-                upstream_map_fn,
+                upstream_map_fn_arg,
                 random_shuffle,
                 random_seed,
             ],

@@ -4,7 +4,7 @@ applications:
 
     runtime_env:
       # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
-      working_dir: "https://github.com/ray-project/test_dag/archive/203140040e4ab50b9d35b4773ec5c22615c034b3.zip"
+      working_dir: "https://github.com/ray-project/test_dag/archive/e58e12a051b484b3ce5988685a91d4d0dbc4c1c2.zip"
 
     deployments:
       - name: "Router"

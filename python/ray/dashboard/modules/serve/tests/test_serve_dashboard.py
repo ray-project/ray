@@ -244,7 +244,7 @@ def test_delete_multi_app(ray_start_stop):
                 "runtime_env": {
                     "working_dir": (
                         "https://github.com/ray-project/test_dag/archive/"
-                        "78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
+                        "e58e12a051b484b3ce5988685a91d4d0dbc4c1c2.zip"
                     )
                 },
                 "deployments": [
@@ -969,7 +969,7 @@ class TestScaleDeploymentEndpoint:
             json={"target_num_replicas": 2},
             timeout=30,
         )
-        assert error_response.status_code == 400
+        assert error_response.status_code == 404
         assert "not found" in error_response.json()["error"].lower()
 
         error_response = requests.post(

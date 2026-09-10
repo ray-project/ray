@@ -50,7 +50,7 @@ workerGroupSpecs:
       ray.io/market-type: on-demand
 ```
 
-3. **The Kubernetes scheduler**: To ensure the Ray Pods land on the correct physical hardware, add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how Ray treats label selectors, the Kubernetes scheduler filters the underlying nodes in the Kubernetes cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the above `intel-cpu-group` to ensure both Ray and Kubernetes constrain scheduling:
+3. **The Kubernetes scheduler**: To ensure the Pods land on the correct physical hardware, add standard Kubernetes scheduling features like `nodeSelector` or `podAffinity` in the Pod template. Similar to how Ray treats label selectors, the Kubernetes scheduler filters the underlying nodes in the Kubernetes cluster based on these labels when scheduling the Pod. For example, you might add the following `nodeSelector` to the above `intel-cpu-group` to ensure both Ray and Kubernetes constrain scheduling:
 ```yaml
 nodeSelector:
     cloud.google.com/machine-family: "N4"
@@ -92,7 +92,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 ### Step 4: Verify the Kubernetes cluster status
 
 ```bash
-# Step 4.1: List all Ray Pods in the `default` namespace.
+# Step 4.1: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]

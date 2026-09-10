@@ -38,7 +38,7 @@ TEAM_API_CONFIGS = {
         # docbuild image lacks. Its surface is documented in doc/source/data/api/llm.rst
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
-        "head_doc_file": "doc/source/data/api/api.rst",
+        "head_doc_file": "doc/source/data/api/api.md",
         "white_list_apis": {
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
@@ -64,25 +64,12 @@ TEAM_API_CONFIGS = {
             "ray.data.llm.HttpRequestStageConfig",
             "ray.data.llm.ServeDeploymentProcessorConfig",
         },
-        # Documented public APIs whose canonical name resolves under a private
-        # (._internal.) module: the class is re-exported from ray.data.__all__
-        # while its implementation lives in _internal. They resolve fine and are
-        # correctly documented; only the resolve check's private-name heuristic
-        # flags them. doc_only_whitelist exempts them from that check
-        # (split_resolvable_and_broken_doc_apis) without touching the
-        # must-be-documented check. Permanent (implementation location, not debt).
-        "doc_only_whitelist": {
-            "ray.data._internal.compute.ActorPoolStrategy",
-            "ray.data._internal.compute.TaskPoolStrategy",
-            "ray.data._internal.execution.interfaces.execution_options.ExecutionOptions",
-            "ray.data._internal.execution.interfaces.execution_options.ExecutionResources",
-            "ray.data._internal.logical.operators.n_ary_operator.MixStoppingCondition",
-            "ray.data._internal.random_config.RandomSeedConfig",
-            # Same pattern under ray.data.llm: the @PublicAPI Processor is
-            # re-exported through ray.data.llm (documented in data/api/llm.rst)
-            # while its implementation lives under ray.llm._internal.
-            "ray.llm._internal.batch.processor.base.Processor",
-        },
+        # No doc_only_whitelist. The documented public APIs whose canonical name
+        # resolves under a private module (ActorPoolStrategy, ExecutionOptions,
+        # the ray.data.llm Processor, ...) were listed here until the resolve
+        # check learned to read __all__: each is exported from ray.data.__all__
+        # or ray.data.llm.__all__, so API._is_public_reexport now exempts them
+        # generically and a newly re-exported API needs no entry.
         # Canonical names intentionally documented in more than one place. Each
         # is listed both in the generated ray.data.Dataset.rst method table
         # (included by dataset.rst) and in saving_data.rst's save-topic grouping.
@@ -119,7 +106,29 @@ TEAM_API_CONFIGS = {
         "head_doc_file": "doc/source/serve/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
-            # private versions of request router APIs
+            # Request-router extension surface. All eight are @PublicAPI classes
+            # DEFINED under ray.serve._private.*, which the API policy in
+            # doc/source/ray-contribute/api-policy.md forbids at every exposure
+            # level ("Can this API be private ...? No").
+            #
+            # Seven of them are re-exported by the public ray.serve.request_router
+            # module and documented in this file's own head_doc_file under that
+            # public path, so they look documented to a reader. They are not
+            # documented under the name this check uses: Module._fullname names
+            # every symbol f"{__module__}.{__qualname__}", the definition site.
+            # Deleting these seven entries fails the check with all seven reported
+            # as undocumented, so the exemption is load-bearing today.
+            #
+            # The resolution is to move the definitions into the public
+            # ray/serve/request_router.py that currently only re-exports them. Then
+            # the canonical name is the public path, the autosummary entry matches,
+            # and these entries can be deleted outright. That is a Serve-owned
+            # source change; until it happens this stays tracked debt rather than a
+            # permanent exemption, because the underlying policy violation is real.
+            #
+            # PowerOfTwoChoicesRequestRouter is the one symbol absent from both the
+            # public re-export list and the autosummary, so it additionally needs
+            # documenting or de-annotating.
             "ray.serve._private.common.ReplicaID",
             "ray.serve._private.request_router.common.PendingRequest",
             "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
@@ -137,7 +146,7 @@ TEAM_API_CONFIGS = {
     },
     "core": {
         "head_modules": {"ray"},
-        "head_doc_file": "doc/source/ray-core/api/index.rst",
+        "head_doc_file": "doc/source/ray-core/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
             # These APIs will be documented in near future
@@ -174,7 +183,7 @@ TEAM_API_CONFIGS = {
     },
     "train": {
         "head_modules": {"ray.train"},
-        "head_doc_file": "doc/source/train/api/api.rst",
+        "head_doc_file": "doc/source/train/api/api.md",
         "white_list_apis": {
             # NOTE: These APIs are documented in a separate file (deprecated.rst).
             # These are deprecated APIs, so just white-listing them here for CI.

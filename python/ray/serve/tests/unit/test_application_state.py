@@ -18,6 +18,7 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    _get_shared_build_app_label_selector,
     build_serve_application,
     override_deployment_info,
 )
@@ -1037,6 +1038,72 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     deployment_state_manager.set_deployment_healthy(deployment_id)
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
+
+
+@pytest.mark.parametrize(
+    "label_selectors,expected_selector",
+    [
+        ([], None),
+        ([None], None),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                {"ray.io/group": "vllm"},
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"ray.io/group": "vllm"},
+                None,
+            ],
+            {"ray.io/group": "vllm"},
+        ),
+        (
+            [
+                {"group": "a"},
+                {"group": "b"},
+            ],
+            None,
+        ),
+    ],
+)
+def test_get_shared_build_app_label_selector(label_selectors, expected_selector):
+    deployments = []
+    for index, label_selector in enumerate(label_selectors):
+        schema_args = {"name": f"deployment_{index}"}
+        if label_selector is not None:
+            schema_args["ray_actor_options"] = {"label_selector": label_selector}
+
+        deployments.append(DeploymentSchema(**schema_args))
+
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=deployments,
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) == expected_selector
+
+
+def test_get_shared_build_app_label_selector_with_fallback_strategy():
+    app_config = ServeApplicationSchema(
+        name="test_app",
+        import_path="module.app",
+        deployments=[
+            DeploymentSchema(
+                name="deployment",
+                ray_actor_options={
+                    "label_selector": {"ray.io/group": "primary"},
+                    "fallback_strategy": [
+                        {"label_selector": {"ray.io/group": "fallback"}}
+                    ],
+                },
+            )
+        ],
+    )
+
+    assert _get_shared_build_app_label_selector(app_config) is None
 
 
 @patch(
@@ -2658,13 +2725,6 @@ class TestAutoscale:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        r1.to_full_id_str(): 3,
-                        r2.to_full_id_str(): 3,
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
@@ -2678,7 +2738,6 @@ class TestAutoscale:
             for i in [1, 2]:
                 replica_report = ReplicaMetricReport(
                     replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]
                     },
@@ -2805,7 +2864,6 @@ class TestAutoscale:
         for replica_id in app1_d1_replicas + app1_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2815,7 +2873,6 @@ class TestAutoscale:
         for replica_id in app2_d1_replicas + app2_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 0},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 0)]},
                 timestamp=time.time(),
             )
@@ -2879,7 +2936,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2960,7 +3016,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 4},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 4)]},
                 timestamp=time.time(),
             )
@@ -3089,7 +3144,6 @@ class TestAutoscale:
             for replica in replicas:
                 replica_report = ReplicaMetricReport(
                     replica_id=replica,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: load},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, load)]
                     },
@@ -3164,7 +3218,6 @@ class TestAutoscale:
         for i in range(3):
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 10},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 10)]
                 },
@@ -3301,13 +3354,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d1_r1.to_full_id_str(): d1_load,
-                    d1_r2.to_full_id_str(): d1_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d1_r1.to_full_id_str(): [
@@ -3331,13 +3377,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d2_r3.to_full_id_str(): d2_load,
-                    d2_r4.to_full_id_str(): d2_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d2_r3.to_full_id_str(): [
@@ -3360,7 +3399,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d1_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d1_load)]
                 },
@@ -3372,7 +3410,6 @@ class TestAutoscale:
         for i in [3, 4]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d2_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d2_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d2_load)]
                 },
