@@ -21,7 +21,9 @@
 #include <boost/bind/bind.hpp>
 #include <memory>
 #include <mutex>
+#include <optional>
 
+#include "absl/functional/function_ref.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 
@@ -91,17 +93,19 @@ class RedisAsyncContext {
   /// \param argc Number of arguments.
   /// \param argv Array with arguments.
   /// \param argvlen Array with each argument's length.
-  /// \param on_accepted Optional notification called synchronously with privdata
+  /// \param on_accepted Optional notification called synchronously
   /// after hiredis accepts the command, while the reply-handling mutex is held.
   /// Not retained or called on rejection. Must not reenter this context, invoke
-  /// user callbacks, or throw; keep it short to avoid delaying Redis IO.
+  /// user callbacks or metric recorders, or throw. Only capture bookkeeping state
+  /// here; record metrics after this method returns and releases the mutex.
   /// \return Status
-  Status RedisAsyncCommandArgv(redisCallbackFn *fn,
-                               void *privdata,
-                               int argc,
-                               const char **argv,
-                               const size_t *argvlen,
-                               void (*on_accepted)(void *) = nullptr);
+  Status RedisAsyncCommandArgv(
+      redisCallbackFn *fn,
+      void *privdata,
+      int argc,
+      const char **argv,
+      const size_t *argvlen,
+      std::optional<absl::FunctionRef<void()>> on_accepted = std::nullopt);
 
  private:
   /// This mutex is used to protect `redis_async_context`.

@@ -185,6 +185,12 @@ TEST_F(RedisAsyncContextTest, SubmissionNotificationHoldsReplyLock) {
   std::thread submitter([&]() {
     const char *argv[] = {"PING"};
     const size_t argvlen[] = {4};
+    auto capture_acceptance = [&]() {
+      submission.notification_thread = std::this_thread::get_id();
+      submission.started.set_value();
+      submission.release.wait();
+      submission.accepted = true;
+    };
     EXPECT_TRUE(context.async_context()
                     .RedisAsyncCommandArgv(
                         [](redisAsyncContext *, void *raw_reply, void *privdata) {
@@ -198,13 +204,7 @@ TEST_F(RedisAsyncContextTest, SubmissionNotificationHoldsReplyLock) {
                         1,
                         argv,
                         argvlen,
-                        [](void *privdata) {
-                          auto &state = *static_cast<Submission *>(privdata);
-                          state.notification_thread = std::this_thread::get_id();
-                          state.started.set_value();
-                          state.release.wait();
-                          state.accepted = true;
-                        })
+                        capture_acceptance)
                     .ok());
   });
   auto cleanup = absl::MakeCleanup([&]() {
@@ -347,6 +347,86 @@ TEST_F(RedisAsyncContextTest, NullReplyRetryDoesNotRecountAcceptedCommand) {
   };
   local_io_service.run_for(5s);
   ASSERT_TRUE(completed);
+  EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 4.0);
+  EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
+  EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 4.0);
+}
+
+TEST_F(RedisAsyncContextTest, RetryCompletesWhileFirstRequestMetricsAreBlocked) {
+  struct BlockingCounter : observability::FakeCounter {
+    explicit BlockingCounter(std::shared_future<void> release)
+        : release(std::move(release)) {}
+
+    void Record(double value, stats::TagsType tags) override {
+      std::call_once(started_once, [this]() { started.set_value(); });
+      release.wait();
+      observability::FakeCounter::Record(value, std::move(tags));
+    }
+
+    std::promise<void> started;
+    std::once_flag started_once;
+    std::shared_future<void> release;
+  };
+
+  instrumented_io_context local_io_service;
+  ray::Clock clock;
+  std::promise<void> release_record;
+  BlockingCounter request_bytes(release_record.get_future().share());
+  auto record_started = request_bytes.started.get_future();
+  observability::FakeCounter response_bytes;
+  observability::FakeCounter command_count;
+  RedisContext context(local_io_service,
+                       clock,
+                       RedisMetrics{request_bytes, response_bytes, command_count});
+  ASSERT_TRUE(context.Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "").ok());
+  const std::string table = "TABLE_WITH_A_LONG_METRIC_LABEL";
+  const absl::flat_hash_map<std::string, std::string> tags{{"Command", "PING"},
+                                                           {"TableName", table}};
+  std::promise<void> replied;
+  auto reply_future = replied.get_future();
+  std::thread io_thread;
+  std::thread submitter([&]() {
+    context.RunArgvAsync(
+        {"PING"},
+        [&](std::shared_ptr<CallbackReply> reply) {
+          EXPECT_EQ(reply->ReadAsStatus().message(), "PONG");
+          replied.set_value();
+        },
+        table);
+  });
+  auto cleanup = absl::MakeCleanup([&]() {
+    // A broken claim guard can block the retry's Record() on the IO thread too.
+    // Release all records before joining either thread, even after an assertion.
+    release_record.set_value();
+    submitter.join();
+    if (!io_thread.joinable()) {
+      io_thread = std::thread([&]() { local_io_service.run(); });
+    }
+    reply_future.wait_for(5s);
+    local_io_service.stop();
+    io_thread.join();
+  });
+
+  ASSERT_EQ(record_started.wait_for(5s), std::future_status::ready);
+  // IO has not started, and the submitter is blocked after hiredis queued the
+  // command. No thread can consume or mutate this callback during injection.
+  auto *queued = context.async_context().GetRawRedisAsyncContext()->replies.tail;
+  ASSERT_NE(queued, nullptr);
+  ASSERT_EQ(queued->fn, RedisRequestContext::RedisResponseFn);
+  queued->fn = [](redisAsyncContext *ac, void *raw_reply, void *privdata) {
+    EXPECT_NE(raw_reply, nullptr);
+    RedisRequestContext::RedisResponseFn(ac, nullptr, privdata);
+  };
+  io_thread = std::thread([&]() { local_io_service.run(); });
+
+  // run_for() would not interrupt a blocked Record(). Keep the timeout and
+  // release gate on this thread so regressions fail without hanging teardown.
+  ASSERT_EQ(reply_future.wait_for(5s), std::future_status::ready);
+  EXPECT_TRUE(request_bytes.GetTagToValue().empty());
+  EXPECT_TRUE(command_count.GetTagToValue().empty());
+  EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 4.0);
+
+  std::move(cleanup).Invoke();
   EXPECT_EQ(request_bytes.GetTagToValue().at(tags), 4.0);
   EXPECT_EQ(command_count.GetTagToValue().at(tags), 1.0);
   EXPECT_EQ(response_bytes.GetTagToValue().at(tags), 4.0);

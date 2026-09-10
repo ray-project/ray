@@ -815,12 +815,13 @@ class RedisStoreClientBlockingMetricsTest : public RedisStoreClientMetricsTest {
   BlockingCounter blocking_request_bytes_;
 };
 
-TEST_F(RedisStoreClientBlockingMetricsTest, RequestMetricsCompleteBeforeReply) {
+TEST_F(RedisStoreClientBlockingMetricsTest, RequestMetricsDoNotBlockReply) {
+  const std::string table = "TABLE_WITH_A_LONG_METRIC_LABEL";
   auto reply_promise = std::make_shared<std::promise<bool>>();
   auto reply_future = reply_promise->get_future();
-  std::thread submitter([this, reply_promise]() {
+  std::thread submitter([this, reply_promise, table]() {
     store_client_->AsyncPut(
-        "NODE",
+        table,
         "key",
         "value",
         /*overwrite=*/true,
@@ -834,14 +835,22 @@ TEST_F(RedisStoreClientBlockingMetricsTest, RequestMetricsCompleteBeforeReply) {
   });
 
   ASSERT_TRUE(blocking_request_bytes_.WaitUntilRecordStarts(5s));
-  EXPECT_EQ(reply_future.wait_for(100ms), std::future_status::timeout);
+  // The reply callback runs on the same IO thread after RedisResponseFn has
+  // deleted the request. Recording must finish safely using only its snapshot.
+  ASSERT_EQ(reply_future.wait_for(5s), std::future_status::ready);
+  EXPECT_TRUE(reply_future.get());
+  EXPECT_TRUE(blocking_request_bytes_.GetTagToValue().empty());
+  EXPECT_EQ(CommandCount("HSET", table), 0.0);
+  EXPECT_EQ(ResponseBytes("HSET", table), 1.0);
 
   blocking_request_bytes_.Release();
   submitter.join();
   std::move(cleanup).Cancel();
-  ASSERT_EQ(reply_future.wait_for(5s), std::future_status::ready);
-  EXPECT_TRUE(reply_future.get());
-  EXPECT_EQ(CommandCount("HSET", "NODE"), 1.0);
+  const double expected_request_bytes =
+      std::string("HSET").size() + RedisKeyFor(table).size() + std::string("key").size() +
+      std::string("value").size();
+  EXPECT_EQ(ValueFor(blocking_request_bytes_, "HSET", table), expected_request_bytes);
+  EXPECT_EQ(CommandCount("HSET", table), 1.0);
 }
 
 TEST_F(RedisStoreClientMetricsTest, RetryDoesNotRecountAcceptedCommand) {

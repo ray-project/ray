@@ -152,7 +152,8 @@ inline constexpr std::string_view kNoTable = "NONE";
 inline constexpr std::string_view kAllTables = "ALL";
 
 /// Metrics for async Redis commands accepted by hiredis. Held by reference:
-/// the referents are owned by GcsServerMetrics and outlive the RedisContext.
+/// the referents must outlive the RedisContext and pending submission calls,
+/// whose request metric recording can finish after the reply callback has run.
 struct RedisMetrics {
   ray::observability::MetricInterface &request_payload_bytes_sum;
   ray::observability::MetricInterface &response_payload_bytes_sum;
@@ -180,12 +181,11 @@ struct RedisRequestContext {
                               void *privdata);
 
   /// Submit one attempt directly from the calling thread. Request metrics are
-  /// recorded under the submission lock before a reply can delete this context.
+  /// captured under the submission lock, then recorded outside it using a local
+  /// snapshot that remains valid even if a reply has already deleted this context.
   void Run();
 
  private:
-  static void RecordRequestMetrics(void *privdata);
-
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
@@ -205,7 +205,9 @@ struct RedisRequestContext {
   std::string command_label_;
   std::string table_label_;
   size_t request_payload_bytes_{0};
-  bool request_metrics_recorded_{false};
+  // Claimed under the submission lock, before recording outside it. Retries
+  // must not record again even if the first submission is still recording.
+  bool request_metrics_claimed_{false};
 
   // Ray metrics
   ray::stats::Histogram ray_metric_gcs_latency_{

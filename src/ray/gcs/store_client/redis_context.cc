@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -34,6 +35,7 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/functional/function_ref.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -310,16 +312,43 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
+  struct AcceptedRequestMetrics {
+    RedisMetrics metrics;
+    std::string command_label;
+    std::string table_label;
+    size_t request_payload_bytes;
+  };
+  std::optional<AcceptedRequestMetrics> accepted;
+  auto capture_acceptance = [&]() {
+    if (request_metrics_claimed_) {
+      return;
+    }
+    // The submission lock keeps this request alive while copying its labels.
+    // Claim the records now: a retry may run before the records finish below.
+    accepted.emplace(AcceptedRequestMetrics{
+        *metrics_, command_label_, table_label_, request_payload_bytes_});
+    request_metrics_claimed_ = true;
+  };
   Status status = redis_context_->RedisAsyncCommandArgv(
       RedisResponseFn,
       this,
       argv_.size(),
       argv_.data(),
       argc_.data(),
-      metrics_ != nullptr ? RecordRequestMetrics : nullptr);
+      metrics_ != nullptr
+          ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
+          : std::nullopt);
   if (status.ok()) {
     // The submission lock has been released, so a reply on the IO thread may
-    // already have deleted this request. Do not access any members here.
+    // already have deleted this request. Only use the independent local snapshot,
+    // and do not hold the Redis mutex while acquiring metric recorder locks.
+    if (accepted.has_value()) {
+      const std::vector<std::pair<std::string_view, std::string>> tags{
+          {"Command", accepted->command_label}, {"TableName", accepted->table_label}};
+      accepted->metrics.request_payload_bytes_sum.Record(
+          static_cast<double>(accepted->request_payload_bytes), tags);
+      accepted->metrics.command_count_counter.Record(1, tags);
+    }
     return;
   }
 
@@ -327,21 +356,6 @@ void RedisRequestContext::Run() {
   // diagnostics; the raw context may have been freed since submission returned.
   RAY_LOG(ERROR) << "Redis command submission failed: " << status;
   RedisResponseFn(nullptr, nullptr, this);
-}
-
-void RedisRequestContext::RecordRequestMetrics(void *privdata) {
-  auto *request = static_cast<RedisRequestContext *>(privdata);
-  if (request->request_metrics_recorded_) {
-    return;
-  }
-  // Called under the same lock as hiredis reply handling, before a reply can
-  // delete the request. Count the first accepted submission, not its retries.
-  request->metrics_->request_payload_bytes_sum.Record(
-      static_cast<double>(request->request_payload_bytes_),
-      {{"Command", request->command_label_}, {"TableName", request->table_label_}});
-  request->metrics_->command_count_counter.Record(
-      1, {{"Command", request->command_label_}, {"TableName", request->table_label_}});
-  request->request_metrics_recorded_ = true;
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \

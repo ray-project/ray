@@ -120,12 +120,13 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
   return Status::OK();
 }
 
-Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
-                                                void *privdata,
-                                                int argc,
-                                                const char **argv,
-                                                const size_t *argvlen,
-                                                void (*on_accepted)(void *)) {
+Status RedisAsyncContext::RedisAsyncCommandArgv(
+    redisCallbackFn *fn,
+    void *privdata,
+    int argc,
+    const char **argv,
+    const size_t *argvlen,
+    std::optional<absl::FunctionRef<void()>> on_accepted) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!redis_async_context_) {
     return Status::Disconnected("Redis is disconnected");
@@ -137,10 +138,10 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
   }
   RAY_CHECK(ret_code == REDIS_OK);
   // hiredis queues the reply callback without invoking it inline. Keep the
-  // HandleIo mutex until bookkeeping finishes, so another thread cannot deliver
-  // a reply (or a disconnect callback) and free privdata before this notification.
-  if (on_accepted != nullptr) {
-    on_accepted(privdata);
+  // HandleIo mutex until bookkeeping state has been captured, so another thread
+  // cannot deliver a reply and free privdata before this notification finishes.
+  if (on_accepted.has_value()) {
+    (*on_accepted)();
   }
   return Status::OK();
 }
