@@ -225,9 +225,20 @@ class ObservabilityAgentReporter(Reporter):
         if not os.environ.get("BUILDKITE"):
             return
 
-        attempt = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+        # Buildkite labels the first try "Retry 1 of N", while
+        # BUILDKITE_RETRY_COUNT counts retries *after* it and so is 0 there.
+        # Rendering the raw value would put "attempt 3" on the attempt the UI
+        # calls "Retry 4 of 5"; render both, so the annotation reconciles with
+        # the label it hangs off and with the job log, which prints the raw
+        # value.
+        retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+        try:
+            attempt = str(int(retry_count) + 1)
+        except ValueError:
+            attempt = "?"
         lines = [
-            f"<strong>{test.get_name()}</strong> — attempt {attempt} — "
+            f"<strong>{test.get_name()}</strong> — attempt {attempt} "
+            f"(BUILDKITE_RETRY_COUNT={retry_count}) — "
             f"<a href={anyscale_job_url(job_id)!r}>{job_id}</a>",
             "",
             summary or "The agent returned no summary for this job.",

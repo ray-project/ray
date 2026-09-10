@@ -521,7 +521,9 @@ def test_annotation_is_appended_to_a_context_that_outlives_the_job():
     body = command[-1]
     assert SUMMARY in body
     assert SLACK_THREAD in body
-    assert "attempt 2" in body
+    # The environment says 2 retries, which buildkite labels "Retry 3 of N";
+    # both numbers appear so the annotation reconciles with the UI and the log.
+    assert "attempt 3 (BUILDKITE_RETRY_COUNT=2)" in body
 
 
 def test_no_annotation_outside_buildkite():
@@ -585,6 +587,17 @@ def test_a_non_zero_annotate_exit_is_logged_not_raised(caplog):
         )
 
     assert "buildkite-agent annotate exited 1" in caplog.text
+
+
+def test_the_attempt_number_matches_the_buildkite_label():
+    """BUILDKITE_RETRY_COUNT is 0 on the first try, which buildkite calls 1."""
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        env={"BUILDKITE_RETRY_COUNT": "0"},
+    )
+
+    assert "attempt 1 (BUILDKITE_RETRY_COUNT=0)" in calls[0][-1]
 
 
 if __name__ == "__main__":
