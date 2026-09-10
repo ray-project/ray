@@ -1724,6 +1724,7 @@ class TestProtoToDict:
         DeploymentConfig,
         AutoscalingConfig,
         AutoscalingPolicy,
+        BackpressureConfig,
         RequestRouterConfig,
         GangSchedulingConfig,
         DeploymentActorConfig,

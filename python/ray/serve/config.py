@@ -577,7 +577,7 @@ class AutoscalingPolicy(_ForwardCompatModel):
 
 
 @PublicAPI(stability="alpha")
-class BackpressureConfig(BaseModel):
+class BackpressureConfig(_ForwardCompatModel):
     """Config for the HTTP response returned on backpressure rejections.
 
     When a deployment's ``max_queued_requests`` limit is reached, additional
