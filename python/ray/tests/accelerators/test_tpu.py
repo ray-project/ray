@@ -551,6 +551,8 @@ def test_parse_topology_dims():
     assert tpu._parse_topology_dims("16x16") == (16, 16)
     assert tpu._parse_topology_dims("2x2x2") == (2, 2, 2)
     assert tpu._parse_topology_dims("4x8x16") == (4, 8, 16)
+    assert tpu._parse_topology_dims("4,8,16") == (4, 8, 16)
+    assert tpu._parse_topology_dims("2,2,1") == (2, 2, 1)
 
 
 def test_get_worker_dims_2d():
@@ -572,6 +574,39 @@ def test_get_worker_dims_unknown():
     """Test that unknown topologies raise ValueError."""
     with pytest.raises(ValueError, match="Unknown 2D topology"):
         tpu._get_worker_dims_for_topology("99x99")
+
+
+@pytest.mark.parametrize(
+    "topology, expected_bounds",
+    [
+        ("2x4", "1,2,1"),
+        (" 2X4 ", "1,2,1"),
+        ("2,4", "1,2,1"),
+        ("2x2x1", "1,1,1"),
+        ("2,2,1", "1,1,1"),
+        ("2x2x2", "1,1,2"),
+        ("4x4x4", "2,2,4"),
+        ("4x8x8", "2,4,8"),
+    ],
+)
+def test_get_jax_process_bounds(topology, expected_bounds):
+    """Test JAX process bounds string calculation."""
+    assert tpu.get_jax_process_bounds(topology) == expected_bounds
+
+
+@pytest.mark.parametrize(
+    "chips_per_host, expected_bounds",
+    [
+        (1, "1,1,1"),
+        (2, "1,2,1"),
+        (4, "2,2,1"),
+        (8, "2,4,1"),
+        (16, "16,1,1"),
+    ],
+)
+def test_get_jax_chips_per_process_bounds(chips_per_host, expected_bounds):
+    """Test JAX chips-per-process bounds string calculation."""
+    assert tpu.get_jax_chips_per_process_bounds(chips_per_host) == expected_bounds
 
 
 def test_get_default_chips_per_vm():
@@ -604,18 +639,72 @@ def test_build_subslice_labels_2d(physical_worker_id, parent_topology, expected_
         assert labels[key] == value
 
 
-def test_build_subslice_labels_3d():
-    """Test subslice label computation for 3D."""
-    # 4x4x4 parent, 16 workers: (z,y,x)
-    # Worker 0 → (0,0,0)
-    labels = tpu._build_subslice_labels(0, "4x4x4")
-    assert labels["ray.io/tpu-subslice-2x2x1"] == "0"
-    assert labels["ray.io/tpu-subslice-2x2x2"] == "0"
-
-    # Worker 8 → (1,0,0): z=1, y=0, x=0
-    labels = tpu._build_subslice_labels(8, "4x4x4")
-    assert labels["ray.io/tpu-subslice-2x2x1"] == "8"
-    assert labels["ray.io/tpu-subslice-2x2x2"] == "4"
+@pytest.mark.parametrize(
+    "physical_worker_id, parent_topology, expected_labels",
+    [
+        # 4x4x4 parent (16 workers in a 2x2x4 host grid across x, y, z)
+        # Worker 0: (wx=0, wy=0, wz=0)
+        (
+            0,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "0",
+                "ray.io/tpu-subslice-2x2x2": "0",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 1: (wx=1, wy=0, wz=0)
+        (
+            1,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "1",
+                "ray.io/tpu-subslice-2x2x2": "1",
+                "ray.io/tpu-subslice-2x2x4": "1",
+                "ray.io/tpu-subslice-2x4x4": "1",
+            },
+        ),
+        # Worker 2: (wx=0, wy=1, wz=0)
+        (
+            2,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "2",
+                "ray.io/tpu-subslice-2x2x2": "2",
+                "ray.io/tpu-subslice-2x2x4": "2",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 4: (wx=0, wy=0, wz=1) - second plane along z
+        (
+            4,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "4",
+                "ray.io/tpu-subslice-2x2x2": "0",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 8: (wx=0, wy=0, wz=2) - starts the second 2x2x2 block along z
+        (
+            8,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "8",
+                "ray.io/tpu-subslice-2x2x2": "4",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+    ],
+)
+def test_build_subslice_labels_3d(physical_worker_id, parent_topology, expected_labels):
+    """Test subslice label computation for 3D topologies."""
+    labels = tpu._build_subslice_labels(physical_worker_id, parent_topology)
+    for key, value in expected_labels.items():
+        assert labels[key] == value
 
 
 @pytest.mark.parametrize(

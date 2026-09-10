@@ -157,7 +157,7 @@ VALID_TPU_TOPOLOGY = {
 
 
 # Worker grid dimensions for each valid TPU topology.
-# Maps topology -> (worker_y, worker_x) for 2D, (worker_z, worker_y, worker_x) for 3D.
+# Maps topology -> (worker_y, worker_x) for 2D, (worker_x, worker_y, worker_z) for 3D.
 # Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types.
 # For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
 #
@@ -194,8 +194,11 @@ _VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
 
 
 def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
-    """Parse a topology string (e.g. "2x4", "2x2x2") into a dimension tuple."""
-    return tuple(int(d) for d in topology.strip().lower().split("x"))
+    """Parse a topology string (e.g. "2x4", "2,2,1", "2x2x2") into a dimension tuple."""
+    parts = [int(p) for p in re.split(r"[,xX]", topology.strip()) if p]
+    if not parts:
+        raise ValueError(f"Invalid topology string: '{topology}'")
+    return tuple(parts)
 
 
 def normalize_torchtpu_topology(
@@ -236,24 +239,24 @@ def normalize_torchtpu_topology(
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
-    (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
+    (x, y, z) for 3D. Raises ``ValueError`` for unknown topologies.
     """
-    clean_topology = topology.strip().lower()
-    dims = _parse_topology_dims(clean_topology)
+    dims = _parse_topology_dims(topology)
+    key = "x".join(str(d) for d in dims)
     if len(dims) == 2:
-        if clean_topology not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
+        if key not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
             raise ValueError(
                 f"Unknown 2D topology: '{topology}'. "
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_2D.keys())}"
             )
-        return _VALID_TOPOLOGY_WORKER_DIMS_2D[clean_topology]
+        return _VALID_TOPOLOGY_WORKER_DIMS_2D[key]
     else:
-        if clean_topology not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
+        if key not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
             raise ValueError(
                 f"Unknown 3D topology: '{topology}'. "
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
             )
-        return _VALID_TOPOLOGY_WORKER_DIMS_3D[clean_topology]
+        return _VALID_TOPOLOGY_WORKER_DIMS_3D[key]
 
 
 def get_jax_process_bounds(topology: str) -> str:
@@ -561,7 +564,7 @@ def _build_subslice_labels(
             labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
         return labels
     else:
-        dim_z, dim_y, dim_x = worker_dims
+        dim_x, dim_y, dim_z = worker_dims
         wz = physical_worker_id // (dim_y * dim_x)
         remainder = physical_worker_id % (dim_y * dim_x)
         wy = remainder // dim_x
@@ -570,8 +573,8 @@ def _build_subslice_labels(
         # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_3D must be in ascending order by
         # total worker count. The 'break' relies on this property.
         labels = {}
-        for sub_shape, (sub_z, sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
-            if sub_z > dim_z or sub_y > dim_y or sub_x > dim_x:
+        for sub_shape, (sub_x, sub_y, sub_z) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
+            if sub_x > dim_x or sub_y > dim_y or sub_z > dim_z:
                 continue
             if sub_shape == clean_parent_topo:
                 break

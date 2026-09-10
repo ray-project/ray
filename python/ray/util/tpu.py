@@ -307,6 +307,7 @@ def get_torchtpu_env_vars(
     tpu_resource_per_chip: int = 1,
     worker_id: Optional[Union[int, str]] = None,
     accelerator_type: Optional[str] = None,
+    worker_hostnames: Optional[Union[str, List[str]]] = None,
 ) -> Dict[str, str]:
     """Returns environment variables required for PyTorch TPU slice or sub-slice execution.
 
@@ -316,6 +317,8 @@ def get_torchtpu_env_vars(
         tpu_resource_per_chip: Logical TPU resources per physical chip (defaults to 1).
         worker_id: Optional integer or string ID of the worker (0-indexed).
         accelerator_type: Optional TPU accelerator version or type (e.g. "v6e", "v7x").
+        worker_hostnames: Optional comma-separated string or list of host IP addresses or DNS hostnames.
+            If omitted, hostnames are automatically inferred from slicebuilder_addresses if provided.
 
     Returns:
         A dictionary mapping PyTorch TPU environment variables to their values.
@@ -329,14 +332,44 @@ def get_torchtpu_env_vars(
         TORCH_TPU_TOPOLOGY_ENV_VAR: normalized_topology,
     }
     if worker_id is not None:
-        env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
+        wid_str = str(worker_id)
+        env_vars[TPU_WORKER_ID_ENV_VAR] = wid_str
+        env_vars["NODE_RANK"] = wid_str
+
     if slicebuilder_addresses:
         if isinstance(slicebuilder_addresses, list):
             env_vars[TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR] = ",".join(
                 slicebuilder_addresses
             )
+            raw_sb_list = slicebuilder_addresses
         else:
             env_vars[TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR] = slicebuilder_addresses
+            raw_sb_list = [
+                a.strip() for a in slicebuilder_addresses.split(",") if a.strip()
+            ]
+        if worker_hostnames is None:
+            unique_hosts: List[str] = []
+            for a in raw_sb_list:
+                h = _strip_endpoint_port(a)
+                if h and h not in unique_hosts:
+                    unique_hosts.append(h)
+            if unique_hosts:
+                worker_hostnames = unique_hosts
+
+    if worker_hostnames is not None:
+        if isinstance(worker_hostnames, str):
+            raw_hosts = [h.strip() for h in worker_hostnames.split(",") if h.strip()]
+        else:
+            raw_hosts = [str(h).strip() for h in worker_hostnames if str(h).strip()]
+        clean_hosts = [
+            _strip_endpoint_port(h) for h in raw_hosts if _strip_endpoint_port(h)
+        ]
+        if clean_hosts:
+            env_vars.setdefault(TPU_WORKER_HOSTNAMES_ENV_VAR, ",".join(clean_hosts))
+            env_vars.setdefault("NNODES", str(len(clean_hosts)))
+            env_vars.setdefault("MASTER_ADDR", clean_hosts[0])
+            env_vars.setdefault("MASTER_PORT", "29500")
+
     return env_vars
 
 
@@ -1195,6 +1228,7 @@ class SlicePlacementGroup:
         slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch TPU environment variables for this slice.
 
@@ -1205,6 +1239,8 @@ class SlicePlacementGroup:
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this slice.
+            worker_hostnames: Optional explicit comma-separated string or list
+                of host IP addresses or DNS hostnames for this slice.
 
         Returns:
             A dictionary mapping PyTorch TPU environment variables to their values.
@@ -1251,6 +1287,7 @@ class SlicePlacementGroup:
             tpu_resource_per_chip=self._tpu_resource_per_chip,
             worker_id=worker_id,
             accelerator_type=getattr(self, "_accelerator_version", None),
+            worker_hostnames=worker_hostnames,
         )
 
     @PublicAPI(stability="alpha")
@@ -1259,6 +1296,7 @@ class SlicePlacementGroup:
         slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
         """Returns a Ray RuntimeEnv populated with PyTorch TPU environment variables.
 
@@ -1269,6 +1307,8 @@ class SlicePlacementGroup:
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this slice.
+            worker_hostnames: Optional explicit comma-separated string or list
+                of host IP addresses or DNS hostnames for this slice.
 
         Returns:
             A Ray RuntimeEnv populated with PyTorch TPU environment variables.
@@ -1282,6 +1322,7 @@ class SlicePlacementGroup:
             slice_index=slice_index,
             worker_id=worker_id,
             slicebuilder_addresses=slicebuilder_addresses,
+            worker_hostnames=worker_hostnames,
         )
         return RuntimeEnv(env_vars=env_vars)
 
@@ -2685,6 +2726,7 @@ class SubslicePlacementGroup:
         slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch TPU environment variables for this sub-slice.
 
@@ -2703,6 +2745,8 @@ class SubslicePlacementGroup:
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this sub-slice.
+            worker_hostnames: Optional explicit comma-separated string or list
+                of host IP addresses or DNS hostnames for this sub-slice.
 
         Returns:
             A dictionary mapping PyTorch TPU environment variables to their values.
@@ -2778,6 +2822,7 @@ class SubslicePlacementGroup:
             tpu_resource_per_chip=self._tpu_resource_per_chip,
             worker_id=worker_id,
             accelerator_type=getattr(self, "_accelerator_version", None),
+            worker_hostnames=worker_hostnames,
         )
 
     @PublicAPI(stability="alpha")
@@ -2786,6 +2831,7 @@ class SubslicePlacementGroup:
         slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
         """Returns a Ray RuntimeEnv with sub-slice TPU environment variables.
 
@@ -2796,6 +2842,8 @@ class SubslicePlacementGroup:
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this sub-slice.
+            worker_hostnames: Optional explicit comma-separated string or list
+                of host IP addresses or DNS hostnames for this sub-slice.
 
         Returns:
             A Ray RuntimeEnv configured with sub-slice TorchTPU environment variables.
@@ -2809,6 +2857,7 @@ class SubslicePlacementGroup:
             slice_index=slice_index,
             worker_id=worker_id,
             slicebuilder_addresses=slicebuilder_addresses,
+            worker_hostnames=worker_hostnames,
         )
         return RuntimeEnv(env_vars=env_vars)
 

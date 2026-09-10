@@ -3098,12 +3098,55 @@ def test_resolve_subslice_addresses_multi_address_per_worker():
 )
 def test_get_torchtpu_env_vars(addresses, expected_addresses):
     """Test get_torchtpu_env_vars utility with string, list, and None addresses."""
-    env = get_torchtpu_env_vars(topology="2x4", slicebuilder_addresses=addresses)
+    env = get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=addresses,
+        worker_id=1,
+    )
     assert env.get("TORCH_TPU_TOPOLOGY") == "2,4,1"
+    assert env.get("TPU_WORKER_ID") == "1"
+    assert env.get("NODE_RANK") == "1"
     if expected_addresses is not None:
         assert env.get("TORCH_TPU_SLICEBUILDER_ADDRESSES") == expected_addresses
+        assert env.get("TPU_WORKER_HOSTNAMES") == "10.0.0.1,10.0.0.2"
+        assert env.get("NNODES") == "2"
+        assert env.get("MASTER_ADDR") == "10.0.0.1"
+        assert env.get("MASTER_PORT") == "29500"
     else:
         assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in env
+        assert "TPU_WORKER_HOSTNAMES" not in env
+
+
+def test_get_torchtpu_env_vars_explicit_hostnames_and_deduplication():
+    """Verify explicit worker_hostnames override and slicebuilder address de-duplication."""
+    # Explicit hostnames override
+    env = get_torchtpu_env_vars(
+        topology="2x4",
+        worker_id=0,
+        worker_hostnames=["host-a", "host-b"],
+    )
+    assert env["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert env["NNODES"] == "2"
+    assert env["MASTER_ADDR"] == "host-a"
+    assert env["MASTER_PORT"] == "29500"
+    assert env["NODE_RANK"] == "0"
+
+    # Multi-process addresses on the same host are de-duplicated
+    multi_proc_addrs = [
+        "10.0.0.1:8471",
+        "10.0.0.1:8472",
+        "10.0.0.2:8471",
+        "10.0.0.2:8472",
+    ]
+    env_dedup = get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=multi_proc_addrs,
+        worker_id=1,
+    )
+    assert env_dedup["TPU_WORKER_HOSTNAMES"] == "10.0.0.1,10.0.0.2"
+    assert env_dedup["NNODES"] == "2"
+    assert env_dedup["MASTER_ADDR"] == "10.0.0.1"
+    assert env_dedup["NODE_RANK"] == "1"
 
 
 def test_subslice_placement_group_torchtpu_env_discovered_addresses():
@@ -3122,9 +3165,15 @@ def test_subslice_placement_group_torchtpu_env_discovered_addresses():
         accelerator_version="v6e",
         slicebuilder_addresses=v6e_addrs,
     )
-    env_v6e = ss_pg_v6e.get_torchtpu_env_vars()
+    env_v6e = ss_pg_v6e.get_torchtpu_env_vars(worker_id=0)
     assert env_v6e["TORCH_TPU_TOPOLOGY"] == "2,4,1"
     assert env_v6e["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == ",".join(v6e_addrs)
+    assert env_v6e["TPU_WORKER_HOSTNAMES"] == "10.0.0.0,10.0.0.1"
+    assert env_v6e["NNODES"] == "2"
+    assert env_v6e["MASTER_ADDR"] == "10.0.0.0"
+    assert env_v6e["MASTER_PORT"] == "29500"
+    assert env_v6e["NODE_RANK"] == "0"
+    assert env_v6e["TPU_WORKER_ID"] == "0"
 
     # v7x (2x2x2 -> 2x2x1 subslice with 1 host x 4 chips)
     v7x_addrs = [f"10.0.0.1:{8470+c}" for c in range(4)]
@@ -3140,9 +3189,13 @@ def test_subslice_placement_group_torchtpu_env_discovered_addresses():
         accelerator_version="v7x",
         slicebuilder_addresses=v7x_addrs,
     )
-    env_v7x = ss_pg_v7x.get_torchtpu_env_vars()
+    env_v7x = ss_pg_v7x.get_torchtpu_env_vars(worker_id=0)
     assert env_v7x["TORCH_TPU_TOPOLOGY"] == "2,2,1,2"
     assert env_v7x["TORCH_TPU_SLICEBUILDER_ADDRESSES"] == ",".join(v7x_addrs)
+    assert env_v7x["TPU_WORKER_HOSTNAMES"] == "10.0.0.1"
+    assert env_v7x["NNODES"] == "1"
+    assert env_v7x["MASTER_ADDR"] == "10.0.0.1"
+    assert env_v7x["NODE_RANK"] == "0"
 
 
 def test_subslice_placement_group_slice_addresses_by_offset():
