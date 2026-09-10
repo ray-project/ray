@@ -471,12 +471,13 @@ class ShufflingBatcher(BatcherInterface):
 
     def _start_new_shuffle_generation(self) -> None:
         """Prepare a generation locally and publish it only after success."""
-        next_builder = DelegatingBlockBuilder()
-        next_builder.add_block(self._builder.build())
+        additional_blocks = []
         if self._buffer_state is not None and self._buffer_state.remaining_rows > 0:
-            next_builder.add_block(self._buffer_state.materialize_remaining())
+            additional_blocks.append(self._buffer_state.materialize_remaining())
 
-        block = next_builder.build()
+        # Combine pending blocks and carry-over together: an intermediate build
+        # can copy the payload and perform irreversible dtype promotion.
+        block = self._builder.build(additional_blocks=additional_blocks)
         accessor = BlockAccessor.for_block(block)
         prepared_takes = {}
         if isinstance(accessor, ArrowBlockAccessor):

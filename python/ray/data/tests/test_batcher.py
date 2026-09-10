@@ -1,6 +1,7 @@
 import time
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 
@@ -471,6 +472,66 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         assert not calls
     else:
         assert calls
+
+
+@pytest.mark.parametrize("fail_first_build", [False, True])
+def test_shuffle_generation_preserves_pandas_values(monkeypatch, fail_first_build):
+    monkeypatch.setattr(
+        batcher_module, "get_total_obj_store_mem_on_node", lambda: 10**12
+    )
+    batcher = ShufflingBatcher(batch_size=1, shuffle_buffer_min_size=2, shuffle_seed=17)
+    batcher.add(pd.DataFrame({"value": ["a", "b", "c", "d"]}))
+    batches = [batcher.next_batch() for _ in range(3)]
+    large_integer = 2**60 + 1
+    batcher.add(pd.DataFrame({"value": [large_integer]}))
+    batcher.add(pd.DataFrame({"value": [1.5]}))
+    batcher.done_adding()
+    old_state = batcher._buffer_state
+    old_rng_state = batcher._rng.bit_generator.state
+    original_concat = pd.concat
+    concat_inputs = []
+
+    def concat(tables, *args, **kwargs):
+        concat_inputs.append([len(table) for table in tables])
+        if fail_first_build and len(concat_inputs) == 1:
+            raise RuntimeError("concat failed")
+        return original_concat(tables, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pd, "concat", concat)
+        if fail_first_build:
+            with pytest.raises(RuntimeError, match="concat failed"):
+                batcher.next_batch()
+            assert batcher._buffer_state is old_state
+            assert batcher._builder.num_rows() == 2
+            assert batcher._num_rows() == 3
+            assert batcher._rng.bit_generator.state == old_rng_state
+        while batcher.has_any():
+            batches.append(batcher.next_batch())
+
+    # Pending int/float blocks and object carry-over must be combined together.
+    # Combining the pending blocks first silently rounds the large integer.
+    assert concat_inputs == [[1, 1, 1]] * (2 if fail_first_build else 1)
+    values = pd.concat(batches)["value"].tolist()
+    assert [value for value in values if isinstance(value, int)] == [large_integer]
+    assert sorted(map(str, values)) == sorted(
+        map(str, ["a", "b", "c", "d", large_integer, 1.5])
+    )
+
+
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("buffered", [False, True])
+def test_builder_additional_blocks_are_not_retained(block_format, buffered):
+    make_block = pa.table if block_format == "arrow" else pd.DataFrame
+    builder = DelegatingBlockBuilder()
+    if buffered:
+        builder.add_block(make_block({"id": [0]}))
+    extra = make_block({"id": [1]})
+    for _ in range(2):
+        actual = builder.build(additional_blocks=[extra])
+        assert actual.equals(make_block({"id": [0, 1] if buffered else [1]}))
+        assert builder.num_rows() == int(buffered)
+    assert BlockAccessor.for_block(builder.build()).num_rows() == int(buffered)
 
 
 @pytest.mark.parametrize("failure_stage", ["prepare", "publish"])
