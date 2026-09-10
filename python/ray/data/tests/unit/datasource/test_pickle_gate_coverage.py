@@ -36,6 +36,10 @@ _ARROW_READ_PATTERNS = [
     r"query_arrow_stream\(",
     r"read_file_slice",
     r'with_format\("arrow"\)',
+    r"ORCFile\(",
+    r"read_feather\(",
+    r"FeatherReader\(",
+    r"lance\.dataset\(",
 ]
 _ARROW_READ_RE = re.compile("|".join(_ARROW_READ_PATTERNS))
 
