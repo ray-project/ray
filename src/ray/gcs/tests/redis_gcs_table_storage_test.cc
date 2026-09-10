@@ -44,6 +44,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   void TearDown() override {}
 
   Clock clock_;
+  boost::asio::io_context metric_context_;
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
@@ -74,7 +75,8 @@ class RedisObservableGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
         metrics_enabled,
         latency_,
         count_,
-        clock_));
+        clock_,
+        metric_context_));
   }
 
   using Recorded =
@@ -97,6 +99,7 @@ class RedisObservableGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   Clock clock_;
   ray::observability::FakeHistogram latency_;
   ray::observability::FakeCounter count_;
+  boost::asio::io_context metric_context_;
 };
 
 TEST_F(RedisObservableGcsTableStorageTest, RecordsOnTheRedisBackend) {
@@ -105,6 +108,8 @@ TEST_F(RedisObservableGcsTableStorageTest, RecordsOnTheRedisBackend) {
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(job_id);
   Put(gcs_table_storage_->JobTable(), job_id, *job_table_data);
+  metric_context_.restart();
+  metric_context_.run();
 
   EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", "JOB").value_or(0), 1);
   // FakeHistogram keeps the last observation, so only its presence is stable.

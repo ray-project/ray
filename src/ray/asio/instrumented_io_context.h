@@ -40,6 +40,11 @@ class instrumented_io_context : public boost::asio::io_context {
       bool running_on_single_thread = false,
       std::optional<std::string> context_name = std::nullopt);
 
+  instrumented_io_context(bool emit_metrics,
+                          bool running_on_single_thread,
+                          std::optional<std::string> context_name,
+                          boost::asio::io_context &metric_context);
+
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
   ///
@@ -67,4 +72,5 @@ class instrumented_io_context : public boost::asio::io_context {
   std::shared_ptr<EventTracker> event_stats_;
   bool emit_metrics_;
   std::optional<std::string> context_name_;
+  boost::asio::io_context unused_metric_context_;
 };

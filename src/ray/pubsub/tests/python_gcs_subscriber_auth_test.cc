@@ -117,9 +117,11 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
       auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
+    boost::asio::io_context metric_context;
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
                                                 0,  // Random port
                                                 true,
+                                                metric_context,
                                                 1,
                                                 7200000,
                                                 auth_token);
