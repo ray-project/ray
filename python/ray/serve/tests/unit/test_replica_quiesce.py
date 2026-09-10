@@ -26,10 +26,11 @@ def _record_sleeps(events):
     """
     real_sleep = asyncio.sleep
 
-    async def fake_sleep(delay, *args, **kwargs):
+    async def fake_sleep(delay, result=None, *args, **kwargs):
         events.append(("sleep", delay))
         # Still yield, so ordering against the other awaits is unchanged.
         await real_sleep(0)
+        return result
 
     with patch("asyncio.sleep", fake_sleep):
         yield
