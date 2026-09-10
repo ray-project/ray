@@ -126,9 +126,9 @@ kind delete cluster
 (kuberay-rayservice-ha-upgrades)=
 ## GCS fault tolerance and zero-downtime upgrades
 
-GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Leave `gcsFaultToleranceOptions.externalStorageNamespace` unset, as [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) does.
+GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Don't set `gcsFaultToleranceOptions.externalStorageNamespace`. The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) sample leaves it unset.
 
-When you don't set `externalStorageNamespace`, KubeRay derives the Redis storage namespace from the unique identifier (`metadata.uid`) that Kubernetes assigns to the RayCluster. That single default gives you both behaviors:
+KubeRay then derives the Redis storage namespace from the unique identifier (`metadata.uid`) that Kubernetes assigns to the RayCluster. That single default gives you both behaviors:
 
 * Within one RayCluster, that identifier doesn't change when the head Pod restarts or moves to another node, so the new head recovers the cluster metadata from Redis. Step 7 demonstrates this recovery.
 * Across a zero-downtime upgrade, KubeRay creates a second RayCluster, and Kubernetes assigns it a different identifier, so the new cluster gets its own namespace and can't read the old cluster's metadata. The operator waits for the new cluster to become ready before it switches traffic.
