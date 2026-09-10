@@ -238,7 +238,7 @@ click the dropdowns below:
     +-------------------------------------------------------------------------------------------+
     | **RLlib Multi-Agent**                                                                     |
     +-------------------------------------------------------------------------------------------+
-    | `RLlib's MultiAgentEnv API <env.html#multi-agent-and-hierarchical>`__ |multi_agent| |
+    | `RLlib's MultiAgentEnv API <env.html#multi-agent-and-hierarchical>`__ |multi_agent|       |
     |                                                                                           |
     | .. code-block:: python                                                                    |
     |                                                                                           |
