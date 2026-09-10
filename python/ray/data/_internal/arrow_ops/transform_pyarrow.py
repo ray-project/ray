@@ -228,27 +228,13 @@ def _try_normalize_take_indices(
     if isinstance(indices, list):
         try:
             indices = pyarrow.array(indices)
-        except (
-            pyarrow.ArrowInvalid,
-            pyarrow.ArrowTypeError,
-            TypeError,
-            ValueError,
-            OverflowError,
-        ):
+        except (TypeError, ValueError, OverflowError):
             return None
 
     if isinstance(indices, (pyarrow.Array, pyarrow.ChunkedArray)):
         if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
             return None
-        try:
-            values = indices.to_numpy(zero_copy_only=False)
-        except (
-            pyarrow.ArrowInvalid,
-            pyarrow.ArrowNotImplementedError,
-            TypeError,
-            ValueError,
-        ):
-            return None
+        values = indices.to_numpy(zero_copy_only=False)
     elif isinstance(indices, np.ndarray):
         values = np.asarray(indices)
     else:
@@ -311,18 +297,28 @@ def take_table(
     columns are prepared once before the per-column loop. Indices are normalized
     only if at least one preparation succeeds, and the normalized representation
     is shared by all prepared columns. Preparation validates the exact request
-    size, so a prepared take cannot fall back at execution time. If the feature
+    size. Unexpected preparation or execution failures are logged with a
+    traceback and retried through the standard path outside the exception handler. If the feature
     is disabled or preparation or normalization fails, the original ``indices``
     object is passed unchanged to the standard Arrow fallback.
     """
     if any(_is_pa_extension_type(col.type) for col in table.columns):
-        prepared_takes = _prepare_chunked_tensor_takes(table, indices)
+        try:
+            prepared_takes = _prepare_chunked_tensor_takes(table, indices)
 
-        if prepared_takes:
-            normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
-            if normalized_indices is None:
-                _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
-        else:
+            if prepared_takes:
+                normalized_indices = _try_normalize_take_indices(
+                    indices, table.num_rows
+                )
+                if normalized_indices is None:
+                    _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
+            else:
+                normalized_indices = None
+        except Exception:
+            logger.warning(
+                "Tensor take preparation failed; using standard take", exc_info=True
+            )
+            prepared_takes = {}
             normalized_indices = None
 
         new_cols = []
@@ -330,8 +326,17 @@ def take_table(
             if _is_multi_chunk_extension_column(col):
                 prepared = prepared_takes.get(index)
                 if normalized_indices is not None and prepared is not None:
-                    new_cols.append(prepared.take(normalized_indices))
-                    continue
+                    try:
+                        result = prepared.take(normalized_indices)
+                    except Exception:
+                        logger.warning(
+                            "Tensor take failed for column %s; using standard take",
+                            index,
+                            exc_info=True,
+                        )
+                    else:
+                        new_cols.append(result)
+                        continue
                 # Regular path.
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.

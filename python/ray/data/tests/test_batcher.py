@@ -1,9 +1,11 @@
 import time
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal import batcher as batcher_module
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.batcher import (
@@ -12,6 +14,8 @@ from ray.data._internal.batcher import (
     ShufflingBatcher,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.tensor_extensions import chunked_tensor_take
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockAccessor
 
 
@@ -390,6 +394,77 @@ def test_no_partial_batch_mid_stream():
 
     total = sum(len(b) for b in batches) + len(final_batch)
     assert total == 35
+
+
+@pytest.mark.parametrize("fail_stage", [None, "prepare", "take"])
+def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_stage):
+    ray.shutdown()
+    ray.init(num_cpus=1)
+    blocks = []
+    for start in range(0, 4096, 256):
+        ids = np.arange(start, start + 256, dtype=np.int64)
+        values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
+        blocks.append(
+            pa.table({"row_id": ids, "tensor": ArrowTensorArray.from_numpy(values)})
+        )
+
+    def consume():
+        batcher = ShufflingBatcher(
+            batch_size=128, shuffle_buffer_min_size=1024, shuffle_seed=51
+        )
+        batches = []
+        generations = set()
+
+        def drain():
+            while batcher.has_batch():
+                batches.append(batcher.next_batch())
+                generations.add(id(batcher._buffer_state.shuffled_indices))
+
+        for block in blocks:
+            batcher.add(block)
+            drain()
+        batcher.done_adding()
+        drain()
+        if batcher.has_any():
+            batches.append(batcher.next_batch())
+        return pa.concat_tables(batches), generations
+
+    with monkeypatch.context() as patch:
+        patch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
+        expected, _ = consume()
+    calls = []
+    original = chunked_tensor_take.PreparedChunkedTensorTake.take
+
+    def record_take(plan, indices):
+        calls.append(len(indices))
+        if fail_stage == "take":
+            raise ValueError("injected take failure")
+        return original(plan, indices)
+
+    monkeypatch.setattr(
+        chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
+    )
+    preparation_calls = []
+    if fail_stage == "prepare":
+
+        def fail_prepare(*args, **kwargs):
+            preparation_calls.append(1)
+            raise ValueError("injected preparation failure")
+
+        monkeypatch.setattr(
+            batcher_module, "try_prepare_chunked_tensor_take", fail_prepare
+        )
+    actual, generations = consume()
+    assert len(generations) > 1
+    assert actual.equals(expected)
+    np.testing.assert_array_equal(
+        np.sort(actual.column("row_id").to_numpy()), np.arange(4096)
+    )
+    if fail_stage == "prepare":
+        assert preparation_calls
+        assert not calls
+    else:
+        assert calls
 
 
 if __name__ == "__main__":

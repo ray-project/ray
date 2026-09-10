@@ -1,3 +1,4 @@
+import logging
 import warnings
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
@@ -19,6 +20,8 @@ from ray.data._internal.utils.transform_pyarrow import (
 )
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
+
+logger = logging.getLogger(__name__)
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -51,19 +54,25 @@ def _prepare_local_shuffle_arrow_table(
     for index, column in enumerate(table.columns):
         if column.num_chunks <= 1:
             columns.append(column)
-            continue
-
-        if _is_multi_chunk_extension_column(column):
-            take_plan = try_prepare_chunked_tensor_take(
-                column,
-                max_output_rows=table.num_rows,
-            )
+        elif _is_multi_chunk_extension_column(column):
+            try:
+                take_plan = try_prepare_chunked_tensor_take(
+                    column, max_output_rows=table.num_rows
+                )
+            except Exception:
+                logger.warning(
+                    "Shuffle tensor preparation failed for column %s; combining column",
+                    index,
+                    exc_info=True,
+                )
+                take_plan = None
             if take_plan is not None:
                 prepared_takes[index] = take_plan
                 columns.append(column)
-                continue
-
-        columns.append(transform_pyarrow.combine_chunked_array(column))
+            else:
+                columns.append(transform_pyarrow.combine_chunked_array(column))
+        else:
+            columns.append(transform_pyarrow.combine_chunked_array(column))
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
 
 
@@ -87,15 +96,32 @@ def _take_prepared_arrow_table(
     The indices are intentionally not revalidated for every prepared column.
     Preparation used the complete shuffle-generation size, so every normal
     batch and carry-over take satisfies each plan's output-size contract.
+    Unexpected plan failures are logged and retried on the standard path.
+    Failed plans are removed from the mapping for the rest of this generation.
     """
 
     columns = []
     for index, column in enumerate(table.columns):
         take_plan = prepared_takes.get(index)
         if take_plan is None:
+            if _is_multi_chunk_extension_column(column):
+                column = transform_pyarrow.combine_chunked_array(column)
             columns.append(column.take(indices))
-            continue
-        columns.append(take_plan.take(indices))
+        else:
+            try:
+                result = take_plan.take(indices)
+            except Exception:
+                logger.warning(
+                    "Shuffle tensor take failed for column %s; using standard take",
+                    index,
+                    exc_info=True,
+                )
+                del prepared_takes[index]
+                take_plan = None
+            if take_plan is None:
+                column = transform_pyarrow.combine_chunked_array(column)
+                result = column.take(indices)
+            columns.append(result)
     return pa.Table.from_arrays(columns, schema=table.schema)
 
 
@@ -130,15 +156,17 @@ class _ShuffleBufferState:
         indices = self.shuffled_indices[
             self.batch_head : self.batch_head + rows_to_take
         ]
+        result = self._take(indices)
         self.batch_head += rows_to_take
-        return self._take(indices)
+        return result
 
     def _take(self, indices: np.ndarray) -> Block:
         """Take rows through the implementation chosen for this generation."""
-        if not self.prepared_tensor_takes:
+        if not isinstance(self.block, pa.Table):
             return self._take_standard(indices)
 
-        assert isinstance(self.block, pa.Table)
+        # Stay on this route after a failed plan is removed: the generic table
+        # accessor could otherwise prepare and retry the same optimization.
         return _take_prepared_arrow_table(
             self.block,
             indices,

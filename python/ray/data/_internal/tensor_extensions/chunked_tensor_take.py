@@ -103,12 +103,7 @@ def try_prepare_chunked_tensor_take(
         return _log_take_fallback(_TakeFallbackReason.CONTAINS_NULLS, column=column)
 
     tensor_type = column.type
-    try:
-        layout = _prepare_tensor_layout(tensor_type)
-    except (NotImplementedError, TypeError, ValueError):
-        return _log_take_fallback(
-            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
-        )
+    layout = _prepare_tensor_layout(tensor_type)
     if layout is None:
         return _log_take_fallback(
             _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
@@ -143,32 +138,23 @@ def try_prepare_chunked_tensor_take(
         TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
 
-    try:
-        chunk_views = []
-        chunk_starts = []
-        row_offset = 0
-        for chunk in chunks:
-            view = _prepare_zero_copy_chunk_view(
-                chunk,
-                tensor_type,
-                values_per_row,
-                value_dtype,
-            )
-            if view is None:
-                return _log_take_fallback(
-                    _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
-                )
-            chunk_views.append(view)
-            chunk_starts.append(row_offset)
-            row_offset += len(chunk)
-    except (
-        pa.ArrowNotImplementedError,
-        TypeError,
-        ValueError,
-    ):
-        return _log_take_fallback(
-            _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
+    chunk_views = []
+    chunk_starts = []
+    row_offset = 0
+    for chunk in chunks:
+        view = _prepare_zero_copy_chunk_view(
+            chunk,
+            tensor_type,
+            values_per_row,
+            value_dtype,
         )
+        if view is None:
+            return _log_take_fallback(
+                _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
+            )
+        chunk_views.append(view)
+        chunk_starts.append(row_offset)
+        row_offset += len(chunk)
 
     plan = PreparedChunkedTensorTake(
         tensor_type=tensor_type,
@@ -240,8 +226,8 @@ def _prepare_tensor_layout(
 
     The returned tuple is ``(values_per_row, row_bytes, numpy_dtype)``. Rejecting
     unsupported scalar types or shapes keeps the fast path independent of object
-    conversion and variable-shape tensor semantics. Expected conversion errors
-    are handled by the public preparation boundary.
+    conversion and variable-shape tensor semantics. Unexpected conversion errors
+    propagate to the caller.
     """
     if not isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
         return None
@@ -278,8 +264,8 @@ def _prepare_zero_copy_chunk_view(
     contiguity, ownership, and buffer bounds explicit. The logical list
     offsets are authoritative: a legal array may start after child element 0,
     while malformed or variable-stride offsets cannot represent the declared
-    fixed tensor shape and must be rejected. Expected Arrow and NumPy conversion
-    errors are handled by the public preparation boundary.
+    fixed tensor shape and must be rejected. Unexpected Arrow and NumPy conversion
+    errors propagate to the caller.
     """
     values = chunk.storage.values
     # Preserve the existing fallback for child arrays whose logical data starts
