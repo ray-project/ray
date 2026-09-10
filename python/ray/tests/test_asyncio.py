@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -432,6 +433,55 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
     assert (
         ray.get(a.hi_sync.remote(task_id="TEST", specified_cgname="test2"))
         == "Hi from sync: TEST! cgname: test2."
+    )
+
+
+def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared):
+    """Objects dropped as an async-actor task returns must be finalized promptly.
+
+    Async-actor tasks execute on boost fiber stacks. CPython's C-stack overflow
+    checks are keyed on the bounds it recorded for the *thread*, so a fiber stack
+    can be mistaken for an exhausted one -- and on CPython 3.14 the deallocator
+    then parks every object it frees on a per-thread-state list that is never
+    drained, leaking the task's entire object graph.
+
+    A task's return value is serialized on the fiber, so the last reference the
+    actor process holds to the payload below is released there. If deallocation
+    is being deferred, the payload's finalizer never runs.
+
+    max_concurrency > 1 is required for coverage rather than realism: with a
+    single fiber, anchoring once at task entry would suffice, so only interleaved
+    fibers exercise the re-anchoring that happens after a fiber resumes.
+    """
+
+    class Payload:
+        pass
+
+    @ray.remote(max_concurrency=2)
+    class Probe:
+        def __init__(self, unused):
+            # Taking a constructor argument is deliberate: it makes the creation
+            # task deserialize arguments, which is one of the paths that reaches
+            # the fiber bookkeeping from a thread that is not running a fiber.
+            self._finalizers = []
+
+        async def make_payload(self):
+            payload = Payload()
+            self._finalizers.append(weakref.finalize(payload, lambda: None))
+            return payload
+
+        async def num_finalized(self):
+            return sum(not f.alive for f in self._finalizers)
+
+    num_tasks = 50
+    probe = Probe.remote("unused")
+    ray.get([probe.make_payload.remote() for _ in range(num_tasks)])
+
+    num_finalized = ray.get(probe.num_finalized.remote())
+    assert num_finalized == num_tasks, (
+        f"{num_tasks - num_finalized} of {num_tasks} payloads returned by an async "
+        "actor were never finalized in the actor process, so their deallocation is "
+        "being deferred and never completed"
     )
 
 

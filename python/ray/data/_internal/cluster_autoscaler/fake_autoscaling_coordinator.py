@@ -1,9 +1,10 @@
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
+    LabelSelector,
     ResourceDict,
     ResourceRequestPriority,
 )
@@ -50,8 +51,8 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
-        label_selectors: Optional[List[Dict[str, str]]] = None,
-        subcluster_selector: Optional[Dict[str, str]] = None,
+        label_selectors: Optional[List[LabelSelector]] = None,
+        subcluster_selector: Optional[LabelSelector] = None,
     ) -> None:
         if priority != ResourceRequestPriority.MEDIUM:
             raise NotImplementedError(

@@ -59,6 +59,22 @@ class ArrowFileScanner(
             return set()
         return set(self.partitioning.field_names or [])
 
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """``True`` when no row-reducing pushdown is set on this scanner.
+
+        A Parquet footer's ``num_rows`` is the file's total, with nothing in it
+        to say how many rows survive a filter, so for this scanner the question
+        collapses to "is anything reducing rows?". Column projection is
+        deliberately not consulted: it changes the width of the output, never
+        the row count.
+        """
+        return (
+            self.predicate is None
+            and self.partition_predicate is None
+            and self.limit is None
+        )
+
     def read_schema(self) -> pa.Schema:
         """Return the logical schema after column pruning.
 
@@ -111,6 +127,10 @@ class ArrowFileScanner(
         return replace(self, predicate=combined), None
 
     @override
+    def pushed_predicate(self) -> Optional["Expr"]:
+        return self.predicate
+
+    @override
     def prune_columns(self, columns: List[str]) -> "ArrowFileScanner":
         """Prune to only the specified columns.
 
@@ -143,6 +163,10 @@ class ArrowFileScanner(
         current = self.limit
         new_limit = min(current, limit) if current is not None else limit
         return replace(self, limit=new_limit)
+
+    @override
+    def pushed_limit(self) -> Optional[int]:
+        return self.limit
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "ArrowFileScanner":
@@ -197,5 +221,6 @@ class ArrowFileScanner(
         )
 
         block = manifest.as_block()
-        pruned_block = block.take(keep_indices)
+        # An untyped empty list infers null indices: ArrowNotImplementedError.
+        pruned_block = block.take(pa.array(keep_indices, type=pa.int64()))
         return FileManifest(pruned_block)

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Persist Ray logs from VM cluster deployments, covering the log directory layout, processing tools, and collection strategies."
+---
+
 (vm-logging)=
 # Log Persistence
 

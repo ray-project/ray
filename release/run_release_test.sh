@@ -25,7 +25,7 @@ reason() {
 
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-"python ray_release/scripts/run_release_test.py"}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
-BUILDKITE_MAX_RETRIES=1
+BUILDKITE_MAX_RETRIES=${BUILDKITE_MAX_RETRIES:-1}
 BUILDKITE_RETRY_CODE=79
 BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 
@@ -83,6 +83,9 @@ while [[ "$RETRY_NUM" -lt "$MAX_RETRIES" ]]; do
     rm -rf "${RELEASE_RESULTS_DIR:?}"/* || true
   fi
 
+  # SC2329: invoked indirectly by the `trap` below; shellcheck 0.11.0 misses this
+  # because every path through this script ends in an explicit `exit`.
+  # shellcheck disable=SC2329
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
     kill "$proc"

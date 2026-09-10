@@ -6,6 +6,9 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+    ExternalHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     make_partition_sentinel,
@@ -14,6 +17,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -52,9 +56,9 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_hash_shuffle_v2(restore_data_context):
+def data_context_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -177,6 +181,26 @@ def test_repartition_with_sort_produces_sorted_partitions(
             assert ids == sorted(ids)
 
 
+def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus):
+    """Sorted reduces request 3x their input (sort_by materializes a sorted
+    copy on top of the concatenated shards); plain concat reduces keep the
+    2x default."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    # The multiplier drives the reduce task's memory request.
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
+
+
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
     """timeout_s <= 0 fetches in a single blocking ray.get."""
     refs = [ray.put(i) for i in range(4)]
@@ -233,6 +257,34 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, ExternalHashShuffleMapOp])
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    map_op_cls,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends.
+    Both map-op variants share the same batching policy."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
+    op = map_op_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
+
+
 def test_shuffle_map_task_uses_operator_name():
     ctx = DataContext.get_current()
     name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
@@ -241,7 +293,6 @@ def test_shuffle_map_task_uses_operator_name():
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
-        pre_map_merge_threshold=0,
         name=name,
     )
     op.start(ExecutionOptions(), noop_counter())
@@ -292,7 +343,7 @@ def test_shuffle_reduce_task_uses_operator_name():
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
-# they aren't specific to hash-shuffle-v2.
+# they aren't specific to shuffle-v2.
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""

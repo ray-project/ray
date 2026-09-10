@@ -133,6 +133,58 @@ def test_parameters(setup):
     assert "--smoke-test" in data
 
 
+def test_buildkite_max_retries_is_inherited(tmpdir):
+    """The step publishes the retry budget; the script must not clobber it."""
+    recorder = os.path.join(tmpdir, "recorder.sh")
+    recorded = os.path.join(tmpdir, "recorded.txt")
+    with open(recorder, "wt") as fp:
+        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    env = {
+        **os.environ,
+        "NO_INSTALL": "1",
+        "NO_CLONE": "1",
+        "NO_ARTIFACTS": "1",
+        "OVERRIDE_SLEEP_TIME": "0",
+        "MAX_RETRIES": "1",
+        "RAY_TEST_SCRIPT": f"bash {recorder}",
+        "BUILDKITE_MAX_RETRIES": "3",
+    }
+    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
+
+    with open(recorded, "rt") as fp:
+        assert fp.read().strip() == "3"
+
+
+def test_buildkite_max_retries_defaults_to_one(tmpdir):
+    """Without a published budget the job keeps the historical default."""
+    recorder = os.path.join(tmpdir, "recorder.sh")
+    recorded = os.path.join(tmpdir, "recorded.txt")
+    with open(recorder, "wt") as fp:
+        fp.write(f'echo "${{BUILDKITE_MAX_RETRIES:-unset}}" > {recorded}\n')
+
+    test_script = os.path.join(
+        os.path.dirname(__file__), "..", "..", "run_release_test.sh"
+    )
+    env = {
+        **os.environ,
+        "NO_INSTALL": "1",
+        "NO_CLONE": "1",
+        "NO_ARTIFACTS": "1",
+        "OVERRIDE_SLEEP_TIME": "0",
+        "MAX_RETRIES": "1",
+        "RAY_TEST_SCRIPT": f"bash {recorder}",
+    }
+    env.pop("BUILDKITE_MAX_RETRIES", None)
+    subprocess.run(f"{test_script} test_name", shell=True, env=env, check=False)
+
+    with open(recorded, "rt") as fp:
+        assert fp.read().strip() == "1"
+
+
 if __name__ == "__main__":
     import pytest
 

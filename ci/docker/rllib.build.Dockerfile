@@ -21,7 +21,7 @@ set -euo pipefail
 
 # Install system packages required for gymnasium rendering (MuJoCo, OpenGL, GLFW)
 sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends \
-    libosmesa6-dev libgl1 libglfw3 patchelf
+    libosmesa6-dev libgl1 libglfw3
 rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies from depset lock file

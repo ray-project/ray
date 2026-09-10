@@ -14,6 +14,7 @@
 
 #include "ray/pubsub/publisher.h"
 
+#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -41,6 +42,9 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     return false;
   }
 
+  // WorkerObjectLocationsPubMessage is an idempotent full snapshot: keep only
+  // the latest in-flight message per key_id.
+  const bool is_object_locations_message = msg->has_worker_object_locations_message();
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -51,6 +55,9 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
+    } else if (is_object_locations_message) {
+      // Subscribers replace the prior in-flight locations message for this key
+      // via QueueObjectLocationsMessage. Drop it from entity buffer accounting.
     } else if (max_buffered_bytes_ > 0 &&
                total_size_ + msg_size > static_cast<size_t>(max_buffered_bytes_)) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
@@ -75,8 +82,8 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
     }
 
     // The first message in the queue has been published to all subscribers, or
-    // it has been dropped due to memory cap. Subtract it from memory
-    // accounting.
+    // it has been dropped due to memory cap / locations coalesce. Subtract it
+    // from memory accounting.
     total_size_ -= front_msg_size;
     pending_messages_.pop();
   }
@@ -84,8 +91,14 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   pending_messages_.emplace(msg, msg_size);
   total_size_ += msg_size;
 
-  for (auto &[id, subscriber] : subscribers_) {
-    subscriber->QueueMessage(msg);
+  if (is_object_locations_message) {
+    for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
+      entry.second->QueueObjectLocationsMessage(msg);
+    }
+  } else {
+    for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
+      entry.second->QueueMessage(msg);
+    }
   }
   return true;
 }
@@ -281,6 +294,18 @@ void SubscriberState::ConnectToSubscriber(
   // clean up messages that have already been processed.
   while (!mailbox_.empty() &&
          mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
+    const std::shared_ptr<rpc::PubMessage> &front = mailbox_.front();
+    // Only erase the index entry when the ACKed message is still the
+    // in-flight WorkerObjectLocationsPubMessage for that key_id.
+    if (front->has_worker_object_locations_message()) {
+      absl::flat_hash_map<std::string,
+                          std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
+          idx = object_locations_message_index_.find(front->key_id());
+      if (idx != object_locations_message_index_.end() &&
+          idx->second == mailbox_.begin()) {
+        object_locations_message_index_.erase(idx);
+      }
+    }
     mailbox_.pop_front();
   }
 
@@ -299,6 +324,22 @@ void SubscriberState::ConnectToSubscriber(
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message) {
   RAY_LOG(DEBUG) << "enqueue: " << pub_message->sequence_id();
   mailbox_.push_back(pub_message);
+  PublishIfPossible(/*force_noop=*/false);
+}
+
+void SubscriberState::QueueObjectLocationsMessage(
+    const std::shared_ptr<rpc::PubMessage> &pub_message) {
+  RAY_LOG(DEBUG) << "enqueue object locations: " << pub_message->sequence_id();
+  const std::string &key_id = pub_message->key_id();
+  absl::flat_hash_map<std::string,
+                      std::list<std::shared_ptr<rpc::PubMessage>>::iterator>::iterator
+      idx = object_locations_message_index_.find(key_id);
+  if (idx != object_locations_message_index_.end()) {
+    mailbox_.erase(idx->second);
+    object_locations_message_index_.erase(idx);
+  }
+  mailbox_.push_back(pub_message);
+  object_locations_message_index_.emplace(key_id, std::prev(mailbox_.end()));
   PublishIfPossible(/*force_noop=*/false);
 }
 
@@ -349,7 +390,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
 
 bool SubscriberState::CheckNoLeaks() const {
   // If all message in the mailbox has been replied, consider there is no leak.
-  return mailbox_.empty();
+  return mailbox_.empty() && object_locations_message_index_.empty();
 }
 
 bool SubscriberState::ConnectionExists() const {
@@ -518,22 +559,34 @@ std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Publisher:";
-  for (const auto &it : cum_pub_message_count_) {
-    auto channel_type = it.first;
-    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-    const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
-    result << "\n" << channel_name;
-    result << "\n- cumulative published messages: " << it.second;
+  // Total long-polling RPCs into this publisher. One SubscriberState
+  // per subscriber process, regardless of how many channels or keys it
+  // subscribes to, so this is the channel-agnostic connection count.
+  result << "\n- current long-polling subscribers: " << subscribers_.size();
+  // Iterate the subscription indexes (one per registered channel) rather
+  // than the cumulative publish counters so channels that have subscribers
+  // but no publishes yet are still reported.
+  for (const auto &[channel_type, subscription_index] : subscription_index_map_) {
+    result << "\n" << rpc::ChannelType_Name(channel_type);
+
+    auto message_count_it = cum_pub_message_count_.find(channel_type);
+    result << "\n- cumulative published messages: "
+           << (message_count_it != cum_pub_message_count_.end() ? message_count_it->second
+                                                                : 0);
 
     auto bytes_count_it = cum_pub_message_bytes_count_.find(channel_type);
-    if (bytes_count_it != cum_pub_message_bytes_count_.end()) {
-      result << "\n- cumulative published bytes: " << bytes_count_it->second;
-    }
+    result << "\n- cumulative published bytes: "
+           << (bytes_count_it != cum_pub_message_bytes_count_.end()
+                   ? bytes_count_it->second
+                   : 0);
 
-    auto index_it = subscription_index_map_.find(channel_type);
-    if (index_it != subscription_index_map_.end()) {
-      result << "\n- current buffered bytes: " << index_it->second.GetNumBufferedBytes();
-    }
+    result << "\n- current buffered bytes: " << subscription_index.GetNumBufferedBytes();
+    result << "\n- current all-entity subscribers: "
+           << subscription_index.GetNumAllEntitySubscribers();
+    result << "\n- current keyed subscription keys: "
+           << subscription_index.GetNumKeySubscriptions();
+    result << "\n- current keyed subscribers: "
+           << subscription_index.GetNumKeyedSubscribers();
   }
   return result.str();
 }

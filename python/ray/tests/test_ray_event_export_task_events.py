@@ -4,16 +4,15 @@ import logging
 import textwrap
 from typing import Optional
 
-import grpc
 import pytest
 
 import ray
-import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
-from ray._private import ray_constants
-from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray._raylet import GcsClient
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_aggregator_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,39 +49,6 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
     ],
     indirect=["ray_start_cluster_head_with_env_vars"],
 )
-
-
-def wait_until_grpc_channel_ready(
-    gcs_address: str, node_ids: list[str], timeout: int = 5
-):
-    # get the grpc port
-    gcs_client = GcsClient(address=gcs_address)
-
-    def get_dashboard_agent_address(node_id: str):
-        return gcs_client.internal_kv_get(
-            f"{ray.dashboard.consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
-
-    wait_for_condition(
-        lambda: all(
-            get_dashboard_agent_address(node_id) is not None for node_id in node_ids
-        )
-    )
-    grpc_ports = [
-        json.loads(get_dashboard_agent_address(node_id))[2] for node_id in node_ids
-    ]
-    targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
-
-    # wait for the dashboard agent grpc port to be ready
-    for target in targets:
-        channel = grpc.insecure_channel(target)
-        try:
-            grpc.channel_ready_future(channel).result(timeout=timeout)
-        except grpc.FutureTimeoutError:
-            return False
-    return True
 
 
 def get_job_id_and_driver_script_task_id_from_events(
@@ -228,7 +194,8 @@ def run_driver_script_and_wait_for_events(script, httpserver, cluster, validatio
     # Here we wait for the dashboard agent grpc server to be ready before running the
     # driver script. Ideally, the startup sequence should guarantee that. Created an
     # issue to track this: https://github.com/ray-project/ray/issues/58007
-    assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
+    for node_id in node_ids:
+        wait_for_aggregator_agent(cluster.gcs_address, node_id)
     run_string_as_driver_nonblocking(script)
     wait_for_condition(
         lambda: get_and_validate_events(

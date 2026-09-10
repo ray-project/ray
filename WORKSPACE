@@ -62,6 +62,70 @@ python_register_toolchains(
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
+# The pip that whl_library shells out to, overridden ahead of the one rules_python
+# brings.
+#
+# rules_python arrives here transitively at 0.9.0, from rules_foreign_cc 0.9.0. It wins
+# over protobuf's newer 0.14.0 pin because ray_deps_build_all() runs
+# rules_foreign_cc_dependencies() before grpc_extra_deps() reaches protobuf_deps(), and
+# protobuf declares rules_python through maybe(). 0.9.0 pins pip 22.0.4, which predates
+# PEP 691 support (pip 22.2): it asks for text/html and skips a JSON index page rather
+# than parsing it, so the resolve fails as though the package did not exist:
+#
+#   Skipping page http://.../simple/click/ because the GET request got Content-Type:
+#   application/vnd.pypi.simple.v1+json. The only supported Content-Type is text/html
+#   ERROR: Could not find a version that satisfies the requirement click==8.1.7
+#   (from versions: none)
+#
+# Which is what any index whose pages are not HTML produces here. The CI mirror caches
+# an index page keyed on URL while PyPI answers `Vary: Accept`, so whichever client
+# warms an entry picks the representation every later reader gets -- and a pip this old
+# can only read one of the two. A pip that understands JSON understands HTML as well, so
+# moving it forward makes the representation stop mattering in either direction, rather
+# than depending on every producer asking for the same one.
+#
+# Declared before pip_install_dependencies() deliberately: that function declares its
+# deps through maybe(), which skips any repository that already exists, so this wins.
+# The build file has to keep the `lib` target name, because rules_python resolves these
+# as @pypi__pip//:lib.
+#
+# 24.3.1 is the ceiling, not a preference. rules_python 0.9.0 parses the lock file with
+# pip's internal API -- parse_requirements_to_bzl reads ParsedLine.is_requirement -- and
+# pip 25.0 removed that attribute, so pip_repository dies with an AttributeError before
+# whl_library ever runs. 24.3.1 is the last release that still has it. The floor is 23.2:
+# PEP 691 support landed in 22.2, but 22.3 through 23.1 hard-fail on dist-info-metadata,
+# the bug PEP 714 was written for, fixed in 23.2. That leaves 23.2 through 24.3.1, and
+# this takes the top of that range.
+#
+# Note this does not match the pip ci/env/install-dependencies.sh installs (25.2). The
+# two cannot be aligned while rules_python is 0.9.0; aligning them means moving
+# rules_python first.
+http_archive(
+    name = "pypi__pip",
+    build_file_content = """\
+package(default_visibility = ["//visibility:public"])
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "lib",
+    srcs = glob(["**/*.py"]),
+    data = glob(["**/*"], exclude = [
+        "**/*.py",
+        "**/*.pyc",
+        "**/* *",
+        "**/*.dist-info/RECORD",
+        "BUILD",
+        "WORKSPACE",
+    ]),
+    imports = ["."],
+)
+""",
+    sha256 = "3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
+)
+
 pip_install_dependencies()
 
 load("@rules_python//python:pip.bzl", "pip_parse")

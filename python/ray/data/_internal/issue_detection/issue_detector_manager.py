@@ -66,10 +66,6 @@ class IssueDetectorManager:
         for i, operator in enumerate(self.executor._topology.keys()):
             operators[operator.id] = operator
             op_to_id[operator] = self.executor._get_operator_id(operator, i)
-            # Reset issue detector metrics for each operator so that previous issues
-            # don't affect the current ones.
-            operator.metrics._issue_detector_hanging = 0
-            operator.metrics._issue_detector_high_memory = 0
 
         for issue in issues:
             logger.warning(issue.message)
@@ -96,11 +92,6 @@ class IssueDetectorManager:
                     message=issue.message,
                 )
                 self._operator_event_exporter.export_operator_event(operator_event)
-
-            if issue.issue_type == IssueType.HANGING:
-                operator.metrics._issue_detector_hanging += 1
-            if issue.issue_type == IssueType.HIGH_MEMORY:
-                operator.metrics._issue_detector_high_memory += 1
         if len(issues) > 0:
             logger.warning(
                 f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."

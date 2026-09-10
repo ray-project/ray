@@ -1,7 +1,9 @@
 import threading
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    LabelSelector,
+    RequesterId,
     ResourceDict,
 )
 
@@ -12,7 +14,7 @@ if TYPE_CHECKING:
 def build_train_resource_request(
     scaling_config: "ScalingConfig",
     num_workers: int,
-) -> Tuple[List[ResourceDict], Optional[List[Dict[str, str]]]]:
+) -> Tuple[List[ResourceDict], Optional[List[LabelSelector]]]:
     """Build coordinator bundles for worker resources and optional trainer resources.
 
     Trainer bundles are included when ``scaling_config._trainer_resources_not_none``
@@ -39,7 +41,7 @@ class TrainV1ResourceReservation:
 
     def __init__(
         self,
-        requester_id: str,
+        requester_id: RequesterId,
         scaling_config: "ScalingConfig",
         num_workers: int,
     ):

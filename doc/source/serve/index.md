@@ -203,94 +203,102 @@ We truly believe Serve is unique as it gives you end-to-end control over your ML
 Check out {ref}`serve-getting-started` and {ref}`serve-key-concepts`, or head over to the {doc}`examples` to get started building your Ray Serve applications.
 
 
-```{eval-rst}
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-3
+::::{grid} 1 2 2 2
+:gutter: 1
+:class-container: container pb-3
 
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+:::{grid-item-card}
+:class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        **Getting Started**
-        ^^^
+**Getting Started**
+^^^
 
-        Start with our quick start tutorials for :ref:`deploying a single model locally <serve-getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>`.
+Start with our quick start tutorials for {ref}`deploying a single model locally <serve-getting-started>` and how to {ref}`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>`.
 
-        +++
-        .. button-ref:: serve-getting-started
-            :color: primary
-            :outline:
-            :expand:
++++
+```{button-ref} serve-getting-started
+:color: primary
+:outline:
+:expand:
 
-            Get Started with Ray Serve
-
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        **Key Concepts**
-        ^^^
-
-        Understand the key concepts behind Ray Serve.
-        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-ingress-deployment>`, and using :ref:`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
-
-        +++
-        .. button-ref:: serve-key-concepts
-            :color: primary
-            :outline:
-            :expand:
-
-            Learn Key Concepts
-
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        **Examples**
-        ^^^
-
-        Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, and :ref:`Scikit-Learn <serve-ml-models-tutorial>`.
-
-        +++
-        .. button-ref:: examples
-            :color: primary
-            :outline:
-            :expand:
-            :ref-type: doc
-
-            Serve Examples
-
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        **API Reference**
-        ^^^
-
-        Get more in-depth information about the Ray Serve API.
-
-        +++
-        .. button-ref:: serve-api
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the API Reference
-
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        **Ray Serve Office Hours**
-        ^^^
-
-        Join our bi-weekly community office hours for anyone working with Ray Serve. Bring questions, issues you're experiencing, or ideas you want to sanity check with the Ray Serve team.
-
-        +++
-        .. button-link:: https://docs.google.com/forms/d/e/1FAIpQLSfyeVy7wYqvjpEz8wjPQg--0fmQc5WvuNoVkW6vPaAJG0Cizw/viewform
-            :color: primary
-            :outline:
-            :expand:
-
-            Sign Up Here
-
+Get Started with Ray Serve
 ```
+:::
+
+:::{grid-item-card}
+:class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+**Key Concepts**
+^^^
+
+Understand the key concepts behind Ray Serve.
+Learn about {ref}`Deployments <serve-key-concepts-deployment>`, {ref}`how to query them <serve-key-concepts-ingress-deployment>`, and using {ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
+
++++
+```{button-ref} serve-key-concepts
+:color: primary
+:outline:
+:expand:
+
+Learn Key Concepts
+```
+:::
+
+:::{grid-item-card}
+:class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+**Examples**
+^^^
+
+Follow the tutorials to learn how to integrate Ray Serve with {ref}`TensorFlow <serve-ml-models-tutorial>`, and {ref}`Scikit-Learn <serve-ml-models-tutorial>`.
+
++++
+```{button-ref} examples
+:color: primary
+:outline:
+:expand:
+:ref-type: doc
+
+Serve Examples
+```
+:::
+
+:::{grid-item-card}
+:class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+**API Reference**
+^^^
+
+Get more in-depth information about the Ray Serve API.
+
++++
+```{button-ref} serve-api
+:color: primary
+:outline:
+:expand:
+
+Read the API Reference
+```
+:::
+
+:::{grid-item-card}
+:class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+**Ray Serve Office Hours**
+^^^
+
+Join our bi-weekly community office hours for anyone working with Ray Serve. Bring questions, issues you're experiencing, or ideas you want to sanity check with the Ray Serve team.
+
++++
+```{button-link} https://docs.google.com/forms/d/e/1FAIpQLSfyeVy7wYqvjpEz8wjPQg--0fmQc5WvuNoVkW6vPaAJG0Cizw/viewform
+:color: primary
+:outline:
+:expand:
+
+Sign Up Here
+```
+:::
+::::
 
 For more, see the following blog posts about Ray Serve:
 

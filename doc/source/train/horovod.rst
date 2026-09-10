@@ -1,4 +1,7 @@
 
+.. meta::
+   :description: Distribute training with Horovod on Ray Train by adapting your training function and configuring HorovodTrainer.
+
 .. _train-horovod:
 
 Get Started with Distributed Training using Horovod

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Route LLM requests by prompt prefix to exploit KV cache locality, with load balance checks and imbalanced-load fallback."
+---
+
 (prefix-aware-routing-guide)=
 # Prefix-aware routing
 
@@ -7,7 +13,7 @@ Optimize LLM inference with cache locality using prefix-aware request routing.
 This API is in alpha and may change before becoming stable.
 :::
 
-LLM inference can benefit significantly from cache locality optimization. When one replica processes multiple prompts that share a prefix, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html) in vLLM.
+LLM inference can benefit significantly from cache locality optimization. When one replica processes multiple prompts that share a prefix, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/) in vLLM.
 
 The `PrefixCacheAffinityRouter` routes requests with similar prefixes to the same replicas, maximizing KV cache hit rates.
 
@@ -86,5 +92,5 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 ## See also
 
 - {doc}`Architecture: Request routing <../architecture/routing-policies>`
-- [vLLM Automatic Prefix Caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html)
+- [vLLM Automatic Prefix Caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/)
 

@@ -123,6 +123,7 @@ steps:
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: ""
 
   - name: ray-llmbaseextra
     label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base-extra"

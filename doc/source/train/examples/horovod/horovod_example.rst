@@ -1,5 +1,8 @@
 :orphan:
 
+.. meta::
+   :description: Runnable example of Horovod distributed training with PyTorch on Ray Train.
+
 Run Horovod Distributed Training with PyTorch and Ray Train
 ===========================================================
 

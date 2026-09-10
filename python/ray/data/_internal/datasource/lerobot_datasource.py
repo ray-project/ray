@@ -58,7 +58,7 @@ class _LeRobotRoot(NamedTuple):
 
     fs: "fsspec.AbstractFileSystem"
     """Resolved fsspec filesystem for metadata + parquet I/O, built once on the
-    driver (see :func:`_resolve_filesystem`) and shipped to workers."""
+    driver (see ``_resolve_filesystem``) and shipped to workers."""
 
     fs_root: str
     """Dataset path relative to ``fs``'s root for path joining
@@ -106,18 +106,96 @@ class _LeRobotRoot(NamedTuple):
     ``meta/stats.json``, serialized to a JSON string.  Emitted verbatim on
     every row as the ``stats`` column"""
 
-    frame_tolerance_s: Optional[float]
+    frame_tolerance_s: float
     """Max seconds a decoded video frame's timestamp may differ from a row's
-    timestamp before it is rejected (passed to lerobot's ``decode_video_frames``)."""
+    timestamp before it is rejected (passed to lerobot's ``decode_video_frames``).
+    Resolved at construction: the caller's value, or ``0.5 / fps`` when unset."""
+
+    delta_steps: Dict[str, List[int]]
+    """``delta_timestamps`` resolved to integer frame offsets per feature key
+    (``round(offset * fps)``). Empty means no temporal windows are requested.
+    When non-empty, each listed feature is gathered over these offsets -- clamped
+    to the anchor frame's episode -- into a leading time dimension, and a companion
+    boolean ``{key}_is_pad`` column flags the offsets that fell outside the episode."""
 
 
 class _ReadGranularity(str, enum.Enum):
     """How rows are grouped into base read tasks: one task per physical file
     (video-file group) or per episode. ``override_num_blocks`` splits/merges
-    from whichever base this selects (see :meth:`LeRobotDatasource._slice`)."""
+    from whichever base this selects (see ``LeRobotDatasource._slice``)."""
 
     FILE = "file"
     EPISODE = "episode"
+
+
+def _is_list_type(data_type: pa.DataType) -> bool:
+    """True for any Arrow list layout: list, large_list, or fixed_size_list."""
+    return (
+        pa.types.is_fixed_size_list(data_type)
+        or pa.types.is_list(data_type)
+        or pa.types.is_large_list(data_type)
+    )
+
+
+def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
+    """Build the output tensor type for a windowed tabular Arrow field.
+
+    LeRobot stores vectors as list columns and higher-rank features either as
+    nested lists or Hugging Face ``ArrayXD`` extension types backed by nested
+    lists. A temporal window adds one leading dimension to the stored feature.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorType
+
+    # BaseExtensionType covers canonical (C++-defined) extension types like
+    # pa.fixed_shape_tensor too, not just Python-defined ones like HF ArrayXD.
+    if isinstance(data_type, pa.BaseExtensionType):
+        data_type = data_type.storage_type
+
+    ndim = 1
+    while _is_list_type(data_type):
+        ndim += 1
+        data_type = data_type.value_type
+
+    return ArrowVariableShapedTensorType(data_type, ndim=ndim)
+
+
+def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
+    """Materialize a uniformly shaped nested-list column as a typed ndarray.
+
+    Convert an Arrow nested-list column into one typed, rectangular ndarray --
+    ``(n_rows, *feature_shape)``, the layout the delta gather fancy-indexes
+    into windows -- without going through Python objects.
+
+    The leaf dtype survives (``np.array(column.to_pylist())`` widens float32
+    to float64), so the produced block matches the schema
+    ``_delta_tensor_type`` declares from the same nesting.
+
+    Raises a ValueError if the column is null or ragged.
+    """
+    shape = [len(column)]
+    values = column
+    while _is_list_type(values.type):
+        if values.null_count:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} cannot contain null lists."
+            )
+        if pa.types.is_fixed_size_list(values.type):
+            length = values.type.list_size
+        else:
+            # Keep the common, uniformly shaped path inside Arrow. Converting
+            # every row's length to Python is prohibitively expensive for the
+            # large action/state columns found in real LeRobot datasets.
+            lengths = pc.unique(pc.list_value_length(values))
+            if len(lengths) != 1:
+                raise ValueError(
+                    f"Windowed LeRobot feature {name!r} must have one uniform "
+                    f"shape, but found list lengths {sorted(lengths.to_pylist())}."
+                )
+            length = lengths[0].as_py()
+        shape.append(length)
+        values = values.flatten()
+
+    return values.to_numpy(zero_copy_only=False).reshape(shape)
 
 
 # ---------------------------------------------------------------------------
@@ -132,17 +210,23 @@ def _build_schema(
     image_keys: List[str],
     fs: "fsspec.AbstractFileSystem",
     fs_root: str,
+    delta_steps: Optional[Dict[str, List[int]]] = None,
 ) -> pa.Schema:
     """Read the Arrow schema of the first data parquet file and produce the
     output schema: in-parquet ``image`` columns (HF ``struct<bytes, path>``) are
     replaced by decoded uint8 tensor columns, ``video`` columns are appended as
-    decoded tensors, plus ``task``, ``dataset_index`` and ``stats``."""
+    decoded tensors, plus ``task``, ``dataset_index`` and ``stats``.
+
+    When ``delta_steps`` is given, each listed feature gains a leading time
+    dimension (cameras become 4-D ``(T, H, W, C)`` tensors, tabular features gain
+    one axis) and a boolean ``{key}_is_pad`` tensor column is appended for it."""
 
     # Note(Artur): Imported here rather than at module top so importing this module stays
     # docs-build-safe: an eager ``ray.data.extensions`` import pulls in pandas' tensor
     # extension, whose class body breaks under the docs build's mocked pandas.
     from ray.data.extensions import ArrowVariableShapedTensorType
 
+    delta = delta_steps or {}
     ep = episodes_table.slice(0, 1).to_pylist()[0]
     path = (
         f"{fs_root}/"
@@ -152,14 +236,24 @@ def _build_schema(
         pq_schema = pq.read_schema(f)
     image_set = set(image_keys)
     frame_type = ArrowVariableShapedTensorType(pa.uint8(), ndim=3)
+    delta_frame_type = ArrowVariableShapedTensorType(pa.uint8(), ndim=4)
+
+    def _field_for(f: pa.Field) -> pa.Field:
+        if f.name in image_set:
+            # Encoded-byte image struct -> decoded uint8 tensor (4-D if windowed).
+            return pa.field(f.name, delta_frame_type if f.name in delta else frame_type)
+        if f.name in delta:
+            # A temporal window adds one leading dimension to the stored
+            # scalar/vector/matrix/... feature.
+            return pa.field(f.name, _delta_tensor_type(f.type))
+        return f
+
     # Image columns live in the parquet as encoded-byte structs; swap them for
     # the decoded-tensor type in place (preserving column order).
-    fields = [
-        pa.field(f.name, frame_type) if f.name in image_set else f for f in pq_schema
-    ]
+    fields = [_field_for(f) for f in pq_schema]
     # Video columns are not in the parquet; append them.
     for vk in video_keys:
-        fields.append(pa.field(vk, frame_type))
+        fields.append(pa.field(vk, delta_frame_type if vk in delta else frame_type))
     # task + stats are per-dataset constants repeated on every row, so they are
     # dictionary-encoded (one shared value per block + an int32 index per row)
     # instead of duplicating the (multi-KB) stats JSON on each row.
@@ -167,6 +261,16 @@ def _build_schema(
     fields.append(pa.field("task", dict_str))
     fields.append(pa.field("dataset_index", pa.int32()))
     fields.append(pa.field("stats", dict_str))
+    # Per-delta-key pad masks, appended last in a fixed order (parquet columns in
+    # file order, then video keys) so the schema matches the emitted block layout.
+    if delta:
+        pad_type = ArrowVariableShapedTensorType(pa.bool_(), ndim=1)
+        for f in pq_schema:
+            if f.name in delta:
+                fields.append(pa.field(f"{f.name}_is_pad", pad_type))
+        for vk in video_keys:
+            if vk in delta:
+                fields.append(pa.field(f"{vk}_is_pad", pad_type))
     return pa.schema(fields)
 
 
@@ -227,6 +331,34 @@ def _non_camera_features(features: dict) -> Dict[str, tuple]:
         for k, v in features.items()
         if v.get("dtype") not in ("video", "image")
     }
+
+
+def _delta_targets(
+    global_index, episode_from, episode_to, steps
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Pick the neighbouring frames at the given ``steps`` offsets, staying inside
+    the anchor frame's episode.
+
+    For an anchor at global frame ``global_index`` whose episode spans
+    ``[episode_from, episode_to)``, each offset ``s`` points at frame
+    ``global_index + s``. Offsets that land outside the episode are clamped back
+    to the nearest in-episode frame and flagged in the returned ``pad`` mask.
+
+    Example: anchor 14 in episode ``[10, 15)`` with ``steps=[-1, 0, 1]`` gives raw
+    targets ``[13, 14, 15]``; 15 is past the episode end, so it returns targets
+    ``[13, 14, 14]`` with pad ``[False, False, True]``.
+
+    Vectorized: ``global_index`` / ``episode_from`` / ``episode_to`` may be scalars
+    (``(S,)`` result) or ``(A,)`` arrays (``(A, S)`` result). Mirrors lerobot's
+    ``DatasetReader._get_query_indices`` clamp/pad rule, reimplemented here because
+    that method is bound to a torch reader we don't build.
+    """
+    anchor = np.asarray(global_index)[..., None]
+    low = np.asarray(episode_from)[..., None]
+    high = np.asarray(episode_to)[..., None]
+    target = anchor + np.asarray(steps)
+    pad = (target < low) | (target >= high)
+    return np.clip(target, low, high - 1), pad
 
 
 def _resolve_filesystem(
@@ -372,6 +504,9 @@ def _build_root(
     video_root_uri: str,
     video_storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float] = None,
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    *,
+    delta_tolerance_s: float,
 ) -> Tuple[_LeRobotRoot, pa.Table]:
     """Compute the per-root derived state bundle for a lerobot
     ``LeRobotDatasetMetadata`` instance.
@@ -385,7 +520,7 @@ def _build_root(
             ``meta/`` only, so data and video paths are resolved against
             ``root``, not ``meta.root``.
         fs: Resolved fsspec filesystem for metadata and parquet I/O; captured on
-            the returned :class:`_LeRobotRoot` so workers reuse it.
+            the returned ``_LeRobotRoot`` so workers reuse it.
         fs_root: Dataset path relative to ``fs``'s root, for path joining.
         video_root_uri: Root URI for the by-URI video decode path (videos are
             streamed through torchcodec/fsspec, not through ``fs``).
@@ -393,9 +528,16 @@ def _build_root(
         frame_tolerance_s: Max seconds a decoded frame's timestamp may differ
             from a row's before the frame is rejected; ``None`` uses the
             ``0.5 / fps`` default.
+        delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}``
+            temporal-window request, validated against ``meta.features`` and
+            converted to per-key integer frame steps via ``meta.fps``; ``None``
+            disables windowing.
+        delta_tolerance_s: Frame-grid tolerance (seconds) for the
+            ``delta_timestamps`` offset check; forwarded to lerobot's
+            ``check_delta_timestamps``.
 
     Returns:
-        A ``(root_bundle, episodes_table)`` tuple: the :class:`_LeRobotRoot`
+        A ``(root_bundle, episodes_table)`` tuple: the ``_LeRobotRoot``
         worker-shipped state, and the per-root episodes table (augmented with
         ``_global_from_index`` / ``_global_to_index``) kept on the driver for
         planning.
@@ -444,11 +586,34 @@ def _build_root(
     tasks_dict = dict(
         zip(meta.tasks["task_index"].astype(int).tolist(), meta.tasks.index.tolist())
     )
+    if delta_timestamps:
+        # Validate offsets align to the frame grid and convert seconds -> integer
+        # frame offsets; both delegated to lerobot so semantics match LeRobotDataset.
+        from lerobot.datasets.feature_utils import (
+            check_delta_timestamps,
+            get_delta_indices,
+        )
+
+        check_delta_timestamps(delta_timestamps, meta.fps, delta_tolerance_s)
+        delta_steps = get_delta_indices(delta_timestamps, meta.fps)
+    else:
+        delta_steps = {}
     schema = _build_schema(
-        episodes_table, meta.data_path, meta.video_keys, meta.image_keys, fs, fs_root
+        episodes_table,
+        meta.data_path,
+        meta.video_keys,
+        meta.image_keys,
+        fs,
+        fs_root,
+        delta_steps=delta_steps,
     )
     row_size_bytes = _estimated_row_size_bytes(meta.features)
     stats_json = _stats_to_json(meta.stats)
+    # Resolve the video-frame timestamp tolerance now (needs fps): the caller's
+    # value, or half a frame interval (0.5 / fps) when unset.
+    resolved_frame_tolerance_s = (
+        frame_tolerance_s if frame_tolerance_s is not None else 0.5 / float(meta.fps)
+    )
 
     root_bundle = _LeRobotRoot(
         root=video_root_uri,
@@ -465,7 +630,8 @@ def _build_root(
         fps=meta.fps,
         storage_options=video_storage_options,
         stats_json=stats_json,
-        frame_tolerance_s=frame_tolerance_s,
+        frame_tolerance_s=resolved_frame_tolerance_s,
+        delta_steps=delta_steps,
     )
     return root_bundle, episodes_table
 
@@ -475,13 +641,16 @@ def _resolve_root(
     filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"],
     storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float],
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    *,
+    delta_tolerance_s: float,
 ) -> Tuple[_LeRobotRoot, pa.Table, "LeRobotDatasetMetadata"]:
     """Resolve one root into its read-task bundle + per-episode table.
 
     Runs the single-root pipeline: resolve the filesystem
-    (:func:`_resolve_filesystem`), load LeRobot metadata
-    (:func:`_load_lerobot_metadata`), and distill both (:func:`_build_root`) into
-    a slim :class:`_LeRobotRoot` (shipped to read tasks) and a per-episode Arrow
+    (``_resolve_filesystem``), load LeRobot metadata
+    (``_load_lerobot_metadata``), and distill both (``_build_root``) into
+    a slim ``_LeRobotRoot`` (shipped to read tasks) and a per-episode Arrow
     table (used for slicing). The upstream metadata is returned too, so the
     caller can run cross-root homogeneity checks and expose it via
     :attr:`LeRobotDatasource.meta`.
@@ -498,6 +667,8 @@ def _resolve_root(
         video_uri,
         video_opts,
         frame_tolerance_s=frame_tolerance_s,
+        delta_timestamps=delta_timestamps,
+        delta_tolerance_s=delta_tolerance_s,
     )
     return built_root, built_episodes, meta
 
@@ -505,7 +676,7 @@ def _resolve_root(
 def _build_lerobot_read_task(
     segments: List[tuple],
     roots: List[_LeRobotRoot],
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
     episodes: List[pa.Table],
     max_block_bytes: int,
     per_task_row_limit: Optional[int] = None,
@@ -515,10 +686,13 @@ def _build_lerobot_read_task(
 
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
-    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
-    function fetches it once. ``episodes`` is the driver-side list of projected
-    episode tables, used here only to cut each segment's slice -- it is NOT
-    shipped; only the per-segment slice travels with the task.
+    to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
+    which the task captures refs for only the roots its segments touch,
+    the read function fetches just those. Roots split
+    across several tasks still share one object. ``episodes`` is the
+    driver-side list of projected episode tables, used here only to cut each
+    segment's slice, it is NOT shipped; only the per-segment slice travels
+    with the task.
     """
     total_rows = 0
     size_bytes = 0
@@ -545,23 +719,27 @@ def _build_lerobot_read_task(
         input_files=all_input_files,
         exec_stats=None,
     )
+    needed_root_indices = sorted({root_idx for root_idx, _, _ in segments})
+    task_root_refs = [root_refs[root_idx] for root_idx in needed_root_indices]
     read_fn = functools.partial(
-        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+        _read_lerobot_task,
+        task_root_refs,
+        needed_root_indices,
+        resolved,
+        max_block_bytes,
     )
     return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
 
 
 def _read_lerobot_task(
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
+    root_indices: List[int],
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
-    """Stream decoded rows as Arrow tables, iterating over all segments.
-
-    Runs on a worker: fetches the shared slim per-root state once, then reads
-    each pre-resolved segment.
-    """
-    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    """Stream decoded rows as Arrow tables, iterating over all segments."""
+    # Get only the roots this task needs.
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],
@@ -572,6 +750,50 @@ def _read_lerobot_task(
             ep_slice,
             max_block_bytes,
         )
+
+
+class _DeltaSegment(NamedTuple):
+    """Per-segment state for the delta (temporal-window) read path, built once by
+    ``_prepare_delta_segment`` and reused across the segment's batches."""
+
+    segment_start: int
+    """Global frame index of the segment's first row. Convert a clamped global
+    index to its 0-based position in this segment's arrays via
+    ``index - segment_start`` (valid because a segment is a contiguous run of
+    whole episodes)."""
+
+    global_idx: List[int]
+    """Per-row global frame index (the parquet ``index`` column), one entry per
+    segment row, in row order."""
+
+    episode_index_col: List[int]
+    """Per-row episode index (the ``episode_index`` column); maps a row to its
+    episode when routing a video frame to its ``(file, timestamp)``."""
+
+    row_from: List[int]
+    """Per-row inclusive lower bound of the row's episode, as a global frame index.
+    Windows are clamped to ``[row_from, row_to)`` so they never cross into a
+    neighbouring episode."""
+
+    row_to: List[int]
+    """Per-row exclusive upper bound of the row's episode, as a global frame index
+    (see ``row_from``)."""
+
+    pad_order: List[str]
+    """Windowed feature keys in the fixed order their ``{key}_is_pad`` mask
+    columns are appended to the block -- parquet columns (file order) then video
+    keys -- matching ``_build_schema``."""
+
+    tabular_base: Dict[str, np.ndarray]
+    """Each windowed tabular/scalar feature materialized once over the whole
+    segment as ``(n_seg, *shape)``, dtype preserved; the per-batch gather
+    fancy-indexes it with the clamped ``(A, S)`` positions."""
+
+    segment_images: Dict[str, np.ndarray]
+    """Each windowed in-parquet image camera decoded once for the whole segment
+    and stacked to ``(n_seg, H, W, C)``; gathered like ``tabular_base``.
+    Whole-segment (not per-batch) because a window near a batch edge reaches
+    adjacent rows."""
 
 
 def _read_lerobot_segment(
@@ -585,9 +807,9 @@ def _read_lerobot_segment(
 ) -> Iterator[pa.Table]:
     """Stream decoded rows for one ``[start, end)`` range within a single root.
 
-    Reads the segment's parquet rows, then emits Arrow batches sized from
+    Reads the segment's parquet rows once, then emits Arrow batches sized from
     this root's estimated row size (so each batch targets one output block),
-    decoding each batch's camera frames on demand.
+    decoding each batch's camera frames on demand via ``_build_batch``.
     """
     fs = root.fs
 
@@ -603,22 +825,6 @@ def _read_lerobot_segment(
     n_rows = full.num_rows
     camera_keys = root.video_keys + root.image_keys
 
-    if root.video_keys:
-        video_meta = _video_episode_meta(ep_slice, root.video_keys)
-        cache = new_decoder_cache(root.storage_options)
-        # Per-frame timestamp tolerance for the video decoder, needed only
-        # when there are video cameras. Default to half a frame interval
-        # (0.5 / fps). Computed inside this branch -- not unconditionally --
-        # so image-only and tabular-only datasets never divide by fps.
-        if root.frame_tolerance_s is not None:
-            tolerance_s = root.frame_tolerance_s
-        else:
-            tolerance_s = 0.5 / float(root.fps)
-    else:
-        video_meta = {}
-        cache = None
-        tolerance_s = None
-
     task_idx_pylist = full.column("task_index").to_pylist()
     missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
     if missing_tasks:
@@ -628,34 +834,389 @@ def _read_lerobot_segment(
             f"tasks metadata are inconsistent."
         )
 
-    # Size batches from this root's row size
-    rows_per_batch = max(1, max_block_bytes // (root.row_size_bytes))
+    if root.video_keys:
+        video_meta = _video_episode_meta(ep_slice, root.video_keys)
+        cache = new_decoder_cache(root.storage_options)
+        # Video-decoder timestamp tolerance, resolved at construction.
+        tolerance_s = root.frame_tolerance_s
+    else:
+        video_meta = {}
+        cache = None
+        tolerance_s = None
+
+    if root.delta_steps:
+        # Delta reads gather a window per feature; build the per-segment state once
+        # and divide the batch by the widest window so blocks stay near target size.
+        delta_segment = _prepare_delta_segment(root, full, ep_slice)
+        widest_window = max(
+            (len(steps) for steps in root.delta_steps.values()), default=1
+        )
+        rows_per_batch = max(
+            1, (max_block_bytes // root.row_size_bytes) // widest_window
+        )
+    else:
+        delta_segment = None
+        rows_per_batch = max(1, (max_block_bytes // root.row_size_bytes))
+
     try:
         for batch_start in range(0, n_rows, rows_per_batch):
             batch_end = min(batch_start + rows_per_batch, n_rows)
             batch = full.slice(batch_start, batch_end - batch_start)
-            frame_buffers: dict = {}
-            if root.video_keys:
-                frame_buffers.update(
-                    _decode_video_batch(root, batch, video_meta, tolerance_s, cache)
-                )
-            if root.image_keys:
-                frame_buffers.update(_decode_image_frames(root, batch))
             task_list = [
                 root.tasks_dict[task_idx_pylist[i]]
                 for i in range(batch_start, batch_end)
             ]
-            yield _build_batch(
-                camera_keys,
-                batch,
-                frame_buffers,
-                task_list,
-                dataset_index,
-                root.stats_json,
-            )
+            if root.delta_steps:
+                yield _build_delta_batch(
+                    root,
+                    batch,
+                    batch_start,
+                    dataset_index,
+                    task_list,
+                    video_meta,
+                    tolerance_s,
+                    cache,
+                    delta_segment,
+                )
+            else:
+                frame_buffers = {
+                    **_decode_video_batch(root, batch, video_meta, tolerance_s, cache),
+                    **_decode_image_frames(root, batch),
+                }
+                yield _build_batch(
+                    camera_keys,
+                    batch,
+                    frame_buffers,
+                    task_list,
+                    dataset_index,
+                    root.stats_json,
+                )
     finally:
         if cache is not None:
             cache.clear()
+
+
+def _prepare_delta_segment(
+    root: _LeRobotRoot, full: pa.Table, ep_slice: pa.Table
+) -> _DeltaSegment:
+    """Build the per-segment state the delta gather reuses across batches:
+    per-row episode bounds (for clamping), key routing, and the segment-level
+    tabular / decoded-image buffers whose windows may span batch boundaries.
+
+    Validates the invariant the gather relies on: the segment is a contiguous run
+    of whole episodes in the global frame index (guaranteed by the
+    ``get_read_tasks`` delta guard). That lets a clamped global index map to row
+    position ``index - segment_start`` and guarantees every in-episode neighbour
+    is loaded; a split episode would silently corrupt windows, so fail loudly.
+    """
+    global_idx = full.column("index").to_pylist()
+    episode_index_col = full.column("episode_index").to_pylist()
+    from_by_episode = dict(
+        zip(
+            ep_slice.column("episode_index").to_pylist(),
+            ep_slice.column("_global_from_index").to_pylist(),
+        )
+    )
+    to_by_episode = dict(
+        zip(
+            ep_slice.column("episode_index").to_pylist(),
+            ep_slice.column("_global_to_index").to_pylist(),
+        )
+    )
+    row_from = [from_by_episode[episode] for episode in episode_index_col]
+    row_to = [to_by_episode[episode] for episode in episode_index_col]
+
+    segment_start, segment_end = global_idx[0], global_idx[-1] + 1
+    if (
+        len(global_idx) != segment_end - segment_start
+        or min(row_from) < segment_start
+        or max(row_to) > segment_end
+    ):
+        raise RuntimeError(
+            "delta_timestamps requires contiguous whole-episode read segments, "
+            "but this segment splits an episode -- an internal invariant "
+            "violation (get_read_tasks caps parallelism when delta_timestamps "
+            "is set)."
+        )
+
+    delta_steps = root.delta_steps
+    image_set = set(root.image_keys)
+    delta_image_keys = [ik for ik in root.image_keys if ik in delta_steps]
+    delta_tabular_keys = [
+        name
+        for name in full.column_names
+        if name in delta_steps and name not in image_set
+    ]
+    # Pad-mask columns are appended last, in the schema's fixed order: parquet
+    # columns (in file order), then video keys.
+    pad_order = [name for name in full.column_names if name in delta_steps] + [
+        vk for vk in root.video_keys if vk in delta_steps
+    ]
+    # Materialize tabular delta columns to numpy once, preserving the stored dtype
+    # so stacked windows match the schema: nested-list columns (fixed or variable)
+    # materialize to (n_rows, *shape) via the value array -- which keeps e.g.
+    # float32 that to_pylist would widen to float64 -- and scalar columns stay 1-D.
+    tabular_base: Dict[str, np.ndarray] = {}
+    for name in delta_tabular_keys:
+        col = full.column(name).combine_chunks()
+        if isinstance(col.type, pa.BaseExtensionType):
+            # In lerobot, multidimensional columns can be backed by Hugging Face ArrayXD.
+            # Hugging Face ArrayXD is a pa.ExtensionType
+            # Unwrap it so the one validated path below
+            # materializes every encoding
+            col = col.storage
+        if _is_list_type(col.type):
+            tabular_base[name] = _nested_list_column_to_numpy(col, name)
+        else:
+            tabular_base[name] = col.to_numpy(zero_copy_only=False)
+    return _DeltaSegment(
+        segment_start=segment_start,
+        global_idx=global_idx,
+        episode_index_col=episode_index_col,
+        row_from=row_from,
+        row_to=row_to,
+        pad_order=pad_order,
+        tabular_base=tabular_base,
+        # Stack each decoded image camera to one (n_seg, H, W, C) array so a batch
+        # can gather its windows by fancy-indexing with the (A, S) positions.
+        segment_images={
+            image_key: np.stack(frames)
+            for image_key, frames in _decode_image_frames(
+                root, full, keys=delta_image_keys
+            ).items()
+        },
+    )
+
+
+def _build_delta_batch(
+    root: _LeRobotRoot,
+    batch: pa.Table,
+    batch_start: int,
+    dataset_index: int,
+    task_list: List[str],
+    video_meta: dict,
+    tolerance_s: Optional[float],
+    cache: Any,
+    delta_segment: _DeltaSegment,
+) -> pa.Table:
+    """Assemble one temporal-window output batch.
+
+    Each feature in ``root.delta_steps`` is gathered over its offsets -- clamped
+    to the anchor's episode -- into a leading time dimension, with a boolean
+    ``{key}_is_pad`` mask; non-windowed columns pass through unchanged. Anchors
+    are ``batch``'s rows, at absolute segment positions
+    ``[batch_start, batch_start + len(batch))``. Column order matches
+    ``_build_schema``: parquet columns, then video keys, then
+    ``task`` / ``dataset_index`` / ``stats``, then the pad masks.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorArray
+
+    delta_steps = root.delta_steps
+    image_set = set(root.image_keys)
+    # Route cameras into windowed vs. one-frame-per-row.
+    delta_video_keys = [vk for vk in root.video_keys if vk in delta_steps]
+    nondelta_video_keys = [vk for vk in root.video_keys if vk not in delta_steps]
+    nondelta_image_keys = [ik for ik in root.image_keys if ik not in delta_steps]
+    anchors = range(batch_start, batch_start + batch.num_rows)
+    pad_buffers: dict = {}
+
+    # Per-anchor clamped target positions + pad mask, computed once per distinct
+    # offset list and shared across keys that use it.
+    targets_cache: Dict[tuple, tuple] = {}
+
+    def _targets_for(steps):
+        cached = targets_cache.get(steps)
+        if cached is None:
+            batch_end = batch_start + batch.num_rows
+            clamped, pad = _delta_targets(
+                np.asarray(delta_segment.global_idx[batch_start:batch_end]),
+                np.asarray(delta_segment.row_from[batch_start:batch_end]),
+                np.asarray(delta_segment.row_to[batch_start:batch_end]),
+                steps,
+            )
+            # (A, S) row positions + pad mask; a clamped global index is at row
+            # position ``index - segment_start`` (the segment is contiguous).
+            cached = targets_cache[steps] = (
+                clamped - delta_segment.segment_start,
+                pad,
+            )
+        return cached
+
+    # Decode all cameras up front, then assemble columns in schema order.
+    nondelta_video_frames = _decode_video_batch(
+        root, batch, video_meta, tolerance_s, cache, keys=nondelta_video_keys
+    )
+    nondelta_image_frames = _decode_image_frames(root, batch, keys=nondelta_image_keys)
+    delta_video_frames: dict = {}
+    for vk in delta_video_keys:
+        frames, pads = _decode_video_delta(
+            root,
+            anchors,
+            delta_segment.global_idx,
+            delta_segment.row_from,
+            delta_segment.row_to,
+            delta_segment.episode_index_col,
+            video_meta,
+            vk,
+            delta_steps[vk],
+            tolerance_s,
+            cache,
+        )
+        delta_video_frames[vk] = frames
+        pad_buffers[vk] = pads
+
+    columns: dict = {}
+    # 1. Parquet columns, in file order: windowed image/tabular gathered from the
+    #    per-segment buffers, everything else passed through.
+    for name in batch.column_names:
+        if name in image_set:
+            if name in delta_steps:
+                positions, pad = _targets_for(tuple(delta_steps[name]))
+                # segment_images[name]: (n_seg, H, W, C); [positions] -> (A, S, H, W, C).
+                columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                    list(delta_segment.segment_images[name][positions])
+                )
+                pad_buffers[name] = list(pad)
+            else:
+                columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                    nondelta_image_frames[name]
+                )
+        elif name in delta_steps:
+            positions, pad = _targets_for(tuple(delta_steps[name]))
+            # tabular_base[name]: (n_seg, *shape); [positions] -> (A, S, *shape).
+            columns[name] = ArrowVariableShapedTensorArray.from_numpy(
+                list(delta_segment.tabular_base[name][positions])
+            )
+            pad_buffers[name] = list(pad)
+        else:
+            columns[name] = batch.column(name)
+
+    # 2. Video columns (not in the parquet), in root.video_keys order.
+    for vk in root.video_keys:
+        video_frames = (
+            delta_video_frames[vk] if vk in delta_steps else nondelta_video_frames[vk]
+        )
+        columns[vk] = ArrowVariableShapedTensorArray.from_numpy(video_frames)
+
+    # 3. Per-dataset constants.
+    columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
+    columns["dataset_index"] = pa.array(
+        [dataset_index] * len(task_list), type=pa.int32()
+    )
+    columns["stats"] = pa.array(
+        [root.stats_json] * len(task_list), type=pa.string()
+    ).dictionary_encode()
+
+    # 4. Pad masks, in the schema's fixed order.
+    for name in delta_segment.pad_order:
+        columns[f"{name}_is_pad"] = ArrowVariableShapedTensorArray.from_numpy(
+            pad_buffers[name]
+        )
+
+    return pa.table(columns)
+
+
+def _decode_frames_by_file(
+    root: _LeRobotRoot,
+    vk: str,
+    file_requests: Dict[tuple, List[tuple]],
+    tolerance_s: float,
+    cache: Any,
+) -> dict:
+    """Decode video frames for one camera, grouped by physical file.
+
+    ``file_requests`` maps ``(chunk_index, file_index)`` to
+    ``[(slot, timestamp), ...]``; each file's timestamps are decoded once through
+    the shared per-segment ``cache`` (a file's decoder is reused, not reopened).
+    Returns ``{slot: HWC uint8 frame}`` -- ``slot`` is an opaque key (a row index,
+    or an ``(anchor, step)`` pair) so both the per-row and windowed callers can
+    reshape the result."""
+    # Imported here, not at module top, so ``import ray.data`` stays lerobot-free
+    # until video is actually decoded on a worker.
+    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
+
+    assert root.video_path is not None
+    frames_by_slot: dict = {}
+    for (chunk, fi), requests in file_requests.items():
+        # Full URI (with protocol) so torchcodec detects cloud vs local.
+        vpath = (
+            f"{root.root}/"
+            f"{root.video_path.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
+        )
+        # lerobot returns a torch.Tensor (N, C, H, W) normalized to float32 in
+        # [0, 1]; rescale to uint8. .cpu() first -- a CUDA tensor can't convert
+        # directly (decode is CPU-only today, so this is a no-op guard).
+        frames = decode_video_frames_torchcodec(
+            vpath,
+            [timestamp for _, timestamp in requests],
+            tolerance_s,
+            decoder_cache=cache,
+        )
+        arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
+        if arr.dtype != np.uint8:
+            if arr.dtype.kind == "f":
+                # Undo lerobot's /255; round so pixels survive the round-trip.
+                arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
+        for i, (slot, _timestamp) in enumerate(requests):
+            frames_by_slot[slot] = arr[i]
+    return frames_by_slot
+
+
+def _decode_video_delta(
+    root: _LeRobotRoot,
+    anchors: List[int],
+    global_idx: List[int],
+    row_from: List[int],
+    row_to: List[int],
+    episode_index_col: List[int],
+    video_meta: dict,
+    vk: str,
+    steps: List[int],
+    tolerance_s: float,
+    cache: Any,
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """Decode a temporal window of video frames per anchor for one video key.
+
+    Resolves each anchor's ``steps`` offsets to in-episode timestamps (clamped to
+    the episode), decodes them via ``_decode_frames_by_file``, then stacks the
+    window per anchor. Returns ``([per-anchor (T, H, W, C) uint8], [per-anchor
+    (T,) bool pad])``.
+    """
+    fps = float(root.fps)
+    ep_info = video_meta[vk]
+    n_steps = len(steps)
+
+    pads: List[np.ndarray] = []
+    # (chunk, fi) -> [((anchor, step), timestamp), ...]
+    file_requests: Dict[tuple, list] = {}
+    for anchor_idx, position in enumerate(anchors):
+        episode_start = row_from[position]
+        chunk, fi, from_ts = ep_info[episode_index_col[position]]
+        targets, pad = _delta_targets(
+            global_idx[position], episode_start, row_to[position], steps
+        )
+        for step_idx, target in enumerate(targets):
+            # int(target) keeps the timestamp a Python float so lerobot's
+            # torch.tensor(timestamps) is float32 and matches the decoder's
+            # loaded_ts (cdist needs one dtype).
+            file_requests.setdefault((chunk, fi), []).append(
+                (
+                    (anchor_idx, step_idx),
+                    from_ts + (int(target) - episode_start) / fps,
+                )
+            )
+        pads.append(np.asarray(pad, dtype=bool))
+
+    frames = _decode_frames_by_file(root, vk, file_requests, tolerance_s, cache)
+    stacked = [
+        np.stack(
+            [frames[(anchor_idx, step_idx)] for step_idx in range(n_steps)], axis=0
+        )
+        for anchor_idx in range(len(anchors))
+    ]
+    return stacked, pads
 
 
 def _video_episode_meta(episodes: pa.Table, video_keys: List[str]) -> dict:
@@ -678,78 +1239,53 @@ def _decode_video_batch(
     video_meta: dict,
     tolerance_s: float,
     cache: Any,
+    keys: Optional[List[str]] = None,
 ) -> dict:
-    """Decode one batch's video frames to HWC uint8 arrays aligned to the
-    batch's row order.
-
-    Groups rows by video file and decodes each file's timestamps from the
-    shared (per-segment) decoder ``cache``, so a file's decoder is reused
-    across batches instead of being reopened. Returns
-    ``{video_key: list[np.ndarray HWC uint8]}``.
-    """
-    # Imported here, not at module top, so ``import ray.data`` stays
-    # lerobot-free until video is actually decoded on a worker.
-    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
-
-    assert root.video_path is not None
+    """Decode one batch's video frames to HWC uint8 arrays, one per row, aligned
+    to the batch's row order. Returns ``{video_key: list[np.ndarray HWC uint8]}``.
+    ``keys`` restricts decoding to a subset of ``root.video_keys`` (the delta path
+    passes its non-windowed keys); an empty key set returns ``{}``."""
+    keys = root.video_keys if keys is None else keys
+    if not keys:
+        return {}
     n = batch.num_rows
     ep_idx_col = batch.column("episode_index").to_pylist()
     ts_col = batch.column("timestamp").to_pylist()
     out: dict = {}
-    for vk in root.video_keys:
+    for vk in keys:
         ep_info = video_meta[vk]
-        file_to_rows: dict = {}
+        file_requests: Dict[tuple, list] = {}  # (chunk, fi) -> [(row, ts), ...]
         for r in range(n):
             chunk, fi, from_t = ep_info[ep_idx_col[r]]
-            file_to_rows.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
-        frames_by_row: List[Any] = [None] * n
-        for (chunk, fi), rows_and_ts in file_to_rows.items():
-            # Full URI (with protocol) so torchcodec detects cloud vs local.
-            vpath = (
-                f"{root.root}/"
-                f"{root.video_path.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
-            )
-            row_indices = [r for r, _ in rows_and_ts]
-            timestamps = [t for _, t in rows_and_ts]
-            # lerobot returns a torch.Tensor (N, C, H, W) normalized to
-            # float32 in [0, 1], so we rescale to uint8 below.
-            frames = decode_video_frames_torchcodec(
-                vpath, timestamps, tolerance_s, decoder_cache=cache
-            )
-            # .cpu() before the numpy conversion (a CUDA tensor can't
-            # convert directly). Decode is CPU-only today, so this is a
-            # no-op guard, not an active GPU->host move.
-            arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
-            if arr.dtype != np.uint8:
-                if arr.dtype.kind == "f":
-                    # Undo lerobot's /255 normalization; round rather than
-                    # truncate so pixel values survive the uint8 -> float32
-                    # -> uint8 round-trip exactly.
-                    arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
-                else:
-                    arr = arr.astype(np.uint8)
-            for i, r in enumerate(row_indices):
-                frames_by_row[r] = arr[i]
-        out[vk] = frames_by_row
+            file_requests.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
+        frames = _decode_frames_by_file(root, vk, file_requests, tolerance_s, cache)
+        out[vk] = [frames[r] for r in range(n)]
     return out
 
 
-def _decode_image_frames(root: _LeRobotRoot, full: pa.Table) -> dict:
+def _decode_image_frames(
+    root: _LeRobotRoot, full: pa.Table, keys: Optional[List[str]] = None
+) -> dict:
     """Decode in-parquet image cameras to HWC uint8 frames, one per row.
 
     LeRobot stores ``dtype == 'image'`` cameras as HuggingFace ``Image``
     structs (``{bytes, path}``) inside the data parquet — so, unlike video,
     there is no separate file or timestamp matching: each row already holds
     its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
-    aligned to ``full``'s row order.
+    aligned to ``full``'s row order. ``keys`` restricts decoding to a subset of
+    ``root.image_keys`` (used by the delta path to skip windowed keys); an empty
+    key set returns ``{}`` without importing image libraries.
     """
+    keys = root.image_keys if keys is None else keys
+    if not keys:
+        return {}
 
     import io
 
     from PIL import Image
 
     decoded: dict = {}
-    for ik in root.image_keys:
+    for ik in keys:
         frames: List[Any] = []
         for cell in full.column(ik).to_pylist():
             data = cell.get("bytes") if isinstance(cell, dict) else cell
@@ -888,6 +1424,8 @@ class LeRobotDatasource(Datasource):
         ] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         frame_tolerance_s: Optional[float] = None,
+        delta_timestamps: Optional[Dict[str, List[float]]] = None,
+        delta_tolerance_s: float = 1e-4,
     ):
         """Initialize LeRobot datasource.
 
@@ -923,9 +1461,21 @@ class LeRobotDatasource(Datasource):
                 (the default) uses ``0.5 / fps`` — half a frame interval, e.g.
                 ~0.05s at 10fps. Increase to tolerate timestamp jitter; decrease
                 for stricter alignment.
+            delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}``. For
+                each frame the listed feature is returned stacked over the offsets
+                (a new leading time dimension) plus a boolean ``{key}_is_pad``
+                column. Offsets are converted to frame steps via the dataset
+                ``fps`` and clamped to the anchor frame's episode; out-of-range
+                offsets are flagged in the pad mask. Setting this forces
+                **episode-aligned** reads (see :func:`ray.data.read_lerobot`).
+            delta_tolerance_s: Frame-grid tolerance (seconds) for
+                ``delta_timestamps`` offsets; an offset must be a multiple of
+                ``1 / fps`` within this tolerance. Defaults to ``1e-4`` (lerobot's
+                ``LeRobotDataset`` default).
         Raises:
-            ValueError: If ``frame_tolerance_s`` is non-positive, or if roots
-                have incompatible schemas.
+            ValueError: If ``frame_tolerance_s`` is non-positive, if a
+                ``delta_timestamps`` key is not a feature or an offset does not
+                align to the frame grid, or if roots have incompatible schemas.
         """
         super().__init__()
 
@@ -943,6 +1493,9 @@ class LeRobotDatasource(Datasource):
                 f"got {frame_tolerance_s!r}."
             )
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
+        # Validated + converted to per-root integer frame steps in ``_build_root``.
+        self._delta_timestamps: Optional[Dict[str, List[float]]] = delta_timestamps
+        self._delta_tolerance_s: float = delta_tolerance_s
 
         try:
             self._read_granularity = _ReadGranularity(read_granularity)
@@ -966,7 +1519,12 @@ class LeRobotDatasource(Datasource):
         self.original_metas: List["LeRobotDatasetMetadata"] = []
         for r in roots:
             built_root, built_episodes, meta = _resolve_root(
-                r, filesystem, self._storage_options, self._frame_tolerance_s
+                r,
+                filesystem,
+                self._storage_options,
+                self._frame_tolerance_s,
+                delta_timestamps=self._delta_timestamps,
+                delta_tolerance_s=self._delta_tolerance_s,
             )
             self.distilled_metas.append(built_root)
             self._episodes.append(built_episodes)
@@ -1090,7 +1648,7 @@ class LeRobotDatasource(Datasource):
         Returns:
             A list of ``(global_from_index, global_to_index)`` tuples, one per
             contiguous file run (``_slice`` sorts them afterward). Same
-            ``(from, to)`` shape that :meth:`_slices_by_episode` returns one per
+            ``(from, to)`` shape that ``_slices_by_episode`` returns one per
             episode -- this just merges the adjacent episodes that share a file.
             Episodes that share a file but are NOT adjacent (an ``episodes``
             subset dropped the episode between them, or a non-standard layout
@@ -1243,6 +1801,15 @@ class LeRobotDatasource(Datasource):
     ) -> List[ReadTask]:
         row_ranges = self._slice()
 
+        # delta_timestamps gathers a temporal window per frame, clamped to the
+        # anchor's episode. That requires whole-episode read segments, so never
+        # split below the base (episode / file-group) ranges.
+        if self._delta_timestamps and parallelism > len(row_ranges):
+            raise ValueError(
+                f"Delta timestamps are enabled, but parallelism ({parallelism}) is greater than the number of row ranges ({len(row_ranges)}). "
+                f"Delta timestamps require whole-episode read segments, so parallelism must be less than or equal to the number of row ranges."
+            )
+
         groups: List[list]
         if parallelism > 0 and parallelism > len(row_ranges):
             # More tasks requested than the partitioning yields: split ranges
@@ -1265,13 +1832,13 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self.distilled_metas)
+        root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _build_lerobot_read_task(
                 segments,
                 self.distilled_metas,
-                roots_ref,
+                root_refs,
                 self._episodes,
                 max_block_bytes,
                 per_task_row_limit,

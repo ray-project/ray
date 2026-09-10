@@ -3,7 +3,6 @@
 3-tier graph: ingress -> PDDecodeServer (decode config + engine) -> PDPrefillServer.
 """
 
-import warnings
 from typing import Any, Optional, Union
 
 from pydantic import Field, field_validator, model_validator
@@ -21,7 +20,6 @@ from ray.llm._internal.serve.core.ingress.builder import (
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
     _validate_direct_streaming_ingress_config,
-    load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
@@ -36,65 +34,20 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     DPPDPrefillServer,
     PDDecodeServer,
     PDPrefillServer,
-    PDProxyServer,  # TODO(Kourosh): Deprecate, remove in Ray 2.58.
 )
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Deprecated: ProxyClsConfig
-# TODO(Kourosh): Deprecate, remove in Ray 2.58.
-# ---------------------------------------------------------------------------
-
-
-class ProxyClsConfig(BaseModelExtended):
-    """Deprecated. Unused proxy configuration kept for backwards compatibility."""
-
-    proxy_cls: Union[str, type] = Field(
-        default=PDProxyServer,
-        description="Deprecated.",
-    )
-
-    proxy_extra_kwargs: Optional[dict] = Field(
-        default_factory=dict,
-        description="Deprecated.",
-    )
-
-    @field_validator("proxy_cls")
-    @classmethod
-    def validate_class(cls, value):
-        if isinstance(value, str):
-            return load_class(value)
-        return value
-
-
-# ---------------------------------------------------------------------------
-# PDServingArgs
-# ---------------------------------------------------------------------------
 
 
 class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args.
 
     Defines the prefill and decode LLMConfigs plus ingress options.
-    The deprecated ``proxy_cls_config`` and ``proxy_deployment_config``
-    fields are accepted for backwards compatibility but ignored.
     """
 
     prefill_config: Union[str, dict, LLMConfig]
     decode_config: Union[str, dict, LLMConfig]
-
-    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
-    # Deprecated proxy fields — accepted for backwards compat, ignored at build time.
-    proxy_cls_config: Optional[Union[dict, ProxyClsConfig]] = Field(
-        default=None,
-        description="Deprecated. Accepted but ignored.",
-    )
-    proxy_deployment_config: Optional[dict] = Field(
-        default=None,
-        description="Deprecated. Accepted but ignored.",
-    )
 
     ingress_cls_config: Union[dict, IngressClsConfig] = Field(
         default_factory=IngressClsConfig,
@@ -116,38 +69,6 @@ class PDServingArgs(BaseModelExtended):
             return value
         else:
             raise TypeError(f"Invalid LLMConfig type: {type(value)}")
-
-    @field_validator("proxy_cls_config")
-    @classmethod
-    def _validate_proxy_cls_config(
-        cls, value: Optional[Union[dict, ProxyClsConfig]]
-    ) -> Optional[ProxyClsConfig]:
-        if value is not None:
-            warnings.warn(
-                "proxy_cls_config is deprecated and ignored. "
-                "The proxy has been replaced by PDDecodeServer which "
-                "orchestrates prefill and decode directly. "
-                "See PDDecodeServer and PDPrefillServer.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if isinstance(value, dict):
-                return ProxyClsConfig.model_validate(value)
-        return value
-
-    @field_validator("proxy_deployment_config")
-    @classmethod
-    def _validate_proxy_deployment_config(cls, value: Optional[dict]) -> Optional[dict]:
-        if value is not None:
-            warnings.warn(
-                "proxy_deployment_config is deprecated and ignored. "
-                "The proxy has been replaced by PDDecodeServer which "
-                "orchestrates prefill and decode directly. "
-                "See PDDecodeServer and PDPrefillServer.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return value
 
     @field_validator("ingress_cls_config")
     @classmethod

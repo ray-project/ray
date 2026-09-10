@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
-from .base_autoscaling_coordinator import AutoscalingCoordinator, ResourceDict
+from .base_autoscaling_coordinator import (
+    AutoscalingCoordinator,
+    LabelSelector,
+    LabelValue,
+    ResourceDict,
+)
 from .default_autoscaling_coordinator import (
     DEFAULT_SUBCLUSTER,
     SUBCLUSTER_LABEL_KEY,
@@ -72,7 +77,7 @@ class _NodeResourceSpec:
 
 
 def _get_node_resource_spec_and_count(
-    subcluster: Optional[str] = DEFAULT_SUBCLUSTER,
+    subcluster: Optional[LabelValue] = DEFAULT_SUBCLUSTER,
 ) -> Dict[_NodeResourceSpec, int]:
     """Get the unique node resource specs and their count in the cluster,
     scoped to a single subcluster.
@@ -222,7 +227,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
         get_time: Callable[[], float] = time.time,
-        label_selector: Optional[Dict[str, str]] = None,
+        label_selector: Optional[LabelSelector] = None,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
@@ -415,7 +420,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self._min_gap_between_autoscaling_requests_s} seconds."
+                f" {self.AUTOSCALING_REQUEST_EXPIRE_TIME_S} seconds."
             )
             logger.warning(msg, exc_info=True)
 

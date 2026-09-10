@@ -1,3 +1,6 @@
+.. meta::
+   :description: Pattern: use an async actor so its methods run concurrently on one worker, overlapping I/O-bound operations.
+
 Pattern: Using asyncio to run actor methods concurrently
 ========================================================
 

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray's memory monitor, which prevents node OOM by killing workers under memory pressure, with its retry and worker-killing policies.
+
 .. _ray-oom-prevention:
 
 Out-Of-Memory Prevention

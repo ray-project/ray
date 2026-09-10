@@ -14,6 +14,8 @@ from .default_autoscaling_coordinator import (
     get_or_create_autoscaling_coordinator,
 )
 from .default_cluster_autoscaler_v2 import DefaultClusterAutoscalerV2
+from .placement_group_cluster_autoscaler import PlacementGroupClusterAutoscaler
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -44,7 +46,23 @@ def create_cluster_autoscaler(
     )
     logger.debug(f"Using cluster autoscaler version: {cluster_autoscaler_version!r}")
 
-    if cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
+    # When users specify a PlacementGroupSchedulingStrategy, the PG bundles
+    # already define the exact resources needed. The regular autoscaler would
+    # scale up nodes that don't actually help, so we use a simpler implementation
+    # that just requests the PG bundles directly.
+    if isinstance(
+        data_context.scheduling_strategy, PlacementGroupSchedulingStrategy
+    ) and isinstance(
+        data_context.scheduling_strategy_large_args,
+        PlacementGroupSchedulingStrategy,
+    ):
+        return PlacementGroupClusterAutoscaler(
+            execution_id=execution_id,
+            scheduling_strategy=data_context.scheduling_strategy,
+            scheduling_strategy_large_args=data_context.scheduling_strategy_large_args,
+        )
+
+    elif cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
             resource_manager,
             execution_id=execution_id,

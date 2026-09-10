@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run offline batch inference with Ray Data end to end: GPU inference, batch size tuning, job-level checkpointing, and OOM troubleshooting.
+
 .. _batch_inference_home:
 
 End-to-end: Offline Batch Inference

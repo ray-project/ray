@@ -1222,14 +1222,14 @@ TEST_F(PublisherTest, TestSubscriberLostAPublish) {
 
   // The publisher publishes while there's no active request, then the Subscriber retries
   // the LongPollingRequest with the same max_sequence_id since it lost the reply from the
-  // publisher. The subscriber should get both the 1st and 2nd messages.
+  // publisher. Object-location messages are snapshots, so only the latest is resent.
   publisher_->Publish(GeneratePubMessage(oid));
   publisher_->ConnectToSubscriber(request_,
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
-  ASSERT_EQ(reply.pub_messages().size(), 2);
-  auto max_processed = reply.pub_messages(1).sequence_id();
+  ASSERT_EQ(reply.pub_messages().size(), 1);
+  auto max_processed = reply.pub_messages(0).sequence_id();
   reply = rpc::PubsubLongPollingReply();
 
   // Subscriber got the reply this time, sends another request with a higher
@@ -1299,6 +1299,145 @@ class ScopedEntityBufferMaxBytes {
   const int64_t prev_max_buffer_bytes_;
   const int64_t prev_max_message_size_bytes_;
 };
+
+TEST_F(PublisherTest, TestObjectLocationsChannelKeepsOnlyLatestSnapshot) {
+  SubscriptionIndex subscription_index(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  auto oid_a = ObjectID::FromRandom();
+  auto oid_b = ObjectID::FromRandom();
+  auto *subscriber = CreateSubscriber();
+  subscription_index.AddEntry(oid_a.Binary(), subscriber);
+  subscription_index.AddEntry(oid_b.Binary(), subscriber);
+
+  auto publish = [&](const ObjectID &oid, int object_size) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_worker_object_locations_message()->set_object_size(object_size);
+    ASSERT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+  };
+
+  // Many updates to one entity must not grow the mailbox.
+  for (int i = 0; i < 100; i++) {
+    publish(oid_a, /*object_size=*/i + 1);
+    EXPECT_EQ(subscriber->MailboxSize(), 1);
+  }
+
+  // Coalescing A must not drop an in-flight snapshot for B.
+  publish(oid_b, /*object_size=*/7);
+  publish(oid_a, /*object_size=*/42);
+  EXPECT_EQ(subscriber->MailboxSize(), 2);
+
+  auto reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply->pub_messages().size(), 2);
+  EXPECT_EQ(reply->pub_messages(0).key_id(), oid_b.Binary());
+  EXPECT_EQ(reply->pub_messages(0).worker_object_locations_message().object_size(), 7);
+  EXPECT_EQ(reply->pub_messages(1).key_id(), oid_a.Binary());
+  EXPECT_EQ(reply->pub_messages(1).worker_object_locations_message().object_size(), 42);
+}
+
+TEST_F(PublisherTest, TestObjectLocationsSnapshotReplaceSurvivesAckOfOlderSeq) {
+  SubscriptionIndex subscription_index(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  ObjectID oid = ObjectID::FromRandom();
+  SubscriberState *subscriber = CreateSubscriber();
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+
+  auto publish = [this, &subscription_index, &oid](int object_size) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_worker_object_locations_message()->set_object_size(object_size);
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+
+  const int64_t seq_v1 = publish(/*object_size=*/1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // Deliver v1. The copy is sent, but the mailbox keeps it until ACK.
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply_v1 = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply_v1->pub_messages().size(), 1);
+  EXPECT_EQ(reply_v1->pub_messages(0).sequence_id(), seq_v1);
+  EXPECT_EQ(reply_v1->pub_messages(0).worker_object_locations_message().object_size(), 1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // Replace with a newer snapshot before the subscriber ACKs v1.
+  const int64_t seq_v2 = publish(/*object_size=*/2);
+  EXPECT_GT(seq_v2, seq_v1);
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+
+  // ACK only through v1. v2 has a higher sequence_id, so it must remain and be
+  // delivered on this poll.
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply_v2 =
+      FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_v1);
+  ASSERT_EQ(reply_v2->pub_messages().size(), 1);
+  EXPECT_EQ(reply_v2->pub_messages(0).sequence_id(), seq_v2);
+  EXPECT_EQ(reply_v2->pub_messages(0).worker_object_locations_message().object_size(), 2);
+  EXPECT_FALSE(subscriber->CheckNoLeaks());
+
+  // ACK v2; mailbox and snapshot index should both be empty.
+  FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_v2);
+  EXPECT_TRUE(subscriber->CheckNoLeaks());
+  EXPECT_EQ(subscriber->MailboxSize(), 0);
+}
+
+TEST_F(PublisherTest, TestObjectLocationsFailureMessageNotCoalesced) {
+  SubscriptionIndex subscription_index(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  ObjectID oid = ObjectID::FromRandom();
+  SubscriberState *subscriber = CreateSubscriber();
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+
+  auto publish_location = [this, &subscription_index, &oid](int object_size) {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_worker_object_locations_message()->set_object_size(object_size);
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+  auto publish_failure = [this, &subscription_index, &oid]() {
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(oid.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+    pub_message.set_sequence_id(GetNextSequenceId());
+    pub_message.mutable_failure_message();
+    EXPECT_TRUE(subscription_index.Publish(std::make_shared<rpc::PubMessage>(pub_message),
+                                           /*msg_size=*/pub_message.ByteSizeLong()));
+    return pub_message.sequence_id();
+  };
+
+  // Many location updates collapse to one; failure must still be appended.
+  for (int i = 0; i < 50; i++) {
+    publish_location(/*object_size=*/i + 1);
+  }
+  EXPECT_EQ(subscriber->MailboxSize(), 1);
+  const int64_t failure_seq = publish_failure();
+  EXPECT_EQ(subscriber->MailboxSize(), 2);
+
+  std::shared_ptr<rpc::PubsubLongPollingReply> reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply->pub_messages().size(), 2);
+  EXPECT_TRUE(reply->pub_messages(0).has_worker_object_locations_message());
+  EXPECT_EQ(reply->pub_messages(0).worker_object_locations_message().object_size(), 50);
+  EXPECT_TRUE(reply->pub_messages(1).has_failure_message());
+  EXPECT_EQ(reply->pub_messages(1).sequence_id(), failure_seq);
+
+  // A later location snapshot must not drop an earlier in-flight failure.
+  const int64_t seq_after_failure = publish_location(/*object_size=*/99);
+  EXPECT_EQ(subscriber->MailboxSize(), 2);
+  reply = FlushSubscriber(subscriber, /*max_processed_sequence_id=*/failure_seq);
+  ASSERT_EQ(reply->pub_messages().size(), 1);
+  EXPECT_TRUE(reply->pub_messages(0).has_worker_object_locations_message());
+  EXPECT_EQ(reply->pub_messages(0).sequence_id(), seq_after_failure);
+  EXPECT_EQ(reply->pub_messages(0).worker_object_locations_message().object_size(), 99);
+
+  FlushSubscriber(subscriber, /*max_processed_sequence_id=*/seq_after_failure);
+  EXPECT_TRUE(subscriber->CheckNoLeaks());
+}
 
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);

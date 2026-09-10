@@ -8,7 +8,10 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    UDFTimeScope,
+)
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
@@ -48,7 +51,9 @@ def generate_repartition_fn(
 
             def upstream_map_fn(blocks):
                 DataContext._set_current(data_context)
-                return map_transformer.apply_transform(blocks, ctx)
+                return map_transformer.apply_transform(
+                    blocks, ctx, udf_time_scope=UDFTimeScope()
+                )
 
         shuffle_spec = ShuffleTaskSpec(
             target_shuffle_max_block_size=(

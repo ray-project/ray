@@ -1,11 +1,12 @@
-name: "ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
-froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
+name: "ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"
+froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX"]
 dockerfile: docker/ray-llm/Dockerfile
 srcs:
   - python/requirements.txt
   - python/deplocks/llm/rayllm_py312_cu130.lock
   - python/requirements/llm/patches/vllm-device-aware-compile-cache.patch
+  - python/requirements/llm/nccl_overrides.txt
 build_args:
-  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX
 tags:
-  - cr.ray.io/rayproject/ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base
+  - cr.ray.io/rayproject/ray-llm-py$PYTHON_VERSION-cu$CUDA_VERSION-base$ARCH_SUFFIX

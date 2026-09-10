@@ -1,6 +1,12 @@
+---
+myst:
+  html_meta:
+    description: "Enable Ray resource isolation on GKE with writable cgroups, reserving system resources and verifying the cgroup hierarchy."
+---
+
 (resource-isolation-with-writable-cgroups)=
 
-# Resource Isolation with Writable Cgroups on Google Kubernetes Engine (GKE)
+# Resource isolation with writable cgroups on Google Kubernetes Engine (GKE)
 
 This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups). Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroups v2 to reserve dedicated CPU and memory resources for critical system processes.
 
@@ -49,7 +55,7 @@ metadata:
     node.gke.io/enable-writable-cgroups.ray-head: "true"
 ```
 
-It also applies a node selector to ensure Ray pods are scheduled only on GKE nodes with this capability enabled:
+It also applies a node selector to ensure Pods are scheduled only on GKE nodes with this capability enabled:
 ```yaml
 nodeSelector:
   node.gke.io/enable-writable-cgroups: "true"

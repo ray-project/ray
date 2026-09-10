@@ -5,7 +5,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._common.runtime_env_uri import parse_uri
+from ray._common.runtime_env_package import (
+    RUNTIME_ENV_PACKAGE_EXTENSIONS,
+    WORKING_DIR,
+    has_package_extension,
+    validate_package_extension,
+)
+from ray._common.runtime_env_uri import Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -18,7 +24,6 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.protocol import Protocol
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
@@ -67,12 +72,11 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        supported_extensions = (".zip", ".tar.gz", ".tgz")
-        if protocol in Protocol.remote_protocols() and not any(
-            path.endswith(ext) for ext in supported_extensions
-        ):
-            raise ValueError(
-                "Only .zip, .tar.gz, and .tgz files supported for remote URIs."
+        if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
+            validate_package_extension(
+                path,
+                WORKING_DIR,
+                display_path=working_dir.split("?", 1)[0],
             )
         return runtime_env
 
@@ -103,15 +107,14 @@ def upload_working_dir_if_needed(
         )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
-        supported_local = (
-            package_path.suffix == ".zip"
-            or package_path.suffix == ".tgz"
-            or package_path.name.endswith(".tar.gz")
+        supported_local = has_package_extension(
+            package_path.name, RUNTIME_ENV_PACKAGE_EXTENSIONS[WORKING_DIR]
         )
         if not package_path.exists() or not supported_local:
+            formats = ", ".join(RUNTIME_ENV_PACKAGE_EXTENSIONS[WORKING_DIR])
             raise ValueError(
                 f"directory {package_path} must be an existing "
-                "directory or a supported archive (.zip, .tar.gz, .tgz)"
+                f"directory or a supported archive ({formats})"
             )
 
         pkg_uri = get_uri_for_package(package_path)

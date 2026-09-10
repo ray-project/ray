@@ -4,6 +4,9 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import ray
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    RequesterId,
+)
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
     get_or_create_autoscaling_coordinator,
@@ -34,7 +37,7 @@ class TrainAutoscalingCoordinatorClient:
 
     This is the train version, the data version is called `DefaultAutoscalingCoordinator`"""
 
-    def __init__(self, requester_id: str):
+    def __init__(self, requester_id: RequesterId):
         self._requester_id = requester_id
         self._latest_autoscaling_request_time = float("-inf")
 

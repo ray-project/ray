@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Diagnose RayService problems through operator logs, custom resource status, pod logs, the dashboard, and the Ray State CLI."
+---
+
 (kuberay-raysvc-troubleshoot)=
 
 # RayService troubleshooting
@@ -22,7 +28,7 @@ kubectl describe rayservice $RAYSERVICE_NAME -n $YOUR_NAMESPACE
 
 You can check the status and events of the RayService CR to see if there are any errors.
 
-### Method 3: Check logs of Ray Pods
+### Method 3: Check logs of the head and worker Pods
 
 You can also check the Ray Serve logs directly by accessing the log files on the pods. These log files contain system level logs from the Serve controller and HTTP proxy as well as access logs and user-level logs. See [Ray Serve Logging](serve-logging) and [Ray Logging](configure-logging) for more details.
 
@@ -31,7 +37,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 # Check the logs under /tmp/ray/session_latest/logs/serve/
 ```
 
-### Method 4: Check Dashboard
+### Method 4: Check the dashboard
 
 ```bash
 kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
@@ -133,7 +139,7 @@ You may encounter the following error messages when KubeRay tries to create / up
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: connect: connection refused
 ```
 
-For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready. It's important to note that the Dashboard, Dashboard Agent and GCS may take a few seconds to start up after the head Pod is ready. As a result, the request may fail a few times initially before the necessary components are fully operational.
+For RayService, the KubeRay operator submits a request to the RayCluster for creating Serve applications once the head Pod is ready. It's important to note that the dashboard, dashboard agent and GCS may take a few seconds to start up after the head Pod is ready. As a result, the request may fail a few times initially before the necessary components are fully operational.
 
 If you continue to encounter this issue after waiting for 1 minute, it's possible that the dashboard or dashboard agent may have failed to start. For more information, you can check the `dashboard.log` and `dashboard_agent.log` files located at `/tmp/ray/session_latest/logs/` on the head Pod.
 
@@ -143,16 +149,16 @@ If you continue to encounter this issue after waiting for 1 minute, it's possibl
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: i/o timeout"
 ```
 
-One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Ray Pods and the dashboard agent's port (i.e., 52365).
+One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Pods and the dashboard agent's port (i.e., 52365).
 
 (kuberay-raysvc-issue6)=
 ### Issue 6: `runtime_env`
 
 In `serveConfigV2`, you can specify the runtime environment for the Ray Serve applications using `runtime_env`. Some common issues related to `runtime_env`:
 
-* The `working_dir` points to a private AWS S3 bucket, but the Ray Pods do not have the necessary permissions to access the bucket.
+* The `working_dir` points to a private AWS S3 bucket, but the Pods do not have the necessary permissions to access the bucket.
 
-* The NetworkPolicy blocks the traffic between the Ray Pods and the external URLs specified in `runtime_env`.
+* The NetworkPolicy blocks the traffic between the Pods and the external URLs specified in `runtime_env`.
 
 (kuberay-raysvc-issue7)=
 ### Issue 7: Failed to get Serve application statuses.
@@ -270,7 +276,7 @@ If, after following the steps above, you still see the error message and GCS fau
 (kuberay-raysvc-issue10)=
 ### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
 
-KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster. This value represents the storage namespace in Redis where the Ray cluster metadata resides. In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
+KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Pods managed by the RayCluster. This value represents the storage namespace in Redis where the Ray cluster metadata resides. In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
 
 However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades. Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata. This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis. Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
 

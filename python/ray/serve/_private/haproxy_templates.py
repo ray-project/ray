@@ -140,6 +140,13 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router %}
+    # Direct-streaming requests first pass through the ingress request router,
+    # then are forwarded to a selected replica. Generate a request ID here when
+    # the client did not provide one so both hops use the same lifecycle ID.
+    unique-id-format %[uuid]
+    http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
+    {%- endif %}
     {%- if config.metrics_enabled %}
     log global
     # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
@@ -211,6 +218,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    # Remove client-supplied values from the router-owned header namespace.
+    # Lua then applies trusted metadata returned by /internal/route.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
@@ -279,7 +289,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # Servers in this backend
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
@@ -425,7 +435,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup

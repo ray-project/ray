@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Structure of the Serve config file: proxy, HTTP, gRPC, and logging config, application config, serve build, and user_config updates."
+---
+
 (serve-in-production-config-file)=
 
 # Serve Config Files 

@@ -148,6 +148,18 @@ steps:
         --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
 
+  - label: ":ray: core: sandbox tests"
+    tags:
+      - sandbox_tests
+      - oss
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
+        --install-mask all-ray-libraries
+        --privileged
+        --test-env=TEST_SANDBOX=1
+        --python-version 3.10 --build-name corebuild-py3.10
+
   - label: ":ray: core: memory pressure tests"
     tags:
       - core_python
@@ -194,11 +206,11 @@ steps:
         --only-tags=tmpfs --tmp-filesystem=tmpfs
         --python-version 3.10 --build-name corebuild-py3.10
 
-  - label: ":ray: core: doc tests"
+  - label: ":ray: core: docs example tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - core_python
-      - doc
+      - core_doc
     instance_type: large
     commands:
       # doc tests

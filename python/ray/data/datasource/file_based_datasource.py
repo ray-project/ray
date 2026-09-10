@@ -283,21 +283,32 @@ class FileBasedDatasource(Datasource):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with RetryingContextManager(
-                    self._open_input_source(fs, read_path, **open_stream_args),
-                    context=self._data_context,
-                ) as f:
-                    for block in iterate_with_retry(
-                        lambda: self._read_stream(f, read_path),
-                        description="read stream iteratively",
-                        match=self._data_context.retried_io_errors,
-                    ):
-                        if partitions:
-                            block = _add_partitions(block, partitions)
-                        if self._include_paths:
-                            block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.fill_column("path", read_path)
-                        yield block
+                # `iterate_with_retry` skips the blocks that a failed attempt
+                # already yielded, so every attempt has to replay the same blocks
+                # from the start of the file. Open the file inside the factory:
+                # reusing one handle would resume a retry from wherever the failure
+                # left the cursor, and the skip would then discard real data. The
+                # `with` lives inside the generator so each attempt's handle is
+                # closed as soon as that attempt ends, whether it raises or runs to
+                # completion.
+                def open_and_read_stream() -> Iterator[Block]:
+                    with RetryingContextManager(
+                        self._open_input_source(fs, read_path, **open_stream_args),
+                        context=self._data_context,
+                    ) as f:
+                        yield from self._read_stream(f, read_path)
+
+                for block in iterate_with_retry(
+                    open_and_read_stream,
+                    description="read stream iteratively",
+                    match=self._data_context.retried_io_errors,
+                ):
+                    if partitions:
+                        block = _add_partitions(block, partitions)
+                    if self._include_paths:
+                        block_accessor = BlockAccessor.for_block(block)
+                        block = block_accessor.fill_column("path", read_path)
+                    yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():

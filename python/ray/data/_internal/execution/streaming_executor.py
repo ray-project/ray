@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -246,7 +247,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_backpressure_guard = OutputBackpressureGuard(
             self._topology, self._resource_manager
         )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -269,6 +269,10 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
+        )
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            self._data_context.execution_no_progress_timeout_s,
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
@@ -366,9 +370,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
-            # Queues have been drained; any remaining Ray Core callbacks that fire
-            # after this point should be no-ops.
-            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -583,8 +584,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        # Check until all oprators have completed.
+        should_continue = not all(op.has_completed() for op in topology)
+        self._no_progress_guard.check()
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.

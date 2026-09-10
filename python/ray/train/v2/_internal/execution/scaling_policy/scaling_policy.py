@@ -3,6 +3,9 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    RequesterId,
+)
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (  # noqa: E501
@@ -56,7 +59,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         self.scaling_config = scaling_config
         # Due to multiple train dataset runs, the requester_id
         # isn't set until the run is started.
-        self._requester_id: Optional[str] = None
+        self._requester_id: Optional[RequesterId] = None
         self._coordinator_client: Optional[TrainAutoscalingCoordinatorClient] = None
 
     @abc.abstractmethod

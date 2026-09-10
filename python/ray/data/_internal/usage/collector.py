@@ -83,6 +83,9 @@ class WorkloadInfo:
     plan: PlanNode
     plan_str: str
     ops: List[LogicalOp]
+    # ``plan_str`` with each node suffixed by its usage_id, so a detected
+    # issue's operator field can be located in the plan.
+    plan_str_with_ids: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -354,9 +357,11 @@ def collect_workload(
     dag = logical_plan.dag
     ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
     plan = _build_plan(dag, ordered_logical_ops, op_name_fn)
+    usage_id_map = {id(op): usage_id for op, usage_id in ordered_logical_ops}
     return WorkloadInfo(
         plan=plan,
         plan_str=_format_plan_str(dag, op_name_fn),
+        plan_str_with_ids=_format_plan_str(dag, op_name_fn, usage_id_map=usage_id_map),
         ops=_build_ops(ordered_logical_ops, op_config_fn, op_name_fn),
     )
 
@@ -424,17 +429,19 @@ def _format_plan_str(
     op: LogicalOperator,
     op_name_fn: OpNameFn = anonymize_op_name,
     depth: int = 0,
+    usage_id_map: Optional[Dict[int, str]] = None,
 ) -> str:
     """Render the anonymized DAG as an indented tree, using ``op_name_fn`` to
-    avoid leaking UDF / datasource details.
+    avoid leaking UDF / datasource details. When ``usage_id_map`` is given,
+    each node is suffixed with its usage_id.
     """
-    name = op_name_fn(op)
+    name = _logical_op_name_with_id(op, usage_id_map, op_name_fn)
     if depth == 0:
         line = f"{name}\n"
     else:
         line = f"{' ' * ((depth - 1) * 3)}+- {name}\n"
     for child in op.input_dependencies:
-        line += _format_plan_str(child, op_name_fn, depth + 1)
+        line += _format_plan_str(child, op_name_fn, depth + 1, usage_id_map)
     return line
 
 

@@ -27,6 +27,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
+    get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
 )
 from ray._private import utils
@@ -34,6 +35,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
+    env_bool,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -178,6 +180,24 @@ METRICS_GAUGES = {
         "node_mem_total_host",
         "Total host memory on a ray node",
         "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_used": Gauge(
+        "node_swap_used",
+        "Swap usage on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_total": Gauge(
+        "node_swap_total",
+        "Total swap on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_utilization": Gauge(
+        "node_swap_utilization",
+        "Swap utilization on a ray node",
+        "percentage",
         NODE_TAG_KEYS,
     ),
     "node_cgroup_mem_used": Gauge(
@@ -947,12 +967,47 @@ class ReporterAgent(
         return sent, recv
 
     @staticmethod
-    def _get_mem_usage():
+    def _get_mem_usage() -> Tuple[int, int, float, int]:
+        """Return (total, available, percent, used) RAM bytes for the node.
+
+        RAM-only by design: swap (when RAY_count_swap_in_memory_monitor=1) is
+        reported separately via _get_swap_usage so swap activity, which signals
+        performance degradation, stays visible instead of being folded into the
+        Node Memory graph.
+        """
         total = get_system_memory()
         used = utils.get_used_memory()
+        used = max(0, min(used, total))
         available = total - used
-        percent = round(used / total, 3) * 100
+        percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
+
+    @staticmethod
+    def _get_swap_usage() -> Optional[Tuple[int, int, float]]:
+        """Return (swap_total_bytes, swap_used_bytes, swap_percent), or None.
+
+        Returns None when RAY_count_swap_in_memory_monitor is off or swap can't
+        be read — there is no swap information to report. The OOM killer and
+        scheduler `memory` resource still account for swap when the flag is on;
+        only the dashboard graph is split out so swap activity (which signals
+        perf degradation) is visible distinctly from RAM pressure.
+        """
+        if not env_bool("RAY_count_swap_in_memory_monitor", False):
+            return None
+        try:
+            swap_total, swap_used = get_cgroup_aware_swap_memory()
+        except Exception as e:
+            # Periodic loop, not startup — log and continue rather than take
+            # down the metrics path.
+            logger.warning(
+                "Failed to retrieve swap memory info for dashboard: %s",
+                e,
+                exc_info=True,
+            )
+            return None
+        swap_used = max(0, min(swap_used, swap_total))
+        percent = round(swap_used / swap_total, 3) * 100 if swap_total > 0 else 0.0
+        return swap_total, swap_used, percent
 
     @staticmethod
     def _get_host_mem_usage():
@@ -1208,6 +1263,7 @@ class ReporterAgent(
             "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
+            "swap": self._get_swap_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
             "host_mem": self._get_host_mem_usage(),
@@ -1631,6 +1687,32 @@ class ReporterAgent(
             ]
         )
 
+        # Emit swap gauges only when there's swap to report (flag on and swap
+        # configured) — otherwise they'd be constant zeros and add noise to
+        # dashboards / Prometheus storage.
+        swap = stats["swap"]
+        if swap is not None and swap[0] > 0:
+            swap_total, swap_used, swap_percent = swap
+            records_reported.extend(
+                [
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_used"],
+                        value=swap_used,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_total"],
+                        value=swap_total,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_utilization"],
+                        value=swap_percent,
+                        tags=node_tags,
+                    ),
+                ]
+            )
+
         cgroup_stats = stats["cgroup_mem"]
         if cgroup_stats is not None:
             cgroup_used, cgroup_total = cgroup_stats
@@ -1672,6 +1754,7 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_uuid = gpu.get("uuid")
                 gpu_power_mw = gpu.get("power_mw")
                 gpu_temperature_c = gpu.get("temperature_c")
 
@@ -1681,6 +1764,8 @@ class ReporterAgent(
                     gpu_tags = {**node_tags, "GpuIndex": str(gpu_index)}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
+                    if gpu_uuid:
+                        gpu_tags["GpuUuid"] = gpu_uuid
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(

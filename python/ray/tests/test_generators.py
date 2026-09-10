@@ -451,12 +451,15 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
     # The num_returns_type=None variants used to hang under the RocksDB GCS
-    # backend: RocksDB's per-write WAL fsync delayed the actor-death
-    # notification enough to expose a pre-existing reconstruction race, so the
-    # driver hung in list(gen). Fixed by making the death-notification tables
-    # (NODE, ACTOR) soft-durable, which skips the fsync on those tables, so
-    # these variants now pass and are no longer skipped. See the
-    # SoftDurableTables() comment in rocksdb_store_client.cc for detail.
+    # backend: the GCS published the node-death notification from inside the
+    # storage write's completion callback (publish-after-persist), so RocksDB's
+    # per-write WAL fsync delayed that single pushed notification enough to
+    # expose a pre-existing Ray-core reconstruction race, and the driver hung
+    # in list(gen). Fixed at the root cause by publishing node death on the
+    # in-memory transition, decoupled from the durable write (see
+    # GcsNodeManager::InternalOnNodeFailure and
+    # https://github.com/ray-project/ray/pull/64187), so these variants now
+    # pass under any GCS backend and are no longer skipped.
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Monitor Ray Data execution with progress bars, the Ray Data dashboard, and Prometheus metrics for inputs, operators, and resource use.
+
 .. _monitoring-your-workload:
 
 Monitoring Your Workload
@@ -116,7 +119,7 @@ The metrics recorded include:
    :align: center
 
 
-To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
+To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray dashboard <observability-getting-started>`.
 
 Prometheus metrics
 ~~~~~~~~~~~~~~~~~~
@@ -372,7 +375,7 @@ When an operator completes, the metrics for that operator are also logged.
    Operator InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. Operator Metrics:
    {'num_inputs_received': 20, 'bytes_inputs_received': 46440, 'num_task_inputs_processed': 20, 'bytes_task_inputs_processed': 46440, 'num_task_outputs_generated': 20, 'bytes_task_outputs_generated': 800, 'rows_task_outputs_generated': 100, 'num_outputs_taken': 20, 'bytes_outputs_taken': 800, 'num_outputs_of_finished_tasks': 20, 'bytes_outputs_of_finished_tasks': 800, 'num_tasks_submitted': 20, 'num_tasks_running': 0, 'num_tasks_have_outputs': 20, 'num_tasks_finished': 20, 'obj_store_mem_freed': 46440, 'obj_store_mem_spilled': 0, 'block_generation_time': 1.191296085, 'cpu_usage': 0, 'gpu_usage': 0, 'ray_remote_args': {'num_cpus': 1, 'scheduling_strategy': 'SPREAD'}}
 
-This log file can be found locally at `/tmp/ray/{SESSION_NAME}/logs/ray-data/ray-data.log`. It can also be found on the Ray Dashboard under the head node's logs in the :ref:`Logs view <dash-logs-view>`.
+This log file can be found locally at `/tmp/ray/{SESSION_NAME}/logs/ray-data/ray-data.log`. It can also be found on the Ray dashboard under the head node's logs in the :ref:`Logs view <dash-logs-view>`.
 
 .. _ray-data-stats:
 

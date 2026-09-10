@@ -1,3 +1,6 @@
+.. meta::
+   :description: Start the Ray runtime on one machine with ray.init, from the CLI with ray start, or launch a multi-node cluster with ray up.
+
 .. _start-ray:
 
 Starting Ray

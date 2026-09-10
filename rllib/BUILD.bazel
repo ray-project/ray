@@ -1367,75 +1367,6 @@ py_test(
 )
 
 # SAC
-# MountainCar
-py_test(
-    name = "learning_tests_mountaincar_sac",
-    size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_mountaincar_sac_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=1",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_mountaincar_sac_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_mountaincar_sac_multi_gpu",
-    size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
-
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_sac",
@@ -1959,6 +1890,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_default_tqc_rl_module",
+    size = "small",
+    srcs = ["algorithms/tqc/tests/test_default_tqc_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Generic testing
 py_test(
     name = "algorithms/tests/test_custom_resource",
@@ -2323,6 +2265,17 @@ py_test(
     tags = [
         "core",
         "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_torch_squashed_gaussian",
+    size = "small",
+    srcs = ["core/distribution/torch/tests/test_torch_squashed_gaussian.py"],
+    tags = [
+        "core",
         "team:rllib",
     ],
     deps = [":conftest"],
@@ -3257,7 +3210,7 @@ py_test(
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_prioritized_episode_buffer.py"],
     tags = [
-        "team::rllib",
+        "team:rllib",
         "utils",
     ],
     deps = [":conftest"],
@@ -5241,8 +5194,9 @@ py_test(
         "--num-envs-per-env-runner=6",
         "--num-gpus-per-learner=1",
         "--num-learners=1",
-        "--num-samples=8",
-        "--max-concurrent-trials=4",
+        "--num-samples=4",
+        "--max-concurrent-trials=2",
+        "--stop-iters=15",
     ],
     main = "examples/ray_tune/appo_hyperparameter_tune.py",
     tags = [

@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Tuple
+from typing import FrozenSet, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSelector, FileType
@@ -22,6 +22,7 @@ def _expand_directory(
     base_path: str,
     filesystem: pa.fs.FileSystem,
     ignore_missing_path: bool,
+    skip_paths: FrozenSet[str] = frozenset(),
     *,
     root_path: Optional[str] = None,
 ) -> PathContents:
@@ -60,6 +61,11 @@ def _expand_directory(
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
 
+        # Drop entries explicitly excluded via ``skip_paths`` (files or a whole
+        # subdirectory) before they are yielded or descended into.
+        if child.path in skip_paths:
+            continue
+
         if child.type == FileType.File:
             files.append((child.path, child.size))
         elif child.type == FileType.Directory:
@@ -78,6 +84,7 @@ def _get_path_contents(
     path: str,
     filesystem: pa.fs.FileSystem,
     ignore_missing_path: bool,
+    skip_paths: FrozenSet[str] = frozenset(),
     *,
     root_path: Optional[str] = None,
 ) -> PathContents:
@@ -86,6 +93,15 @@ def _get_path_contents(
     Only one level of a directory is expanded; discovered subdirectories are
     returned in :attr:`PathContents.subdirs` for the caller to expand.
     """
+    # Skip explicitly-excluded paths *before* the existence check so a
+    # ``skip_paths`` entry drops a named path whether or not it exists — this
+    # is what distinguishes ``skip_paths`` (deterministic exclusion) from
+    # ``ignore_missing_paths`` (tolerate anything missing). This covers both
+    # top-level seed paths and discovered subdirectories, since both are routed
+    # through here.
+    if path in skip_paths:
+        return PathContents(files=[], subdirs=[])
+
     try:
         file_info = filesystem.get_file_info(path)
     except OSError as e:
@@ -95,7 +111,7 @@ def _get_path_contents(
         return PathContents(files=[(path, file_info.size)], subdirs=[])
     elif file_info.type == FileType.Directory:
         return _expand_directory(
-            path, filesystem, ignore_missing_path, root_path=root_path
+            path, filesystem, ignore_missing_path, skip_paths, root_path=root_path
         )
     elif file_info.type == FileType.NotFound and ignore_missing_path:
         return PathContents(files=[], subdirs=[])
@@ -107,6 +123,7 @@ def _get_file_infos(
     path: str,
     filesystem: pa.fs.FileSystem,
     ignore_missing_path: bool,
+    skip_paths: FrozenSet[str] = frozenset(),
     *,
     _root_path: Optional[str] = None,
 ) -> Iterable[Tuple[str, Optional[int]]]:
@@ -114,10 +131,10 @@ def _get_file_infos(
     if _root_path is None:
         _root_path = path
     contents = _get_path_contents(
-        path, filesystem, ignore_missing_path, root_path=_root_path
+        path, filesystem, ignore_missing_path, skip_paths, root_path=_root_path
     )
     yield from contents.files
     for subdir in contents.subdirs:
         yield from _get_file_infos(
-            subdir, filesystem, ignore_missing_path, _root_path=_root_path
+            subdir, filesystem, ignore_missing_path, skip_paths, _root_path=_root_path
         )

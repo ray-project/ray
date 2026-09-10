@@ -590,9 +590,19 @@ class KubernetesEventProvider(PlatformEventProvider):
         if self._cluster_name:
             source_metadata["ray_cluster_name"] = self._cluster_name
 
+        # Events written through events.k8s.io/v1 leave the legacy `source` empty
+        # and report the emitter in `reportingComponent` instead. Prefer `source.component` and
+        # fallback to `reportingComponent`, matching kubectl.
+        event_source = event_obj.source
+        component = (
+            (event_source.component if event_source else None)
+            or event_obj.reporting_component
+            or ""
+        )
+
         source_proto = Source(
             platform=Source.Platform.KUBERNETES,
-            component=event_obj.source.component if event_obj.source else "",
+            component=component,
             metadata=source_metadata,
         )
 

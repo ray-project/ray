@@ -24,7 +24,7 @@ from ray._private.accelerators.tpu import (
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -979,7 +979,7 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
-def dispatch(
+def run_on_slice(
     fn: Any,
     *args: Any,
     topology: Optional[str] = None,
@@ -1017,7 +1017,7 @@ def dispatch(
             ignored otherwise.
         tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
             onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
+            ``run_on_slice`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
@@ -1057,7 +1057,7 @@ def dispatch(
         :skipif: True
 
         import ray
-        from ray.util.tpu import dispatch, slice_placement_group
+        from ray.util.tpu import run_on_slice, slice_placement_group
 
         @ray.remote
         def my_tpu_task():
@@ -1067,15 +1067,15 @@ def dispatch(
         # One-shot: reserve a v6e 4x4 slice, run on every host, then
         # release automatically when the driver exits.
         results = ray.get(
-            dispatch(my_tpu_task, topology="4x4", accelerator_version="v6e")
+            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
         )
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
         ray.get(slice_handle.slice_placement_group.ready())
 
-        results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
+        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
 
@@ -1187,6 +1187,22 @@ def dispatch(
             )
 
     return results
+
+
+# Deprecated alias — ``dispatch`` was the original name of ``run_on_slice``.
+# New code should use ``run_on_slice``.
+@PublicAPI(stability="alpha")
+@Deprecated(
+    message="'dispatch' is deprecated and has been renamed to 'run_on_slice'. "
+    "Please use 'run_on_slice' instead.",
+    warning=True,
+)
+def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
+    """Run a remote function on every host in a TPU slice.
+
+    Deprecated, please use ``run_on_slice`` instead.
+    """
+    return run_on_slice(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")
@@ -1676,6 +1692,7 @@ def _find_available_subslice(
     worker_labels: Dict[str, Dict[str, str]],
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
+    subslice_index: Optional[int] = None,
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an idle subslice of *subslice_topology* within *slice_name*.
 
@@ -1691,6 +1708,8 @@ def _find_available_subslice(
     for worker_id, labels in worker_labels.items():
         idx = labels.get(label_key)
         if idx is not None:
+            if subslice_index is not None and int(idx) != subslice_index:
+                continue
             subslice_indices.setdefault(idx, []).append(worker_id)
 
     if not subslice_indices:
@@ -1989,6 +2008,7 @@ def _find_available_cached_subslice(
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
+    subslice_index: Optional[int] = None,
 ) -> Optional[Tuple[List[str], int, str, str, Dict[str, Dict[str, str]]]]:
     """Return the first idle subslice across all cached slices of any valid
     parent topology, or ``None``.
@@ -2007,6 +2027,7 @@ def _find_available_cached_subslice(
                 worker_labels,
                 avail,
                 slice_worker_to_node,
+                subslice_index,
             )
             if worker_ids is not None:
                 return worker_ids, idx, slice_name, parent_topology, worker_labels
@@ -2162,6 +2183,7 @@ def subslice_placement_group(
     head_reservation_timeout_s: Optional[
         float
     ] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    subslice_index: Optional[int] = None,
 ) -> SubslicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU subslice.
 
@@ -2188,6 +2210,10 @@ def subslice_placement_group(
         head_reservation_timeout_s: Maximum seconds to wait for TPU head
             placement groups. Defaults to
             ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
+        subslice_index: Optional index of the subslice to select. If specified,
+            only the subslice at this index within the physical slice will be
+            considered. If that subslice is busy, the request will fail even if
+            other subslices are idle.
 
     Returns:
         A :class:`SubslicePlacementGroup` handle.
@@ -2242,7 +2268,12 @@ def subslice_placement_group(
         # search and the undiscovered-parent check observe persisted slices.
         _refresh_cache_from_kv(parent_topologies, nodes)
         cached_subslice = _find_available_cached_subslice(
-            parent_topologies, subslice_topology, nodes, avail, slice_worker_to_node
+            parent_topologies,
+            subslice_topology,
+            nodes,
+            avail,
+            slice_worker_to_node,
+            subslice_index,
         )
         discoverable = _find_undiscovered_idle_slice(
             parent_topologies, nodes, avail, version

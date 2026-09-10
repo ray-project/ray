@@ -158,6 +158,13 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
     A run that returns cleanly always finishes, whether or not a preemption
     is in progress.
 
+    .. warning::
+
+        All workers must call `ray.train.get_preemption_info` the same number of
+        times so that Ray Train can agree on a single value across all workers.
+        This method acts as a barrier across all workers, so be sure that every
+        worker reaches this method.
+
     Example:
 
         .. testcode::
@@ -166,11 +173,15 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
             import ray.train
 
             def train_func(config):
+                saved_on_preemption = False
                 for step in range(config["total_steps"]):
-                    if ray.train.get_preemption_info() is not None:
-                        ray.train.report(metrics, checkpoint=checkpoint)
                     # ... normal training step (with your usual periodic
                     # checkpointing) ...
+
+                    preemption_info = ray.train.get_preemption_info()
+                    if preemption_info is not None and not saved_on_preemption:
+                        ray.train.report(metrics, checkpoint=checkpoint)
+                        saved_on_preemption = True
 
     Returns:
         A :class:`~ray.train.PreemptionInfo` with the affected node ids / world

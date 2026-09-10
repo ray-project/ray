@@ -566,8 +566,8 @@ class LLMServer(LLMServerProtocol):
         """Serve request-router hook, polled by the controller.
 
         Surfaces this replica's routing stats (the engine's KV-events endpoint
-        for KV-aware routing); the deployment's ``KVRouterActor`` reads them off
-        the ``LongPoll`` replica snapshot to register the worker.
+        for KV-aware routing); the LLMRouter's own ``KVTokenTracker``
+        reads them off the ``LongPoll`` replica snapshot to register the worker.
         """
         if self.engine is None:
             return {}
@@ -736,6 +736,11 @@ class LLMServer(LLMServerProtocol):
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
+
+    async def __del__(self) -> None:
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            await engine.shutdown()
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):

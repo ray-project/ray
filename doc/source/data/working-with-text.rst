@@ -1,3 +1,6 @@
+.. meta::
+   :description: Read, transform, run inference on, and save large text datasets with Ray Data.
+
 Working with Text
 =================
 

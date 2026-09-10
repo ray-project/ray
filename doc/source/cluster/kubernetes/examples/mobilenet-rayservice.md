@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a MobileNet image classifier on Kubernetes with RayService, from Kind cluster setup to a live classification request."
+---
+
 (kuberay-mobilenet-rayservice-example)=
 
 # Serve a MobileNet image classifier on Kubernetes
@@ -18,10 +24,10 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ```sh
 # Create a RayService
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.mobilenet.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.mobilenet.yaml
 ```
 
-* The [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) file needs `tensorflow` as a dependency. Hence, the YAML file uses `rayproject/ray-ml` image instead of `rayproject/ray` image.
+* The [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) file needs `tensorflow` as a dependency, so the YAML file includes `tensorflow` in the runtime environment.
 * The request parsing function `starlette.requests.form()` needs `python-multipart`, so the YAML file includes `python-multipart` in the runtime environment.
 
 ## Step 4: Forward the port for Ray Serve

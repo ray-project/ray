@@ -17,11 +17,13 @@ from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 
-def test_average_max_uss_per_task():
+def test_max_uss_bytes_distribution():
     op = MagicMock()
     op.data_context.enable_get_object_locations_for_metrics = False
     metrics = OpRuntimeMetrics(op)
-    assert metrics.average_max_uss_per_task is None
+    assert metrics.max_uss_bytes.num_samples == 0
+    assert metrics.max_uss_bytes.mean == 0
+    assert metrics.max_uss_bytes.max is None
 
     input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
@@ -33,7 +35,9 @@ def test_average_max_uss_per_task():
         TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
-    assert metrics.average_max_uss_per_task == 100
+    assert metrics.max_uss_bytes.num_samples == 1
+    assert metrics.max_uss_bytes.mean == 100
+    assert metrics.max_uss_bytes.max == 100
 
     # Submit and finish second task with USS of 300 bytes.
     metrics.on_task_submitted(1, input_bundle)
@@ -43,7 +47,9 @@ def test_average_max_uss_per_task():
         TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
-    assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.num_samples == 2
+    assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.max == 300
 
 
 def test_task_completion_time_histogram():

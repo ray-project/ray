@@ -6,9 +6,15 @@ from typing import Callable
 from benchmark import Benchmark
 
 import ray
+from ray.data import SaveMode
 
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
+# Region of the ray-data-write-benchmark bucket. write_parquet resolves this
+# automatically, but deltalake's Rust S3 client doesn't follow a region
+# redirect -- it defaults to us-east-1 and fails outright ("Received redirect
+# without LOCATION") against a bucket hosted elsewhere unless told explicitly.
+WRITE_DELTA_STORAGE_OPTIONS = {"AWS_REGION": "us-west-2"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,8 +43,31 @@ def parse_args() -> argparse.Namespace:
         metavar=("feature", "label"),
     )
     consume_group.add_argument("--write", action="store_true")
+    consume_group.add_argument("--write-delta", action="store_true")
 
-    return parser.parse_args()
+    # Modifiers for --write-delta (not alternative consume actions, so they
+    # live outside the mutually-exclusive group above).
+    parser.add_argument(
+        "--write-delta-mode",
+        choices=["append", "overwrite"],
+        default="append",
+        help="SaveMode to use with --write-delta.",
+    )
+    parser.add_argument(
+        "--write-delta-partition-by",
+        type=str,
+        default=None,
+        help="Column to Hive-partition the Delta table by, when using --write-delta.",
+    )
+
+    args = parser.parse_args()
+    if not args.write_delta and (
+        args.write_delta_mode != "append" or args.write_delta_partition_by
+    ):
+        parser.error(
+            "--write-delta-mode/--write-delta-partition-by require --write-delta."
+        )
+    return args
 
 
 def main(args):
@@ -53,6 +82,13 @@ def main(args):
 
         # Report arguments for the benchmark.
         return vars(args)
+
+    if args.write_delta and args.write_delta_mode == "overwrite":
+        # Populate the table once first (same source/scale as the timed run
+        # below) so "main" genuinely overwrites existing data instead of
+        # creating an empty table -- an OVERWRITE against a not-yet-existing
+        # table is just a create, which isn't the interesting case to time.
+        benchmark.run_fn("setup_populate", benchmark_fn)
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -109,6 +145,26 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
 
         def consume_fn(ds):
             ds.write_parquet(WRITE_PATH)
+
+    elif args.write_delta:
+
+        def consume_fn(ds):
+            mode = (
+                SaveMode.OVERWRITE
+                if args.write_delta_mode == "overwrite"
+                else SaveMode.APPEND
+            )
+            partition_by = (
+                [args.write_delta_partition_by]
+                if args.write_delta_partition_by
+                else None
+            )
+            ds.write_delta(
+                WRITE_PATH,
+                mode=mode,
+                partition_by=partition_by,
+                storage_options=WRITE_DELTA_STORAGE_OPTIONS,
+            )
 
     else:
         assert False, f"Invalid consume arguments: {args}"
