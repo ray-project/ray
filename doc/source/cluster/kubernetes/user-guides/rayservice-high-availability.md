@@ -126,7 +126,7 @@ kind delete cluster
 (kuberay-rayservice-ha-upgrades)=
 ## GCS fault tolerance and zero-downtime upgrades
 
-GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Leave `externalStorageNamespace` unset, as [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) does.
+GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Leave `gcsFaultToleranceOptions.externalStorageNamespace` unset, as [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) does.
 
 When you don't set `externalStorageNamespace`, KubeRay derives the Redis storage namespace from the unique identifier (`metadata.uid`) that Kubernetes assigns to the RayCluster. That single default gives you both behaviors:
 
