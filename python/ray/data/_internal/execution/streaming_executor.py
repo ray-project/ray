@@ -245,7 +245,11 @@ class StreamingExecutor(Executor, threading.Thread):
         # Constructed once per executor (not per scheduling iteration) so the
         # guard's idle-detection state accumulates across scheduling iterations.
         self._output_backpressure_guard = OutputBackpressureGuard(
-            self._topology, self._resource_manager
+            self._topology,
+            self._resource_manager,
+            release_interval_s=(
+                self._data_context.output_backpressure_guard_release_interval_s
+            ),
         )
         # Setup progress manager
         self._progress_manager = get_progress_manager(
