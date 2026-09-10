@@ -72,6 +72,12 @@ ANNOTATION_CONTEXT_PREFIX = "obs-agent-"
 # the build's own failures use.
 ANNOTATION_STYLE = "info"
 
+# `--scope` is what decides where buildkite displays the annotation, and it
+# defaults to "build". `--job` only records which job the annotation came from,
+# so passing it alone leaves the annotation on the build page -- which is what
+# the first run on this branch did.
+ANNOTATION_SCOPE = "job"
+
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
 # from the people who know what actually broke.
@@ -240,6 +246,7 @@ class ObservabilityAgentReporter(Reporter):
             "buildkite-agent",
             "annotate",
             f"--style={ANNOTATION_STYLE}",
+            f"--scope={ANNOTATION_SCOPE}",
             f"--context={ANNOTATION_CONTEXT_PREFIX}{test.get_name()}",
             "--append",
         ]
@@ -248,6 +255,9 @@ class ObservabilityAgentReporter(Reporter):
         # The body is the positional argument, so it stays last.
         command.append("\n".join(lines))
 
+        # Logged so that a build shows what was actually run: the first run on
+        # this branch left it ambiguous whether --job had been passed at all.
+        logger.info(f"Annotating the buildkite job: {' '.join(command[:-1])}")
         try:
             # Not check=True: an annotation is advisory, and a missing binary or
             # a non-zero exit must not change the outcome of the test run.

@@ -11,6 +11,7 @@ from ray_release.logger import logger
 from ray_release.reporter.observability_agent import (
     ANALYSIS_FILE_ENV,
     ANNOTATION_CONTEXT_PREFIX,
+    ANNOTATION_SCOPE,
     COMMAND_FAILURE_RETURN_CODES,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
@@ -509,6 +510,10 @@ def test_annotation_is_appended_to_a_context_that_outlives_the_job():
     assert "--append" in command
     assert f"--context={ANNOTATION_CONTEXT_PREFIX}test_name" in command
     assert "--style=info" in command
+    # --scope is what decides where buildkite shows the annotation; without it
+    # the default is "build", which is what the first real run produced.
+    assert f"--scope={ANNOTATION_SCOPE}" in command
+    assert ANNOTATION_SCOPE == "job"
     # The job is named for attribution, but it is not the identity of the
     # annotation: a retry is a new job, and the context has to survive that.
     assert command[command.index("--job") + 1] == "01a0691c-job"
