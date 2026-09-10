@@ -25,6 +25,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/internal/runtime/native",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/internal/common",
         "//go/internal/gcs/native",
         "//go/internal/runtime/base",
         "//go/internal/runtime/cgo",

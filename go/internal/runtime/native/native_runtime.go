@@ -25,12 +25,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	cgoboundary "github.com/ray-project/ray/go/internal/runtime/cgo"
@@ -772,7 +772,10 @@ func bootstrapDriverOptions(opts *options.InitializeOptions) error {
 
 	nodeIP := opts.Network.NodeIPAddress
 	if nodeIP == "" {
-		nodeIP = detectLocalIP()
+		// Detect from the GCS address perspective, matching the C++ / Python
+		// node-IP resolution strategy (multi-homed hosts pick the interface
+		// that can reach GCS).
+		nodeIP = common.GetNodeIpAddressFromPerspective(&opts.Network.GcsAddress)
 	}
 
 	// Connect to GCS and ask for the node this driver should connect to.
@@ -818,23 +821,6 @@ func bootstrapDriverOptions(opts *options.InitializeOptions) error {
 	log.Log.Info("driver bootstrap resolved node info from GCS",
 		"node_id", node.GetNodeId(), "ip", opts.Network.NodeIPAddress, "port", opts.Network.NodeManagerPort)
 	return nil
-}
-
-// detectLocalIP returns the first non-loopback IPv4 address on this host,
-// falling back to IPv4 loopback if none is found.
-func detectLocalIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "127.0.0.1"
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipv4 := ipnet.IP.To4(); ipv4 != nil {
-				return ipv4.String()
-			}
-		}
-	}
-	return "127.0.0.1"
 }
 
 // runtimeFactoryRegistered tracks whether the runtime factory has been registered.

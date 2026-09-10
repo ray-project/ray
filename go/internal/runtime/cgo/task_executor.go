@@ -379,9 +379,9 @@ func GoExecuteTask(
 	}()
 
 	// Convert function descriptor from C string array to Go slice
-	funcDescList = make([]string, int(functionDescriptorCount))
-	for i := 0; i < int(functionDescriptorCount); i++ {
-		cStr := *(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(functionDescriptor)) + uintptr(i)*unsafe.Sizeof((*C.char)(nil))))
+	cFuncDescs := unsafe.Slice(functionDescriptor, functionDescriptorCount)
+	funcDescList = make([]string, len(cFuncDescs))
+	for i, cStr := range cFuncDescs {
 		funcDescList[i] = C.GoString(cStr)
 	}
 
@@ -394,10 +394,10 @@ func GoExecuteTask(
 	}
 
 	// Convert args from C array to Go slice
-	goArgs := make([]function.FunctionArg, int(argsCount))
-	for i := 0; i < int(argsCount); i++ {
-		cArg := (*C.CFunctionArg)(unsafe.Pointer(uintptr(unsafe.Pointer(args)) + uintptr(i)*unsafe.Sizeof(C.CFunctionArg{})))
-		goArgs[i] = convertCFunctionArgToBase(*cArg)
+	cArgsSlice := unsafe.Slice(args, argsCount)
+	goArgs := make([]function.FunctionArg, len(cArgsSlice))
+	for i := range cArgsSlice {
+		goArgs[i] = convertCFunctionArgToBase(cArgsSlice[i])
 	}
 
 	// Parse actor ID (if provided). Default to the nil actor ID so tasks
