@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
     )
@@ -474,6 +475,9 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
+    # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
+    # blind to partition columns), this is what makes ``limit`` safe here.
+    partition_pruner: Optional["FilePruner"] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
