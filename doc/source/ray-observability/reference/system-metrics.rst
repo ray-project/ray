@@ -42,6 +42,12 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - `ray_gcs_storage_operation_count_total`
+     - `Operation`, `TableName`
+     - Number of operations the GCS invoked on its storage backend, broken down by operation (`Put`, `Get`, `GetAll`, `MultiGet`, `Delete`, `BatchDelete`, `GetKeys`, `Exists`, `GetNextJobID`) and by the GCS table it addressed. `TableName` is bounded to the names of Ray's internal `TablePrefix` enum, plus `JobCounter` for `GetNextJobID` and `OTHER` for a table name outside that enum. The values the GCS produces in practice are `JOB`, `ACTOR`, `ACTOR_TASK_SPEC`, `PLACEMENT_GROUP`, `NODE`, `WORKERS` and `KV`; the remaining enum names are legacy and no current code path emits them. Keys, internal-KV namespaces and any other user-supplied string never appear in labels. Recorded when the operation is issued, so this leads `ray_gcs_storage_operation_latency_ms` by the number of operations in flight. On the external-Redis backend, set `RAY_gcs_redis_storage_metrics_enabled=false` to stop exporting both metrics; the in-memory and RocksDB backends always export them.
+   * - `ray_gcs_storage_operation_latency_ms`
+     - `Operation`, `TableName`
+     - Time to invoke an operation on the GCS storage backend, with the same label domain as `ray_gcs_storage_operation_count_total`. Recorded when the operation completes.
    * - `ray_memory_manager_worker_eviction_total`
      - `Type`, `Name`
      - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).

@@ -11,6 +11,17 @@ ray_cc_library(
 )
 
 ray_cc_test(
+    name = "table_name_label_test",
+    size = "small",
+    srcs = ["table_name_label_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:table_name_label",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_test(
     name = "redis_store_client_test",
     size = "small",
     srcs = ["redis_store_client_test.cc"],
@@ -161,9 +172,13 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/asio:io_service_pool",
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
+        "//src/ray/gcs/store_client:table_name_label",
         "//src/ray/observability:fake_metric",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",
     ],
 )

@@ -44,6 +44,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "table_name_label",
+    srcs = ["table_name_label.cc"],
+    hdrs = ["table_name_label.h"],
+    deps = [
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "in_memory_store_client",
     srcs = ["in_memory_store_client.cc"],
     hdrs = ["in_memory_store_client.h"],
@@ -60,6 +69,7 @@ ray_cc_library(
     hdrs = ["observable_store_client.h"],
     deps = [
         ":store_client",
+        ":table_name_label",
         "//src/ray/util:clock",
     ],
 )
