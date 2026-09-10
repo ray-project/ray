@@ -128,7 +128,7 @@ If you don't use `rayservice-sample-head-svc`, you need to update the ingress co
 | Port  | Definition          |
 |-------|---------------------|
 | 6379  | Ray GCS             |
-| 8265  | Ray Dashboard       |
+| 8265  | Ray dashboard       |
 | 10001 | Ray Client          |
 | 8000  | Ray Serve           |
 

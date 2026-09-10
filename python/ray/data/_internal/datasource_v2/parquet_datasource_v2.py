@@ -9,28 +9,23 @@ Constructed from `read_api.read_parquet` when
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     check_for_legacy_tensor_type,
-)
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    FileChunker,
-    ParquetFileChunker,
 )
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileIndexer,
-    NonSamplingFileIndexer,
-)
+from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
@@ -54,6 +49,8 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -82,7 +79,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[dict] = None,
-        file_chunker: Optional[FileChunker] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -136,14 +132,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # footers, and the scanner pins it on the pyarrow dataset so files
         # are cast to these types at scan time.
         self._user_schema = schema
-        # Chunker that splits each listed Parquet file into one or more
-        # row-group-aligned read units. Defaults to ``ParquetFileChunker``
-        # (1 GiB target chunk size, or whatever ``DataContext`` configures).
-        # Callers can inject an alternative for tests or shuffle-aware
-        # planning code that wants whole-file reads.
-        self._file_chunker: FileChunker = (
-            file_chunker if file_chunker is not None else ParquetFileChunker()
-        )
 
     @property
     def paths(self) -> List[str]:
@@ -178,10 +166,45 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._shuffle
 
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(
+        # Parquet V2 reads always use the footer-based indexer: it reads each
+        # file's footer on a ``FooterReader`` actor pool so listing rows carry
+        # per-row-group stats, and predicate / limit / projection push-down
+        # reach listing. Grouping those rows into read units is
+        # ``get_file_partitioner``'s job.
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
-            file_chunker=self._file_chunker,
+            coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+        )
+
+    def get_file_partitioner(self, **kwargs):
+        # Listing rows carry per-row-group stats, so bin-pack them into read
+        # units instead of size-estimating whole files.
+        from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+            OnlineBinPacker,
+        )
+        from ray.data._internal.util import MiB
+
+        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+        max_shared_open_bins = env_integer(
+            "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+        )
+        split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+        logger.debug(
+            "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
+            "split_coalesced=%s)",
+            max_bin_bytes,
+            max_shared_open_bins,
+            split_coalesced,
+        )
+        return OnlineBinPacker(
+            max_bin_bytes=max_bin_bytes,
+            max_shared_open_bins=max_shared_open_bins,
+            split_coalesced=split_coalesced,
         )
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:

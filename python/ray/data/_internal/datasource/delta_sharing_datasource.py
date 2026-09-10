@@ -1,14 +1,21 @@
 import logging
 from json import loads
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
+from urllib.request import getproxies
 
 import numpy as np
+import pyarrow as pa
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
+    import pandas as pd
+    from delta_sharing.protocol import FileAction
+
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -41,12 +48,20 @@ class DeltaSharingDatasource(Datasource):
 
     def _read_files(self, files, converters):
         """Read files with Delta Sharing."""
-        from delta_sharing.reader import DeltaSharingReader
-
         for file in files:
-            yield DeltaSharingReader._to_pandas(
-                action=file, converters=converters, for_cdf=False, limit=None
+            # Read into Arrow first. Converting to pandas materializes
+            # 'ray.data.arrow_pickled_object' columns, which unpickles the data and
+            # can execute arbitrary code, so the columns have to be rejected before
+            # that conversion happens.
+            table = _read_file_as_arrow(file)
+            raise_on_pickle_object_columns(table)
+            pdf = table.to_pandas(
+                date_as_object=True,
+                use_threads=False,
+                split_blocks=False,
+                self_destruct=True,
             )
+            yield _add_missing_columns(pdf, file, converters)
 
     def setup_delta_sharing_connections(self, url: str):
         """
@@ -112,6 +127,60 @@ class DeltaSharingDatasource(Datasource):
             read_tasks.append(read_task)
 
         return read_tasks
+
+
+def _read_file_as_arrow(action: "FileAction") -> "pa.Table":
+    """Read a Delta Sharing file action into an Arrow table.
+
+    Mirrors ``DeltaSharingReader._to_pandas``, but stops short of the pandas
+    conversion so that the caller can inspect the Arrow schema first.
+    """
+    import fsspec
+    from pyarrow.dataset import dataset
+
+    url = urlparse(action.url)
+    # Local paths / file:// URIs (used by tests). Delta Sharing file actions are
+    # normally https presigned URLs and take the fsspec branch below.
+    if url.scheme in ("", "file"):
+        source = url.path if url.scheme == "file" else action.url
+        return dataset(source=source, format="parquet").to_table()
+
+    if "storage.googleapis.com" in url.netloc.lower():
+        # Apply the yarl patch for GCS pre-signed URLs.
+        import delta_sharing._yarl_patch  # noqa: F401
+
+    if getproxies():
+        filesystem = fsspec.filesystem(url.scheme, client_kwargs={"trust_env": True})
+    else:
+        filesystem = fsspec.filesystem(url.scheme)
+
+    return dataset(
+        source=action.url, format="parquet", filesystem=filesystem
+    ).to_table()
+
+
+def _add_missing_columns(
+    pdf: "pd.DataFrame",
+    action: "FileAction",
+    converters: Dict[str, Callable[[str], Any]],
+) -> "pd.DataFrame":
+    """Add columns absent from the parquet file, mirroring ``_to_pandas``.
+
+    Partition columns aren't stored in the parquet file itself; they come from the
+    file action's partition values. Any remaining column in the table schema that
+    the file doesn't have is null-filled.
+    """
+    lowered_cols = {col.lower() for col in pdf.columns}
+    for col, converter in converters.items():
+        if col.lower() in lowered_cols:
+            continue
+        if col in action.partition_values:
+            if converter is None:
+                raise ValueError("Cannot partition on binary or complex columns")
+            pdf[col] = converter(action.partition_values[col])
+        else:
+            pdf[col] = None
+    return pdf
 
 
 def _parse_delta_sharing_url(url: str) -> Tuple[str, str, str, str]:

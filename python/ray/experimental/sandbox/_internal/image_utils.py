@@ -62,6 +62,60 @@ _DOCKER_HUB_REGISTRIES = (
 )
 
 
+_REGISTRY_MIRROR_ENV = "RAY_SANDBOX_REGISTRY_MIRROR"
+
+
+def registry_base_url(registry: str) -> str:
+    """Return the registry as a base URL.
+
+    Bare hosts default to https. An explicit ``http://`` scheme is honored,
+    which in-cluster pull-through proxies (a plain ``registry:2``) need.
+
+    Args:
+        registry: Registry host, optionally carrying an explicit scheme.
+
+    Returns:
+        The registry with a scheme, without a trailing slash.
+    """
+    if registry.startswith(("http://", "https://")):
+        return registry
+    return f"https://{registry}"
+
+
+def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
+    """Route Docker Hub pulls through a configured pull-through mirror.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` names a registry that mirrors Docker Hub
+    as ``host[:port][/repo-prefix]`` — e.g. an ECR pull-through cache
+    (``<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub``), an Artifact
+    Registry remote repository, or an in-cluster ``registry:2`` proxy. It
+    avoids Docker Hub's anonymous rate limits and pulls over the local
+    network instead of the WAN. Only Docker Hub pulls are rewritten; other
+    registries pass through untouched. When set, the mirror is
+    authoritative (no fallback to the upstream), and it is used with the
+    same anonymous token flow as any registry.
+
+    Args:
+        registry: Registry host chosen by ``parse_image_ref``.
+        repo: Repository path chosen by ``parse_image_ref``.
+
+    Returns:
+        The possibly rewritten ``(registry, repo)`` pair.
+    """
+    mirror = os.environ.get(_REGISTRY_MIRROR_ENV, "").strip().strip("/")
+    if not mirror or registry != "registry-1.docker.io":
+        return registry, repo
+    scheme = ""
+    for candidate in ("http://", "https://"):
+        if mirror.startswith(candidate):
+            scheme, mirror = candidate, mirror[len(candidate) :]
+            break
+    host, _, prefix = mirror.partition("/")
+    if scheme:
+        host = scheme + host
+    return host, f"{prefix}/{repo}" if prefix else repo
+
+
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
@@ -120,7 +174,7 @@ def get_registry_auth_headers(
     timeout: float = 30.0,
 ) -> Dict[str, str]:
     """Retrieve bearer authentication token headers for registry repository."""
-    url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+    url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         urllib.request.urlopen(req, timeout=timeout)
@@ -273,11 +327,12 @@ def extract_tar_layer(
                     pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
-                # Applied after the loop: extracting children would bump it.
-                # Skip preserved symlinks (UsrMerge /bin -> usr/bin): utime
-                # would follow them and stamp the target with the wrong time.
+                # Deferred to the post-loop pass: tar lists a directory
+                # before its contents, so a restrictive archived mode (0500)
+                # applied here would break extracting the children. Preserved
+                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
                 if not os.path.islink(target_path):
-                    dir_mtimes.append((target_path, member.mtime))
+                    dir_mtimes.append((target_path, member.mode, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -295,17 +350,179 @@ def extract_tar_layer(
                     except OSError:
                         pass
 
-    for dir_path, mtime in dir_mtimes:
+    # Children first, so a parent's restrictive mode cannot block them.
+    for dir_path, mode, mtime in reversed(dir_mtimes):
         try:
+            if mode:
+                os.chmod(dir_path, mode)
             os.utime(dir_path, (mtime, mtime))
         except OSError:
             pass
+
+
+_IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+# Subdirectory of each cached image holding one marker file per live sandbox.
+_USERS_SUBDIR = ".users"
+
+
+def image_cache_max_bytes(images_dir: str) -> int:
+    """Return the image cache size cap in bytes, or 0 for no cap.
+
+    ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES`` sets the cap explicitly; ``0``
+    disables eviction. Unset, the cap defaults to half of the filesystem
+    that holds ``images_dir``.
+
+    Args:
+        images_dir: Root image cache directory.
+
+    Returns:
+        The cap in bytes; 0 disables eviction.
+    """
+    raw = os.environ.get(_IMAGE_CACHE_MAX_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MAX_BYTES_ENV,
+                raw,
+            )
+    try:
+        return shutil.disk_usage(images_dir).total // 2
+    except OSError:
+        return 0
+
+
+def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
+    """Record ``instance_id`` as a live user of the cached image.
+
+    Called by ``pull_and_extract_container_image`` while it holds the
+    image's lock, so eviction (which re-checks users under the same lock)
+    can never remove an image between its pull and its first use.
+    """
+    users_dir = os.path.join(image_dir, _USERS_SUBDIR)
+    os.makedirs(users_dir, exist_ok=True)
+    with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
+        pass
+
+
+def _release_image_use(image_dir: str, instance_id: str) -> None:
+    """Drop ``instance_id``'s in-use record; a no-op if it was never marked."""
+    try:
+        os.remove(os.path.join(image_dir, _USERS_SUBDIR, instance_id))
+    except OSError:
+        pass
+
+
+def _has_users(image_dir: str) -> bool:
+    try:
+        return bool(os.listdir(os.path.join(image_dir, _USERS_SUBDIR)))
+    except OSError:
+        return False
+
+
+def _dir_size_bytes(path: str) -> int:
+    total = 0
+    for dirpath, _, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _file_size_bytes(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
+def evict_least_recently_used_images(
+    images_dir: str, max_bytes: int, keep: Optional[str] = None
+) -> None:
+    """Evict least-recently-extracted images until the cache fits ``max_bytes``.
+
+    Nodes cache every image they ever ran, so without a cap a long-lived
+    node eventually fills its disk. Candidates are fully extracted images
+    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
+    by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
+    per-image lock is held (a pull in progress), or when it is ``keep``. The
+    in-use check is repeated under the lock, which is also where pulls
+    register their users, so a marked image is never removed.
+
+    Args:
+        images_dir: Root image cache directory.
+        max_bytes: The cache size cap in bytes.
+        keep: Sanitized name of an image that must survive this pass.
+    """
+    try:
+        names = os.listdir(images_dir)
+    except OSError:
+        return
+    entries = []  # (mtime, name, image_dir or None, tar_path, size)
+    for name in names:
+        path = os.path.join(images_dir, name)
+        if name.endswith(".tar") and os.path.isfile(path):
+            stem = name[: -len(".tar")]
+            if not os.path.isdir(os.path.join(images_dir, stem)):
+                # Archive without an image: left by an earlier Ray version.
+                try:
+                    entries.append(
+                        (
+                            os.path.getmtime(path),
+                            stem,
+                            None,
+                            path,
+                            _file_size_bytes(path),
+                        )
+                    )
+                except OSError:
+                    pass
+            continue
+        marker = os.path.join(path, ".extracted")
+        try:
+            if not (os.path.isdir(path) and os.path.exists(marker)):
+                continue
+            mtime = os.path.getmtime(marker)
+        except OSError:
+            continue  # Concurrently deleted; keep going.
+        tar_path = os.path.join(images_dir, f"{name}.tar")
+        size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
+        entries.append((mtime, name, path, tar_path, size))
+
+    total = sum(entry[-1] for entry in entries)
+    for _, name, img_dir, tar_path, size in sorted(entries):
+        if total <= max_bytes:
+            return
+        if name == keep or (img_dir is not None and _has_users(img_dir)):
+            continue
+        lock_path = os.path.join(images_dir, f"{name}.lock")
+        try:
+            with open(lock_path, "w", encoding="utf-8") as f_lock:
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # A pull may have registered a user since the scan.
+                if img_dir is not None and _has_users(img_dir):
+                    continue
+                if img_dir is not None:
+                    shutil.rmtree(img_dir, ignore_errors=True)
+                try:
+                    os.remove(tar_path)
+                except OSError:
+                    pass
+        except OSError:
+            continue  # Locked by an in-progress pull; try the next one.
+        total -= size
+        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
     timeout_seconds: float = 120.0,
+    instance_id: Optional[str] = None,
 ) -> str:
     """Pull container image via Registry v2 HTTP API and extract rootfs into local directory.
 
@@ -313,6 +530,9 @@ def pull_and_extract_container_image(
         image: Container image name (e.g. 'python:3.10-slim') or path to local tar archive.
         images_dir: Root directory for caching container images.
         timeout_seconds: Network request timeout.
+        instance_id: When given, the sandbox instance is registered as a
+            user of the image under the image lock, so cache eviction
+            leaves the image alone until the instance releases it.
 
     Returns:
         Absolute directory path containing the extracted container filesystem.
@@ -328,6 +548,15 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    max_cache = image_cache_max_bytes(images_dir)
+    if max_cache > 0:
+        evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+
+    def _finish() -> str:
+        if instance_id is not None:
+            _mark_image_in_use(target_dir, instance_id)
+        return target_dir
+
     with open(lock_path, "w", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
@@ -335,9 +564,9 @@ def pull_and_extract_container_image(
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
                 if os.path.isfile(image):
                     if os.path.getmtime(marker_path) >= os.path.getmtime(image):
-                        return target_dir
+                        return _finish()
                 else:
-                    return target_dir
+                    return _finish()
 
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
@@ -347,8 +576,6 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
 
-            tar_path = os.path.join(images_dir, f"{safe_name}.tar")
-
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
@@ -357,15 +584,6 @@ def pull_and_extract_container_image(
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
                         f"Failed to extract local image archive '{image}': {err}"
-                    ) from err
-            elif os.path.isfile(tar_path):
-                try:
-                    with open(tar_path, "rb") as f:
-                        extract_tar_layer(f, tmp_extract_dir)
-                except Exception as err:
-                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
-                    raise SandboxCreationError(
-                        f"Failed to extract cached image archive '{tar_path}': {err}"
                     ) from err
             else:
                 if (
@@ -380,6 +598,7 @@ def pull_and_extract_container_image(
                     )
                 try:
                     registry, repo, reference = parse_image_ref(image)
+                    registry, repo = apply_registry_mirror(registry, repo)
                     auth_headers = get_registry_auth_headers(
                         registry,
                         repo,
@@ -397,7 +616,9 @@ def pull_and_extract_container_image(
                     }
                     auth_header = auth_headers.get("Authorization")
 
-                    manifest_url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+                    manifest_url = (
+                        f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+                    )
                     req = _registry_request(manifest_url, headers, auth_header)
                     with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                         manifest_data = json.loads(resp.read().decode("utf-8"))
@@ -418,7 +639,7 @@ def pull_and_extract_container_image(
                             chosen_digest = manifest_data["manifests"][0]["digest"]
 
                         sub_req = _registry_request(
-                            f"https://{registry}/v2/{repo}/manifests/{chosen_digest}",
+                            f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
                             headers,
                             auth_header,
                         )
@@ -431,9 +652,7 @@ def pull_and_extract_container_image(
                     config_desc = manifest_data.get("config")
                     if config_desc and "digest" in config_desc:
                         config_digest = config_desc["digest"]
-                        config_url = (
-                            f"https://{registry}/v2/{repo}/blobs/{config_digest}"
-                        )
+                        config_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
                         config_req = _registry_request(config_url, headers, auth_header)
                         try:
                             with urllib.request.urlopen(
@@ -456,7 +675,9 @@ def pull_and_extract_container_image(
 
                     for layer in layers:
                         digest = layer["digest"]
-                        blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
+                        blob_url = (
+                            f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
+                        )
                         blob_req = _registry_request(blob_url, headers, auth_header)
                         with urllib.request.urlopen(
                             blob_req, timeout=timeout_seconds
@@ -470,16 +691,8 @@ def pull_and_extract_container_image(
                                 tmp_blob_file.seek(0)
                                 extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
 
-                    with tarfile.open(tar_path, "w") as tar:
-                        tar.add(tmp_extract_dir, arcname=".")
-
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
-                    if os.path.exists(tar_path):
-                        try:
-                            os.remove(tar_path)
-                        except OSError:
-                            pass
                     if isinstance(err, SandboxCreationError):
                         raise
                     raise SandboxCreationError(
@@ -495,7 +708,7 @@ def pull_and_extract_container_image(
                 shutil.rmtree(target_dir, ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
 
-            return target_dir
+            return _finish()
         finally:
             try:
                 fcntl.flock(f_lock, fcntl.LOCK_UN)

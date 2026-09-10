@@ -165,6 +165,24 @@ message ActorTableData {
   // The key-value labels for actor.
   map<string, string> labels = 37;
   optional FallbackStrategy fallback_strategy = 38;
+  // Previous (worker_id, node_id) pairs from this actor's earlier
+  // incarnations across restarts, in order from oldest to newest. Used by
+  // the dashboard log-lookup path to surface logs from before the current
+  // worker. Bounded by `RayConfig::maximum_actor_previous_incarnations`; when
+  // the cap is reached, the oldest entry is evicted FIFO.
+  repeated PreviousActorIncarnation previous_incarnations = 39;
+}
+
+// A prior (worker_id, node_id) pair for an actor that has been restarted.
+// Recorded on `ActorTableData.previous_incarnations`.
+message PreviousActorIncarnation {
+  // The worker that ran this incarnation of the actor.
+  bytes worker_id = 1;
+  // The node that worker ran on. Stored per-entry rather than reusing the
+  // actor's current node because a restart may place the actor on a
+  // different node, while log files stay on the node where they were
+  // written — so worker_id alone is not enough to locate them.
+  bytes node_id = 2;
 }
 
 message ErrorTableData {
