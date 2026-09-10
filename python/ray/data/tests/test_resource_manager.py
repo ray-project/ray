@@ -1586,9 +1586,9 @@ class TestReservationOpResourceAllocator:
         [
             # Headroom left after the split (1000 - 100) covers the 10 leftover.
             (1000, 110),
-            # Only 5 of headroom left after the split, so the 10 leftover doesn't
-            # fit and must stay undistributed rather than breach the cap.
-            (105, 100),
+            # Only 5 of headroom left after the split, so the op absorbs 5 of the
+            # 10 leftover -- filling the cap exactly -- and the rest stays behind.
+            (105, 105),
         ],
     )
     def test_leftover_respects_a_bounded_cap_already_partly_used(
@@ -1634,6 +1634,51 @@ class TestReservationOpResourceAllocator:
         assert alloc._op_budgets[o3].cpu == expected_downstream_cpu
         assert alloc._op_budgets[o3].cpu <= downstream_max_cpu
         assert alloc._op_budgets[o2].cpu == 90
+
+    def test_leftover_is_matched_per_resource(self, restore_data_context):
+        """Leftover on a resource nobody wants must not veto the ones ops can use.
+
+        An operator that requests no memory reports a *zero* memory cap, so the
+        cluster's memory is never drawn out of the shared pool. Matching the
+        leftover as one bundle would let that stranded memory block the leftover
+        CPU, which a downstream op still has headroom for.
+        """
+        resource_manager, _, (o2, o3) = _build_reservation_allocator(2)
+        alloc = resource_manager.op_resource_allocator
+        eligible = [o2, o3]
+
+        alloc._update_reservation = MagicMock(return_value=ExecutionResources.zero())
+        alloc._get_eligible_ops = MagicMock(return_value=eligible)
+        alloc._total_shared = ExecutionResources(cpu=200, memory=1000)
+        resource_manager.get_mem_op_internal = MagicMock(return_value=0)
+        resource_manager.get_mem_op_outputs = MagicMock(return_value=0)
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        for op in eligible:
+            alloc._op_reserved[op] = ExecutionResources.zero()
+            alloc._reserved_for_op_outputs[op] = 0.0
+            op.min_scheduling_resources = MagicMock(
+                return_value=ExecutionResources.zero()
+            )
+
+        # Neither op requests memory, so both cap it at 0. o2's tight CPU cap
+        # leaves 10 CPU behind, which o3 still has room for.
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources(cpu=1000))
+        )
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources(cpu=90))
+        )
+
+        alloc.update_budgets(limits=ExecutionResources.zero())
+
+        # o3 takes its 100 share plus the 10 o2's cap left behind.
+        assert alloc._op_budgets[o3].cpu == 110
+        assert alloc._op_budgets[o2].cpu == 90
+        # The memory nobody capped room for stays undistributed.
+        assert alloc._op_budgets[o3].memory == 0
+        assert alloc._op_budgets[o2].memory == 0
 
 
 if __name__ == "__main__":

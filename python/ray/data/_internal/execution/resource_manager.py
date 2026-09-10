@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
-    AbstractSet,
     Callable,
     Dict,
     Iterable,
@@ -891,30 +890,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
-    def _most_downstream_op_that_fits(
-        self,
-        ops: List[PhysicalOperator],
-        resources: ExecutionResources,
-        op_headroom: Dict[PhysicalOperator, ExecutionResources],
-        skip: AbstractSet[PhysicalOperator] = frozenset(),
-    ) -> Optional[PhysicalOperator]:
-        """The most downstream op in ``ops`` whose remaining headroom can absorb ``resources``.
-
-        ``op_headroom`` is filled by the allocation loop and records how much
-        each op can still take before hitting its ``max_resource_usage`` cap.
-        """
-        for op in reversed(ops):
-            if op in skip:
-                continue
-            _, max_resource_usage = op.min_max_resource_requirements()
-            if max_resource_usage == ExecutionResources.inf():
-                return op
-            if resources.satisfies_limit(
-                op_headroom.get(op, ExecutionResources.zero())
-            ):
-                return op
-        return None
-
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
@@ -1122,31 +1097,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
-        # Give any remaining shared resources to the most downstream op that can
-        # absorb them. This can happen when some ops have their shared allocation
-        # capped. A throttled op may take the leftover CPU/GPU, but not the
-        # object-store.
-        if not remaining_shared.is_zero():
-            non_os_shared = remaining_shared.copy(object_store_memory=0)
-            if not non_os_shared.is_zero():
-                recipient = self._most_downstream_op_that_fits(
-                    eligible_ops, non_os_shared, op_headroom
-                )
-                if recipient is not None:
-                    self._op_budgets[recipient] = self._op_budgets[recipient].add(
-                        non_os_shared
-                    )
-            if remaining_shared.object_store_memory > 0:
-                os_shared = ExecutionResources(
-                    object_store_memory=remaining_shared.object_store_memory
-                )
-                recipient = self._most_downstream_op_that_fits(
-                    eligible_ops, os_shared, op_headroom, skip=throttled_ops
-                )
-                if recipient is not None:
-                    self._op_budgets[recipient] = self._op_budgets[recipient].add(
-                        os_shared
-                    )
+        # Hand leftover resources out from the most downstream operator upwards,
+        # each taking as much as its remaining headroom allows. Matching per
+        # resource keeps one nobody wants (e.g. GPU) from vetoing one that's
+        # needed (e.g. CPU). Throttled ops may take everything but object-store.
+        for op in reversed(eligible_ops):
+            if remaining_shared.is_zero():
+                break
+            # Ops absent from `op_headroom` were never capped, so they can absorb
+            # the whole leftover.
+            headroom = op_headroom.get(op, ExecutionResources.inf())
+            if op in throttled_ops:
+                headroom = headroom.copy(object_store_memory=0)
+            op_leftover = remaining_shared.min(headroom)
+            if op_leftover.is_zero():
+                continue
+            self._op_budgets[op] = self._op_budgets[op].add(op_leftover)
+            remaining_shared = remaining_shared.subtract(op_leftover)
 
         # A materializing operator like `AllToAllOperator` waits for all its input
         # operator's outputs before processing data. This often forces the input
