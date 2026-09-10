@@ -226,46 +226,16 @@ In this example:
 
 ## Concurrency and reliability
 
-Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. The default Celery adapter enables late acknowledgement and requeueing on worker loss. Delivery and redelivery behavior still depend on the broker and its configuration; handlers must tolerate duplicate execution.
+Set `max_ongoing_requests` on the consumer deployment to cap how many tasks each replica processes simultaneously. The default Celery adapter uses late acknowledgement and requeues tasks on worker loss. Delivery behavior depends on the broker and its configuration. Write handlers that tolerate duplicate execution.
 
 By default, the Celery adapter uses `max_retries` for retries of application exceptions. After those retries are exhausted, it routes the failed task to the configured DLQ. Broker redelivery after a process dies can occur without advancing this application retry count. If a job needs a limit across worker losses or re-enqueueing, track admitted attempts or a deadline in application-owned durable state.
 
 (serve-async-inference-checkpoints)=
-### Application-owned checkpoints and progress
+### Resume work from checkpoints
 
-The task consumer API doesn't provide durable checkpoints, resumable progress, or a transaction spanning application state and queue acknowledgement. `get_task_status_sync(task_id)` reads the adapter's task result; it isn't a checkpoint for partially completed inference. For a workload that can resume between pages, video segments, or batches, define an application contract before choosing storage.
+To resume inference between pages, video segments, or batches, store checkpoints in your application. The task consumer API doesn't provide durable checkpoints or resumable progress. `get_task_status_sync(task_id)` reads the adapter's task status and result. It doesn't restore partially completed inference.
 
-Keep these identities and state separate:
-
-| Field | Contract |
-| --- | --- |
-| `job_id` | Stable logical job ID, passed in the task payload and reused when submission is retried or a task is re-enqueued. Use it to key application progress and results. |
-| Request fingerprint | Immutable input revision, model/pipeline version, and relevant parameters. Reject reuse of a `job_id` with different inputs; a mutable URL alone isn't an input revision. |
-| `task_id` | Adapter/transport task identity, useful for status and diagnostics. A retry may retain it, and re-enqueueing may create another ID for the same logical job. |
-| `attempt_id` and fencing token | A fresh execution identity and a monotonically increasing token issued by an atomic job claim. Every checkpoint and result commit must validate that this attempt still owns the job. |
-| Committed checkpoint | Immutable checkpoint reference plus the next unit to process, updated atomically. The checkpoint must recover the entire committed prefix `[0, next_unit)`, directly or through a manifest of earlier outputs. Progress describes committed work and must not move backwards. |
-| Committed result | Immutable result reference published with the terminal state. A completed job returns this reference on redelivery without recomputing it. |
-
-Implement the handler around four transitions:
-
-1. **Claim or return the existing result.** Validate the fingerprint. If the job is complete, return its committed result. Otherwise, acquire an application-owned lease and a new fencing token atomically. A duplicate delivery must not take over a live lease. An expired lease permits takeover even if the old worker is still running.
-2. **Resume committed work.** Load the saved checkpoint and begin at its next unit. Write each checkpoint artifact to durable storage before conditionally publishing its reference and progress under the current token. Retrying the same commit must be idempotent. Local variables and emitted progress events aren't recovery state.
-3. **Publish completion before returning.** Write the final result durably, then conditionally commit its reference and terminal state under the current token. Only then return from the handler, allowing the adapter to complete and acknowledge the task. Don't acknowledge while result publication is still pending. If publication times out, read back the committed state before retrying the same operation.
-4. **Fence late writers.** After takeover, reject the old attempt's checkpoint and result commits. Checking ownership only when the handler starts is insufficient. Poll progress by `job_id` from committed application state, including the terminal result reference, rather than combining counters from different attempts.
-
-The storage implementation must make ownership checks and their associated writes atomic. For object storage, write immutable artifacts first and conditionally publish their references through a transactional record; losing attempts can leave unreferenced artifacts for later cleanup. A checkpoint protocol doesn't make arbitrary external effects exactly once: use idempotency keys or an appropriate transaction for those effects, and expect computation since the last checkpoint to repeat.
-
-Retain the job record, its terminal result and fencing generation, and referenced artifacts throughout the retry/redelivery horizon. Don't delete and recreate job state or reuse a `job_id` while an old attempt can still write or a task can be redelivered: doing so resets fencing and result deduplication.
-
-These failure traces define the recovery behavior:
-
-| Failure window | Expected recovery |
-| --- | --- |
-| Checkpoint committed, worker lost before completion | A replacement attempt gets a new token, loads that checkpoint, and resumes at the next uncommitted unit. |
-| Result committed, worker lost before acknowledgement | A redelivered task finds the terminal record and returns the same result, even if its transport `task_id` differs. |
-| Two attempts overlap after a lease takeover | The old token cannot publish either progress or a result. Only the new owner can commit; completed state remains immutable. |
-
-The following record types make the distinction explicit:
+The following example separates task delivery, execution attempts, and committed job state:
 
 ```{literalinclude} doc_code/async_inference_checkpoint_contract.py
 :language: python
@@ -273,13 +243,44 @@ The following record types make the distinction explicit:
 :end-before: __records_end__
 ```
 
-Download the {download}`executable contract model <doc_code/async_inference_checkpoint_contract.py>` to run the three traces with the Python standard library:
+Use these fields to identify work and recover committed state:
+
+| Field | Contract |
+| --- | --- |
+| `job_id` | Stable application job ID. Pass it in the task payload and reuse it across submission retries and re-enqueueing. |
+| `fingerprint` | Immutable input revision, model and pipeline versions, and relevant parameters. A mutable URL alone doesn't identify an input revision. |
+| `task_id` | Adapter task ID for status and diagnostics. Retries may retain it, while re-enqueueing may create a different ID for the same job. |
+| `attempt_id`, `fence` | Fresh execution ID and a monotonically increasing token that identifies the job's owner. |
+| `checkpoint_ref`, `next_unit` | Immutable checkpoint reference and the next unit to process. Progress counts committed work. |
+| `result_ref` | Immutable result reference. Its presence marks the job complete. |
+
+Implement three transitions in the handler:
+
+1. Claim the job or return its result. Reject a mismatched fingerprint before checking for completion. If the job is complete, return `result_ref` without recomputing it. Otherwise, atomically acquire an application-owned lease and fencing token for a fresh `attempt_id`. Duplicate deliveries must not take over a live lease. After expiry, another attempt can take over even if the old worker still runs.
+1. Resume from the committed checkpoint. Restore all completed units `[0, next_unit)` from the checkpoint or its manifest, then process the next unit. Write each checkpoint artifact durably before atomically committing its reference and progress. Reject backwards progress. Make retries of the same commit idempotent.
+1. Publish the result before returning. Write the final artifact durably, then atomically commit `result_ref` and the terminal state. Only then return from the handler so the adapter can acknowledge the task. If publication times out, read back the record before retrying. The task API doesn't provide a transaction spanning this record and queue acknowledgement.
+
+For every checkpoint and result commit, atomically check the attempt's ownership token with the write. An old attempt must not overwrite state after takeover. With object storage, publish immutable artifact references through a transactional record and clean up unreferenced artifacts later. Poll committed application state by `job_id` instead of combining progress events from different attempts.
+
+Retain the job record, fencing generation, and referenced artifacts for as long as attempts can write or tasks can be redelivered. Deleting and recreating state or reusing a `job_id` during that period resets fencing and result deduplication. Checkpointing doesn't make external effects exactly once. Use idempotency keys or a transaction for those effects, and expect computation since the last checkpoint to repeat.
+
+Verify these three failure cases:
+
+| Failure window | Expected recovery |
+| --- | --- |
+| A worker dies after committing a checkpoint | The replacement loads that checkpoint and resumes at the next uncommitted unit with a new token. |
+| A worker dies after committing the result but before acknowledgement | The redelivered task returns the same result, even if its `task_id` differs. |
+| An old attempt keeps running after lease takeover | Its token cannot publish checkpoints or results. Only the new owner can commit, and completed state stays immutable. |
+
+Download the {download}`checkpoint example <doc_code/async_inference_checkpoint_contract.py>` and run its tests with the Python standard library. From the Ray repository root, run:
 
 ```bash
 python doc/source/serve/doc_code/async_inference_checkpoint_contract.py -v
 ```
 
-The model executes serial interleavings with an in-memory record standing in for committed state. Each claim assumes lease admission has already succeeded. It tests the contract, including fingerprint conflicts, monotonic progress, and stale writers; it doesn't implement leases, durable storage, inference, or broker integration. Validate those properties separately against the storage and adapter you deploy.
+:::{note}
+The example models atomic storage transitions with in-memory records. Each claim assumes lease admission has succeeded. Tests interleave attempts to check recovery, identity, and commit rules. They don't implement leases, durable storage, inference, or a broker. Test those components separately with your storage and adapter.
+:::
 
 (serve-async-inference-autoscaling)=
 ## Autoscaling
