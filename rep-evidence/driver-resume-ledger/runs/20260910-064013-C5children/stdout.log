@@ -1,0 +1,48 @@
+
+====================================================================
+ARM: opaque
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                2
+  adopted_same_pid       True
+  created_now            4
+  unreachable            0
+  orphans                4
+  orphan_names           ['7ac2c982138a456b9d52188f09f87954', '0fee0c13619e43cea83ae6b159371e46', '82072734e66a471bb86fe9903db74607', '8638e3f7207c4e52b399dec96576cc1c']
+  live_named_total       10
+
+====================================================================
+ARM: prefixed
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                6
+  adopted_same_pid       True
+  created_now            0
+  unreachable            0
+  orphans                0
+  orphan_names           []
+  live_named_total       16
+
+====================================================================
+ARM: prefixed_noreconcile
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                2
+  adopted_same_pid       True
+  created_now            4
+  unreachable            0
+  orphans                4
+  orphan_names           ['r4/scope-c5-prefixed_noreconcile/jobc5/child-2', 'r4/scope-c5-prefixed_noreconcile/jobc5/child-3', 'r4/scope-c5-prefixed_noreconcile/jobc5/child-4', 'r4/scope-c5-prefixed_noreconcile/jobc5/child-5']
+  live_named_total       22
+
+====================================================================
+  NC_noreconcile_leaked_as_required              True
+  VOID_control_clean                             False
+  opaque_orphans                                 4
+  opaque_duplicated                              4
+  prefixed_orphans                               0
+  prefixed_duplicated                            0
+  prefixed_adopted_all                           True
+  prefixed_adoption_was_real_same_pid            True
+  C5_proven_conditional_on_scoped_names          True
+====================================================================

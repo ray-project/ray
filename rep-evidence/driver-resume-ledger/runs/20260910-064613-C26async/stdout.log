@@ -1,0 +1,47 @@
+
+====================================================================
+ARM: async_nokill
+====================================================================
+  [async_nokill] booted, Q=64
+  [async_nokill] work during window: 91 units, max queued 0 (Q=64), saturated=False
+  [async_nokill] committed=400 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_outage
+====================================================================
+  [async_outage] booted, Q=64
+  [async_outage] SIGKILL gcs_server 998794
+  [async_outage] gcs_server re-exec'd after 35s
+  [async_outage] work during window: 91 units, max queued 31 (Q=64), saturated=False
+  [async_outage] committed=400 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_crash
+====================================================================
+  [async_crash] booted, Q=64
+  [async_crash] executed=75 durable=75 resumed_from=75 redo=0 bound=67 within=True
+  [async_crash] committed=75 dupes=False contiguous=True epochs=[2]
+
+====================================================================
+ARM: sync_crash
+====================================================================
+  [sync_crash] booted, Q=0
+  [sync_crash] executed=75 durable=75 resumed_from=75 redo=0 bound=3 within=True
+  [sync_crash] committed=75 dupes=False contiguous=True epochs=[2]
+
+====================================================================
+  NC_nokill_completed_all                True
+  NC_nokill_clean                        True
+  VOID_nokill_corrupted                  False
+  clause1_work_during_outage             91
+  clause1_beats_sync_baseline_zero       True
+  NC_queue_saturated                     False
+  clause2_async_redo                     0
+  clause2_async_bound                    67
+  clause2_async_within_bound             True
+  NC_sync_redo                           0
+  NC_sync_within_W                       True
+  clause3_contiguous_everywhere          True
+  writer_errors                          []
+  C26_proven                             False
+====================================================================

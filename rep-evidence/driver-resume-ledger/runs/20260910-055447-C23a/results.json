@@ -1,0 +1,126 @@
+{
+  "ray_version": "2.58.0",
+  "candidates": {
+    "session_name": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "session_2026-09-10_05-54-48_005330_956221",
+        "2_same_path_A": "session_2026-09-10_05-54-48_005330_956221",
+        "3_fresh_B": "session_2026-09-10_05-55-02_007262_956221"
+      }
+    },
+    "session_dir": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "/tmp/ray/session_2026-09-10_05-54-48_005330_956221",
+        "2_same_path_A": "/tmp/ray/session_2026-09-10_05-54-48_005330_956221",
+        "3_fresh_B": "/tmp/ray/session_2026-09-10_05-55-02_007262_956221"
+      }
+    },
+    "gcs_address": {
+      "stable_across_same_path_boot": false,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": false,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "not stable across a same-path boot, so a head restart would lose its own ledger",
+      "values": {
+        "1_fresh_A": "100.76.134.17:39485",
+        "2_same_path_A": "100.76.134.17:43687",
+        "3_fresh_B": "100.76.134.17:38053"
+      }
+    },
+    "node_id": {
+      "stable_across_same_path_boot": false,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": false,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "not stable across a same-path boot, so a head restart would lose its own ledger",
+      "values": {
+        "1_fresh_A": "8c01b8c7a3522e6968d215731e06391b78b99b5b9c3a2650ed48705d",
+        "2_same_path_A": "2b2124252bbb624ce6885311cae2e62f0dbe4adc90fb4663ab4a7c86",
+        "3_fresh_B": "cf76e3942430c021e3bddc39e8199c2288f8b15962232cd33e06ef93"
+      }
+    },
+    "runtime_ctx_cluster_id": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": false,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "None",
+        "2_same_path_A": "None",
+        "3_fresh_B": "None"
+      }
+    },
+    "gcs_client_cluster_id": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "ClusterID(2ecab0acdefbb77d89aa5831476b745e8a88bd1e51d3e32e6e4349eb)",
+        "2_same_path_A": "ClusterID(2ecab0acdefbb77d89aa5831476b745e8a88bd1e51d3e32e6e4349eb)",
+        "3_fresh_B": "ClusterID(d6877bf18091d33ad95873be74d7d9ce6283e966667815a7abdc04ac)"
+      }
+    },
+    "env_RAY_CLUSTER_NAME": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": false,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "None",
+        "2_same_path_A": "None",
+        "3_fresh_B": "None"
+      }
+    },
+    "storage_path_cluster_marker": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": true,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "session_2026-09-10_05-54-48_005330_956221",
+        "2_same_path_A": "session_2026-09-10_05-54-48_005330_956221",
+        "3_fresh_B": "session_2026-09-10_05-55-02_007262_956221"
+      }
+    },
+    "storage_dir_listing": {
+      "stable_across_same_path_boot": true,
+      "differs_across_new_disk_boot": false,
+      "can_detect_replacement_on_reused_disk": false,
+      "survives_head_restart": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "why_not": "stable across a same-path boot, so it cannot tell a head restart from a replacement on the same disk",
+      "values": {
+        "1_fresh_A": "kv,session_name,tables",
+        "2_same_path_A": "kv,session_name,tables",
+        "3_fresh_B": "kv,session_name,tables"
+      }
+    }
+  },
+  "usable_candidates": [],
+  "probe_can_distinguish_clusters_at_all": true,
+  "C23_refuted": false,
+  "argument": "A head restart and a cluster replacement on a reused gcs_storage_path are the SAME physical event from inside the cluster: a process starting against an existing path. No function of in-cluster state can return different values for one event. Every candidate therefore fails one half or the other by construction, and the split is visible in the table: the four path-derived candidates survive a head restart and cannot detect replacement; gcs_address and node_id detect everything and survive nothing."
+}

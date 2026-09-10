@@ -1,0 +1,43 @@
+{
+  "ray_version": "2.58.0",
+  "uid_1": "raycluster-uid-1111",
+  "uid_2": "raycluster-uid-2222",
+  "run1_original_cluster": {
+    "scope": "raycluster-uid-1111",
+    "won_epoch": 1,
+    "resumed_from": 0,
+    "executed": 10,
+    "keys_under_scope": 3
+  },
+  "run2_same_uid_restart": {
+    "scope": "raycluster-uid-1111",
+    "won_epoch": 2,
+    "resumed_from": 10,
+    "executed": 0,
+    "keys_under_scope": 3
+  },
+  "run3_different_uid": {
+    "scope": "raycluster-uid-2222",
+    "won_epoch": 1,
+    "resumed_from": 0,
+    "executed": 10,
+    "keys_under_scope": 3
+  },
+  "prior_ledger_keys_after": [
+    "raycluster-uid-1111/jobX/epoch/000002",
+    "raycluster-uid-1111/jobX/state/000002/base@000005",
+    "raycluster-uid-1111/jobX/state/000002/base_ptr"
+  ],
+  "prior_ledger_intact": true,
+  "verdict": {
+    "same_uid_resumes": true,
+    "different_uid_does_not_adopt": true,
+    "different_uid_leaves_prior_ledger_intact": true,
+    "FIX_WORKS": true
+  },
+  "keys_after_run1": [
+    "raycluster-uid-1111/jobX/epoch/000001",
+    "raycluster-uid-1111/jobX/state/000001/base@000005",
+    "raycluster-uid-1111/jobX/state/000001/base_ptr"
+  ]
+}

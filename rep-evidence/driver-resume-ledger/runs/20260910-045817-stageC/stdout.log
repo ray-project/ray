@@ -1,0 +1,31 @@
+stage C on Ray 2.58.0, gcs_storage=rocksdb at /tmp/r4gcs_stage_c
+
+session_name: session_2026-09-10_04-58-17_844905_931937
+
+T1 -- internal_kv semantics
+  put(absent)=False  put(present)=True  -> inverted=True  CAS held=True
+  prefix list -> ['t1pfx/0', 't1pfx/1', 't1pfx/2']
+
+T2 -- C4a: detached coordinator survives driver death
+  driver 1 launched the coordinator and exited: False
+  fresh driver reattached by name -> epoch=1 pid=932217 executed=0
+
+T3 -- end-to-end resume after coordinator kill
+  killed the coordinator (was at 0 units)
+  restarted incarnation: pid=932215 epoch=2 resumed_from=0
+  ran to completion: finished=True executed_this_incarnation=40 ledger_keys=4
+
+T4 -- C21/C12: cluster restart on the same storage path
+  old session: session_2026-09-10_04-58-17_844905_931937
+  new session: session_2026-09-10_04-58-17_844905_931937
+  INHERITED: True   kv survived restart: True
+  prior ledger visible to the new cluster: True  (9 -> 8 keys)
+
+======================================================================
+  C8_zero_core_patches                       True
+  C4a_survives_driver_death                  False
+  C21_session_name_stable                    True
+  C12_refuted_by_inherited_session           True
+  rocksdb_really_durable                     True
+  inverted_put_return_confirmed              True
+======================================================================
