@@ -446,9 +446,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// broadcast to reconcile its view of the affected nodes' resources.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
-  /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
       const PlacementGroupID &placement_group_id);

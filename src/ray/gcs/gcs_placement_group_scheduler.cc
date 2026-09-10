@@ -383,13 +383,6 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
       }
 
-      if (status.ok()) {
-        // Commit the bundle resources on the remote node to the cluster resources.
-        // On Commit failure we leave the optimistic state alone; the next
-        // ray-syncer broadcast from the raylet will reconcile it.
-        CommitBundleResources(commited_bundle_locations);
-      }
-
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(
             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
@@ -730,19 +723,6 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
   }
 }
 
-absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMap(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  absl::flat_hash_map<scheduling::NodeID, ResourceRequest> node_bundle_resources_map;
-  for (const auto &bundle : *bundle_locations) {
-    auto node_id = scheduling::NodeID(bundle.second.first.Binary());
-    const auto &bundle_spec = *bundle.second.second;
-    auto bundle_resource_request = ResourceMapToResourceRequest(
-        bundle_spec.GetFormattedResources(), /*requires_object_store_memory=*/false);
-    node_bundle_resources_map[node_id] += bundle_resource_request;
-  }
-  return node_bundle_resources_map;
-}
-
 bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
     const std::string &resource_name) {
   std::string_view resource_name_view(resource_name);
@@ -756,34 +736,6 @@ bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
 
   auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
   return resource_name_view.substr(idx, pattern.size()) == pattern;
-}
-
-void GcsPlacementGroupScheduler::CommitBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Acquire bundle resources from gcs resources manager.
-  auto &cluster_resource_manager =
-      cluster_resource_scheduler_.GetClusterResourceManager();
-  auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
-  for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
-    for (const auto &resource_id : node_bundle_resources.ResourceIds()) {
-      // A placement group's wildcard resource has to be the sum of all related bundles.
-      // Even though `ToNodeBundleResourcesMap` has already considered this,
-      // it misses the scenario in which single (or subset of) bundle is rescheduled.
-      // When commiting this single bundle, its wildcard resource would wrongly overwrite
-      // the existing value, unless using the following additive operation.
-      auto capacity = node_bundle_resources.Get(resource_id);
-      if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
-        auto new_capacity =
-            capacity +
-            cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, new_capacity.Double());
-      } else {
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, capacity.Double());
-      }
-    }
-  }
 }
 
 LeaseStatusTracker::LeaseStatusTracker(
