@@ -183,8 +183,8 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
-def idle_terminate_patch(should_idle_terminate: bool) -> Dict[str, Any]:
-    return {"spec": {"idleTerminate": should_idle_terminate}}
+def idle_suspend_patch(should_idle_suspend: bool) -> Dict[str, Any]:
+    return {"spec": {"idleSuspend": should_idle_suspend}}
 
 
 def finalizer_patch(
