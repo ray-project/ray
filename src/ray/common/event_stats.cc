@@ -65,9 +65,11 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   if (emit_metrics) {
-    operation_count_metric_.Record(1, {{"Name", event_context_name.value_or(name)}});
-    operation_active_gauge_metric_.Record(curr_count,
-                                          {{"Name", event_context_name.value_or(name)}});
+    boost::asio::post(metric_context_, [this, curr_count, name, &event_context_name]() {
+      operation_count_metric_.Record(1, {{"Name", event_context_name.value_or(name)}});
+      operation_active_gauge_metric_.Record(
+          curr_count, {{"Name", event_context_name.value_or(name)}});
+    });
   }
 
   return std::make_shared<StatsHandle>(
@@ -88,11 +90,13 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    operation_run_time_ms_histogram_metric_.Record(
-        execution_time_ns / 1000000,
-        {{"Name", handle->context_name.value_or(handle->event_name)}});
-    operation_active_gauge_metric_.Record(
-        curr_count, {{"Name", handle->context_name.value_or(handle->event_name)}});
+    boost::asio::post(metric_context_, [this, curr_count, handle, execution_time_ns]() {
+      operation_run_time_ms_histogram_metric_.Record(
+          execution_time_ns / 1000000,
+          {{"Name", handle->context_name.value_or(handle->event_name)}});
+      operation_active_gauge_metric_.Record(
+          curr_count, {{"Name", handle->context_name.value_or(handle->event_name)}});
+    });
   }
 
   handle->end_or_execution_recorded = true;
@@ -135,15 +139,18 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
 
   if (handle->emit_stats) {
     // Update event-specific stats.
-    operation_run_time_ms_histogram_metric_.Record(
-        execution_time_ns / 1000000,
-        {{"Name", handle->context_name.value_or(handle->event_name)}});
-    operation_active_gauge_metric_.Record(
-        curr_count, {{"Name", handle->context_name.value_or(handle->event_name)}});
-    // Update global stats.
-    operation_queue_time_ms_histogram_metric_.Record(
-        queue_time_ns / 1000000,
-        {{"Name", handle->context_name.value_or(handle->event_name)}});
+    boost::asio::post(
+        metric_context_, [this, execution_time_ns, queue_time_ns, curr_count, handle]() {
+          operation_run_time_ms_histogram_metric_.Record(
+              execution_time_ns / 1000000,
+              {{"Name", handle->context_name.value_or(handle->event_name)}});
+          operation_active_gauge_metric_.Record(
+              curr_count, {{"Name", handle->context_name.value_or(handle->event_name)}});
+          // Update global stats.
+          operation_queue_time_ms_histogram_metric_.Record(
+              queue_time_ns / 1000000,
+              {{"Name", handle->context_name.value_or(handle->event_name)}});
+        });
   }
 
   {

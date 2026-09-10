@@ -43,10 +43,12 @@ class ObservableStoreClientTest : public StoreClientTestBase {
         std::make_unique<InMemoryStoreClient>(),
         fake_storage_operation_latency_in_ms_histogram_,
         fake_storage_operation_count_counter_,
-        clock_);
+        clock_,
+        metric_context_);
   }
 
   void TestMetrics() override {
+    metric_context_.run();
     auto counter_tag_to_value = fake_storage_operation_count_counter_.GetTagToValue();
     // 3 operations: Put, Get, Delete
     // Get operations include both Get() and GetEmpty() calls, so they're grouped together
@@ -70,6 +72,8 @@ class ObservableStoreClientTest : public StoreClientTestBase {
                                    "5000 from GetEmpty())";
       }
     }
+
+    metric_context_.run();
 
     auto latency_tag_to_value =
         fake_storage_operation_latency_in_ms_histogram_.GetTagToValue();
@@ -97,8 +101,12 @@ class ObservableStoreClientTableLabelTest : public ::testing::Test {
   void SetUp() override {
     io_service_pool_ = std::make_shared<IOServicePool>(1);
     io_service_pool_->Run();
-    store_client_ = std::make_shared<ObservableStoreClient>(
-        std::make_unique<InMemoryStoreClient>(), latency_, count_, clock_);
+    store_client_ =
+        std::make_shared<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(),
+                                                latency_,
+                                                count_,
+                                                clock_,
+                                                metric_context_);
   }
 
   void TearDown() override { io_service_pool_->Stop(); }
@@ -162,6 +170,8 @@ class ObservableStoreClientTableLabelTest : public ::testing::Test {
 
   void WaitPending() {
     ASSERT_TRUE(WaitForCondition([this] { return pending_ == 0; }, 5000));
+    metric_context_.restart();
+    metric_context_.run();
   }
 
   // Runs every instrumented operation once against `table`, waiting for each to
@@ -221,6 +231,7 @@ class ObservableStoreClientTableLabelTest : public ::testing::Test {
   }
 
   std::shared_ptr<IOServicePool> io_service_pool_;
+  boost::asio::io_context metric_context_;
   std::shared_ptr<StoreClient> store_client_;
   ray::FakeClock clock_;
   ray::observability::FakeHistogram latency_;
@@ -361,6 +372,8 @@ class MaybeObserveTest : public ::testing::Test {
                     /*overwrite=*/true,
                     {[&done](bool) { done = true; }, *io_service_pool_->Get()});
     ASSERT_TRUE(WaitForCondition([&done] { return done.load(); }, 5000));
+    metric_context_.restart();
+    metric_context_.run();
   }
 
   using Recorded =
@@ -384,6 +397,7 @@ class MaybeObserveTest : public ::testing::Test {
   ray::FakeClock clock_;
   ray::observability::FakeHistogram latency_;
   ray::observability::FakeCounter count_;
+  boost::asio::io_context metric_context_;
 };
 
 TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
@@ -391,7 +405,8 @@ TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
                              /*enabled=*/true,
                              latency_,
                              count_,
-                             clock_);
+                             clock_,
+                             metric_context_);
   PutAndWait(*client);
 
   EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", "JOB").value_or(0), 1);
@@ -401,7 +416,8 @@ TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
 
 TEST_F(MaybeObserveTest, RecordsNothingWhenDisabled) {
   auto delegate = std::make_shared<InMemoryStoreClient>();
-  auto client = MaybeObserve(delegate, /*enabled=*/false, latency_, count_, clock_);
+  auto client = MaybeObserve(
+      delegate, /*enabled=*/false, latency_, count_, clock_, metric_context_);
   // The kill switch must hand back the delegate itself, not a silent wrapper.
   EXPECT_EQ(client.get(), static_cast<StoreClient *>(delegate.get()));
 

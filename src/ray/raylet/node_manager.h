@@ -185,7 +185,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
       ray::observability::MetricInterface
           &node_manager_unexpected_worker_failure_total_count,
-      ClockInterface &clock);
+      ClockInterface &clock,
+      boost::asio::io_context &metric_context);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
