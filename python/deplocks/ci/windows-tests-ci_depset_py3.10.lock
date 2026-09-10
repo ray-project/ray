@@ -260,6 +260,7 @@ async-timeout==5.0.1 ; python_full_version < '3.12' \
     --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
     --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
     #   redis
 attrs==26.1.0 \
@@ -961,7 +962,9 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11' \
 execnet==2.1.2 ; python_full_version < '3.12' \
     --hash=sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd \
     --hash=sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec
-    # via pytest-shutil
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-shutil
 executing==2.2.1 \
     --hash=sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4 \
     --hash=sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017
@@ -3960,16 +3963,18 @@ py-partiql-parser==0.6.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   moto
-py-spy==0.4.1 ; python_full_version < '3.12' \
-    --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
-    --hash=sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a \
-    --hash=sha256:532d3525538254d1859b49de1fbe9744df6b8865657c9f0e444bf36ce3f19226 \
-    --hash=sha256:6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29 \
-    --hash=sha256:809094208c6256c8f4ccadd31e9a513fe2429253f48e20066879239ba12cd8cc \
-    --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
-    --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
-    --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
-    # via -r python/requirements.txt
+py-spy==0.4.2 ; python_full_version < '3.12' \
+    --hash=sha256:142887e984a4e541071c99a4401ff8c3770f255d329dbd0f64e8c1dd51882cce \
+    --hash=sha256:1ccf688393105111684435f035bc14ec3f22117dd2b85b2414612cf27a22755a \
+    --hash=sha256:24720573f95230653b457671a1dcc3c5a381fcf4e92677761e328a430ad251b2 \
+    --hash=sha256:7f1c6d9b0e2379ead5bf792df43f4cf36153aa79e6dda4fb8ac7740cf8017110 \
+    --hash=sha256:8b06a353c177677e4e1701b288d8c58e2f8d4208ee81a8048d9f72ba800918f8 \
+    --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
+    --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
+    --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements.txt
 py4j==0.10.9.7 \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
     --hash=sha256:85defdfd2b2376eb3abf5ca6474b51ab7e0de341c75a02f46dc9b5976f5a5c1b
@@ -4461,7 +4466,9 @@ pytest-docker-tools==3.1.3 \
 pytest-fixture-config==1.8.0 ; python_full_version < '3.12' \
     --hash=sha256:2324a4381a57afd2ca03188eed3fcb0faf38311893f9fb0d11a92003c332050b \
     --hash=sha256:c739895fe20851bdba53f246d0599aa389bc1a1cba48db2ecac0130576dc1b0e
-    # via pytest-virtualenv
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-virtualenv
 pytest-forked==1.4.0 \
     --hash=sha256:8b67587c8f98cbbadfdd804539ed5455b6ed03802203485dd2f53c1422d7440e \
     --hash=sha256:bbbb6717efc886b9d64537b41fb1497cfaf3c9601276be8da2cccfea5a3c8ad8
@@ -4495,7 +4502,9 @@ pytest-rerunfailures==11.1.2 \
 pytest-shutil==1.8.1 ; python_full_version < '3.12' \
     --hash=sha256:0793e347e07b9296d814ce33377ed348ce376ffac76c0e57b28bf84235499f51 \
     --hash=sha256:7dcc02e8a372098d51a98737e7f662e6edfd75cec7070a11e904141de49d866b
-    # via pytest-virtualenv
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx@c1ab2b33c784d04fa467211a15f89edf631107a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -4515,7 +4524,9 @@ pytest-timeout==2.1.0 \
 pytest-virtualenv==1.8.1 ; python_full_version < '3.12' \
     --hash=sha256:1bb6d4ad77d198ff19ba4259f78c685b24ec63a528037bc3a488f1c780bc6aa9 \
     --hash=sha256:7dca99d96d071e7f1a0073e9706cb165e11f15d80e24496ac26f4d9095471769
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
@@ -5431,7 +5442,9 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12' \
     --hash=sha256:e6d8cc7b14ade870168b9704ee44f9c55b468b9a00ed40e12d20fffd321193b5 \
     --hash=sha256:f0adfbcd264262797d429311843733da2d5c1ffb119fbfa6339269b6c0414113 \
     --hash=sha256:fbcfb4aa2eaa9a3038d2487e570ff93feb1dbe51c3a4663d7d9ab9f9a9f9a9d8
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-probability==0.24.0 \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
