@@ -229,7 +229,8 @@ NodeManager::NodeManager(
     ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
     ray::observability::MetricInterface
         &node_manager_unexpected_worker_failure_total_count,
-    ClockInterface &clock)
+    ClockInterface &clock,
+    boost::asio::io_context &metric_context)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -261,7 +262,8 @@ NodeManager::NodeManager(
       runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
-                           IsLocalhost(config.node_manager_address)),
+                           IsLocalhost(config.node_manager_address),
+                           metric_context),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),

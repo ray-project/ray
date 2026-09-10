@@ -67,7 +67,8 @@ class ObjectManagerGrpcService : public GrpcService {
   /// \param[in] handler The service handler that actually handle the requests.
   ObjectManagerGrpcService(instrumented_io_context &io_service,
                            ObjectManagerServiceHandler &service_handler)
-      : GrpcService(io_service), service_handler_(service_handler){};
+      : GrpcService(io_service), service_handler_(service_handler) {}
+  //  metric_context_(metric_context){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -77,7 +78,8 @@ class ObjectManagerGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token,
-      GrpcServerMetrics &server_metrics) override {
+      GrpcServerMetrics &server_metrics,
+      boost::asio::io_context &metric_context) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 

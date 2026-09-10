@@ -52,7 +52,8 @@ namespace rpc {
           auth_token,                                                              \
           MAX_ACTIVE_RPCS,                                                         \
           RECORD_METRICS,                                                          \
-          server_metrics));                                                        \
+          server_metrics,                                                          \
+          metric_context));                                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
@@ -106,12 +107,14 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
+             boost::asio::io_context &metric_context,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
              std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
+        metric_context_(metric_context),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -181,6 +184,8 @@ class GrpcServer {
   /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
+
+  boost::asio::io_context &metric_context_;
 
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
@@ -259,7 +264,8 @@ class GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token,
-      GrpcServerMetrics &server_metrics) = 0;
+      GrpcServerMetrics &server_metrics,
+      boost::asio::io_context &metric_context) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

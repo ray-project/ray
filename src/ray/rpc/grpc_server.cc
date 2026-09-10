@@ -184,8 +184,12 @@ void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
   RAY_CHECK(!cluster_id_auth_enabled || !cluster_id_.IsNil())
       << "Expected cluster ID for cluster ID authentication!";
   for (int i = 0; i < num_threads_; i++) {
-    service->InitServerCallFactories(
-        cqs_[i], &server_call_factories_, cluster_id_, auth_token_, server_metrics_);
+    service->InitServerCallFactories(cqs_[i],
+                                     &server_call_factories_,
+                                     cluster_id_,
+                                     auth_token_,
+                                     server_metrics_,
+                                     metric_context_);
   }
   services_.push_back(std::move(service));
 }
@@ -217,11 +221,11 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
-        server_call->HandleRequest();
+        server_call->HandleRequest(metric_context_);
         break;
       case ServerCallState::SENDING_REPLY:
         // GRPC has sent reply successfully, invoking the callback.
-        server_call->OnReplySent();
+        server_call->OnReplySent(metric_context_);
         // The rpc call has finished and can be deleted now.
         delete_call = true;
         // A new call should be suplied.
@@ -238,7 +242,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       // SENDING_REPLY. This can happen, for example, when the client deadline has
       // exceeded or the client side is dead.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
-        server_call->OnReplyFailed();
+        server_call->OnReplyFailed(metric_context_);
         // A new call should be suplied.
         need_new_call = true;
       }

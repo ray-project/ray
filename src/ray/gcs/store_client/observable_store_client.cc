@@ -29,16 +29,20 @@ void ObservableStoreClient::AsyncPut(const std::string &table_name,
                                      bool overwrite,
                                      Postable<void(bool)> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "Put"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "Put"}});
+  });
   delegate_->AsyncPut(table_name,
                       key,
                       std::move(data),
                       overwrite,
                       std::move(callback).OnInvocation([this, start]() {
                         auto end = clock_.NowUnixNanos();
-                        storage_operation_latency_in_ms_histogram_.Record(
-                            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-                            {{"Operation", "Put"}});
+                        boost::asio::post(metric_context_, [this, end, start]() {
+                          storage_operation_latency_in_ms_histogram_.Record(
+                              absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+                              {{"Operation", "Put"}});
+                        });
                       }));
 }
 
@@ -47,12 +51,16 @@ void ObservableStoreClient::AsyncGet(
     const std::string &key,
     ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "Get"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "Get"}});
+  });
   delegate_->AsyncGet(table_name, key, std::move(callback).OnInvocation([this, start]() {
     auto end = clock_.NowUnixNanos();
-    storage_operation_latency_in_ms_histogram_.Record(
-        absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-        {{"Operation", "Get"}});
+    boost::asio::post(metric_context_, [this, end, start]() {
+      storage_operation_latency_in_ms_histogram_.Record(
+          absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+          {{"Operation", "Get"}});
+    });
   }));
 }
 
@@ -60,12 +68,16 @@ void ObservableStoreClient::AsyncGetAll(
     const std::string &table_name,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "GetAll"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "GetAll"}});
+  });
   delegate_->AsyncGetAll(table_name, std::move(callback).OnInvocation([this, start]() {
     auto end = clock_.NowUnixNanos();
-    storage_operation_latency_in_ms_histogram_.Record(
-        absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-        {{"Operation", "GetAll"}});
+    boost::asio::post(metric_context_, [this, end, start]() {
+      storage_operation_latency_in_ms_histogram_.Record(
+          absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+          {{"Operation", "GetAll"}});
+    });
   }));
 }
 
@@ -88,13 +100,17 @@ void ObservableStoreClient::AsyncDelete(const std::string &table_name,
                                         const std::string &key,
                                         Postable<void(bool)> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "Delete"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "Delete"}});
+  });
   delegate_->AsyncDelete(
       table_name, key, std::move(callback).OnInvocation([this, start]() {
         auto end = clock_.NowUnixNanos();
-        storage_operation_latency_in_ms_histogram_.Record(
-            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-            {{"Operation", "Delete"}});
+        boost::asio::post(metric_context_, [this, end, start]() {
+          storage_operation_latency_in_ms_histogram_.Record(
+              absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+              {{"Operation", "Delete"}});
+        });
       }));
 }
 
@@ -102,13 +118,17 @@ void ObservableStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
                                              Postable<void(int64_t)> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "BatchDelete"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "BatchDelete"}});
+  });
   delegate_->AsyncBatchDelete(
       table_name, keys, std::move(callback).OnInvocation([this, start]() {
         auto end = clock_.NowUnixNanos();
-        storage_operation_latency_in_ms_histogram_.Record(
-            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-            {{"Operation", "BatchDelete"}});
+        boost::asio::post(metric_context_, [this, end, start]() {
+          storage_operation_latency_in_ms_histogram_.Record(
+              absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+              {{"Operation", "BatchDelete"}});
+        });
       }));
 }
 
@@ -121,13 +141,17 @@ void ObservableStoreClient::AsyncGetKeys(
     const std::string &prefix,
     Postable<void(std::vector<std::string>)> callback) {
   auto start = clock_.NowUnixNanos();
-  storage_operation_count_counter_.Record(1, {{"Operation", "GetKeys"}});
+  boost::asio::post(metric_context_, [this]() {
+    storage_operation_count_counter_.Record(1, {{"Operation", "GetKeys"}});
+  });
   delegate_->AsyncGetKeys(
       table_name, prefix, std::move(callback).OnInvocation([this, start]() {
         auto end = clock_.NowUnixNanos();
-        storage_operation_latency_in_ms_histogram_.Record(
-            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-            {{"Operation", "GetKeys"}});
+        boost::asio::post(metric_context_, [this, end, start]() {
+          storage_operation_latency_in_ms_histogram_.Record(
+              absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+              {{"Operation", "GetKeys"}});
+        });
       }));
 }
 

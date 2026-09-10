@@ -100,7 +100,8 @@ class GcsServer {
  public:
   GcsServer(const GcsServerConfig &config,
             const ray::gcs::GcsServerMetrics &metrics,
-            instrumented_io_context &main_service);
+            instrumented_io_context &main_service,
+            boost::asio::io_context &metric_context);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -328,6 +329,9 @@ class GcsServer {
   /// Declared last so it is stopped/destroyed before the io_contexts
   /// (owned by io_context_provider_) and metrics it references.
   std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
+
+  boost::asio::io_context &metric_context_;
+  std::thread metric_thread_;
 };
 
 }  // namespace gcs

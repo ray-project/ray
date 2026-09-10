@@ -194,7 +194,8 @@ class ObjectManager : public ObjectManagerInterface,
           const std::string &address,
           const int port,
           rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
-      instrumented_io_context &rpc_service);
+      instrumented_io_context &rpc_service,
+      boost::asio::io_context &metric_context);
 
   ~ObjectManager() override;
 
