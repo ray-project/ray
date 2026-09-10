@@ -41,12 +41,9 @@ Create a Placement Group (Reserve Resources)
 You can create a placement group using :func:`ray.util.placement_group`.
 Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`.
 
-Bundles are specified by a list of dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1, "GPU": 1}]``).
-
-- ``CPU`` corresponds to ``num_cpus`` as used in :func:`ray.remote <ray.remote>`.
-- ``GPU`` corresponds to ``num_gpus`` as used in :func:`ray.remote <ray.remote>`.
-- ``memory`` corresponds to ``memory`` as used in :func:`ray.remote <ray.remote>`
-- Other resources corresponds to ``resources`` as used in :func:`ray.remote <ray.remote>` (E.g., ``ray.init(resources={"disk": 1})`` can have a bundle of ``{"disk": 1}``).
+Bundles are specified by a list of resource dictionaries, e.g., ``[{"CPU": 1}, {"CPU": 1, "GPU": 1}]``.
+For details on how resource dictionary keys correspond to task and actor options such as ``num_cpus``
+and ``num_gpus``, see :ref:`resource-dict-remote-options`.
 
 Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately.
 
