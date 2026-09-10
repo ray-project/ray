@@ -1,9 +1,9 @@
-"""Tripwire: every datasource module that reads Arrow data from an external
+"""every datasource module that reads Arrow data from an external
 source must call ``raise_on_pickle_object_columns``.
 
 ``ray.data.arrow_pickled_object`` columns unpickle on access. A reader that hands
-such a column from an untrusted file to the user is a remote code execution bug
-(GHSA-2ch8-9c5v-84jf). This scan is heuristic: it flags modules that contain a
+such a column from an untrusted file to the user is a remote code execution bug.
+This scan is heuristic: it flags modules that contain a
 known Arrow-producing read call but never reference the gate. If a module only
 builds blocks from in-process Python values and matches by accident, add it to
 ``_ALLOWLIST`` with a reason.
@@ -76,9 +76,9 @@ def test_arrow_readers_call_pickle_object_gate(path: Path):
         f"{path.name} reads Arrow data from an external source ({reads}) but never "
         f"calls {_GATE}(). Unpickling untrusted 'ray.data.arrow_pickled_object' "
         f"columns executes arbitrary code. Call the gate right after the read and "
-        f"before yielding or materializing the table, and add a reject test; see "
-        f"python/ray/data/.claude/rules/datasource-pickle-gate.md. If this module "
-        f"only builds blocks from in-process Python values, add it to _ALLOWLIST."
+        f"before yielding or materializing the table, and add a reject test. If this "
+        f"module only builds blocks from in-process Python values, add it to "
+        f"_ALLOWLIST."
     )
 
 

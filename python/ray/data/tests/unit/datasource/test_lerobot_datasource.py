@@ -1,10 +1,3 @@
-"""Unit tests for the pickled-object gates in the LeRobot datasource.
-
-These run without ``lerobot`` installed (the module imports it lazily) and
-without a Ray cluster: they drive ``_read_lerobot_segment`` and the metadata
-pre-scan directly with a poisoned parquet file.
-"""
-
 import os
 import sys
 
