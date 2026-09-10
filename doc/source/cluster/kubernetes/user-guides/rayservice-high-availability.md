@@ -128,11 +128,11 @@ kind delete cluster
 
 GCS fault tolerance and zero-downtime upgrades work together with no extra configuration. Don't set `gcsFaultToleranceOptions.externalStorageNamespace`. The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) sample leaves it unset.
 
-KubeRay then derives the Redis storage namespace from the unique identifier (`metadata.uid`) that Kubernetes assigns to the RayCluster. That single default gives you both behaviors:
+KubeRay then derives the Redis storage namespace from `metadata.uid`, the unique identifier that Kubernetes assigns to the RayCluster. That single default produces both behaviors:
 
-* Within one RayCluster, that identifier doesn't change when the head Pod restarts or moves to another node, so the new head recovers the cluster metadata from Redis. Step 7 demonstrates this recovery.
+* Within one RayCluster, that identifier doesn't change when the head Pod restarts or moves to another node, so the new head recovers the cluster metadata from Redis. [Step 7](#step-7-delete-the-ray-head-pod) demonstrates this recovery.
 * Across a zero-downtime upgrade, KubeRay creates a second RayCluster, and Kubernetes assigns it a different identifier, so the new cluster gets its own namespace and can't read the old cluster's metadata. The operator waits for the new cluster to become ready before it switches traffic.
 
-Setting `externalStorageNamespace` yourself replaces both behaviors with one fixed value. A pinned namespace helps only when you delete a RayCluster and recreate it, and you want the replacement to adopt the previous metadata across the resulting change of identifier. The two clusters overlap during a RayService upgrade, so a shared namespace lets the new head read the old cluster's Serve metadata. The operator then treats those applications as the new cluster's own and can switch traffic before the new cluster is ready. See {ref}`Issue 10 <kuberay-raysvc-issue10>`.
+Setting `externalStorageNamespace` yourself replaces both behaviors with one fixed value. A pinned namespace helps only when you delete a RayCluster and recreate it, and want the replacement to adopt the previous metadata. Recreating the resource assigns a new identifier, so only a fixed namespace carries the metadata across. During a RayService upgrade, though, the two clusters overlap, and a shared namespace exposes the old cluster's Serve metadata to the new head. The operator then treats those applications as the new cluster's own and can switch traffic before the new cluster is ready. See {ref}`Issue 10 in the RayService troubleshooting guide <kuberay-raysvc-issue10>`.
 
-A zero-downtime upgrade also replaces the worker Pods, because KubeRay creates a new RayCluster with its own head and worker Pods. Head Pod recovery keeps the existing worker Pods, but an upgrade doesn't.
+A zero-downtime upgrade also replaces the worker Pods, because KubeRay creates a new RayCluster with its own head and worker Pods. Head Pod recovery, by contrast, keeps the existing worker Pods.
