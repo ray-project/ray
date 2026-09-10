@@ -3931,6 +3931,7 @@ opentelemetry-api==1.39.0 \
     --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
@@ -3939,7 +3940,9 @@ opentelemetry-api==1.39.0 \
 opentelemetry-exporter-otlp-proto-common==1.39.0 \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
     --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
-    # via opentelemetry-exporter-otlp-proto-http
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-http==1.39.0 \
     --hash=sha256:28d78fc0eb82d5a71ae552263d5012fa3ebad18dfd189bf8d8095ba0e65ee1ed \
     --hash=sha256:5789cb1375a8b82653328c0ce13a054d285f774099faf9d068032a49de4c7862
@@ -3947,11 +3950,14 @@ opentelemetry-exporter-otlp-proto-http==1.39.0 \
 opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
-    # via ray
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   ray
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-http
     #   ray
@@ -3959,6 +3965,7 @@ opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
     --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   ray
@@ -3966,7 +3973,9 @@ opentelemetry-sdk==1.39.0 \
 opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
-    # via opentelemetry-sdk
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-sdk
 orjson==3.11.8 \
     --hash=sha256:0022bb50f90da04b009ce32c512dc1885910daa7cb10b7b0cba4505b16db82a8 \
     --hash=sha256:003646067cc48b7fcab2ae0c562491c9b5d2cbd43f1e5f16d98fd118c5522d34 \

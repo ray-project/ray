@@ -1082,7 +1082,6 @@ databricks-sdk==0.123.0 \
     --hash=sha256:55ed566c48dcd25d8ea4ffec3f78236f63258078477e440529389c4bee95d80f \
     --hash=sha256:787068ccf1c537736bc6387486c15d2ac02937c876c980b5b2b43230a98e4d35
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   mlflow-tracing
 decorator==5.2.1 \
@@ -1188,10 +1187,6 @@ et-xmlfile==2.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   openpyxl
-etils==1.14.0 \
-    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
-    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
-    # via -r python/requirements/ml/dl-gpu-requirements.txt
 everett==3.1.0 \
     --hash=sha256:46175da5bcb06c193aa129e59714bca981344ff067c3a8bc2e625bc0b3dc01f6 \
     --hash=sha256:db13891b849e45e54faea93ee79881d12458c5378f5b9b7f806eeff03ce1de3c
@@ -3771,6 +3766,7 @@ opentelemetry-api==1.39.0 \
     --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3785,39 +3781,45 @@ opentelemetry-exporter-otlp-proto-common==1.39.0 \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
     --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
     # via
-    #   -r python/requirements/test-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-exporter-otlp-proto-grpc==1.39.0 \
     --hash=sha256:758641278050de9bb895738f35ff8840e4a47685b7e6ef4a201fe83196ba7a05 \
     --hash=sha256:7e7bb3f436006836c0e0a42ac619097746ad5553ad7128a5bd4d3e727f37fc06
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
 opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ray
 opentelemetry-instrumentation==0.60b0 \
     --hash=sha256:4e9fec930f283a2677a2217754b40aaf9ef76edae40499c165bc7f1d15366a74 \
     --hash=sha256:aaafa1483543a402819f1bdfb06af721c87d60dd109501f9997332862a35c76a
     # via
-    #   -r python/requirements/test-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-asgi==0.60b0 \
     --hash=sha256:928731218050089dca69f0fe980b8bfe109f384be8b89802d7337372ddb67b91 \
     --hash=sha256:9d76a541269452c718a0384478f3291feb650c5a3f29e578fdc6613ea3729cf3
     # via
-    #   -r python/requirements/test-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.60b0 \
     --hash=sha256:415c6602db01ee339276ea4cabe3e80177c9e955631c087f2ef60a75e31bfaee \
     --hash=sha256:5d34d67eb634a08bfe9e530680d6177521cd9da79285144e6d5a8f42683ed1b3
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3828,6 +3830,7 @@ opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
     --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3838,6 +3841,7 @@ opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
@@ -3847,7 +3851,7 @@ opentelemetry-util-http==0.60b0 \
     --hash=sha256:4f366f1a48adb74ffa6f80aee26f96882e767e01b03cd1cfb948b6e1020341fe \
     --hash=sha256:e42b7bb49bba43b6f34390327d97e5016eb1c47949ceaf37c4795472a4e3a82d
     # via
-    #   -r python/requirements/test-requirements.txt
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.4.0 \

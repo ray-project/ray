@@ -595,12 +595,6 @@ decorator==5.2.1 \
     --hash=sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360 \
     --hash=sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a
     # via gcsfs
-deprecated==1.3.1 \
-    --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
-    --hash=sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223
-    # via
-    #   opentelemetry-api
-    #   opentelemetry-semantic-conventions
 distlib==0.4.0 \
     --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
     --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
@@ -1082,10 +1076,6 @@ idna==3.11 \
     #   anyio
     #   requests
     #   yarl
-importlib-metadata==8.4.0 \
-    --hash=sha256:66f342cc6ac9818fc6ff340576acd24d65ba0b3efabb2b4ac08b598965a4a2f1 \
-    --hash=sha256:9a547d3bc3608b025f93d403fdd1aae741c24fbb8314df4b155675742ce303c5
-    # via opentelemetry-api
 isodate==0.7.2 \
     --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
     --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
@@ -1885,31 +1875,31 @@ opencensus-context==0.1.3 \
     --hash=sha256:073bb0590007af276853009fac7e4bab1d523c3f03baf4cb4511ca38967c6039 \
     --hash=sha256:a03108c3c10d8c80bb5ddf5c8a1f033161fa61972a9917f9b9b3a18517f0088c
     # via opencensus
-opentelemetry-api==1.27.0 \
-    --hash=sha256:953d5871815e7c30c81b56d910c707588000fff7a3ca1c73e6531911d53065e7 \
-    --hash=sha256:ed673583eaa5f81b5ce5e86ef7cdaf622f88ef65f0b9aab40b843dcae5bef342
+opentelemetry-api==1.44.0 \
+    --hash=sha256:67647e5e9566edcf421166fdf022b3537f818635daa852b289e34604dc6fb33a \
+    --hash=sha256:94b98c893a91b88657eaac1e3ba89618cdb85be6918196705354f34728b2cdef
     # via
     #   google-cloud-logging
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.48b0 \
-    --hash=sha256:46d2620b2b7223731103fd76faee2dd37d05316602574ce64ec376124aec7c29 \
-    --hash=sha256:a54342b597bdaeb799fd5414a789df84bc0d2f033258702d141d731590ab3b2d
+opentelemetry-exporter-prometheus==0.65b0 \
+    --hash=sha256:2777cbf41c403c119e10f418fce5d645c956b47f673a2ee120285d1d0c6df2d5 \
+    --hash=sha256:3b3d24b586d0ad9712c7b52b7d19c8a9dfbb318b9b284121b5f95e90ed019367
     # via ray
 opentelemetry-proto==1.39.1 \
     --hash=sha256:22cdc78efd3b3765d09e68bfbd010d4fc254c9818afd0b6b423387d9dee46007 \
     --hash=sha256:6c8e05144fc0d3ed4d22c2289c6b126e03bcd0e6a7da0f16cedd2e1c2772e2c8
     # via ray
-opentelemetry-sdk==1.27.0 \
-    --hash=sha256:365f5e32f920faf0fd9e14fdfd92c086e317eaa5f860edba9cdc17a380d9197d \
-    --hash=sha256:d525017dea0ccce9ba4e0245100ec46ecdc043f2d7b8315d56b19aff0904fa6f
+opentelemetry-sdk==1.44.0 \
+    --hash=sha256:cebe7f65dc12f26ead75c6064de12fd2a9052e5060c0272d402cfa203aae123b \
+    --hash=sha256:df081c4c6bcfdb1211e3e86140376792643128a25f8d72d1d27675936e7e96ad
     # via
     #   opentelemetry-exporter-prometheus
     #   ray
-opentelemetry-semantic-conventions==0.48b0 \
-    --hash=sha256:12d74983783b6878162208be57c9effcb89dc88691c64992d70bb89dc00daa1a \
-    --hash=sha256:a0de9f45c413a8669788a38569c7e0a11ce6ce97861a628cca785deecdc32a1f
+opentelemetry-semantic-conventions==0.65b0 \
+    --hash=sha256:1cacde7b0ad306f84c5ef08c3dbe1bbaf20165bba6f8bff43b670e555a086bcb \
+    --hash=sha256:f9b2b81e9d5b64f11bc952075e7e9c7fb0aab075c7fd1c46d597f1b919852d60
     # via opentelemetry-sdk
 opt-einsum==3.4.0 \
     --hash=sha256:69bb92469f86a1565195ece4ac0323943e83477171b91d24c35afe028a90d7cd \
@@ -2996,7 +2986,9 @@ typing-extensions==4.15.0 \
     #   flax
     #   grpcio
     #   gymnasium
+    #   opentelemetry-api
     #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   orbax-checkpoint
     #   pydantic
     #   pydantic-core
@@ -3362,7 +3354,6 @@ wrapt==2.1.1 \
     --hash=sha256:feff14b63a6d86c1eee33a57f77573649f2550935981625be7ff3cb7342efe05 \
     --hash=sha256:ff562067485ebdeaef2fa3fe9b1876bc4e7b73762e0a01406ad81e2076edcebf
     # via
-    #   deprecated
     #   dm-tree
     #   smart-open
 xprof==2.22.1 \
@@ -3514,9 +3505,7 @@ yarl==1.22.0 \
 zipp==3.23.0 \
     --hash=sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e \
     --hash=sha256:a07157588a12518c9d4034df3fbbee09c814741a33ff63c05fa29d26a2404166
-    # via
-    #   etils
-    #   importlib-metadata
+    # via etils
 
 # The following packages were excluded from the output:
 # ray

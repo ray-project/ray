@@ -1,7 +1,6 @@
 # If you make changes below this line, please also make the corresponding changes to `dl-cpu-requirements.txt`!
 
-# Keep this in sync with dl-cpu-requirements.txt: TensorFlow 2.19.1 is needed
-# by the Python 3.10–3.11 Protobuf 4.25.8 workaround.
+# TensorFlow 2.19 keeps protobuf 5.27.5 compatible on Python 3.10–3.11.
 tensorflow==2.19.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow==2.20.0; python_version >= '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow-macos==2.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'
@@ -9,8 +8,6 @@ tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm6
 tensorboard==2.19.0; python_version < '3.12'
 tensorboard==2.20.0; python_version >= '3.12'
 tensorflow-probability==0.24.0
-etils==1.5.2; python_version < '3.12'
-etils==1.14.0; python_version >= '3.12'
 tf-keras==2.19.0; python_version < '3.12'
 tf-keras==2.20.0; python_version >= '3.12'
 

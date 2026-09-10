@@ -517,13 +517,6 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ray
-deprecated==1.3.1 \
-    --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
-    --hash=sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   opentelemetry-api
-    #   opentelemetry-semantic-conventions
 distlib==0.4.0 \
     --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
     --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
@@ -1608,36 +1601,36 @@ opencensus-context==0.1.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   opencensus
-opentelemetry-api==1.27.0 \
-    --hash=sha256:953d5871815e7c30c81b56d910c707588000fff7a3ca1c73e6531911d53065e7 \
-    --hash=sha256:ed673583eaa5f81b5ce5e86ef7cdaf622f88ef65f0b9aab40b843dcae5bef342
+opentelemetry-api==1.39.0 \
+    --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
+    --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.48b0 \
-    --hash=sha256:46d2620b2b7223731103fd76faee2dd37d05316602574ce64ec376124aec7c29 \
-    --hash=sha256:a54342b597bdaeb799fd5414a789df84bc0d2f033258702d141d731590ab3b2d
+opentelemetry-exporter-prometheus==0.60b0 \
+    --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
+    --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ray
-opentelemetry-proto==1.27.0 \
-    --hash=sha256:33c9345d91dafd8a74fc3d7576c5a38f18b7fdf8d02983ac67485386132aedd6 \
-    --hash=sha256:b133873de5581a50063e1e4b29cdcf0c5e253a8c2d8dc1229add20a4c3830ace
+opentelemetry-proto==1.39.0 \
+    --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
+    --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ray
-opentelemetry-sdk==1.27.0 \
-    --hash=sha256:365f5e32f920faf0fd9e14fdfd92c086e317eaa5f860edba9cdc17a380d9197d \
-    --hash=sha256:d525017dea0ccce9ba4e0245100ec46ecdc043f2d7b8315d56b19aff0904fa6f
+opentelemetry-sdk==1.39.0 \
+    --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
+    --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   opentelemetry-exporter-prometheus
     #   ray
-opentelemetry-semantic-conventions==0.48b0 \
-    --hash=sha256:12d74983783b6878162208be57c9effcb89dc88691c64992d70bb89dc00daa1a \
-    --hash=sha256:a0de9f45c413a8669788a38569c7e0a11ce6ce97861a628cca785deecdc32a1f
+opentelemetry-semantic-conventions==0.60b0 \
+    --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
+    --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   opentelemetry-sdk
@@ -1916,18 +1909,18 @@ proto-plus==1.27.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   google-api-core
-protobuf==4.25.8 \
-    --hash=sha256:077ff8badf2acf8bc474406706ad890466274191a48d0abd3bd6987107c9cde5 \
-    --hash=sha256:15a0af558aa3b13efef102ae6e4f3efac06f1eea11afb3a57db2901447d9fb59 \
-    --hash=sha256:27d498ffd1f21fb81d987a041c32d07857d1d107909f5134ba3350e1ce80a4af \
-    --hash=sha256:504435d831565f7cfac9f0714440028907f1975e4bed228e58e72ecfff58a1e0 \
-    --hash=sha256:6135cf8affe1fc6f76cced2641e4ea8d3e59518d1f24ae41ba97bcad82d397cd \
-    --hash=sha256:83e6e54e93d2b696a92cad6e6efc924f3850f82b52e1563778dfab8b355101b0 \
-    --hash=sha256:9ad7ef62d92baf5a8654fbb88dac7fa5594cfa70fd3440488a5ca3bfc6d795a7 \
-    --hash=sha256:bd551eb1fe1d7e92c1af1d75bdfa572eff1ab0e5bf1736716814cdccdb2360f9 \
-    --hash=sha256:ca809b42f4444f144f2115c4c1a747b9a404d590f18f37e9402422033e464e0f \
-    --hash=sha256:d552c53d0415449c8d17ced5c341caba0d89dbf433698e1436c8fa0aae7808a3 \
-    --hash=sha256:f4510b93a3bec6eba8fd8f1093e9d7fb0d4a24d1a81377c10c0e5bbfe9e4ed24
+protobuf==5.27.5 \
+    --hash=sha256:03a25e0b2b0271bc63fe009d30890ba907fd36dbe2b8e4851da4bb893d251d05 \
+    --hash=sha256:56cb4f9ade31597d06a5aca264cb5d9bf445dc07758296004ead080ec8e4087c \
+    --hash=sha256:5aa37101a985559722e84badf583532b0ec92616a2cc5d3f59f6152f136ca46a \
+    --hash=sha256:7fa81bc550201144a32f4478659da06e0b2ebe4d5303aacce9a202a1c3d5178d \
+    --hash=sha256:83fc15159713bb1de8e24e025d8739c6c9c6856021d2834d6feb0d1d5c6ec3c6 \
+    --hash=sha256:99c6f0e2406c7b755f73851c63ac79e9087336c36a2cc4a46be82b2742af67c9 \
+    --hash=sha256:9dc0a9b61279b04aeff203cf40a3b69bf74e06666ddf264f9860f1e88de01d8e \
+    --hash=sha256:aab519ebdc1bd7469e7df4011545ff4f81decad6d02f0185ddbe6ee496f1d940 \
+    --hash=sha256:b46647660bc433a43519af7faabe424bf2feb8db6e2293e6906c7aa3a1abefe2 \
+    --hash=sha256:c84672b87840e2250a209481c74301b36677c2a19eabd3cc7a73810207350995 \
+    --hash=sha256:ff4e9db9a21c090f39a6ac91b89262ff1ce49c1fee589ae87c3386f4ad1b2e27
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   google-api-core
@@ -2529,7 +2522,9 @@ typing-extensions==4.15.0 \
     #   grpcio
     #   gymnasium
     #   multidict
+    #   opentelemetry-api
     #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   pyopenssl
@@ -2834,7 +2829,6 @@ wrapt==1.17.3 \
     --hash=sha256:fd341868a4b6714a5962c1af0bd44f7c404ef78720c7de4892901e540417111c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   deprecated
     #   dm-tree
 yarl==1.23.0 \
     --hash=sha256:03214408cfa590df47728b84c679ae4ef00be2428e11630277be0727eba2d7cc \
