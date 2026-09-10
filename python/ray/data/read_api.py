@@ -143,6 +143,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
     from ray.data.catalog import Catalog
 
 T = TypeVar("T")
@@ -489,7 +490,7 @@ def _resolve_read_remote_args(
 
 @wrap_auto_init
 def _read_datasource_v2(
-    datasource,
+    datasource: "DataSourceV2",
     *,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -522,6 +523,11 @@ def _read_datasource_v2(
 
     Schema inference happens once on the driver by sampling the first
     file — no caching layer needed.
+
+    This function is the whole framework <-> datasource contract: every
+    attribute it reads off ``datasource`` is declared on ``DataSourceV2``, and
+    the datasource object is not referenced after it returns (``ReadFiles``
+    keeps only ``datasource.name``).
     """
     import time
 
@@ -629,7 +635,7 @@ def _read_datasource_v2(
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
     #       time, rather than at the composition time (for backward-compatibility)
-    shuffle = getattr(datasource, "shuffle", None)
+    shuffle = datasource.shuffle
 
     def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
         return (

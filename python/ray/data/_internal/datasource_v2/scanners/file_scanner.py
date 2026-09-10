@@ -34,14 +34,3 @@ class FileScanner(Scanner[FileManifest]):
 
     def __post_init__(self) -> None:
         _validate_shuffle_arg(self.shuffle)
-
-    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Return a filtered view of ``manifest``.
-
-        Default: identity. Subclasses that support file-level predicate
-        pruning (e.g. :class:`ArrowFileScanner`'s ``partition_predicate``)
-        override this to drop rows whose partition values fail the
-        predicate. Invoked per-block from
-        :func:`plan_read_files_op.do_read`.
-        """
-        return manifest

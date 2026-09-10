@@ -21,7 +21,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    List,
+    Literal,
     Optional,
+    Union,
 )
 
 import pyarrow as pa
@@ -40,6 +43,7 @@ if TYPE_CHECKING:
         InMemorySizeEstimator,
     )
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 @DeveloperAPI
@@ -67,19 +71,24 @@ class DatasourceCategory(Enum):
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
-    DataSourceV2 is the entry point for reading data from a source. It provides:
-    1. File listing (for file-based sources) - via _get_file_indexer()
-    2. Schema inference
-    3. Size estimation
-    4. Scanner creation
+    The framework touches a datasource in exactly one place,
+    ``ray.data.read_api._read_datasource_v2``: it builds the
+    ``ListFiles -> ReadFiles`` logical plan from the datasource and then drops
+    it. Every attribute that function reads is declared here, so a subclass
+    that implements the abstract members works end to end. The abstract
+    members are :attr:`paths`, :attr:`filesystem`, :meth:`_get_file_indexer`,
+    :attr:`schema_needs_file_sample`, :meth:`infer_schema` and
+    :meth:`create_scanner`; everything else has a working default.
 
-    Subclasses should implement the abstract methods and can optionally
-    override _get_file_indexer(), get_size_estimator(), and optionally
-    get_file_partitioner() for file-based sources.
+    The framework is file-based today -- ``_read_datasource_v2`` always builds
+    a ``ListFiles`` op -- which is why ``paths``, ``filesystem`` and
+    ``_get_file_indexer`` live on this base class. When a non-file source (a
+    database scan, say) is added they move down into a ``FileDataSourceV2``
+    subclass and ``_read_datasource_v2`` branches on which one it received.
 
     Example::
 
-        datasource = ParquetDatasourceV2()
+        datasource = ParquetDatasourceV2(paths)
         indexer = datasource._get_file_indexer()
         # List files with optional sampling
         for manifest in indexer.list_files(paths, filesystem=fs):
@@ -130,15 +139,64 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         return self._supports_distributed_reads
 
-    def _get_file_indexer(self) -> Optional[FileIndexer]:
-        """Return FileIndexer component if applicable.
+    @property
+    @abstractmethod
+    def paths(self) -> List[str]:
+        """Listing inputs. Each becomes the input of one ``ListFiles`` task and
+        is handed to :meth:`_get_file_indexer`'s ``list_files`` unread: the
+        framework never interprets them. File sources return the root files or
+        directories to walk; a catalog- or engine-backed source, whose indexer
+        already knows what to read, returns one identifier label. Must be
+        non-empty: with no paths ``ListFiles`` schedules no task and the read
+        is silently empty.
 
-        Override this for file-based datasources to provide file discovery.
+        Also recorded as ``ListFiles.source_paths`` for lineage tracking.
+        """
+        ...
 
-        Returns:
-            FileIndexer instance, or None for non-file-based sources.
+    @property
+    @abstractmethod
+    def filesystem(self) -> Optional["FileSystem"]:
+        """PyArrow filesystem the indexer and scanner should read through, or
+        ``None`` when they do their own IO.
+
+        The framework only forwards it -- to ``ListFiles``, to
+        ``sample_files`` and to :meth:`create_scanner` -- and never dereferences
+        it, so whether ``None`` is acceptable is decided by the components the
+        datasource itself returns. ``NonSamplingFileIndexer`` and
+        ``FooterFileIndexer`` require one; resolve it in ``__init__`` (see
+        ``_resolve_paths_and_filesystem``). A source read through its own
+        library (PyIceberg's ``FileIO``, Lance, hudi-rs) returns ``None``.
+        """
+        ...
+
+    @property
+    def file_extensions(self) -> Optional[List[str]]:
+        """File extensions to keep while listing; ``None`` keeps every file."""
+        return None
+
+    @property
+    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
+        """File-level shuffle the user asked for; ``None`` means no shuffle.
+
+        ``"files"`` shuffles with a seed drawn per execution; a
+        :class:`FileShuffleConfig` pins the seed.
         """
         return None
+
+    @abstractmethod
+    def _get_file_indexer(self) -> FileIndexer:
+        """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
+        ``FileManifest`` blocks.
+
+        Abstract rather than defaulted: the framework hands the result straight
+        to ``ListFiles`` and to schema sampling, neither of which accepts
+        ``None``, and a silent default would commit a new format to whole-file
+        chunking without anyone choosing it. Formats without usable file
+        metadata return ``NonSamplingFileIndexer``; Parquet returns
+        ``FooterFileIndexer``.
+        """
+        ...
 
     def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
         """Partitioner that groups this source's listing rows into read units.

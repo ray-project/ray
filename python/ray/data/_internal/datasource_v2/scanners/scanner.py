@@ -20,6 +20,8 @@ class Scanner(ABC, Generic[InputSplit]):
     The Scanner is responsible for:
     1. Determining the output schema after all projections
     2. Creating Reader instances configured with all pushdowns
+    3. Optionally dropping parts of an input split it knows it will not read
+       (:meth:`prune_manifest`)
 
     Splitting the input into parallel work units used to live here as a
     ``plan()`` method. That responsibility now belongs to the listing-side
@@ -55,6 +57,17 @@ class Scanner(ABC, Generic[InputSplit]):
         both must agree.
         """
         return False
+
+    def prune_manifest(self, input_split: InputSplit) -> InputSplit:
+        """Drop the parts of ``input_split`` this scan is known not to read.
+
+        Called by ``plan_read_files_op.do_read`` on every incoming split before
+        ``create_reader().read()``. Default: return it unchanged. A scanner with
+        a pushed-down file-level predicate (``ArrowFileScanner`` and its
+        ``partition_predicate``) overrides this to drop files whose partition
+        values fail it.
+        """
+        return input_split
 
     @abstractmethod
     def create_reader(self) -> Reader[InputSplit]:
