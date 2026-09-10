@@ -23,10 +23,6 @@ try:
         CompletionResponse as _CompletionResponse,
         CompletionStreamResponse as _CompletionStreamResponse,
     )
-    from vllm.entrypoints.serve.engine.protocol import (
-        ErrorInfo as _ErrorInfo,
-        ErrorResponse as _ErrorResponse,
-    )
     from vllm.entrypoints.pooling.embed.protocol import (
         EmbeddingChatRequest as _EmbeddingChatRequest,
         EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
@@ -35,6 +31,10 @@ try:
     from vllm.entrypoints.pooling.scoring.protocol import (
         ScoreResponse as _ScoreResponse,
         ScoreTextRequest as _ScoreTextRequest,
+    )
+    from vllm.entrypoints.serve.engine.protocol import (
+        ErrorInfo as _ErrorInfo,
+        ErrorResponse as _ErrorResponse,
     )
     from vllm.entrypoints.serve.tokenize.protocol import (
         DetokenizeRequest as _DetokenizeRequest,
