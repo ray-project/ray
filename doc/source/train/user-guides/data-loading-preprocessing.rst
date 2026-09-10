@@ -608,9 +608,9 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
 
     * - Stage
       - What it covers
-    * - Production wait
+    * - Production Wait
       - Waiting for the upstream Ray Data pipeline to produce the next block. Points at the data pipeline rather than at the training worker.
-    * - Data transfer
+    * - Data Transfer
       - Resolving and transferring blocks to the training worker, including cross-node object store transfers.
     * - Batching
       - Building batches out of blocks, including slicing and local shuffle buffer operations.
@@ -621,14 +621,14 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
     * - Finalize
       - Running your ``finalize_fn``, which for GPU training is typically the host-to-device transfer.
 
-The dominant band is where the time goes. For instance, a large **production wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+The dominant band is where the time goes. For instance, a large **Production Wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
 
 .. figure:: ../images/data_ingestion/data_loading_by_stage.png
     :align: center
     :alt: Stacked chart in which the collate band fills about 93 percent of the plot and batching fills the remainder.
 
     **Percentage Data Loading Breakdown by Stage** for the same run. Collate
-    accounts for roughly 93% of data loading time and batching for most of the
+    accounts for roughly 93% of data loading time and Batching for most of the
     rest, so the bottleneck is on the training worker rather than upstream.
 
 .. note::
@@ -680,9 +680,9 @@ Choosing a fix
       - Where to look next
     * - Collate dominates the breakdown
       - :ref:`avoid-heavy-collate-fn` and :ref:`scaling_collation_functions`
-    * - Data transfer or format dominates the breakdown
+    * - Data Transfer or Format dominates the breakdown
       - :ref:`prefetching-batches`
-    * - Production wait dominates the breakdown
+    * - Production Wait dominates the breakdown
       - :ref:`adding-cpu-only-nodes` and :ref:`dataset_cache_performance`
     * - Production throughput consistently exceeds ingest throughput
       - :ref:`balancing-data-production-consumption`
