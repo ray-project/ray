@@ -23,6 +23,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/internal/errors",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/internal/common",
         "//go/pkg/errors",
         "//go/pkg/ids",
     ],

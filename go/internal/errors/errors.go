@@ -38,6 +38,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/pkg/ids"
 )
 
@@ -840,12 +841,11 @@ func getPID() int {
 	return os.Getpid()
 }
 
-// getIPAddress returns the current node IP address.
-// Returns empty string if IP address cannot be determined.
+// getIPAddress returns the current node IP address via the shared network
+// detector (go/internal/common does not import this package, so there is no
+// import cycle). Errors carry the node IP to aid debugging across machines.
 func getIPAddress() string {
-	// TODO: Implement IP address detection
-	// For now, return empty string
-	return ""
+	return common.GetNodeIpAddress(nil)
 }
 
 // SerializeError serializes a TaskExecutionError to JSON bytes.

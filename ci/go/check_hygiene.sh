@@ -23,7 +23,7 @@ check_headers() {
       echo "MISSING LICENSE HEADER: $f"
       fail=1
     fi
-  done < <(find "${TARGETS[@]}" -type f \( -name '*.go' -o -name '*.cc' -o -name '*.h' -o -name 'BUILD.bazel' \) 2>/dev/null)
+  done < <(find "${TARGETS[@]}" -type f \( -name '*.go' -o -name '*.cc' -o -name '*.h' -o -name 'BUILD.bazel' \) )
 }
 
 check_no_cjk() {
