@@ -2608,6 +2608,7 @@ class Replica:
         c = RayServegRPCContext(context)
         request_id = c.request_id() or generate_request_id()
         c.set_trailing_metadata([("request_id", request_id)])
+        multiplexed_model_id = c.multiplexed_model_id() or ""
 
         # If the request targets a different application, return NOT_FOUND.
         # If no application is specified, serve this replica's app.
@@ -2643,8 +2644,7 @@ class Replica:
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate this.
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
             route=self._deployment_id.app_name,
             tracing_context=self.get_grpc_tracing_context(c),
             is_streaming=is_streaming,

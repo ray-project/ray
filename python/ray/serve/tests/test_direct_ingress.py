@@ -44,6 +44,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     get_application_urls,
     ping_grpc_list_applications,
+    ping_grpc_model_multiplexing,
     send_signal_on_cancellation,
 )
 from ray.serve.autoscaling_policy import default_autoscaling_policy
@@ -59,6 +60,7 @@ from ray.serve.schema import (
     ServeInstanceDetails,
 )
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
 
 
 @ray.remote
@@ -433,6 +435,16 @@ def test_multiplexed_model_id(
     )
     assert response.status_code == 200, response.text
     assert response.text == "adapter"
+
+
+def test_grpc_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
+    serve.run(multiplexed_g)
+    for grpc_url in get_application_urls("gRPC", from_proxy_manager=True):
+        channel = grpc.insecure_channel(grpc_url)
+        try:
+            ping_grpc_model_multiplexing(channel, SERVE_DEFAULT_APP_NAME)
+        finally:
+            channel.close()
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
