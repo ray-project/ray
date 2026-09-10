@@ -547,6 +547,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: ``py_executable`` is new functionality and currently experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
+  Note: For ``uv`` users, do **not** set ``py_executable='uv run'`` manually. Since Ray 2.47 the ``uv`` integration is automatic when you
+  launch the driver with ``uv run`` (the hook sets ``py_executable`` to ``uv run --python X.Y.Z python`` automatically). Providing the bare
+  ``'uv run'`` value is deprecated and now raises a ``ValueError`` with guidance to remove it; jobs succeed without ``py_executable``.
+
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field uses the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
   Note: In accordance with ``.gitignore`` syntax, if there is a separator (``/``) at the beginning or middle (or both) of the pattern, then the pattern is interpreted relative to the level of the ``working_dir``.
