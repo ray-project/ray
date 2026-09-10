@@ -133,8 +133,9 @@ class AutoscalingActorPool(ABC):
         return self.select_actors() is not None
 
     @abstractmethod
-    def scale(self, req: ActorPoolScalingRequest):
-        """Applies autoscaling action"""
+    def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
+        """Applies autoscaling action, returning the number of actors added
+        (positive) or removed (negative), or ``None`` if nothing was applied."""
         ...
 
     @abstractmethod
