@@ -416,8 +416,10 @@ You may observe that deployments are scaling down too quickly. Instead, you may 
 (serve-custom-autoscaling-policies)=
 ## Custom autoscaling policies
 
-:::{warning}
-Custom autoscaling policies are experimental and may change in future releases.
+:::{note}
+Custom autoscaling policies are a {ref}`beta <api-stability-beta>` feature. The feature is
+complete and supported for production use. Backwards-incompatible changes are still
+possible, but Ray keeps them minimal and announces them with a deprecation period.
 :::
 
 Ray Serve's built-in, request-driven autoscaling works well for most apps. Use **custom autoscaling policies** when you need more control—e.g., scaling on external metrics (CloudWatch, Prometheus), anticipating predictable traffic (scheduled batch jobs), or applying business logic that goes beyond queue thresholds.
