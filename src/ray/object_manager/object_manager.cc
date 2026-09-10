@@ -111,7 +111,7 @@ ObjectManager::ObjectManager(
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
   auto object_is_local = [this](const ObjectID &object_id) {
-    return local_plasma_objects_.count(object_id) != 0;
+    return local_plasma_objects_.contains(object_id);
   };
   auto send_pull_request = [this](const std::vector<ObjectID> &object_ids,
                                   const NodeID &client_id) {
@@ -179,7 +179,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
   const ObjectID &object_id = object_info.object_id;
   RAY_LOG(DEBUG) << "Object added " << object_id;
-  RAY_CHECK(local_plasma_objects_.count(object_id) == 0);
+  RAY_CHECK(!local_plasma_objects_.contains(object_id));
   local_plasma_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
@@ -207,7 +207,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   auto it = local_plasma_objects_.find(object_id);
   RAY_CHECK(it != local_plasma_objects_.end());
-  auto object_info = it->second.object_info;
+  ObjectInfo object_info = it->second.object_info;
   local_plasma_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_plasma_objects_.empty() || used_memory_ == 0);
@@ -371,7 +371,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
       << "Push object on " << self_node_id_ << " to " << node_id << " of object";
   // ObjectManager's local_plasma_objects_ is only a lagging mirror of plasma, so use it
   // as a hint and let PushFromPlasma's read decide (false = not actually resident).
-  const bool in_plasma_mirror = local_plasma_objects_.count(object_id) != 0;
+  const bool in_plasma_mirror = local_plasma_objects_.contains(object_id);
   if (in_plasma_mirror && PushFromPlasma(object_id, node_id)) {
     return;
   }

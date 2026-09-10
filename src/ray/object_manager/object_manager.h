@@ -442,8 +442,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   instrumented_io_context &rpc_service_;
 
-  /// Lagging mirror of objects this ObjectManager believes are resident in the
-  /// local plasma store (metadata used for pushes/pulls). Updated from plasma
+  /// Potentially lagging mirror of objects this ObjectManager believes are resident in
+  /// the local plasma store (metadata used for pushes/pulls). Updated from plasma
   /// add/delete notifications, so an entry may briefly remain after the object
   /// has already left plasma (eviction or spill).
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_plasma_objects_;
