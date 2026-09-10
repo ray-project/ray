@@ -284,7 +284,8 @@ class DataIterator(abc.ABC):
                     )
             finally:
                 # Release the streaming executor on early termination or UDF errors.
-                windows.close()
+                if hasattr(windows, "close"):
+                    windows.close()
 
         return _IterableFromIterator(_create_iterator)
 

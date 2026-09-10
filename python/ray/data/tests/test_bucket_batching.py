@@ -104,6 +104,28 @@ def test_closes_input_iterator(fail):
     assert closed == [True]
 
 
+@pytest.mark.parametrize("fail", [False, True])
+def test_input_iterator_without_close(fail):
+    iterator = Mock()
+    iterator.iter_batches.return_value = [pa.table({"length": [1, 2, 3]})]
+    error = RuntimeError("length computation failed")
+
+    def length_fn(row):
+        if fail:
+            raise error
+        return row["length"]
+
+    batches = DataIterator.iter_bucket_batches(
+        iterator, max_tokens=3, length_fn=length_fn
+    )
+    if fail:
+        with pytest.raises(RuntimeError) as exc_info:
+            list(batches)
+        assert exc_info.value is error
+    else:
+        assert [batch["length"].tolist() for batch in batches] == [[1, 2], [3]]
+
+
 @pytest.mark.parametrize("use_iterator", [False, True])
 @pytest.mark.parametrize("buffer_size", [1, 4, 100])
 @pytest.mark.parametrize("prefetch_batches", [0, 1])
