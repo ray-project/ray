@@ -40,14 +40,12 @@ from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
     DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S,
-    DEFAULT_NCCLRAS_BINARY_PATH,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
     NCCL_RAS_ADDR_ENV_VAR,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
-    NCCLRAS_BINARY_PATH_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
@@ -397,10 +395,11 @@ class RASPoller:
     human-readable ``-f text`` report at hang time.
     """
 
-    def __init__(self, worker_group: WorkerGroup, binary_path: str, interval_s: float):
+    def __init__(self, worker_group: WorkerGroup, interval_s: float):
         self._worker_group = worker_group
-        self._binary_path = binary_path
         self._interval_s = interval_s
+
+        self._binary_path = "ncclras"
         self._stop = threading.Event()
         self._results: "queue.SimpleQueue[Union[RASReport, RASQueryError]]" = (
             queue.SimpleQueue()
@@ -508,12 +507,8 @@ class RASPoller:
             )
             result = ray.get(ref, timeout=_NCCL_RAS_QUERY_TIMEOUT_S)
         except GetTimeoutError:
-            ray.cancel(ref)
             raise RASQueryError("query_timeout")
         except Exception as e:  # noqa: BLE001
-            # ``ref`` is still ``None`` when ``execute_async`` itself failed.
-            if ref is not None:
-                ray.cancel(ref)
             raise RASQueryError("query_error", str(e))
 
         if not result["ok"]:
@@ -521,8 +516,7 @@ class RASPoller:
             if reason == "binary_not_found":
                 raise RASQueryError(
                     reason,
-                    f"binary {self._binary_path!r} not found on the worker. "
-                    f"Set {NCCLRAS_BINARY_PATH_ENV_VAR} to a valid path",
+                    f"binary {self._binary_path!r} not found on the worker.",
                     fatal=True,
                 )
             if reason == "unsupported_f_option":
@@ -561,9 +555,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """
 
     def __init__(self):
-        self._binary_path = os.environ.get(
-            NCCLRAS_BINARY_PATH_ENV_VAR, DEFAULT_NCCLRAS_BINARY_PATH
-        )
         self._poll_interval_s = env_float(
             NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S
         )
@@ -634,9 +625,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._retire_poller()
         if self._is_ras_degraded:
             return
-        self._ras_poller = RASPoller(
-            worker_group, self._binary_path, self._poll_interval_s
-        )
+        self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
         self._ras_poller.start()
 
     def before_worker_group_shutdown(self, worker_group):
@@ -914,7 +903,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                         rank,
                         _STACK_DUMP_TIMEOUT_S,
                     )
-                    ray.cancel(ref)
                     file.write_text(
                         f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
                     )

@@ -115,9 +115,7 @@ DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 # torchft lighthouse address
 TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 
-# NCCL RAS listen address (``host:port``), owned by NCCL. Ray Train never
-# supplies a default: when unset, `ncclras` uses whatever default the installed
-# NCCL ships with.
+# NCCL RAS listen address (``host:port``)
 NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 
 # Environment variables to propagate from the driver to the controller,
@@ -156,9 +154,6 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
 # Feature flag for the NCCL RAS hang detector callback.
 ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
-# Path to the `ncclras` client binary (looked up on PATH by default).
-NCCLRAS_BINARY_PATH_ENV_VAR = "RAY_TRAIN_NCCLRAS_PATH"
-DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
 
 # How often (seconds) to query the NCCL RAS subsystem on a worker
 NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S"
@@ -169,9 +164,9 @@ DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
 
 # Action to take on a confirmed hang
 NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
-NCCL_RAS_ACTION_FAIL = "fail"  # raises (non-retryable) NCCLHangError
+NCCL_RAS_ACTION_FAIL = "fail"  # raises NCCLHangError (retryable via the failure policy)
 NCCL_RAS_ACTION_OBSERVE = "observe"  # logs the hang and captures stacks, never raises
-DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE
+DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE  # defaults to observe
 
 
 def is_v2_enabled() -> bool:
