@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from vllm.entrypoints.openai.cli_args import make_arg_parser
+from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 

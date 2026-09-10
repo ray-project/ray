@@ -14,15 +14,15 @@ exclude: |
     src/ray/thirdparty/|
     doc/external/|
     # Excludes doc/source, except the Markdown and rST prose under doc/source/data
-  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
-  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
-  # hook out entirely and it silently matched zero files.
-  doc/source/(?!data/.*[.](md|rst)$)|
+    # that the `vale` hook below lints and Bazel BUILD files for buildifier.
+    # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
+    # excluded BUILD files would never reach the buildifier hooks.
+    doc/source/(?!data/.*[.](md|rst)$|(?:.*/)?BUILD(?:\.bazel)?$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         # Narrowing the top-level `exclude` above (so the `vale` hook can see
@@ -57,7 +57,7 @@ repos:
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: "0.8.3"
+    rev: "0.9.1"
     hooks:
       - id: pydoclint
         args: [
@@ -94,9 +94,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -115,8 +115,8 @@ repos:
           )
         types_or: [python]
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.3
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.6
     hooks:
       - id: prettier
         files: 'doc/'
@@ -143,8 +143,8 @@ repos:
       # Serve-scoped type checking. Unlike the hook above, this uses
       # `--follow-imports=silent` so imported types actually resolve (with
       # `skip`, every cross-module type collapses to `Any` and wrong-type
-      # arguments go undetected). Only files listed here are checked; once a
-      # file is mypy-clean, add it to the list so it can't regress.
+      # arguments go undetected). The whole serve/_private tree is checked
+      # except benchmarks/ (dev scripts) and thirdparty/ (vendored code).
       - id: mypy
         name: mypy (ray serve)
         args: ['--follow-imports=silent', '--ignore-missing-imports']
@@ -154,83 +154,17 @@ repos:
           ]
         files: |
           (?x)^(
-            python/ray/serve/_private/__init__.py|
-            python/ray/serve/_private/api.py|
-            python/ray/serve/_private/application_state.py|
-            python/ray/serve/_private/autoscaling_state.py|
-            python/ray/serve/_private/benchmarks/__init__.py|
-            python/ray/serve/_private/benchmarks/serialization/__init__.py|
-            python/ray/serve/_private/benchmarks/serialization/common.py|
-            python/ray/serve/_private/benchmarks/streaming/__init__.py|
-            python/ray/serve/_private/benchmarks/streaming/_grpc/__init__.py|
-            python/ray/serve/_private/broker.py|
-            python/ray/serve/_private/build_app.py|
-            python/ray/serve/_private/cluster_node_info_cache.py|
-            python/ray/serve/_private/common.py|
-            python/ray/serve/_private/config.py|
-            python/ray/serve/_private/constants.py|
-            python/ray/serve/_private/constants_utils.py|
-            python/ray/serve/_private/controller.py|
-            python/ray/serve/_private/controller_avatar.py|
-            python/ray/serve/_private/controller_health_metrics_tracker.py|
-            python/ray/serve/_private/default_impl.py|
-            python/ray/serve/_private/deploy_utils.py|
-            python/ray/serve/_private/deployment_info.py|
-            python/ray/serve/_private/deployment_node.py|
-            python/ray/serve/_private/deployment_scheduler.py|
-            python/ray/serve/_private/deployment_state.py|
-            python/ray/serve/_private/direct_ingress_grpc_util.py|
-            python/ray/serve/_private/direct_ingress_http_util.py|
-            python/ray/serve/_private/endpoint_state.py|
-            python/ray/serve/_private/event_loop_monitoring.py|
-            python/ray/serve/_private/exceptions.py|
-            python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
-            python/ray/serve/_private/grpc_util.py|
-            python/ray/serve/_private/handle_options.py|
-            python/ray/serve/_private/haproxy.py|
-            python/ray/serve/_private/haproxy_metrics.py|
-            python/ray/serve/_private/haproxy_templates.py|
-            python/ray/serve/_private/http_util.py|
-            python/ray/serve/_private/local_testing_mode.py|
-            python/ray/serve/_private/logging_utils.py|
-            python/ray/serve/_private/long_poll.py|
-            python/ray/serve/_private/metrics_utils.py|
-            python/ray/serve/_private/node_port_manager.py|
-            python/ray/serve/_private/proxy.py|
-            python/ray/serve/_private/proxy_request_response.py|
-            python/ray/serve/_private/proxy_response_generator.py|
-            python/ray/serve/_private/proxy_router.py|
-            python/ray/serve/_private/proxy_state.py|
-            python/ray/serve/_private/queue_monitor.py|
-            python/ray/serve/_private/replica.py|
-            python/ray/serve/_private/replica_response_generator.py|
-            python/ray/serve/_private/replica_result.py|
-            python/ray/serve/_private/request_ingress_metrics.py|
-            python/ray/serve/_private/request_router/__init__.py|
-            python/ray/serve/_private/request_router/common.py|
-            python/ray/serve/_private/request_router/pow_2_router.py|
-            python/ray/serve/_private/request_router/replica_wrapper.py|
-            python/ray/serve/_private/request_router/request_router.py|
-            python/ray/serve/_private/rolling_window.py|
-            python/ray/serve/_private/router.py|
-            python/ray/serve/_private/serialization.py|
-            python/ray/serve/_private/storage/__init__.py|
-            python/ray/serve/_private/storage/kv_store.py|
-            python/ray/serve/_private/storage/kv_store_base.py|
-            python/ray/serve/_private/task_consumer.py|
-            python/ray/serve/_private/thirdparty/__init__.py|
-            python/ray/serve/_private/tracing_utils.py|
-            python/ray/serve/_private/usage.py|
-            python/ray/serve/_private/utils.py|
-            python/ray/serve/_private/version.py|
+            python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
-          )
+          )$
+        exclude: |
+          (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
 
   # Second type checker over the same Serve allowlist. Pyrefly resolves
   # modules and narrows differently than mypy, so it catches a disjoint set
   # of bugs; scope/config (import replacement, search path) lives in
-  # pyrefly.toml. Keep the files list in sync with the "mypy (ray serve)"
+  # pyrefly.toml. Keep the files/exclude patterns in sync with the "mypy (ray serve)"
   # hook above.
   - repo: local
     hooks:
@@ -245,78 +179,12 @@ repos:
         pass_filenames: true
         files: |
           (?x)^(
-            python/ray/serve/_private/__init__.py|
-            python/ray/serve/_private/api.py|
-            python/ray/serve/_private/application_state.py|
-            python/ray/serve/_private/autoscaling_state.py|
-            python/ray/serve/_private/benchmarks/__init__.py|
-            python/ray/serve/_private/benchmarks/serialization/__init__.py|
-            python/ray/serve/_private/benchmarks/serialization/common.py|
-            python/ray/serve/_private/benchmarks/streaming/__init__.py|
-            python/ray/serve/_private/benchmarks/streaming/_grpc/__init__.py|
-            python/ray/serve/_private/broker.py|
-            python/ray/serve/_private/build_app.py|
-            python/ray/serve/_private/cluster_node_info_cache.py|
-            python/ray/serve/_private/common.py|
-            python/ray/serve/_private/config.py|
-            python/ray/serve/_private/constants.py|
-            python/ray/serve/_private/constants_utils.py|
-            python/ray/serve/_private/controller.py|
-            python/ray/serve/_private/controller_avatar.py|
-            python/ray/serve/_private/controller_health_metrics_tracker.py|
-            python/ray/serve/_private/default_impl.py|
-            python/ray/serve/_private/deploy_utils.py|
-            python/ray/serve/_private/deployment_info.py|
-            python/ray/serve/_private/deployment_node.py|
-            python/ray/serve/_private/deployment_scheduler.py|
-            python/ray/serve/_private/deployment_state.py|
-            python/ray/serve/_private/direct_ingress_grpc_util.py|
-            python/ray/serve/_private/direct_ingress_http_util.py|
-            python/ray/serve/_private/endpoint_state.py|
-            python/ray/serve/_private/event_loop_monitoring.py|
-            python/ray/serve/_private/exceptions.py|
-            python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
-            python/ray/serve/_private/grpc_util.py|
-            python/ray/serve/_private/handle_options.py|
-            python/ray/serve/_private/haproxy.py|
-            python/ray/serve/_private/haproxy_metrics.py|
-            python/ray/serve/_private/haproxy_templates.py|
-            python/ray/serve/_private/http_util.py|
-            python/ray/serve/_private/local_testing_mode.py|
-            python/ray/serve/_private/logging_utils.py|
-            python/ray/serve/_private/long_poll.py|
-            python/ray/serve/_private/metrics_utils.py|
-            python/ray/serve/_private/node_port_manager.py|
-            python/ray/serve/_private/proxy.py|
-            python/ray/serve/_private/proxy_request_response.py|
-            python/ray/serve/_private/proxy_response_generator.py|
-            python/ray/serve/_private/proxy_router.py|
-            python/ray/serve/_private/proxy_state.py|
-            python/ray/serve/_private/queue_monitor.py|
-            python/ray/serve/_private/replica.py|
-            python/ray/serve/_private/replica_response_generator.py|
-            python/ray/serve/_private/replica_result.py|
-            python/ray/serve/_private/request_ingress_metrics.py|
-            python/ray/serve/_private/request_router/__init__.py|
-            python/ray/serve/_private/request_router/common.py|
-            python/ray/serve/_private/request_router/pow_2_router.py|
-            python/ray/serve/_private/request_router/replica_wrapper.py|
-            python/ray/serve/_private/request_router/request_router.py|
-            python/ray/serve/_private/rolling_window.py|
-            python/ray/serve/_private/router.py|
-            python/ray/serve/_private/serialization.py|
-            python/ray/serve/_private/storage/__init__.py|
-            python/ray/serve/_private/storage/kv_store.py|
-            python/ray/serve/_private/storage/kv_store_base.py|
-            python/ray/serve/_private/task_consumer.py|
-            python/ray/serve/_private/thirdparty/__init__.py|
-            python/ray/serve/_private/tracing_utils.py|
-            python/ray/serve/_private/usage.py|
-            python/ray/serve/_private/utils.py|
-            python/ray/serve/_private/version.py|
+            python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
-          )
+          )$
+        exclude: |
+          (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
@@ -327,7 +195,7 @@ repos:
       - id: python-check-mock-methods
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
@@ -342,7 +210,7 @@ repos:
       - id: clang-format
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.11.0
+    rev: v2.16.0
     hooks:
       - id: pretty-format-java
         args: [--autofix, --google-java-formatter-version=1.7]
@@ -362,22 +230,8 @@ repos:
         language: system
         types: [python]
 
-  - repo: https://github.com/semgrep/pre-commit
-    rev: v1.32.0
-    hooks:
-      - id: semgrep
-        args: [--config=semgrep.yml, --error]
-        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
-        # but the top-level `exclude` above has kept every doc/source path out of
-        # this hook, so the rule has never actually run on those files. Narrowing
-        # that exclude for Vale exposes 8 pre-existing violations under
-        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
-        # fix the violations separately, rather than converting code blocks in a
-        # PR about Vale.
-        exclude: ^doc/source/data/
-
   - repo: https://github.com/errata-ai/vale
-    rev: v3.17.1
+    rev: v3.19.0
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
@@ -419,7 +273,7 @@ repos:
       args: ["--patch_dir", "ray/train/v2"]
 
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.26.0
+    rev: v10.9.1
     hooks:
       - id: eslint
         files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$

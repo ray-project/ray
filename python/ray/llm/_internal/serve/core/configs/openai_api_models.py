@@ -23,7 +23,7 @@ try:
         CompletionResponse as _CompletionResponse,
         CompletionStreamResponse as _CompletionStreamResponse,
     )
-    from vllm.entrypoints.openai.engine.protocol import (
+    from vllm.entrypoints.serve.engine.protocol import (
         ErrorInfo as _ErrorInfo,
         ErrorResponse as _ErrorResponse,
     )

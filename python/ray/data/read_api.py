@@ -513,7 +513,8 @@ def _read_datasource_v2(
     Wires a ``ListFiles → ReadFiles`` logical chain:
 
     - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
-      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      optional file shuffle (``FileShuffleConfig``, applied after path
+      discovery and before metadata fetch), and size-balanced
       bucketing (``RoundRobinPartitioner``). Its physical planner
       parallelizes listing across path shards and emits manifest blocks.
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
@@ -527,9 +528,6 @@ def _read_datasource_v2(
     from ray.data._internal.datasource_v2.listing.listing_utils import (
         _build_pruners,
         sample_files,
-    )
-    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-        RoundRobinPartitioner,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
@@ -565,14 +563,20 @@ def _read_datasource_v2(
 
     indexer = datasource._get_file_indexer()
 
-    # Sample a few files for schema inference. Listed again (cheaply) during
-    # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
-    if len(sample) == 0:
-        raise ValueError(
-            f"no files found under {datasource.paths!r}. Check the path and any "
-            "configured `partition_filter` or `file_extensions` filters."
-        )
+    # Stays ``None`` when the schema doesn't come from the files: then nothing is
+    # listed or opened here, so an empty table still reads and no partitioning is
+    # derived from paths.
+    sample = None
+    if datasource.schema_needs_file_sample:
+        # Sample a few files for schema inference. Listed again (cheaply) during
+        # execution inside the ListFiles op — no caching layer needed.
+        sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+        if len(sample) == 0:
+            raise ValueError(
+                f"no files found under {datasource.paths!r}. Check the path and any "
+                "configured `partition_filter` or `file_extensions` filters."
+            )
+
     schema = datasource.infer_schema(sample)
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
@@ -613,17 +617,14 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    # An indexer that already emits bin-packed read units (e.g. the footer-based
-    # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
-    partitioner = (
-        None
-        if indexer.produces_partitioned_manifests
-        else RoundRobinPartitioner(
-            in_memory_size_estimator=datasource.get_size_estimator(),
-            min_bucket_size=min_bucket_size,
-            max_bucket_size=max_bucket_size,
-            num_buckets=num_buckets,
-        )
+    # The datasource chooses how listing rows are grouped into read units. The
+    # default is the size-estimate ``RoundRobinPartitioner``; a datasource whose
+    # listing carries richer metadata can supply a partitioner that uses it.
+    partitioner = datasource.get_file_partitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning

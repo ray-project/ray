@@ -238,5 +238,5 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 ## See also
 
 - [LMCache disaggregated serving documentation](https://docs.lmcache.ai/disaggregated_prefill/nixl/index.html)
-- [NIXLConnector usage guide](https://docs.vllm.ai/en/stable/features/nixl_connector_usage.html)
+- [NIXLConnector usage guide](https://docs.vllm.ai/en/stable/features/nixl_connector_usage/)
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
