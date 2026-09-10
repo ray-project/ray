@@ -575,7 +575,7 @@ Debugging data loading bottlenecks
 
 When training throughput is lower than you expect, the first question to answer is whether the training loop is actually waiting on data. The **Data Ingestion** row of the Ray Train dashboard answers that question, and then narrows down where the time goes.
 
-To view these panels, set up Prometheus and Grafana for your cluster as described in the :ref:`Ray Dashboard documentation <observability-getting-started>`, open the Ray Train dashboard, and find the **Data Ingestion** row. Every panel in the row is computed over a ``$window`` interval that you set with the window dropdown at the top of the dashboard, defaulting to ``1m``. Use a shorter window to catch short-lived spikes and a longer window to smooth out noise.
+To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in the :ref:`Ray Dashboard documentation <observability-getting-started>`, then open the Ray Train dashboard and find the **Data Ingestion** row. Every panel in the row is computed over a ``$window`` interval that you set with the window dropdown at the top of the dashboard, defaulting to ``1m``. Use a shorter window to catch short-lived spikes and a longer window to smooth out noise.
 
 The panels form a top-down drill-down. Each step only matters if the previous step showed a problem, so most investigations stop after step 1 or step 2.
 
