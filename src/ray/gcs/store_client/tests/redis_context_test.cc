@@ -21,6 +21,7 @@
 #endif
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -30,6 +31,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/store_client/redis_tcp_keepalive.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -175,13 +177,36 @@ class RedisContextKeepaliveTest : public RedisContextConfigTest {
                            /*password=*/"",
                            /*enable_ssl=*/false);
   }
+
+  void CheckCommands(RedisContext &context) {
+    auto *reply = static_cast<redisReply *>(redisCommand(context.sync_context(), "PING"));
+    ASSERT_NE(reply, nullptr);
+    EXPECT_EQ(reply->type, REDIS_REPLY_STATUS);
+    EXPECT_STREQ(reply->str, "PONG");
+    freeReplyObject(reply);
+
+    auto completed = std::make_shared<bool>(false);
+    context.RunArgvAsync({"ECHO", "keepalive"},
+                         [&, completed](std::shared_ptr<CallbackReply> response) {
+                           *completed = true;
+                           EXPECT_EQ(response->ReadAsString(), "keepalive");
+                           context.io_service().stop();
+                         });
+    context.io_service().restart();
+    context.io_service().run_for(std::chrono::seconds(5));
+    EXPECT_TRUE(*completed);
+  }
 };
 
-// Both the sync and the async hiredis sockets must carry the configured
-// policy at the largest values accepted by Linux.
-TEST_F(RedisContextKeepaliveTest, AppliesMaximumPolicyToSyncAndAsyncSockets) {
-  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = 32767;
-  RayConfig::instance().redis_tcp_keepalive_probes() = 127;
+class RedisContextKeepalivePolicyTest
+    : public RedisContextKeepaliveTest,
+      public ::testing::WithParamInterface<std::pair<int, int>> {};
+
+// Cover the defaults, a custom policy, and Linux's accepted maximum values.
+TEST_P(RedisContextKeepalivePolicyTest, AppliesPolicyToSyncAndAsyncSockets) {
+  const auto [interval, probes] = GetParam();
+  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = interval;
+  RayConfig::instance().redis_tcp_keepalive_probes() = probes;
 
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
@@ -194,15 +219,108 @@ TEST_F(RedisContextKeepaliveTest, AppliesMaximumPolicyToSyncAndAsyncSockets) {
   const int async_fd = context.async_context().GetRawRedisAsyncContext()->c.fd;
   for (const int fd : {sync_fd, async_fd}) {
     EXPECT_EQ(GetIntSockOpt(fd, SOL_SOCKET, SO_KEEPALIVE), 1) << "fd: " << fd;
-#if defined(__linux__) && defined(__GLIBC__)
-    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPIDLE), 32767) << "fd: " << fd;
-    // Ray overrides hiredis' derived values (interval/3, 3 probes) so that
-    // probe cadence and time-to-declare-dead can be tuned independently.
-    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPINTVL), 32767) << "fd: " << fd;
-    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPCNT), 127) << "fd: " << fd;
+#if defined(__linux__) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && \
+    defined(TCP_KEEPCNT)
+    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPIDLE), interval) << "fd: " << fd;
+    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPINTVL), interval) << "fd: " << fd;
+    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPCNT), probes) << "fd: " << fd;
 #elif defined(__APPLE__) && defined(__MACH__)
-    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPALIVE), 32767) << "fd: " << fd;
+    EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, TCP_KEEPALIVE), interval) << "fd: " << fd;
 #endif
+  }
+  CheckCommands(context);
+}
+
+INSTANTIATE_TEST_SUITE_P(Policies,
+                         RedisContextKeepalivePolicyTest,
+                         ::testing::Values(std::make_pair(30, 3),
+                                           std::make_pair(7, 4),
+                                           std::make_pair(32767, 127)));
+
+#if (defined(__linux__) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && \
+     defined(TCP_KEEPCNT)) ||                                                 \
+    (defined(__APPLE__) && defined(__MACH__))
+class RedisContextKeepaliveFailureTest : public RedisContextKeepaliveTest,
+                                         public ::testing::WithParamInterface<int> {};
+
+TEST_P(RedisContextKeepaliveFailureTest, TuningFailurePreservesUsableConnections) {
+  // Establish fresh sockets with OS defaults, then inject failures only at the
+  // keepalive helper's syscall boundary. Both hiredis contexts must remain usable.
+  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = 0;
+  instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                     /*running_on_single_thread=*/true};
+  Clock clock;
+  RedisContext context(io_service, clock);
+  ASSERT_TRUE(ConnectToLocalRedis(context).ok());
+
+  const std::vector<std::pair<int, int>> timing_options = {
+#if defined(__linux__)
+    {TCP_KEEPIDLE, 7},
+    {TCP_KEEPINTVL, 7},
+    {TCP_KEEPCNT, 4},
+#else
+    {TCP_KEEPALIVE, 7},
+#endif
+  };
+  for (auto *raw :
+       {context.sync_context(), &context.async_context().GetRawRedisAsyncContext()->c}) {
+    std::vector<int> previous_values;
+    for (const auto &[option, value] : timing_options) {
+      previous_values.push_back(GetIntSockOpt(raw->fd, IPPROTO_TCP, option));
+    }
+    const auto result = internal::SetRedisTcpKeepalive(
+        7, 4, [&](int level, int option, const char *, int value) {
+          if (level == IPPROTO_TCP && (GetParam() == -1 || option == GetParam())) {
+            errno = EPERM;
+            return false;
+          }
+          return setsockopt(raw->fd, level, option, &value, sizeof(value)) == 0;
+        });
+    EXPECT_EQ(result, internal::RedisTcpKeepaliveResult::kDegraded);
+    EXPECT_EQ(raw->err, 0);
+    EXPECT_EQ(GetIntSockOpt(raw->fd, SOL_SOCKET, SO_KEEPALIVE), 1);
+    for (size_t i = 0; i < timing_options.size(); ++i) {
+      const auto [option, value] = timing_options[i];
+      const int expected =
+          GetParam() == -1 || option == GetParam() ? previous_values[i] : value;
+      EXPECT_EQ(GetIntSockOpt(raw->fd, IPPROTO_TCP, option), expected);
+    }
+  }
+  CheckCommands(context);
+}
+
+INSTANTIATE_TEST_SUITE_P(RejectedOptions,
+                         RedisContextKeepaliveFailureTest,
+#if defined(__linux__)
+                         ::testing::Values(TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT, -1)
+#else
+                         ::testing::Values(TCP_KEEPALIVE, -1)
+#endif
+);
+#endif
+
+TEST_F(RedisContextKeepaliveTest, EnableFailureStopsBeforeTuning) {
+  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = 0;
+  instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                     /*running_on_single_thread=*/true};
+  Clock clock;
+  RedisContext context(io_service, clock);
+  ASSERT_TRUE(ConnectToLocalRedis(context).ok());
+  for (auto *raw :
+       {context.sync_context(), &context.async_context().GetRawRedisAsyncContext()->c}) {
+    int calls = 0;
+    const auto result = internal::SetRedisTcpKeepalive(
+        7, 4, [&](int level, int option, const char *, int) {
+          ++calls;
+          EXPECT_EQ(level, SOL_SOCKET);
+          EXPECT_EQ(option, SO_KEEPALIVE);
+          errno = EPERM;
+          return false;
+        });
+    EXPECT_EQ(result, internal::RedisTcpKeepaliveResult::kFailed);
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(GetIntSockOpt(raw->fd, SOL_SOCKET, SO_KEEPALIVE), 0);
+    EXPECT_EQ(raw->err, 0);
   }
 }
 
