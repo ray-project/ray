@@ -12,6 +12,7 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 # multi-gpu tests" Buildkite job (see .buildkite/core.rayci.yml) on a
 # gpu-large runner -- not collected by the CPU-only "core: sandbox
 # tests" job or the single-GPU "core: sandbox gpu tests" job.
+pytestmark = pytest.mark.usefixtures("ensure_nvidia_ctk")
 
 
 def test_sandbox_gpu_each_sandbox_gets_a_distinct_gpu():
