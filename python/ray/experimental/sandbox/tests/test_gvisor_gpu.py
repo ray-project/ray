@@ -11,6 +11,7 @@ from ray.experimental.sandbox import Sandbox, create
 # job (see .buildkite/core.rayci.yml) -- not collected by the CPU-only
 # "core: sandbox tests" job. No runtime skip based on GPU availability:
 # CI's tag-based scheduling guarantees a GPU is present.
+pytestmark = pytest.mark.usefixtures("ensure_nvidia_ctk")
 
 
 def test_sandbox_gpu_nvidia_smi_sees_assigned_gpu():
