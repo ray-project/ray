@@ -58,8 +58,8 @@ class Scanner(ABC, Generic[InputSplit]):
         """
         return False
 
-    def prune_manifest(self, input_split: InputSplit) -> InputSplit:
-        """Drop the parts of ``input_split`` this scan is known not to read.
+    def prune_manifest(self, manifest: InputSplit) -> InputSplit:
+        """Drop the parts of ``manifest`` this scan is known not to read.
 
         Called by ``plan_read_files_op.do_read`` on every incoming split before
         ``create_reader().read()``. Default: return it unchanged. A scanner with
@@ -67,7 +67,7 @@ class Scanner(ABC, Generic[InputSplit]):
         ``partition_predicate``) overrides this to drop files whose partition
         values fail it.
         """
-        return input_split
+        return manifest
 
     @abstractmethod
     def create_reader(self) -> Reader[InputSplit]:
