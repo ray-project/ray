@@ -390,9 +390,6 @@ class NodeResources {
   /// Replace the entire available field from a NodeResourceInstanceSet.
   void SetAvailable(NodeResourceInstanceSet instances);
 
-  /// Return available resources as a name->value map.
-  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
-
   /// Return the per-instance available set.
   const NodeResourceInstanceSet &GetAvailable() const;
 

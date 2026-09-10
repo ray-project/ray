@@ -212,10 +212,6 @@ void NodeResources::SetAvailable(NodeResourceInstanceSet instances) {
   available = std::move(instances);
 }
 
-absl::flat_hash_map<std::string, double> NodeResources::GetAvailableResourceMap() const {
-  return available.ToNodeResourceSet().GetResourceMap();
-}
-
 const NodeResourceInstanceSet &NodeResources::GetAvailable() const { return available; }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const {
