@@ -1,0 +1,4 @@
+# Extra dependency for the llm_serve_llama_3dot2_1B_s3_runai_streamer release
+# test: vLLM's RunAI streamer (load_format: runai_streamer) with S3 support.
+# Compiled by llm_release_tests.depsets.yaml on top of the llm-cu130 image lock.
+runai-model-streamer[s3]==0.16.1
