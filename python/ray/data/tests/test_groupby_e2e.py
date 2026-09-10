@@ -1,6 +1,7 @@
 import itertools
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator, Optional
 
 import numpy as np
@@ -10,6 +11,8 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
@@ -114,6 +117,52 @@ def test_map_groups_with_gpus(
     )
 
     assert rows == [{"id": 0}]
+
+
+def test_map_groups_on_cluster_without_workers(ray_start_cluster, restore_data_context):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        include_dashboard=False,
+        object_store_memory=128 * 1024 * 1024,
+    )
+    ray.init(address=cluster.address)
+    ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    rows = [
+        {"key": "a", "value": 1},
+        {"key": "b", "value": 2},
+        {"key": "a", "value": 3},
+    ]
+    ds = (
+        ray.data.from_items(rows)
+        .groupby("key")
+        .map_groups(lambda group: group, batch_format="pyarrow")
+    )
+
+    def has_cpu_demand():
+        demands = get_cluster_status(cluster.address).resource_demands
+        return any(
+            bundle.count > 0 and bundle.bundle.get("CPU", 0) > 0
+            for demand in demands.ray_task_actor_demand
+            for bundle in demand.bundles_by_count
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(ds.materialize)
+        try:
+            wait_for_condition(lambda: result.done() or has_cpu_demand(), timeout=30)
+            if result.done():
+                # Surface planning failures rather than timing out waiting for demand.
+                result.result()
+            assert has_cpu_demand()
+            cluster.add_node(num_cpus=2, object_store_memory=128 * 1024 * 1024)
+            materialized = result.result(timeout=60)
+            assert sorted(materialized.take_all(), key=lambda row: row["value"]) == rows
+        finally:
+            # Unblock the executor if the shuffle is still waiting for resources.
+            ray.shutdown()
 
 
 def test_groupby_with_column_expression_udf(
