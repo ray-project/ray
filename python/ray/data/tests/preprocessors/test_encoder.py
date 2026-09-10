@@ -441,8 +441,9 @@ def test_ordinal_encoder_list_fallback_to_pandas():
     assert result_lists == expected
 
 
-def test_ordinal_encoder_list_fit_skips_leading_null_row():
-    in_df = pd.DataFrame({"D": [None, ["a"], ["a", "b"]]})
+@pytest.mark.parametrize("leading_null", [None, np.nan, pd.NA])
+def test_ordinal_encoder_list_fit_skips_leading_null_row(leading_null):
+    in_df = pd.DataFrame({"D": [leading_null, ["a"], ["a", "b"]]})
     encoder = OrdinalEncoder(["D"], encode_lists=True)
 
     encoder.fit(ray.data.from_pandas(in_df))

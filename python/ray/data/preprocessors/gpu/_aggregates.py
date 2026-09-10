@@ -98,7 +98,13 @@ class GPUOrdinalValueCounter(GPUAggregateFn):
         acc_col = accumulator_columns[0]
         frames = []
         for column in self.columns:
-            counts = df[column].dropna().value_counts(dropna=False).reset_index()
+            values = df[column]
+            if bool(values.isnull().any()):
+                raise ValueError(
+                    "Unable to fit column because it contains null values. "
+                    "Consider imputing missing values first."
+                )
+            counts = values.value_counts(dropna=False).reset_index()
             counts.columns = ["value", acc_col]
             counts.insert(0, "column", column)
             frames.append(counts[["column", "value", acc_col]])
@@ -259,12 +265,13 @@ class GPUPreprocessorFitAggregate(GPUAggregateFn):
         for fit_index, columns, prefix, _ in self.ordinal_entries:
             transformed = _apply_gpu_preprocessors(df, prefix)
             for column in columns:
-                counts = (
-                    transformed[column]
-                    .dropna()
-                    .value_counts(dropna=False)
-                    .reset_index()
-                )
+                values = transformed[column]
+                if bool(values.isnull().any()):
+                    raise ValueError(
+                        "Unable to fit column because it contains null values. "
+                        "Consider imputing missing values first."
+                    )
+                counts = values.value_counts(dropna=False).reset_index()
                 counts.columns = ["value", acc_col]
                 counts.insert(0, "column", column)
                 counts.insert(0, "__fit_index", fit_index)

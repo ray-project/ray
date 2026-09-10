@@ -1532,14 +1532,14 @@ def _pandas_columns_contain_lists(dataset: "Dataset", columns: List[str]) -> boo
     unresolved = set(columns)
     for batch in dataset.iter_batches(batch_size=None, batch_format="pandas"):
         for column in list(unresolved):
-            first_not_none = next(
-                (element for element in batch[column] if element is not None),
+            first_not_null = next(
+                (element for element in batch[column] if not _is_null(element)),
                 None,
             )
-            if first_not_none is None:
+            if first_not_null is None:
                 continue
             unresolved.discard(column)
-            if isinstance(first_not_none, (list, tuple, np.ndarray)):
+            if isinstance(first_not_null, (list, tuple, np.ndarray)):
                 return True
         if not unresolved:
             break

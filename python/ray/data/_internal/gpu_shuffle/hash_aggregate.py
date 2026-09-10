@@ -1128,7 +1128,7 @@ class GPUStd(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
             result[mean_col] = None
             result[m2_col] = None
             _cast_cudf_column_dtype(result, mean_col, output_dtype)

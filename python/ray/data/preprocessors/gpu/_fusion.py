@@ -45,6 +45,9 @@ class _FusedGPUNumericColumnOp(_GPUPhysicalOp):
 
         for preprocessor in self._preprocessors:
             if isinstance(preprocessor, GPUPowerTransformer):
+                # Standalone transforms read inputs as float64, so an earlier
+                # `output_dtype` must not change the compute dtype here.
+                values = values.astype(cp.float64, copy=False)
                 power = preprocessor.power
                 if preprocessor.method == "yeo-johnson":
                     positive = values >= 0
@@ -66,6 +69,7 @@ class _FusedGPUNumericColumnOp(_GPUPhysicalOp):
                 else:
                     values = cp.log(values)
             elif isinstance(preprocessor, GPUStandardScaler):
+                values = values.astype(cp.float64, copy=False)
                 means = cp.asarray(
                     [
                         (

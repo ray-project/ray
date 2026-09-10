@@ -108,6 +108,34 @@ def test_gpu_ordinal_encoder_min_evidence_filters_global_counts():
     assert encoder.stats_ == {"unique_values(cat_0)": {"keep": 1}}
 
 
+@pytest.mark.parametrize("combined", [False, True])
+def test_gpu_ordinal_fit_aggregate_rejects_nulls_before_thresholding(combined):
+    from ray.data.preprocessors.gpu._aggregates import (
+        GPUOrdinalValueCounter,
+        GPUPreprocessorFitAggregate,
+    )
+
+    values = MagicMock()
+    values.isnull.return_value.any.return_value = True
+    df = MagicMock()
+    df.__getitem__.return_value = values
+    if combined:
+        aggregate = GPUPreprocessorFitAggregate(
+            ordinal_entries=[(0, ("cat",), (), 3)],
+            moment_entries=[],
+        )
+    else:
+        aggregate = GPUOrdinalValueCounter(("cat",), prefix=(), min_evidence=3)
+
+    with patch.dict("sys.modules", {"cudf": MagicMock()}):
+        with pytest.raises(ValueError, match="contains null values"):
+            aggregate.partial_aggregate(
+                df,
+                aggregate.generated_key_columns(),
+                ("accumulator",),
+            )
+
+
 def test_gpu_ordinal_encoder_vectorized_finalize_matches_reference():
     columns = ["cat_0", "cat_1"]
     partials = pd.DataFrame(
@@ -585,6 +613,54 @@ def test_gpu_chain_fused_transform_matches_sequential_cudf_batch():
     assert fused["num_0"].dtype == "float32"
     assert fused["num_1"].dtype == "float32"
     assert fused["cat_0"].dtype == "int32"
+
+
+@pytest.mark.parametrize("intermediate_dtype", ["float32", "int32"])
+@pytest.mark.parametrize("first_transform", ["power", "scaler"])
+def test_gpu_chain_fused_numeric_transform_recasts_intermediate_dtype(
+    intermediate_dtype, first_transform
+):
+    cudf = _require_cudf_with_cuda()
+
+    scaler = GPUStandardScaler(columns=["num"], output_dtype=intermediate_dtype)
+    scaler.stats_ = {
+        "mean(num)": 0.23456789,
+        "std(num)": 1.3456789,
+    }
+    scaler._fitted = True
+    power = GPUPowerTransformer(
+        columns=["num"],
+        power=0.5,
+        method="yeo-johnson",
+        output_dtype=intermediate_dtype,
+    )
+
+    if first_transform == "power":
+        preprocessors = (
+            power,
+            GPUStandardScaler(columns=["num"]),
+        )
+        preprocessors[1].stats_ = {
+            "mean(num)": 0.123456789,
+            "std(num)": 0.987654321,
+        }
+        preprocessors[1]._fitted = True
+    else:
+        preprocessors = (
+            scaler,
+            GPUPowerTransformer(columns=["num"], power=0, method="yeo-johnson"),
+        )
+
+    df = cudf.DataFrame({"num": [-0.654321, 0.123456789, 3.987654321]})
+    sequential = _apply_gpu_preprocessors(df.copy(deep=True), preprocessors).to_pandas()
+    fused = (
+        _FusedGPUNumericColumnOp(preprocessors)
+        ._transform_cudf(df.copy(deep=True))
+        .to_pandas()
+    )
+
+    pd.testing.assert_frame_equal(sequential, fused, rtol=1e-12, atol=1e-12)
+    assert fused["num"].dtype == sequential["num"].dtype == "float64"
 
 
 def test_gpu_chain_uses_prewarmed_actor_pool_strategy():
