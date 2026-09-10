@@ -573,26 +573,26 @@ This example persists the fitted preprocessor using the ``Trainer(metadata={...}
 Debugging data loading bottlenecks
 ----------------------------------
 
-When training throughput is lower than you expect, the first question to answer is whether the training loop is actually waiting on data. The **Data Ingestion** row of the Ray Train dashboard answers that question, and then narrows down where the time goes.
+When training throughput is lower than you expect, the first question to answer is whether the training loop is actually waiting on data. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer this: the **Data Ingestion** row tells you whether data loading is stalling training, and then narrows down which stage and if rank stragglers are responsible.
 
-To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in :ref:`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**; open it from Grafana's dashboard list and find the **Data Ingestion** row. Every panel in the row is computed over a ``$window`` interval that you set with the window dropdown at the top of the dashboard, defaulting to ``1m``. Use a shorter window to catch short-lived spikes and a longer window to smooth out noise.
+To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in :ref:`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**; open it from Grafana's dashboard list and find the **Data Ingestion** section.
 
-The panels form a top-down drill-down. Each step only matters if the previous step showed a problem, so most investigations stop after step 1 or step 2.
+Follow the steps below using the panels to identify data loading bottlenecks.
 
 Step 1: Is training stalling on data loading?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Check **Max Exposed Data Loading Time**. This panel reports the per-batch data loading time that the training loop is actually blocked on, taken as the maximum across ranks so that it reflects the slowest rank.
 
-Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden.
+Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden and stalls your training.
 
 - **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
 - **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
 
-Step 2: Which stage is responsible?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 2: Which data loading stage is responsible?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows the share of per-batch data loading time spent in each stage of the data loader, in the order the loader runs them:
+Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows the share of per-batch data loading time spent in each stage of the :meth:`iter_batches <ray.data.DataIterator.iter_batches>` pipeline, in the order they run:
 
 .. list-table::
     :header-rows: 1
@@ -613,7 +613,7 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
     * - Finalize
       - Running your ``finalize_fn``, which for GPU training is typically the host-to-device transfer.
 
-The dominant band is where the time goes. A large **production wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+The dominant band is where the time goes. For instance, a large **production wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
 
 .. note::
 
