@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
+    DEFAULT_MEGASCALE_PORT,
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     TPU_SUBSLICE_LABEL_PREFIX,
     VALID_TPU_TYPES,
@@ -253,10 +254,10 @@ def get_tpu_coordinator_env_vars(
     coordinator_address: str,
     num_slices: int,
     slice_id: int,
-    coordinator_port: str = "8081",
+    coordinator_port: str = DEFAULT_MEGASCALE_PORT,
 ) -> Dict[str, str]:
     """
-    Returns the environment variables required for JAX multi-slice coordination.
+    Returns the environment variables required for TPU multi-slice coordination.
 
     Args:
         coordinator_address: The IP address or hostname of the coordinator.

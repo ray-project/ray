@@ -18,13 +18,12 @@ from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup as V1WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
-    DEFAULT_MEGASCALE_PORT,
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
-from ray.util.tpu import get_tpu_coordinator_env_vars
+from ray.util.tpu import DEFAULT_MEGASCALE_PORT, get_tpu_coordinator_env_vars
 
 logger = logging.getLogger(__name__)
 

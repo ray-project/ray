@@ -54,6 +54,9 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
+# Default port for MegaScale coordinator in multi-slice TPU training.
+DEFAULT_MEGASCALE_PORT = "8081"
+
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4

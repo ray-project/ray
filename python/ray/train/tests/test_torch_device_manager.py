@@ -194,7 +194,6 @@ def test_torch_backend_with_v1_worker_group():
     [
         (8, "2x4", "v6e"),
         (16, "4x4", "v6e"),
-        (16, "2x4", "v6e"),
     ],
 )
 def test_tpu_device_manager(ray_tpu_cluster, num_workers, topology, accelerator_type):
@@ -207,12 +206,6 @@ def test_tpu_device_manager(ray_tpu_cluster, num_workers, topology, accelerator_
         assert "WORLD_SIZE" in os.environ
         assert "MASTER_ADDR" in os.environ
         assert "MASTER_PORT" in os.environ
-
-        if "MEGASCALE_NUM_SLICES" in os.environ:
-            assert os.environ["MEGASCALE_NUM_SLICES"] == "2"
-            assert "MEGASCALE_COORDINATOR_ADDRESS" in os.environ
-            assert "MEGASCALE_PORT" in os.environ
-            assert "MEGASCALE_SLICE_ID" in os.environ
 
         assert dist.is_initialized()
         assert dist.get_backend() == "tpu_dist"
@@ -276,13 +269,60 @@ def test_tpu_torch_multi_tpu_warning():
     )
 
 
-def test_tpu_torch_multislice_validation():
-    mock_worker_group = MagicMock()
-    mock_worker_group.get_resources_per_worker.return_value = {"TPU": 1}
-    mock_worker_group.get_worker_group_context.return_value.num_slices = 2
+@pytest.mark.skipif(
+    not is_v2_enabled(),
+    reason="TPU device manager and backend are V2-only features.",
+)
+def test_tpu_torch_multislice(ray_tpu_cluster):
+    def train_fn():
+        assert isinstance(get_torch_device_manager_by_context(), TPUTorchDeviceManager)
 
-    # Multi-slice (num_slices > 1) validation should pass without error.
-    _validate_tpu_resources(mock_worker_group)
+        # Verify distributed environment variables injected correctly by TorchTrainer.
+        assert "TPU_VISIBLE_CHIPS" in os.environ
+        assert "RANK" in os.environ
+        assert "WORLD_SIZE" in os.environ
+        assert "MASTER_ADDR" in os.environ
+        assert "MASTER_PORT" in os.environ
+
+        # Verify multi-slice coordination variables injected correctly.
+        assert os.environ.get("MEGASCALE_NUM_SLICES") == "2"
+        assert "MEGASCALE_COORDINATOR_ADDRESS" in os.environ
+        assert "MEGASCALE_PORT" in os.environ
+        assert os.environ.get("MEGASCALE_SLICE_ID") in ("0", "1")
+
+        assert dist.is_initialized()
+        assert dist.get_backend() == "tpu_dist"
+
+        # Verify distributed setup works by running a basic collective
+        world_size = dist.get_world_size()
+        tensor = torch.ones(1, device="tpu")
+        dist.all_reduce(tensor)
+        assert tensor.item() == world_size
+
+    # Multi-slice TPU training: 16 workers with 2x4 topology implies 2 slices of 8 workers.
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=16,
+            use_tpu=True,
+            topology="2x4",
+            accelerator_type="TPU-V6E",
+            resources_per_worker={"TPU": 1},
+        ),
+    )
+
+    if TPUTorchDeviceManager().is_available():
+        trainer.fit()
+    else:
+        # A RuntimeError is triggered during process group initialization when
+        # torch_tpu is not available in the environment.
+        with pytest.raises(TrainingFailedError) as exc_info:
+            trainer.fit()
+
+        assert (
+            "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported"
+            not in str(exc_info.value)
+        )
 
 
 def test_set_tpu_multislice_env_vars():
