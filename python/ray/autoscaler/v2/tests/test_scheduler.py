@@ -18,6 +18,7 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
+    UnschedulableRequestCache,
     logger,
 )
 from ray.autoscaler.v2.schema import (
@@ -3508,6 +3509,36 @@ def test_ippr_max_limits_affect_new_node_capacity_2():
 class TestSchedulerPerformanceOptimizations:
     """Tests for large-cluster performance optimizations."""
 
+    def test_precompute_serializes_once_per_unique_request(self, monkeypatch):
+        """The same request object repeated count times should be serialized once."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 10,
+        )
+        # Patch after sched_request: group_by_count inside it serializes each
+        # request legitimately, which would skew the count below.
+        calls = 0
+        serialized_ids = set()
+        orig = ResourceRequest.SerializeToString
+
+        def counting_serialize(self, deterministic=None):
+            nonlocal calls
+            calls += 1
+            serialized_ids.add(id(self))
+            return orig(self, deterministic=deterministic)
+
+        monkeypatch.setattr(ResourceRequest, "SerializeToString", counting_serialize)
+        ResourceDemandScheduler(event_logger).schedule(request)
+        assert calls == 1 and len(serialized_ids) == 1
+
     def test_quick_reject_skips_exhausted_nodes(self):
         """Nodes with no available resources should be skipped without deepcopy."""
         node_type_configs = {
@@ -3637,6 +3668,177 @@ class TestSchedulerPerformanceOptimizations:
         to_launch, _ = _launch_and_terminate(reply)
         # Existing nodes can handle all requests (5 nodes × 10 CPU ÷ 2 CPU = 25 slots).
         assert to_launch == {}
+
+
+class TestPrecomputeSerializeKeys:
+    """Tests for precomputed shape_keys optimization in try_schedule."""
+
+    def test_precomputed_keys_produce_same_result_as_fallback(self):
+        """try_schedule with precomputed shape_keys gives identical results to fallback."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        requests = [ResourceRequestUtil.make({"CPU": 1}) for _ in range(6)]
+
+        # Run without shape_keys (fallback path).
+        import copy
+
+        node_copy1 = copy.deepcopy(node)
+        remaining1, score1 = node_copy1.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND
+        )
+
+        # Run with precomputed shape_keys.
+        shape_keys = {id(r): r.SerializeToString(deterministic=True) for r in requests}
+        node_copy2 = copy.deepcopy(node)
+        remaining2, score2 = node_copy2.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        assert len(remaining1) == len(remaining2)
+        assert score1 == score2
+        # 4 CPU node fits 4 requests, 2 remain.
+        assert len(remaining1) == 2
+
+    def test_precomputed_keys_fallback_on_missing_id(self):
+        """If a request id is not in shape_keys, fallback to SerializeToString."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 2},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        requests = [ResourceRequestUtil.make({"CPU": 1}) for _ in range(3)]
+
+        # Intentionally pass an empty shape_keys dict — all ids will miss.
+        shape_keys = {}
+        import copy
+
+        node_copy = copy.deepcopy(node)
+        remaining, score = node_copy.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        # Should still work via fallback: 2 CPU fits 2 requests, 1 remains.
+        assert len(remaining) == 1
+
+    def test_unschedulable_request_cache_bytes_interface(self):
+        """UnschedulableRequestCache works correctly with raw bytes keys."""
+        cache = UnschedulableRequestCache()
+
+        key_a = b"shape_a"
+        key_b = b"shape_b"
+
+        assert not cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+        cache.add(key_a)
+        assert cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+        cache.add(key_b)
+        assert cache.contains(key_a)
+        assert cache.contains(key_b)
+
+        cache.clear()
+        assert not cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+    def test_precomputed_keys_with_duplicate_objects(self):
+        """Duplicate request objects (same id) work correctly with shape_keys."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 2},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+
+        # Simulate ungroup_by_count: same object repeated multiple times.
+        single_request = ResourceRequestUtil.make({"CPU": 1})
+        requests = [single_request] * 5  # All have the same id()
+
+        shape_keys = {
+            id(single_request): single_request.SerializeToString(deterministic=True)
+        }
+
+        import copy
+
+        node_copy = copy.deepcopy(node)
+        remaining, score = node_copy.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        # 2 CPU node fits 2 requests, 3 remain.
+        assert len(remaining) == 3
+
+    def test_precomputed_keys_end_to_end_scheduling(self):
+        """Full scheduling round with precomputed keys produces correct launch decisions."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # One existing node with 2 CPU available.
+        instances = [
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 2},
+                    total_resources={"CPU": 4},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
+                ),
+                cloud_instance_id="c-1",
+            ),
+        ]
+
+        # 10 requests × 1 CPU each. Existing node fits 2, need 2 new nodes for 8.
+        resource_requests = [ResourceRequestUtil.make({"CPU": 1})] * 10
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # Existing node handles 2, remaining 8 need 8/4 = 2 new nodes.
+        assert to_launch == {"type_1": 2}
 
 
 if __name__ == "__main__":
