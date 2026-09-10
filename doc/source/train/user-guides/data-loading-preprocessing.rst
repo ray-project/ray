@@ -586,6 +586,14 @@ Check **Max Exposed Data Loading Time**. This panel reports the per-batch data l
 
 Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden and stalls your training.
 
+.. figure:: ../images/data_ingestion/max_exposed_time.png
+    :align: center
+    :alt: Exposed data loading time fluctuating between zero and roughly five milliseconds per batch.
+
+    **Max Exposed Data Loading Time** for a collate-heavy run. The values are
+    non-zero, so training is stalling on data loading and it's worth continuing
+    to step 2.
+
 - **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
 - **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
 
@@ -615,6 +623,14 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
 
 The dominant band is where the time goes. For instance, a large **production wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
 
+.. figure:: ../images/data_ingestion/data_loading_by_stage.png
+    :align: center
+    :alt: Stacked chart in which the collate band fills about 93 percent of the plot and batching fills the remainder.
+
+    **Percentage Data Loading Breakdown by Stage** for the same run. Collate
+    accounts for roughly 93% of data loading time and batching for most of the
+    rest, so the bottleneck is on the training worker rather than upstream.
+
 .. note::
 
     This panel breaks down *total* data loading time, including the portion that pipelining hides behind training, and it always adds up to 100%. Read it only after step 1 shows a non-zero exposed time. Otherwise, none of the stages are contributing to training stall.
@@ -623,6 +639,14 @@ Step 3: Is the stage systemically slow, or is one rank straggling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Every stage has a matching per-rank panel: **Production Wait Time by Rank**, **Data Transfer Time by Rank**, **Batching Time by Rank**, **Format Time by Rank**, **Collate Time by Rank**, and **Finalize Time by Rank**. Open the one for the stage that step 2 pointed at.
+
+.. figure:: ../images/data_ingestion/per_stage_metrics.png
+    :align: center
+    :alt: Six per-rank panels in which each stage's lines sit close together across ranks.
+
+    The six per-rank stage panels. Collate time is high but nearly identical on
+    every rank, at roughly 180 ms/batch, which points at a systemically slow
+    stage rather than a straggler.
 
 - **Uniformly high across all ranks.** The stage is systemically slow, and the fixes in :ref:`train-ingest-performance-tips` apply to the run as a whole.
 - **One rank far above the rest.** That rank is a straggler. Because distributed training synchronizes across ranks on every step, a single slow rank holds back the entire run, so a straggler costs you much more than its share of the work. Common causes are poor data locality, where blocks are consistently fetched from a remote node, and a hot node where the training worker competes with Ray Data tasks for CPU.
@@ -634,6 +658,14 @@ Two more panels sit alongside the drill-down as general health metrics rather th
 
 - **Data Ingest Throughput by Rank**: rows per second each rank consumes from its data loader. Use it to learn the steady-state ingest rate of a healthy run, so that you can spot drops and imbalance across ranks later.
 - **Data Production Throughput**: rows per second the Ray Data pipeline delivers to the training workers. This panel only reports data for datasets that are split across workers, which is controlled by the ``datasets_to_split`` argument of :class:`DataConfig <ray.train.DataConfig>`, so datasets you excluded from splitting show nothing here.
+
+.. figure:: ../images/data_ingestion/throughput_metrics.png
+    :align: center
+    :alt: Ingest throughput per rank averaging about one thousand rows per second beside production throughput averaging about four thousand.
+
+    **Data Ingest Throughput by Rank** and **Data Production Throughput** for the
+    same run. Aggregate ingest across the four ranks tracks production closely,
+    at roughly 4.4K rows/s, so production and consumption are balanced.
 
 Comparing the two is worthwhile. If production throughput consistently runs ahead of aggregate ingest throughput, the pipeline is producing faster than training consumes, and the excess accumulates in the object store. See :ref:`balancing-data-production-consumption`.
 
