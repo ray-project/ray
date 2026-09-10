@@ -405,6 +405,13 @@ RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
+/// How long a Redis command may keep waiting while the connection is being
+/// re-established. Attempts that never reach Redis do not spend the retry
+/// budget above; this bounds how long that can go on. A Sentinel failover
+/// routinely takes longer than the retry budget's own wall-clock span, which
+/// would otherwise kill gcs_server moments before the reconnect lands.
+RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
+
 /// Exponential backoff setup. By default:
 /// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
 RAY_CONFIG(int64_t, redis_retry_base_ms, 100)

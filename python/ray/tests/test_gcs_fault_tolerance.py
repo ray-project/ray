@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     generate_system_config_map,
     persistent_gcs_test_enabled,
     redis_sentinel_replicas,
+    start_redis_instance,
     wait_for_pid_to_exit,
 )
 from ray._raylet import GcsClient
@@ -584,6 +585,12 @@ def redis_replicas(monkeypatch):
         generate_system_config_map(
             gcs_server_request_timeout_seconds=10,
             redis_db_connect_retries=50,
+            # This scenario points GCS at a Redis Cluster node directly, which
+            # the in-place reconnect does not support (there is no lookup point
+            # to re-resolve the primary through). Turn the command-side grace
+            # period off so gcs_server exits promptly, which is what this test
+            # asserts.
+            redis_reconnect_grace_period_ms=0,
         )
     ],
     indirect=True,
@@ -718,15 +725,17 @@ print("DONE")
 def test_redis_with_sentinel_failureover(
     ray_start_cluster_head_with_external_redis_sentinel,
 ):
-    """This test is to cover ray cluster's behavior with Redis sentinel.
-    The expectation is Redis sentinel should manage failover
-    automatically, and GCS can continue talking to the same address
-    without any human intervention on Redis.
+    """Ray's behavior when the Redis primary behind Sentinel fails.
+
+    Sentinel handles the failover; Ray has to follow it. GCS asks Sentinel
+    for the primary again on every reconnect attempt, so the promotion is
+    picked up in place.
+
     For this test we ensure:
-    - When Redis master failed, Ray should crash (TODO: GCS should
-        autommatically try re-connect to sentinel).
-    - When restart Ray, it should continue talking to sentinel, which
-        should return information about new master.
+    - When the primary fails, gcs_server stays up and reconnects to
+      whichever node Sentinel promoted.
+    - The cluster keeps working afterwards, including a detached actor
+      created before the failover.
     """
     cluster = ray_start_cluster_head_with_external_redis_sentinel
     import redis
@@ -780,22 +789,35 @@ def test_redis_with_sentinel_failureover(
     leader_process = psutil.Process(pid=leader_pid)
     leader_process.kill()
 
-    print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
-    print("GCS killed")
-
     wait_for_condition(lambda: current_leader != get_sentinel_nodes()[0])
+    print(">>> Sentinel promoted", get_sentinel_nodes()[0])
 
-    # Kill Counter actor. It should restart after GCS is back
+    # gcs_server used to die with the old primary and had to be restarted by
+    # hand. It should now still be the same process, having re-resolved the
+    # primary through Sentinel.
+    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited on failover"
+    wait_for_condition(
+        lambda: run_string_as_driver(
+            f"""
+import ray
+ray.init('{cluster.address}')
+nodes = ray.nodes()
+assert len(nodes) == 1, nodes
+print("ALIVE" if nodes[0]["alive"] else "DEAD")
+"""
+        ).count("ALIVE")
+        == 1,
+        # ray.init blocks on GCS internal KV until the reconnect lands, and the
+        # command-side grace period allows up to 60s of that; the default 10s
+        # would fail on the first slow attempt. Each probe spawns a driver
+        # process, so poll gently.
+        timeout=120,
+        retry_interval_ms=2000,
+    )
+    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited after the failover"
+
+    # Kill the actor. It should come back on the promoted primary.
     c_process.kill()
-    # Cleanup the in memory data and then start gcs
-    cluster.head_node.kill_gcs_server(False)
-
-    print("Start gcs")
-    cluster.head_node.start_gcs_server()
-
-    assert len(ray.nodes()) == 1
-    assert ray.nodes()[0]["alive"]
 
     driver_script = f"""
 import ray
@@ -813,6 +835,151 @@ print("DONE")
 
     # Make sure the cluster is usable
     wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+    # A restarted GCS must also come back from the promoted primary: this is
+    # what proves the failover preserved the data, not just the process. The
+    # pre-reconnect version of this test only covered this cold-restart path.
+    cluster.head_node.kill_gcs_server(False)
+    cluster.head_node.start_gcs_server()
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
+    """gcs_server survives its Redis connection dropping.
+
+    Kill the external Redis and bring a fresh one up on the same port. The
+    same gcs_server process must reconnect and serve GCS writes again: no
+    crash, no restart. This is the plain-Redis half of what
+    test_redis_with_sentinel_failureover asserts through a Sentinel.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS").split(",")[0]
+    ip, port = parse_address(redis_addr)
+    redis_pid = redis.Redis(ip, int(port)).info()["process_id"]
+
+    gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+
+    @ray.remote
+    def f():
+        return 7
+
+    assert ray.get(f.remote()) == 7
+
+    psutil.Process(pid=redis_pid).kill()
+    # SIGKILL is asynchronous: the listen socket is only released once the
+    # process is reaped, and binding the replacement before that fails.
+    wait_for_pid_to_exit(redis_pid, 30)
+
+    # A fresh server on the same port. The GCS keeps its runtime state in
+    # memory, so the cluster stays usable even though the new Redis is empty;
+    # the Redis contents only matter for a GCS restart.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
+        try:
+
+            def redis_serving():
+                try:
+                    return redis.Redis(ip, int(port)).ping()
+                except Exception:
+                    return False
+
+            wait_for_condition(redis_serving, timeout=30)
+
+            gcs_client = ray._private.worker.global_worker.gcs_client
+
+            def gcs_writes_flow():
+                # Internal KV writes go GCS -> Redis, so this only succeeds once
+                # the in-place reconnect has landed.
+                try:
+                    gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
+                    return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
+                except Exception:
+                    return False
+
+            wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
+
+            # Same process: it reconnected in place, it was not restarted.
+            assert psutil.pid_exists(gcs_server_pid)
+            assert ray.get(f.remote()) == 7
+        finally:
+            redis_proc.process.kill()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_server_request_timeout_seconds=10,
+            redis_reconnect_grace_period_ms=5000,
+            redis_db_connect_retries=10,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_permanently_down_bounded_exit(
+    ray_start_cluster_head_with_external_redis,
+):
+    """gcs_server exits, bounded, when Redis never comes back.
+
+    The reconnect holds command retries during the grace period, so the exit
+    comes later than the pre-reconnect ~3.5s; but it must still come, because
+    a head node that cannot reach its metadata store is not serving.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS").split(",")[0]
+    ip, port = parse_address(redis_addr)
+    redis_pid = redis.Redis(ip, int(port)).info()["process_id"]
+
+    gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+    gcs_client = ray._private.worker.global_worker.gcs_client
+
+    psutil.Process(pid=redis_pid).kill()
+
+    # Put a Redis-bound command in flight right away, so the survival check
+    # below is conclusive: without one, nothing would be draining a retry
+    # budget and the process would outlive the check regardless of the grace
+    # period. The write blocks server-side until the retries resolve, so it
+    # runs on a helper thread.
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    def _kv_probe():
+        try:
+            gcs_client.internal_kv_put(b"grace_probe", b"1", True, None, timeout=15)
+        except Exception:
+            pass
+
+    executor.submit(_kv_probe)
+
+    # The grace period must hold first: with the probe draining against a dead
+    # Redis, the old behaviour dies on its ~3.5s command budget, while the
+    # grace period (5s here) keeps the process alive past this check.
+    try:
+        time.sleep(4)
+        assert psutil.pid_exists(gcs_server_pid)
+
+        # And the exit must still come: grace (5s) + retry drain, or the
+        # reconnect budget (10 attempts), whichever runs out first.
+        wait_for_pid_to_exit(gcs_server_pid, 120)
+    finally:
+        # Join the probe before fixture teardown races it, on the failure
+        # paths too: with gcs_server gone its RPC errors out, bounded by the
+        # 15s client timeout above. The probe only needs to be in flight for
+        # the first few seconds; the server-side command it created drains on
+        # its own schedule either way.
+        executor.shutdown(wait=True)
 
 
 @pytest.mark.parametrize(
