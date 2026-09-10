@@ -53,7 +53,7 @@ _ENDPOINT_POLL_WARN_EVERY = 15  # ~30s at the interval above
 _DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
 
 # pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
-# ``data_context.hash_shuffle_compression``.
+# ``data_context.shuffle_compression``.
 Compression = Optional[
     Literal[
         "none", "gzip", "bz2", "brotli", "lz4", "lz4_frame", "lz4_raw", "zstd", "snappy"
@@ -271,7 +271,7 @@ class _PartitionWriter:
     ):
         self._out_file = out_file
         self._map_id = map_id
-        # Codec from data_context.hash_shuffle_compression (same field the reduce reads).
+        # Codec from data_context.shuffle_compression (same field the reduce reads).
         self._compression = compression
         self._staging: Dict[int, List[pa.Table]] = {}
         self._index: Dict[int, List[Tuple[int, int]]] = {}

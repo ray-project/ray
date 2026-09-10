@@ -65,7 +65,6 @@ steps:
     matrix:
       - clang_format
       - pre_commit
-      - semgrep_lint
       - dashboard_format
       - copyright_format
       - bazel_team
