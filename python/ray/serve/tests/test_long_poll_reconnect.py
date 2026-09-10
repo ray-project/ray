@@ -395,13 +395,14 @@ async def test_stop_discards_blocked_executor_result_and_loop_keeps_running(host
 
 
 @pytest.mark.asyncio
-async def test_unexpected_resolver_error_is_terminal(hosts):
+@pytest.mark.parametrize("error_type", [RuntimeError, ray.exceptions.RaySystemError])
+async def test_unexpected_resolver_error_is_terminal(hosts, error_type):
     old = await hosts.create("controller", {"state": "old"})
     received, calls = [], []
 
     def resolve():
         calls.append(True)
-        raise RuntimeError("Resolver configuration is invalid")
+        raise error_type("Resolver configuration is invalid")
 
     client = hosts.client(old, {"state": received.append}, resolve)
     await wait_until(lambda: received == ["old"])
@@ -474,3 +475,38 @@ async def test_listener_stop_discards_already_queued_callbacks(hosts, monkeypatc
     await wait_until(lambda: not client.is_running)
     await asyncio.sleep(0.1)
     assert received == [1]
+
+
+@pytest.mark.asyncio
+async def test_named_lookup_timeouts_are_retried(hosts):
+    old = await hosts.create("controller", {"state": "old"})
+    received, calls = [], []
+    timed_out = threading.Event()
+
+    def resolve():
+        calls.append(True)
+        if len(calls) <= 2:
+            # ActorManager maps a timed-out GCS lookup to GetTimeoutError.
+            # Inject that known result; this is not a live GCS outage test.
+            timed_out.set()
+            raise ray.exceptions.GetTimeoutError("Named actor lookup timed out")
+        return ray.get_actor("controller", namespace=hosts.namespace)
+
+    client = hosts.client(old, {"state": received.append}, resolve)
+    await wait_until(lambda: received == ["old"])
+    await hosts.retire(old, "controller")
+    await wait_until(timed_out.is_set)
+    new = await hosts.create("controller", {"state": "new"})
+    await wait_until(lambda: received == ["old", "new"] or not client.is_running)
+
+    assert client.is_running
+    assert received == ["old", "new"]
+    assert len(calls) >= 3
+    assert client.host_actor._actor_id == new._actor_id
+    assert (await actor_result(new.stats.remote()))["requests"][0] == {"state": -1}
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))

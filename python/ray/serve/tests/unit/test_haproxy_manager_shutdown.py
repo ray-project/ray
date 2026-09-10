@@ -93,3 +93,9 @@ async def test_shutdown_stops_subscription_and_awaits_coalesced_update():
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))

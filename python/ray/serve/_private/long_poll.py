@@ -123,8 +123,9 @@ class LongPollClient:
           disables itself.
         host_actor_resolver: optional synchronous callback that looks up a
           replacement host after an actor error. It runs off the event loop
-          and should raise ValueError while the host is unavailable. The owner
-          must call stop() when it no longer wants to receive updates.
+          and should raise ValueError while the host is unavailable or
+          GetTimeoutError when lookup times out. The owner must call stop()
+          when it no longer wants to receive updates.
     """
 
     def __init__(
@@ -201,7 +202,7 @@ class LongPollClient:
                     # ray.get_actor can block. Keep discovery off the client's
                     # event loop, with only one lookup in flight at a time.
                     host_actor = await self.event_loop.run_in_executor(None, resolver)
-                except ValueError:
+                except (ValueError, ray.exceptions.GetTimeoutError):
                     continue
                 except Exception:
                     logger.exception(
