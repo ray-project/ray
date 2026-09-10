@@ -433,13 +433,16 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         patch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
         expected, _ = consume()
     calls = []
+    failures = []
     original = chunked_tensor_take.PreparedChunkedTensorTake.take
 
     def record_take(plan, indices):
-        calls.append(len(indices))
         if fail_stage == "take":
+            failures.append(1)
             raise ValueError("injected take failure")
-        return original(plan, indices)
+        result = original(plan, indices)
+        calls.append(len(indices))
+        return result
 
     monkeypatch.setattr(
         chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
@@ -463,8 +466,58 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
     if fail_stage == "prepare":
         assert preparation_calls
         assert not calls
+    elif fail_stage == "take":
+        assert failures
+        assert not calls
     else:
         assert calls
+
+
+@pytest.mark.parametrize("failure_stage", ["prepare", "publish"])
+def test_shuffle_generation_retry_preserves_rows_and_rng(
+    shutdown_only, monkeypatch, failure_stage
+):
+    ray.shutdown()
+    ray.init(num_cpus=1)
+    batcher = ShufflingBatcher(
+        batch_size=128, shuffle_buffer_min_size=1024, shuffle_seed=17
+    )
+    old_state = batcher_module._ShuffleBufferState(
+        pa.table({"id": np.arange(1024)}),
+        np.arange(1024, dtype=np.int64),
+        {},
+        batch_head=768,
+    )
+    batcher._buffer_state = old_state
+    batcher.add(pa.table({"id": np.arange(1024, 2048)}))
+    batcher.done_adding()
+    old_builder = batcher._builder
+    old_rng_state = batcher._rng.bit_generator.state
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("generation failed")
+
+    target = (
+        "_prepare_local_shuffle_arrow_table"
+        if failure_stage == "prepare"
+        else "_ShuffleBufferState"
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(batcher_module, target, fail)
+        with pytest.raises(RuntimeError, match="generation failed"):
+            batcher.next_batch()
+    assert batcher._builder is old_builder
+    assert batcher._buffer_state is old_state
+    assert batcher._num_rows() == 1280
+    assert batcher._rng.bit_generator.state == old_rng_state
+
+    ids = []
+    while batcher.has_any():
+        ids.extend(batcher.next_batch().column("id").to_pylist())
+    source_ids = np.concatenate([np.arange(1024, 2048), np.arange(768, 1024)])
+    expected = source_ids[np.random.default_rng(17).permutation(1280)]
+    np.testing.assert_array_equal(ids, expected)
+    assert len(set(ids)) == 1280
 
 
 if __name__ == "__main__":

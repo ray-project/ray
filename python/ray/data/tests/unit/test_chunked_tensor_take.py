@@ -16,7 +16,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.batcher import (
     ShufflingBatcher,
     _prepare_local_shuffle_arrow_table,
-    _take_prepared_arrow_table,
 )
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import (
@@ -39,8 +38,9 @@ def take_calls(monkeypatch):
 
     def record_take(plan, indices):
         # Do not retain the plan or source buffers: lifetime tests must release them.
+        result = original(plan, indices)
         calls.append(indices.copy())
-        return original(plan, indices)
+        return result
 
     monkeypatch.setattr(
         chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
@@ -1056,32 +1056,36 @@ def test_prepare_local_shuffle_arrow_table_combines_fallback_columns(caplog):
         assert prepared_table.column("value").num_chunks == 1
 
 
-def test_take_prepared_arrow_table_recovers_and_disables_failed_plan(monkeypatch):
+def test_shuffle_recovery_combines_source_only_once(monkeypatch):
     table = _tensor_table(4096, 256, 4)
-    prepared_table, prepared_takes = _prepare_local_shuffle_arrow_table(table)
-    assert prepared_takes
-
-    indices = np.arange(10, dtype=np.int64)
-    output = _take_prepared_arrow_table(prepared_table, indices, prepared_takes)
-    np.testing.assert_array_equal(
-        output.column("tensor").chunk(0).to_numpy(),
-        table.column("tensor").combine_chunks().to_numpy()[indices],
+    prepared, plans = _prepare_local_shuffle_arrow_table(table)
+    state = batcher_module._ShuffleBufferState(
+        prepared, np.arange(4096, dtype=np.int64), plans
     )
+    attempts = []
+    combined = []
+    original_combine = transform_pyarrow.combine_chunked_array
 
-    def raise_take(*args, **kwargs):
+    def fail_take(*args, **kwargs):
+        attempts.append(1)
         raise RuntimeError("injected take failure")
 
+    def record_combine(column):
+        combined.append(len(column))
+        return original_combine(column)
+
     monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake,
-        "take",
-        raise_take,
+        chunked_tensor_take.PreparedChunkedTensorTake, "take", fail_take
     )
-    recovered = _take_prepared_arrow_table(prepared_table, indices, prepared_takes)
-    assert recovered.equals(output)
-    assert not prepared_takes
-    assert _take_prepared_arrow_table(prepared_table, indices, prepared_takes).equals(
-        output
-    )
+    monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", record_combine)
+    for start in range(0, 24, 8):
+        output = state.take_next(8)
+        assert output.equals(table.slice(start, 8))
+    assert attempts == [1]
+    assert combined == [4096]
+    assert state.block.column("tensor").num_chunks == 1
+    assert not state.prepared_tensor_takes
+    assert not state.failed_tensor_columns
 
 
 @pytest.mark.parametrize("stage", ["prepare", "normalize", "take"])
@@ -1201,6 +1205,8 @@ def test_shuffle_standard_failure_does_not_advance_cursor(monkeypatch):
         with pytest.raises(RuntimeError, match="standard failed"):
             state.take_next(128)
     assert state.batch_head == 0
+    assert state.failed_tensor_columns == {1}
+    assert not state.prepared_tensor_takes
     result = state.take_next(128)
     np.testing.assert_array_equal(result.column("row_id").to_numpy(), np.arange(128))
     assert state.batch_head == 128
@@ -1228,13 +1234,53 @@ def test_shuffle_preparation_preserves_mixed_column_routing(take_calls):
     assert set(plans) == {1}
     assert [c.num_chunks for c in prepared.columns] == [1, tensor.num_chunks, 1, 1]
     indices = np.array([1023, 0, 512], dtype=np.int64)
-    output = _take_prepared_arrow_table(prepared, indices, plans)
+    state = batcher_module._ShuffleBufferState(prepared, indices, plans)
+    output = state.take_next(len(indices))
     assert take_calls
     assert output.schema == schema
     np.testing.assert_array_equal(
         output.column("tensor").chunk(0).to_numpy(), values[indices]
     )
     np.testing.assert_array_equal(output.column("plain").to_numpy(), ids[indices])
+
+
+def test_plain_shuffle_uses_standard_table_take(monkeypatch):
+    table = pa.table({str(i): np.arange(1024) for i in range(32)})
+    indices = np.array([1023, 0, 512], dtype=np.int64)
+    state = batcher_module._ShuffleBufferState(table, indices, {})
+
+    def fail_prepared_route(*args, **kwargs):
+        raise AssertionError("Plain columns entered the prepared tensor path")
+
+    monkeypatch.setattr(state, "_take_arrow", fail_prepared_route)
+    assert state.take_next(3).equals(table.take(indices))
+
+
+def test_shuffle_failed_column_does_not_disable_other_plans(monkeypatch):
+    table = _tensor_table(1024, 256, 4)
+    table = table.append_column("other_tensor", table.column("tensor"))
+    prepared, plans = _prepare_local_shuffle_arrow_table(table)
+    failed_plan = plans[1]
+    original_take = chunked_tensor_take.PreparedChunkedTensorTake.take
+    healthy_calls = []
+
+    def take(plan, indices):
+        if plan is failed_plan:
+            raise ValueError("one column failed")
+        result = original_take(plan, indices)
+        healthy_calls.append(1)
+        return result
+
+    monkeypatch.setattr(chunked_tensor_take.PreparedChunkedTensorTake, "take", take)
+    state = batcher_module._ShuffleBufferState(
+        prepared, np.arange(1024, dtype=np.int64), plans
+    )
+    for start in (0, 8):
+        assert state.take_next(8).equals(table.slice(start, 8))
+    assert set(plans) == {2}
+    assert state.block.column(1).num_chunks == 1
+    assert state.block.column(2).num_chunks == table.column(2).num_chunks
+    assert healthy_calls == [1, 1]
 
 
 if __name__ == "__main__":

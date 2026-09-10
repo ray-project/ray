@@ -1,7 +1,8 @@
+import copy
 import logging
 import warnings
-from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Set, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -76,55 +77,6 @@ def _prepare_local_shuffle_arrow_table(
     return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
 
 
-def _take_prepared_arrow_table(
-    table: pa.Table,
-    indices: np.ndarray,
-    prepared_takes: Dict[int, PreparedChunkedTensorTake],
-) -> pa.Table:
-    """Take one batch while reusing validated tensor source metadata.
-
-    Args:
-        table: Prepared Arrow shuffle buffer.
-        indices: One-dimensional, native ``np.int64`` row indices validated to
-            be within the prepared table's bounds. Local shuffle establishes
-            this invariant when it creates its permutation.
-        prepared_takes: Mapping of column positions to prepared tensor takes.
-
-    Returns:
-        A table containing the selected rows in index order.
-
-    The indices are intentionally not revalidated for every prepared column.
-    Preparation used the complete shuffle-generation size, so every normal
-    batch and carry-over take satisfies each plan's output-size contract.
-    Unexpected plan failures are logged and retried on the standard path.
-    Failed plans are removed from the mapping for the rest of this generation.
-    """
-
-    columns = []
-    for index, column in enumerate(table.columns):
-        take_plan = prepared_takes.get(index)
-        if take_plan is None:
-            if _is_multi_chunk_extension_column(column):
-                column = transform_pyarrow.combine_chunked_array(column)
-            columns.append(column.take(indices))
-        else:
-            try:
-                result = take_plan.take(indices)
-            except Exception:
-                logger.warning(
-                    "Shuffle tensor take failed for column %s; using standard take",
-                    index,
-                    exc_info=True,
-                )
-                del prepared_takes[index]
-                take_plan = None
-            if take_plan is None:
-                column = transform_pyarrow.combine_chunked_array(column)
-                result = column.take(indices)
-            columns.append(result)
-    return pa.Table.from_arrays(columns, schema=table.schema)
-
-
 @dataclass
 class _ShuffleBufferState:
     """One logical shuffle-buffer generation and its consumption state.
@@ -138,6 +90,8 @@ class _ShuffleBufferState:
     shuffled_indices: np.ndarray
     prepared_tensor_takes: Dict[int, PreparedChunkedTensorTake]
     batch_head: int = 0
+    # A failed plan stays disabled even if combining its source column raises.
+    failed_tensor_columns: Set[int] = field(default_factory=set)
 
     @property
     def remaining_rows(self) -> int:
@@ -162,16 +116,51 @@ class _ShuffleBufferState:
 
     def _take(self, indices: np.ndarray) -> Block:
         """Take rows through the implementation chosen for this generation."""
-        if not isinstance(self.block, pa.Table):
+        if not self.prepared_tensor_takes and not self.failed_tensor_columns:
             return self._take_standard(indices)
+        return self._take_arrow(indices)
 
-        # Stay on this route after a failed plan is removed: the generic table
-        # accessor could otherwise prepare and retry the same optimization.
-        return _take_prepared_arrow_table(
-            self.block,
-            indices,
-            self.prepared_tensor_takes,
+    def _combine_failed_tensor_column(self, index: int) -> pa.ChunkedArray:
+        """Persist the standard representation before clearing a failed column."""
+        column = transform_pyarrow.combine_chunked_array(self.block.column(index))
+        self.block = self.block.set_column(
+            index, self.block.schema.field(index), column
         )
+        self.failed_tensor_columns.remove(index)
+        return self.block.column(index)
+
+    def _take_arrow(self, indices: np.ndarray) -> pa.Table:
+        """Reuse plans, permanently replacing failed columns with standard storage.
+
+        Standard operations run outside the exception handler. If combining a
+        failed column also raises, its pending marker prevents re-preparation
+        on retry. Once combined, later batches reuse the replacement source.
+        """
+        assert isinstance(self.block, pa.Table)
+        columns = []
+        for index, column in enumerate(self.block.columns):
+            take_plan = self.prepared_tensor_takes.get(index)
+            if take_plan is None:
+                if index in self.failed_tensor_columns:
+                    column = self._combine_failed_tensor_column(index)
+                result = column.take(indices)
+            else:
+                try:
+                    result = take_plan.take(indices)
+                except Exception:
+                    logger.warning(
+                        "Shuffle tensor take failed for column %s; using standard take",
+                        index,
+                        exc_info=True,
+                    )
+                    self.failed_tensor_columns.add(index)
+                    del self.prepared_tensor_takes[index]
+                    take_plan = None
+                if take_plan is None:
+                    column = self._combine_failed_tensor_column(index)
+                    result = column.take(indices)
+            columns.append(result)
+        return pa.Table.from_arrays(columns, schema=self.block.schema)
 
     def _take_standard(self, indices) -> Block:
         """Take rows through the standard block accessor path."""
@@ -481,30 +470,33 @@ class ShufflingBatcher(BatcherInterface):
         return self._builder.num_rows()
 
     def _start_new_shuffle_generation(self) -> None:
-        """Build the buffer, take plans, and permutation for a new generation."""
+        """Prepare a generation locally and publish it only after success."""
+        next_builder = DelegatingBlockBuilder()
+        next_builder.add_block(self._builder.build())
         if self._buffer_state is not None and self._buffer_state.remaining_rows > 0:
-            # Reuse this generation's prepared plans when carrying its unyielded
-            # rows into the next generation.
-            self._builder.add_block(self._buffer_state.materialize_remaining())
+            next_builder.add_block(self._buffer_state.materialize_remaining())
 
-        block = self._builder.build()
+        block = next_builder.build()
         accessor = BlockAccessor.for_block(block)
         prepared_takes = {}
         if isinstance(accessor, ArrowBlockAccessor):
             block, prepared_takes = _prepare_local_shuffle_arrow_table(block)
             accessor = BlockAccessor.for_block(block)
 
-        # Prepared tensor takes consume the same normalized native-int64 index
-        # representation as ``take_table``'s fast path.
-        shuffled_indices = self._rng.permutation(accessor.num_rows()).astype(
-            np.int64,
-            copy=False,
+        # Failed preparation must leave both pending rows and random state intact.
+        next_rng = copy.deepcopy(self._rng)
+        shuffled_indices = next_rng.permutation(accessor.num_rows()).astype(
+            np.int64, copy=False
         )
-        self._builder = DelegatingBlockBuilder()
-        self._buffer_state = _ShuffleBufferState(
+        next_state = _ShuffleBufferState(
             block=block,
             shuffled_indices=shuffled_indices,
             prepared_tensor_takes=prepared_takes,
+        )
+        self._rng, self._builder, self._buffer_state = (
+            next_rng,
+            DelegatingBlockBuilder(),
+            next_state,
         )
 
     def next_batch(self) -> Block:
