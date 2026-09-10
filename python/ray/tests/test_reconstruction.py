@@ -11,6 +11,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     wait_for_pid_to_exit,
 )
+from ray.job_config import JobConfig
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -208,7 +209,7 @@ def test_job_config_ray_data_reconstruction(
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(
         address=cluster.address,
-        job_config=ray.job_config.JobConfig(
+        job_config=JobConfig(
             _enable_ray_data_reconstruction=ray_data_reconstruction_enabled
         ),
     )

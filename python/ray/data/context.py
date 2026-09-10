@@ -579,10 +579,10 @@ def _default_fixed_shape_tensor_format():
     return FixedShapeTensorFormat.V2
 
 
-def _resolve_enable_ray_data_reconstruction() -> bool:
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
     """Read this job's ``enable_ray_data_reconstruction`` setting from the core worker."""
     if not global_worker.connected:
-        return False
+        return None
 
     try:
         return bool(global_worker.core_worker.get_enable_ray_data_reconstruction())
@@ -870,6 +870,9 @@ class DataContext:
             for some APIs but not others. Defaults to ``False``.
         enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
             itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -1075,9 +1078,7 @@ class DataContext:
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
 
-    enable_ray_data_reconstruction: bool = field(
-        default_factory=_resolve_enable_ray_data_reconstruction
-    )
+    _enable_ray_data_reconstruction: Optional[bool] = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -1463,6 +1464,25 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the enable_ray_data_reconstruction value in the cluster. "
+                    "This will cause data reconstruction to fail. Please "
+                    "only set the enable_ray_data_reconstruction value using the job config."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.

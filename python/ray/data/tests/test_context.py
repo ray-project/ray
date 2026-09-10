@@ -2,13 +2,23 @@ import pytest
 
 import ray
 from ray.data.context import ShuffleStrategy, _deduce_default_shuffle_compression
+from ray.job_config import JobConfig
 from ray.util.annotations import RayDeprecationWarning
+
+_RECONSTRUCTION_OVERRIDE_ERROR = (
+    "only set the enable_ray_data_reconstruction value using the job config"
+)
 
 
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
     ctx = ray.data.DataContext.get_current()
     with pytest.warns(DeprecationWarning):
         ctx.write_file_retry_on_errors = []
+
+
+def _init_job_with_reconstruction(enabled: bool) -> None:
+    """Start a job whose `_enable_ray_data_reconstruction` is `enabled`."""
+    ray.init(job_config=JobConfig(_enable_ray_data_reconstruction=enabled))
 
 
 @pytest.mark.parametrize(
@@ -94,26 +104,14 @@ def test_hash_shuffle_compression_alias(monkeypatch):
 
 @pytest.mark.parametrize("job_setting", [False, True])
 def test_enable_ray_data_reconstruction_resolved_from_core_worker(
-    shutdown_only, job_setting
+    shutdown_only, job_setting: bool
 ):
-    """The constructor resolves the job-level ray data reconstruction
-    setting off the core worker.
-    """
+    """The job-level ray data reconstruction setting is read off the core worker."""
     from ray.data.context import DataContext
 
     original = DataContext.get_current()
     try:
-        ray.init(
-            job_config=ray.job_config.JobConfig(
-                _enable_ray_data_reconstruction=job_setting
-            )
-        )
-        # `original` was resolved before the driver connected, and
-        # `get_current()` caches it process-wide. Drop that copy so the setting
-        # is re-resolved against this job's core worker.
-        DataContext._set_current(DataContext())
-
-        assert DataContext.get_current().enable_ray_data_reconstruction is job_setting
+        _init_job_with_reconstruction(job_setting)
 
         # The sealed per-Dataset copy carries it too.
         ds = ray.data.range(1)
@@ -131,6 +129,54 @@ def test_enable_ray_data_reconstruction_defaults_false(shutdown_only):
 
     ray.init()
     assert DataContext().enable_ray_data_reconstruction is False
+
+
+def test_enable_ray_data_reconstruction_is_read_only(shutdown_only):
+    """The job config is the only supported way to set this.
+
+    Assigning on the `DataContext` doesn't reach the cluster -- Ray Core reads
+    `_enable_ray_data_reconstruction` off the job config to decide whether to
+    pin object lineage. We should not allow users to set this value on the context.
+    """
+    from ray.data.context import DataContext
+
+    _init_job_with_reconstruction(True)
+    context = DataContext()
+
+    with pytest.raises(AttributeError):
+        context.enable_ray_data_reconstruction = False
+
+    assert context.enable_ray_data_reconstruction is True
+
+
+@pytest.mark.parametrize("job_setting", [False, True])
+def test_enable_ray_data_reconstruction_rejects_conflicting_override(
+    shutdown_only, job_setting: bool
+):
+    """An override that disagrees with the job config is rejected on read.
+
+    Reading is the last point at which the two can be compared, and letting a
+    stale override through would silently diverge from Ray Core's lineage
+    pinning decision for this job.
+    """
+    from ray.data.context import DataContext
+
+    original = DataContext.get_current()
+    try:
+        _init_job_with_reconstruction(job_setting)
+
+        context = DataContext(_enable_ray_data_reconstruction=not job_setting)
+
+        with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
+            _ = context.enable_ray_data_reconstruction
+
+        # The override travels with the sealed per-Dataset copy, so a Dataset
+        # can't pick it up unnoticed either.
+        DataContext._set_current(context)
+        with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
+            _ = ray.data.range(1).context.enable_ray_data_reconstruction
+    finally:
+        DataContext._set_current(original)
 
 
 if __name__ == "__main__":
