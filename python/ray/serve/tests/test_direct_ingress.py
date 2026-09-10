@@ -1340,9 +1340,14 @@ def test_port_recovery_on_controller_restart(_skip_if_ff_not_enabled, serve_inst
     wait_for_condition(validate_port_recovery)
 
 
+# These tests deliberately queue up to 1000 requests behind `max_ongoing_requests`,
+# so a request's deadline must cover the whole queue drain, not one request's service.
+BACKPRESSURE_REQUEST_TIMEOUT_S = 60
+
+
 class TestDirectIngressBackpressure:
     def _do_http_request(self, url: str) -> bool:
-        r = httpx.get(url, timeout=10)
+        r = httpx.get(url, timeout=BACKPRESSURE_REQUEST_TIMEOUT_S)
         if r.status_code == 200:
             return True
         elif r.status_code == 503:
@@ -1354,7 +1359,10 @@ class TestDirectIngressBackpressure:
         channel = grpc.insecure_channel(url)
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         try:
-            stub.Method1(serve_pb2.UserDefinedMessage(), timeout=20)
+            stub.Method1(
+                serve_pb2.UserDefinedMessage(),
+                timeout=BACKPRESSURE_REQUEST_TIMEOUT_S,
+            )
             return True
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:

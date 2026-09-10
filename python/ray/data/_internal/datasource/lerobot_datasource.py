@@ -128,6 +128,76 @@ class _ReadGranularity(str, enum.Enum):
     EPISODE = "episode"
 
 
+def _is_list_type(data_type: pa.DataType) -> bool:
+    """True for any Arrow list layout: list, large_list, or fixed_size_list."""
+    return (
+        pa.types.is_fixed_size_list(data_type)
+        or pa.types.is_list(data_type)
+        or pa.types.is_large_list(data_type)
+    )
+
+
+def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
+    """Build the output tensor type for a windowed tabular Arrow field.
+
+    LeRobot stores vectors as list columns and higher-rank features either as
+    nested lists or Hugging Face ``ArrayXD`` extension types backed by nested
+    lists. A temporal window adds one leading dimension to the stored feature.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorType
+
+    # BaseExtensionType covers canonical (C++-defined) extension types like
+    # pa.fixed_shape_tensor too, not just Python-defined ones like HF ArrayXD.
+    if isinstance(data_type, pa.BaseExtensionType):
+        data_type = data_type.storage_type
+
+    ndim = 1
+    while _is_list_type(data_type):
+        ndim += 1
+        data_type = data_type.value_type
+
+    return ArrowVariableShapedTensorType(data_type, ndim=ndim)
+
+
+def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
+    """Materialize a uniformly shaped nested-list column as a typed ndarray.
+
+    Convert an Arrow nested-list column into one typed, rectangular ndarray --
+    ``(n_rows, *feature_shape)``, the layout the delta gather fancy-indexes
+    into windows -- without going through Python objects.
+
+    The leaf dtype survives (``np.array(column.to_pylist())`` widens float32
+    to float64), so the produced block matches the schema
+    ``_delta_tensor_type`` declares from the same nesting.
+
+    Raises a ValueError if the column is null or ragged.
+    """
+    shape = [len(column)]
+    values = column
+    while _is_list_type(values.type):
+        if values.null_count:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} cannot contain null lists."
+            )
+        if pa.types.is_fixed_size_list(values.type):
+            length = values.type.list_size
+        else:
+            # Keep the common, uniformly shaped path inside Arrow. Converting
+            # every row's length to Python is prohibitively expensive for the
+            # large action/state columns found in real LeRobot datasets.
+            lengths = pc.unique(pc.list_value_length(values))
+            if len(lengths) != 1:
+                raise ValueError(
+                    f"Windowed LeRobot feature {name!r} must have one uniform "
+                    f"shape, but found list lengths {sorted(lengths.to_pylist())}."
+                )
+            length = lengths[0].as_py()
+        shape.append(length)
+        values = values.flatten()
+
+    return values.to_numpy(zero_copy_only=False).reshape(shape)
+
+
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
 # ---------------------------------------------------------------------------
@@ -173,19 +243,9 @@ def _build_schema(
             # Encoded-byte image struct -> decoded uint8 tensor (4-D if windowed).
             return pa.field(f.name, delta_frame_type if f.name in delta else frame_type)
         if f.name in delta:
-            # Tabular feature gains a leading time axis. A list column (fixed or
-            # variable) stacks to (T, dim) -> ndim 2 over its element type; a
-            # scalar column stacks to (T,) -> ndim 1 over its own type.
-            is_list = (
-                pa.types.is_fixed_size_list(f.type)
-                or pa.types.is_list(f.type)
-                or pa.types.is_large_list(f.type)
-            )
-            value_type = f.type.value_type if is_list else f.type
-            return pa.field(
-                f.name,
-                ArrowVariableShapedTensorType(value_type, ndim=2 if is_list else 1),
-            )
+            # A temporal window adds one leading dimension to the stored
+            # scalar/vector/matrix/... feature.
+            return pa.field(f.name, _delta_tensor_type(f.type))
         return f
 
     # Image columns live in the parquet as encoded-byte structs; swap them for
@@ -616,7 +676,7 @@ def _resolve_root(
 def _build_lerobot_read_task(
     segments: List[tuple],
     roots: List[_LeRobotRoot],
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
     episodes: List[pa.Table],
     max_block_bytes: int,
     per_task_row_limit: Optional[int] = None,
@@ -626,10 +686,13 @@ def _build_lerobot_read_task(
 
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
-    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
-    function fetches it once. ``episodes`` is the driver-side list of projected
-    episode tables, used here only to cut each segment's slice -- it is NOT
-    shipped; only the per-segment slice travels with the task.
+    to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
+    which the task captures refs for only the roots its segments touch,
+    the read function fetches just those. Roots split
+    across several tasks still share one object. ``episodes`` is the
+    driver-side list of projected episode tables, used here only to cut each
+    segment's slice, it is NOT shipped; only the per-segment slice travels
+    with the task.
     """
     total_rows = 0
     size_bytes = 0
@@ -656,23 +719,27 @@ def _build_lerobot_read_task(
         input_files=all_input_files,
         exec_stats=None,
     )
+    needed_root_indices = sorted({root_idx for root_idx, _, _ in segments})
+    task_root_refs = [root_refs[root_idx] for root_idx in needed_root_indices]
     read_fn = functools.partial(
-        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+        _read_lerobot_task,
+        task_root_refs,
+        needed_root_indices,
+        resolved,
+        max_block_bytes,
     )
     return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
 
 
 def _read_lerobot_task(
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
+    root_indices: List[int],
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
-    """Stream decoded rows as Arrow tables, iterating over all segments.
-
-    Runs on a worker: fetches the shared slim per-root state once, then reads
-    each pre-resolved segment.
-    """
-    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    """Stream decoded rows as Arrow tables, iterating over all segments."""
+    # Get only the roots this task needs.
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],
@@ -886,19 +953,20 @@ def _prepare_delta_segment(
         vk for vk in root.video_keys if vk in delta_steps
     ]
     # Materialize tabular delta columns to numpy once, preserving the stored dtype
-    # so stacked windows match the schema: list columns (fixed or variable) flatten
-    # to (n_rows, dim) via the value array -- which keeps e.g. float32 that
-    # to_pylist would widen to float64 -- and scalar columns stay 1-D.
+    # so stacked windows match the schema: nested-list columns (fixed or variable)
+    # materialize to (n_rows, *shape) via the value array -- which keeps e.g.
+    # float32 that to_pylist would widen to float64 -- and scalar columns stay 1-D.
     tabular_base: Dict[str, np.ndarray] = {}
     for name in delta_tabular_keys:
         col = full.column(name).combine_chunks()
-        if (
-            pa.types.is_fixed_size_list(col.type)
-            or pa.types.is_list(col.type)
-            or pa.types.is_large_list(col.type)
-        ):
-            flat = col.flatten().to_numpy(zero_copy_only=False)
-            tabular_base[name] = flat.reshape(len(col), -1)
+        if isinstance(col.type, pa.BaseExtensionType):
+            # In lerobot, multidimensional columns can be backed by Hugging Face ArrayXD.
+            # Hugging Face ArrayXD is a pa.ExtensionType
+            # Unwrap it so the one validated path below
+            # materializes every encoding
+            col = col.storage
+        if _is_list_type(col.type):
+            tabular_base[name] = _nested_list_column_to_numpy(col, name)
         else:
             tabular_base[name] = col.to_numpy(zero_copy_only=False)
     return _DeltaSegment(
@@ -1764,13 +1832,13 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self.distilled_metas)
+        root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _build_lerobot_read_task(
                 segments,
                 self.distilled_metas,
-                roots_ref,
+                root_refs,
                 self._episodes,
                 max_block_bytes,
                 per_task_row_limit,

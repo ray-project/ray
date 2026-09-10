@@ -2719,7 +2719,15 @@ def drain_node(
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
+@click.option(
+    "--gcs-address",
+    required=False,
+    type=str,
+    help="The address (host:port) of GCS. Defaults to <node_ip>:6379.",
+)
+def kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, gcs_address: Optional[str]
+) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
@@ -2730,7 +2738,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     # client.
     from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 
-    run_kuberay_autoscaler(cluster_name, cluster_namespace)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace, gcs_address)
 
 
 @cli.command(name="health-check", hidden=True)

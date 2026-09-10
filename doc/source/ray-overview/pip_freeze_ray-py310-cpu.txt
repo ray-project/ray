@@ -16,18 +16,18 @@ azure-core==1.35.1
 azure-datalake-store==0.0.53
 azure-identity==1.23.1
 azure-storage-blob==12.28.0
-backports.zstd @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_backports.zstd_1781450813/work
+backports.zstd @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_backports.zstd_1786861406/work
 billiard==4.2.4
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto3==1.29.7
 botocore==1.32.7
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1764016952863/work
+Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1786622598436/work
 build @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-build_1778048948/work
 cached-property @ file:///home/conda/feedstock_root/build_artifacts/cached_property_1783242827500/work
 cachetools==5.5.2
 celery==5.6.3
 certifi==2026.4.22
-cffi @ file:///home/conda/feedstock_root/build_artifacts/cffi_1725560520483/work
+cffi==1.17.1
 charset-normalizer==3.4.7
 click==8.3.2
 click-didyoumean==0.3.1
@@ -146,7 +146,7 @@ python-discovery==1.2.2
 python-dotenv==1.2.2
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=9fac89d3ddf4c6adda119029a4d4e4a0f9e1bb8acc8dca8ea91697fa97c3c753
+ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=5678bdd1f42a4c295b6761758e18d7d77d92bb37ff5f4b791d0efe5d902bff14
 ray-haproxy==2.8.25
 referencing==0.36.2
 requests==2.33.1
@@ -169,12 +169,12 @@ tomli @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_toml
 tomli_w @ file:///home/conda/feedstock_root/build_artifacts/tomli-w_1736962227066/work
 tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
 truststore @ file:///home/conda/feedstock_root/build_artifacts/truststore_1729762363021/work
-typing-inspection @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing-inspection_1777105465/work
+typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2026.1
 tzlocal==5.3.1
 uc-micro-py==2.0.0
-unearth @ file:///home/conda/feedstock_root/build_artifacts/unearth_1766474644449/work
+unearth @ file:///home/conda/feedstock_root/build_artifacts/unearth_1786844942393/work
 uritemplate==4.2.0
 urllib3==1.26.20
 uvicorn==0.22.0

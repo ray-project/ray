@@ -5,11 +5,52 @@ import pytest
 from pyarrow import orc
 
 import ray
+from ray.data._internal.datasource.orc_datasource import ORCDatasource
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
 
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
+
+
+def test_read_orc_skips_empty_stripes(monkeypatch):
+    record_batches = [
+        pa.record_batch([pa.array([], type=pa.int64())], names=["id"]),
+        pa.record_batch([pa.array([1], type=pa.int64())], names=["id"]),
+    ]
+
+    class FakeORCFile:
+        nstripes = len(record_batches)
+
+        def read_stripe(self, stripe_index):
+            return record_batches[stripe_index]
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
+
+    datasource = ORCDatasource.__new__(ORCDatasource)
+    tables = list(datasource._read_stream(None, "unused"))
+
+    assert tables == [pa.table({"id": [1]})]
+
+
+def test_read_orc_rejects_pickle_object_columns(monkeypatch):
+    storage = pa.array([b"payload"], type=pa.large_binary())
+    extension_array = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
+    record_batch = pa.record_batch([extension_array], names=["col"])
+
+    class FakeORCFile:
+        nstripes = 1
+
+        def read_stripe(self, stripe_index):
+            assert stripe_index == 0
+            return record_batch
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
+
+    datasource = ORCDatasource.__new__(ORCDatasource)
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(datasource._read_stream(None, "unused"))
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):

@@ -1,11 +1,14 @@
 import os
 import zipfile
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
@@ -153,6 +156,34 @@ def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, fs, dat
             "fare": 25.0,
         },
     ]
+
+
+@pytest.mark.skipif(
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=PYARROW_HUDI_TEST_SKIP_REASON,
+)
+def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path):
+    """A tampered base data file must not be able to run its embedded pickle."""
+    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
+    marker = os.path.join(local_path, "exploit_marker")
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    # Swap a column of one base data file for an attacker-controlled pickled object.
+    victim = ray.data.read_hudi(table_uri=table_path).input_files()[0]
+    original = pq.ParquetFile(victim).read()
+    columns = {name: original.column(name) for name in original.schema.names}
+    columns["rider"] = ArrowPythonObjectArray.from_objects(
+        [Exploit()] * original.num_rows
+    )
+    pq.write_table(pa.table(columns), victim)
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        ray.data.read_hudi(table_uri=table_path).take_all()
+
+    assert not os.path.exists(marker), "pickle.load executed attacker code"
 
 
 if __name__ == "__main__":

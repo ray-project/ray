@@ -289,7 +289,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # Servers in this backend
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
@@ -435,7 +435,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup

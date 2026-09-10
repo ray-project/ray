@@ -49,7 +49,7 @@ def test_legacy_shuffle_operators_disable_the_guard(
     restore_data_context,  # noqa: F811
 ):
     # Only the V2 hash shuffle implementation is supported by the guard.
-    expected_enabled = shuffle_strategy is ShuffleStrategy.HASH_SHUFFLE_V2
+    expected_enabled = shuffle_strategy is ShuffleStrategy.SHUFFLE_V2
     DataContext.get_current().shuffle_strategy = shuffle_strategy
 
     ds = ray.data.range(1).groupby("id").count()
