@@ -473,7 +473,7 @@ def test_chunked_tensor_take_fallback_reasons(reason, monkeypatch, caplog):
     elif reason == _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT:
         column = pa.chunked_array([[1], [2]])
     elif reason == _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW:
-        max_output_rows = np.iinfo(np.int64).max // 256 + 1
+        max_output_rows = np.iinfo(np.dtype("int64")).max // 256 + 1
     elif reason == _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS:
         column = pa.chunked_array(
             [column.combine_chunks(), column.chunk(0).slice(0, 0)]
@@ -1083,6 +1083,7 @@ def test_shuffle_recovery_combines_source_only_once(monkeypatch):
         assert output.equals(table.slice(start, 8))
     assert attempts == [1]
     assert combined == [4096]
+    assert isinstance(state.block, pa.Table)
     assert state.block.column("tensor").num_chunks == 1
     assert not state.prepared_tensor_takes
     assert not state.failed_tensor_columns
@@ -1123,6 +1124,7 @@ def test_production_tensor_blocks_are_eligible(take_calls):
     for part in np.split(values, 4):
         builder.add_block(pa.table({"tensor": ArrowTensorArray.from_numpy(part)}))
     table = builder.build()
+    assert isinstance(table, pa.Table)
     assert table.column("tensor").num_chunks > 1
     assert (
         try_prepare_chunked_tensor_take(table.column("tensor"), max_output_rows=4)
@@ -1208,6 +1210,7 @@ def test_shuffle_standard_failure_does_not_advance_cursor(monkeypatch):
     assert state.failed_tensor_columns == {1}
     assert not state.prepared_tensor_takes
     result = state.take_next(128)
+    assert isinstance(result, pa.Table)
     np.testing.assert_array_equal(result.column("row_id").to_numpy(), np.arange(128))
     assert state.batch_head == 128
 
@@ -1237,6 +1240,7 @@ def test_shuffle_preparation_preserves_mixed_column_routing(take_calls):
     state = batcher_module._ShuffleBufferState(prepared, indices, plans)
     output = state.take_next(len(indices))
     assert take_calls
+    assert isinstance(output, pa.Table)
     assert output.schema == schema
     np.testing.assert_array_equal(
         output.column("tensor").chunk(0).to_numpy(), values[indices]
@@ -1278,6 +1282,7 @@ def test_shuffle_failed_column_does_not_disable_other_plans(monkeypatch):
     for start in (0, 8):
         assert state.take_next(8).equals(table.slice(start, 8))
     assert set(plans) == {2}
+    assert isinstance(state.block, pa.Table)
     assert state.block.column(1).num_chunks == 1
     assert state.block.column(2).num_chunks == table.column(2).num_chunks
     assert healthy_calls == [1, 1]
