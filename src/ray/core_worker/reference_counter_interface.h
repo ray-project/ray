@@ -739,7 +739,7 @@ class ReferenceCounterInterface {
   /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by
    * this worker can be reconstructed from lineage if lost. This is used to
-   * apply the job-level `enable_object_reconstruction` setting: workers only
+   * apply the job-level `enable_ray_data_reconstruction` setting: workers only
    * learn their job config with the first task they receive, which is before
    * they can own any objects.
    *

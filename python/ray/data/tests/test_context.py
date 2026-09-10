@@ -67,6 +67,47 @@ def test_hash_shuffle_v2_strategy_alias():
         ShuffleStrategy("not_a_shuffle_strategy")
 
 
+@pytest.mark.parametrize("job_setting", [False, True])
+def test_enable_ray_data_reconstruction_resolved_from_core_worker(
+    shutdown_only, job_setting
+):
+    """The constructor resolves the job-level ray data reconstruction
+    setting off the core worker.
+    """
+    from ray.data.context import DataContext
+
+    original = DataContext.get_current()
+    try:
+        ray.init(
+            job_config=ray.job_config.JobConfig(
+                _enable_ray_data_reconstruction=job_setting
+            )
+        )
+        # `original` was resolved before the driver connected, and
+        # `get_current()` caches it process-wide. Drop that copy so the setting
+        # is re-resolved against this job's core worker.
+        DataContext._set_current(DataContext())
+
+        assert DataContext.get_current().enable_ray_data_reconstruction is job_setting
+
+        # The sealed per-Dataset copy carries it too.
+        ds = ray.data.range(1)
+        assert ds.context.enable_ray_data_reconstruction is job_setting
+    finally:
+        DataContext._set_current(original)
+
+
+def test_enable_ray_data_reconstruction_defaults_false(shutdown_only):
+    """Resolution falls back to `False` when the process isn't connected."""
+    from ray.data.context import DataContext
+
+    ray.shutdown()
+    assert DataContext().enable_ray_data_reconstruction is False
+
+    ray.init()
+    assert DataContext().enable_ray_data_reconstruction is False
+
+
 if __name__ == "__main__":
     import sys
 

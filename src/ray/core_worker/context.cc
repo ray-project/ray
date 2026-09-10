@@ -206,12 +206,16 @@ bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
   return true;
 }
 
-std::optional<bool> WorkerContext::GetEnableObjectReconstruction() const {
+bool WorkerContext::GetEnableRayDataReconstruction() const {
   absl::ReaderMutexLock lock(&mutex_);
-  if (!job_config_.has_value() || !job_config_->has_enable_object_reconstruction()) {
-    return std::nullopt;
+  return job_config_.has_value() && job_config_->enable_ray_data_reconstruction();
+}
+
+bool WorkerContext::ShouldPinObjectLineage() const {
+  if (GetEnableRayDataReconstruction()) {
+    return false;
   }
-  return job_config_->enable_object_reconstruction();
+  return RayConfig::instance().lineage_pinning_enabled();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {

@@ -89,11 +89,23 @@ class WorkerContext {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /**
-   * @brief Whether the job allows lost objects to be reconstructed from lineage.
-   * @return whether the job config has object reconstruction enabled.
-   *         If not set, return std::nullopt.
+   * @return whether the job config enables Ray Data reconstruction.
+   *         Default to false.
    */
-  std::optional<bool> GetEnableObjectReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+  bool GetEnableRayDataReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @brief Whether this worker should pin the lineage of the objects it owns so
+   *        that they can be reconstructed if lost.
+   *
+   *         If Ray Data reconstruction is enabled, the application promises
+   *         to handle reconstruction of lost objects itself. In this case,
+   *         Ray will simply throw an error when it encounters a lost object.
+   *         Otherwise, we defer to the cluster wide lineage pinning configuration.
+   *
+   * @return whether to pin object lineage on this worker.
+   */
+  bool ShouldPinObjectLineage() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);

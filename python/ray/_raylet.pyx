@@ -5186,6 +5186,13 @@ cdef class CoreWorker:
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 
+    def get_enable_ray_data_reconstruction(self):
+        """
+        Return whther the current job has ray data's reconstruction
+        enabled.
+        """
+        return self.get_job_config().enable_ray_data_reconstruction
+
     def get_local_memory_store_bytes_used(self):
         cdef:
             int64_t num_bytes_used

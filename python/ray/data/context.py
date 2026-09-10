@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
@@ -568,6 +569,23 @@ def _default_fixed_shape_tensor_format():
     return FixedShapeTensorFormat.V2
 
 
+def _resolve_enable_ray_data_reconstruction() -> bool:
+    """Read this job's ``enable_ray_data_reconstruction`` setting from the core worker."""
+    if not global_worker.connected:
+        return False
+
+    try:
+        return bool(global_worker.core_worker.get_enable_ray_data_reconstruction())
+    except Exception:
+        logger.warning(
+            "Couldn't read `enable_ray_data_reconstruction` from the core worker. "
+            "Ray Data may be running without fault tolerance mechanism."
+            "Is the data reconstruction value correctly propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
+
+
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     # Lazily import to avoid circular dependencies.
     from ray.data._internal.issue_detection.issue_detector_configuration import (
@@ -840,6 +858,8 @@ class DataContext:
             otherwise, the system launches map tasks and actors with no logical
             ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
             for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
     """
 
     # `None` means the block size is infinite.
@@ -1042,6 +1062,10 @@ class DataContext:
 
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
+    )
+
+    enable_ray_data_reconstruction: bool = field(
+        default_factory=_resolve_enable_ray_data_reconstruction
     )
 
     def __post_init__(self):
