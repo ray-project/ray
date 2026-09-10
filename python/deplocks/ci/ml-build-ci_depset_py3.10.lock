@@ -69,20 +69,14 @@ aim==3.23.0 ; python_full_version < '3.12' \
     --hash=sha256:f66ed673b7e8199cf4017e4750fc6989cd7a7d64f727843293e739272ca10543 \
     --hash=sha256:fe0a686d7cc03196531a8330e1992834968c4c19fa5beff11a7093bfd66e16fe \
     --hash=sha256:ff0cc2af8d3b306ce99eb287c62362625740b43eac92aa2426edb2c961dbbb30
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/tune-test-requirements.txt
+    # via -r python/requirements/ml/tune-test-requirements.txt
 aim-ui==3.23.0 ; python_full_version < '3.12' \
     --hash=sha256:0463170db45f8e27731dcc66bb803dc01e8615fb62837d86ca5c1305477c73b7
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aim
+    # via aim
 aimrecords==0.0.7 ; python_full_version < '3.12' \
     --hash=sha256:9b562fa5b5109b4b3dd4f83be0061cadbac63fa8031f281b8b5c8ae29967072f \
     --hash=sha256:b9276890891c5fd68f817e20fc5d466a80c01e22fa468eaa979331448a75d601
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aim
+    # via aim
 aimrocks==0.5.2 ; python_full_version < '3.12' \
     --hash=sha256:03ca9bd3a7d379f40c678e648d3ec1445738a32fee337009cfb6aa9aedc51964 \
     --hash=sha256:081b59cf3a02056420e32d8fa851859d314ae227e975d6febba67e9341135208 \
@@ -138,15 +132,11 @@ aimrocks==0.5.2 ; python_full_version < '3.12' \
     --hash=sha256:f99ae65f910cf4a505457a280c9296212c9d844f5ece8c7d28813edf62787602 \
     --hash=sha256:fe5b69e7dc54a07188d06fba9da012318223b60c07a96d39f90ccf1b01f833f7 \
     --hash=sha256:ff6334af4ac403438eae330bf25fff5b3a63ba9f8f87a77ebb2d34815ef36431
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aim
+    # via aim
 aiofiles==24.1.0 ; python_full_version < '3.12' \
     --hash=sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c \
     --hash=sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aim
+    # via aim
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
@@ -402,26 +392,20 @@ argon2-cffi-bindings==25.1.0 \
 argparse==1.4.0 ; python_full_version < '3.12' \
     --hash=sha256:62b089a55be1d8949cd2bc7e0df0bddb9e028faefc8c32038cc84862aefdd6e4 \
     --hash=sha256:c31647edb69fd3d465a847ea3157d37bed1f95f19760b11a47aa91c04b666314
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   mosaicml
-array-record==0.5.1 ; python_full_version < '3.12' \
-    --hash=sha256:0ee01775a1c6155103a8cfd8b65ab7609f96b1213332474430013191314e78d8 \
-    --hash=sha256:248fb29086cb3a6322a5d8b8332d77713a030bc54f0bacdf215a6d3185f73f90 \
-    --hash=sha256:3dbfac79589b53ad765d247b4b6b6c108623053950a8ae36d8a5f2bfec396bd1 \
-    --hash=sha256:4a4de494dc1c0ec175187da2a252b18581965f605443c23f7385c5189642f9bf \
-    --hash=sha256:6ebe99f37e3a797322f4f5cfc6902b5e852012ba2729fac628aad6affb225247 \
-    --hash=sha256:897362036f2920093eff3d729c2a6e1844e3077f513d6bd29640cd02f98e07c7 \
-    --hash=sha256:8ebd7c12c0a159a44c6c8fdaf915036fcddfdfa499a878ddcff9761c6d1af685 \
-    --hash=sha256:927f5f0bdbb141e75d370ade9ce784514babcb78f86d23badbab2d7fd6b7cd48 \
-    --hash=sha256:9922862216a9d3be76fdc27968af1ec0ea20f986329998ba45b0f01ee3e646fa \
-    --hash=sha256:a0911cca3f71aa6724ae08c351e486acc2dcdc098df0e4ae9aa920f16aee2385 \
-    --hash=sha256:b9f2e304e59a17af9f5bf2a86b93ad4700d0eeb85d742a884aa38dc0b54dda5b \
-    --hash=sha256:c4e6e5cef45a82641f4bb008c2a1409cd043f46dd3f0e5a2e7f232416435186d \
-    --hash=sha256:e39b2001fbed6f6d621a5f2079609037167ee06bf977fd6c37d225043c39a015 \
-    --hash=sha256:e6b297b9241d10f072f00a85e97c8743c9e623be20e413ab3403b9326ed98890 \
-    --hash=sha256:ea3969b9f954f6f01ddac64f59eea45392dc4eb8c1bf3d1ca5c9bcfd7f8d46e7 \
-    --hash=sha256:f08eea9a4afbfa05fb7fafaa007b89e286a8a27a7775cb80338199576ffe07b4
+    # via mosaicml
+array-record==0.8.1 ; (python_full_version < '3.12' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'win32') \
+    --hash=sha256:005fb6f4f4e833b2de1c4e51c620ad6a30a893b46dc168039d9bb31b71466070 \
+    --hash=sha256:090d82858a931e3754e1062f5c62c20ae764f3e5f24e79ea9054393804383a8d \
+    --hash=sha256:1bf3fcf0a23591667dbd1fe3d32983e8c864781cef5bfd070885ebd3e39e4594 \
+    --hash=sha256:37bb802e1fdc98edb60a859552c7e7d494e141cf390bfb7350acfd63467daeae \
+    --hash=sha256:39a69d8b8259bce043a8218f2defd46eb44cba0c2f60b7254fd1daaf26e0ea67 \
+    --hash=sha256:66516d7a9ef64a9f4c47e1d0d1cfe52b3a507c6835697ec43718ab6115ce8db5 \
+    --hash=sha256:86478265c96df1ec5cf2e124aa4a416e033eef9da9f72b05a776cee9871fb00a \
+    --hash=sha256:959ee895dfce9decd514d7516f27e1b07660624b239f80987a6f430845acbe6f \
+    --hash=sha256:a753f10fb9b76a895ef4fd8467848221a75a5d006355e0ec781d1dd7ca69eff6 \
+    --hash=sha256:b1d0236d4fa93fc7fa721ba7897a49ee38a758fca4aec79f8824ff4dee1056b8 \
+    --hash=sha256:b63f02209bdd3acbb175248d04e0f3f827950eae72f010e6ec14e2732aaf008e \
+    --hash=sha256:e5e8e610f59f5a7958dd5672d4b8e505213195594150fdabb7cc0fa725518ed0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -453,9 +437,7 @@ async-lru==2.3.0 \
 async-timeout==5.0.1 ; python_full_version < '3.11' \
     --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
     --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aiohttp
+    # via aiohttp
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
@@ -493,9 +475,7 @@ backcall==0.2.0 \
 base58==2.0.1 ; python_full_version < '3.12' \
     --hash=sha256:365c9561d9babac1b5f18ee797508cd54937a724b6e419a130abad69cec5ca79 \
     --hash=sha256:447adc750d6b642987ffc6d397ecd15a799852d5f6a1d308d384500243825058
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aimrecords
+    # via aimrecords
 bayesian-optimization==1.4.0 \
     --hash=sha256:0984cfcbc9472284778962416f0d4892286da3f54e1df2767ef89263b6e22263 \
     --hash=sha256:5e7b5ada7826a8a342932d67f8ae5e638ade588a12b7f7df058fb7a2defe5866
@@ -770,9 +750,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.5.0 \
+    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
+    --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aim
@@ -851,7 +831,6 @@ configspace==1.2.2 ; python_full_version < '3.12' \
     --hash=sha256:9dd5090fab08fbfc0fa8a66affb53e991e9df65ae20959fcee8e544bb3c0a09d \
     --hash=sha256:b5cc981c145ef9632104d230acf963c2f68fe5a375983946e941c2eec5dd08e4
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
 contourpy==1.3.2 \
@@ -1070,15 +1049,11 @@ distlib==0.4.0 \
 dm-control==1.0.12 ; python_full_version < '3.12' \
     --hash=sha256:419f8e16418b55caa4b67280cd89da86f587cd21eedeeafa3b2ee4e2b14cba5d \
     --hash=sha256:ec337f64fe227279472cc5225938cbdd53094d4b2d70c7026339dba4006fa8ed
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/rllib-test-requirements.txt
+    # via -r python/requirements/ml/rllib-test-requirements.txt
 dm-env==1.6 ; python_full_version < '3.12' \
     --hash=sha256:0eabb6759dd453b625e041032f7ae0c1e87d4eb61b6a96b9ca586483837abf29 \
     --hash=sha256:a436eb1c654c39e0c986a516cee218bea7140b510fceff63f97eb4fcff3d93de
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   dm-control
+    # via dm-control
 dm-tree==0.1.10 \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
     --hash=sha256:033f9a063e1e19b6c65fb5c76079bd923044f5a6095357ad2637845513d47938 \
@@ -1117,18 +1092,17 @@ dm-tree==0.1.10 \
 docstring-parser==0.15 ; python_full_version < '3.12' \
     --hash=sha256:48ddc093e8b1865899956fcc03b03e66bb7240c310fac5af81814580c55bf682 \
     --hash=sha256:d1679b86250d269d06a99670924d6bce45adc00b08069dae8c47d98e89b667a9
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   yahp
+    # via yahp
 einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deepspeed
-etils==1.5.2 \
-    --hash=sha256:6dc882d355e1e98a5d1a148d6323679dc47c9a5792939b9de72615aa4737eb0b \
-    --hash=sha256:ba6a3e1aff95c769130776aa176c11540637f5dd881f3b79172a5149b6b1c446
+    #   etils
+etils==1.13.0 \
+    --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
+    --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -1783,9 +1757,7 @@ holidays==0.39 \
     #   prophet
 hpbandster==0.7.4 ; python_full_version < '3.12' \
     --hash=sha256:49ffc32688155b509e62f3617b52ae15a96c9bff2c996a23df83f279106c5921
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/tune-requirements.txt
+    # via -r python/requirements/ml/tune-requirements.txt
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
@@ -2266,9 +2238,7 @@ labmaze==1.0.6 ; python_full_version < '3.12' \
     --hash=sha256:f18126066db2218a52853c7dd490b4c3d8129fc22eb3a47eb23007524b911d53 \
     --hash=sha256:f9aef09a76877342bb4d634b7e05f43b038a49c4f34adfb8f1b8ac57c29472f2 \
     --hash=sha256:ff472793238bd9b6dabea8094594d6074ad3c111455de3afcae72f6c40c6817e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   dm-control
+    # via dm-control
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
@@ -2891,15 +2861,11 @@ moocore==0.2.0 \
 more-itertools==11.0.2 ; python_full_version < '3.12' \
     --hash=sha256:392a9e1e362cbc106a2457d37cabf9b36e5e12efd4ebff1654630e76597df804 \
     --hash=sha256:6e35b35f818b01f691643c6c611bc0902f2e92b46c18fffa77ae1e7c46e912e4
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   configspace
+    # via configspace
 mosaicml==0.3.1 ; python_full_version < '3.12' \
     --hash=sha256:0cfa314fe69df1acedc022fd6f49d456d8335b4fff4b3b7db0a7f22292d9fe8e \
     --hash=sha256:1caf6c555f7c4ac0d5db25f82b119cc573c5ad78f98083981b863b6f44589e42
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/train-test-requirements.txt
+    # via -r python/requirements/ml/train-test-requirements.txt
 moviepy==2.2.1 \
     --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
     --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
@@ -3846,12 +3812,10 @@ ormsgpack==1.12.2 \
 overrides==7.7.0 ; python_full_version < '3.12' \
     --hash=sha256:55158fa3d93b98cc75299b1e67078ad9003ca27945c76162c1c0766d6f91820a \
     --hash=sha256:c7ed9d062f78b8e4c1a7b70bd8796b35ead4d9f510227ef9c5dc7626c60d7e49
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupyter-server
-packaging==26.1 \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+    # via jupyter-server
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
+    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
@@ -4145,7 +4109,7 @@ prometheus-client==0.25.0 \
     #   jupyter-server
     #   opentelemetry-exporter-prometheus
     #   ray
-promise==2.3 ; python_full_version < '3.12' \
+promise==2.3 ; python_full_version < '3.12' and sys_platform != 'win32' \
     --hash=sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -4379,9 +4343,7 @@ py-spy==0.4.1 ; python_full_version < '3.12' \
     --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
     --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
     --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ray
+    # via ray
 pyarrow==23.0.1 \
     --hash=sha256:00be9576d970c31defb5c32eb72ef585bf600ef6d0a82d5eccaae96639cf9d07 \
     --hash=sha256:07deae7783782ac7250989a7b2ecde9b3c343a643f82e8a4df03d93b633006f0 \
@@ -4799,9 +4761,7 @@ pyro-ppl==1.9.1 \
 pyro4==4.82 ; python_full_version < '3.12' \
     --hash=sha256:511f5b0804e92dd77dc33adf9c947787e3f9e9c5a96b12162f0557a7c4ce21fb \
     --hash=sha256:bbf5d7413e616d3e1978a05d7caca62eec59692d2dab75dd22a4426ef9b8a691
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   hpbandster
+    # via hpbandster
 pytest==7.4.4 \
     --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
@@ -4864,9 +4824,7 @@ pytorch-lightning==2.6.1 \
 pytorch-ranger==0.1.1 ; python_full_version < '3.12' \
     --hash=sha256:1e69156c9cc8439185cb8ba4725b18c91947fbe72743e25aca937da8aeb0c8ec \
     --hash=sha256:aa7115431cef11b57d7dd7bc86e7302a911dae467f62ec5d0b10e1ff744875db
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   torch-optimizer
+    # via torch-optimizer
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
@@ -5215,9 +5173,7 @@ requests==2.33.1 \
 restrictedpython==8.1 ; python_full_version < '3.12' \
     --hash=sha256:4769449c6cdb10f2071649ba386902befff0eff2a8fd6217989fa7b16aeae926 \
     --hash=sha256:4a69304aceacf6bee74bdf153c728221d4e3109b39acbfe00b3494927080d898
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   aim
+    # via aim
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -5673,7 +5629,6 @@ serpent==1.42 ; python_full_version < '3.12' \
     --hash=sha256:8ea082b01f8ba07ecd74e34a9118ac4521bc4594938d912b808c89f1da425506 \
     --hash=sha256:a02f5a4fcf3b41ee6204b36c3cf026bf0433ffe15b6a7fc8a37e0bff74d87575
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   hpbandster
     #   pyro4
 shellingham==1.5.4 \
@@ -5932,7 +5887,7 @@ tensorflow==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tf-keras
-tensorflow-datasets==4.9.3 ; python_full_version < '3.12' \
+tensorflow-datasets==4.9.3 ; python_full_version < '3.12' and sys_platform != 'win32' \
     --hash=sha256:09cd60eccab0d5a9d15f53e76ee0f1b530ee5aa3665e42be621a4810d9fa5db6 \
     --hash=sha256:90390077dde2c9e4e240754ddfc5bb50b482946d421c8a34677c3afdb0463427
     # via
@@ -5963,10 +5918,8 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12' \
     --hash=sha256:e6d8cc7b14ade870168b9704ee44f9c55b468b9a00ed40e12d20fffd321193b5 \
     --hash=sha256:f0adfbcd264262797d429311843733da2d5c1ffb119fbfa6339269b6c0414113 \
     --hash=sha256:fbcfb4aa2eaa9a3038d2487e570ff93feb1dbe51c3a4663d7d9ab9f9a9f9a9d8
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-metadata==1.17.3 ; python_full_version < '3.12' \
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
+tensorflow-metadata==1.17.3 ; python_full_version < '3.12' and sys_platform != 'win32' \
     --hash=sha256:452912e6398b3cb7302f0de6139dea794b3be1bd0eb40e6765eb3a04e51ea991
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -6072,7 +6025,7 @@ tokenizers==0.22.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   transformers
-toml==0.10.2 ; python_full_version < '3.12' \
+toml==0.10.2 ; python_full_version < '3.12' and sys_platform != 'win32' \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via
@@ -6141,9 +6094,7 @@ torch-geometric==2.5.3 \
 torch-optimizer==0.1.0 ; python_full_version < '3.12' \
     --hash=sha256:3f67b71838a23a149afa7b3e1d9d7d3fd7c83b5758c8f3744900de1584969cf5 \
     --hash=sha256:b7adaed38b66a5c5105a59b30a71c4ab7c9954baf0acabd969fee3dac954657d
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   mosaicml
+    # via mosaicml
 torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
     --hash=sha256:2e34f7d83b32512b349e93355b18b1db48e317f30828d7ab717df6628825e000 \
     --hash=sha256:34a11594df5338600a3fd55986fed088e4186ba56f2524a0a962cc3e40f75a4d \
@@ -6440,9 +6391,7 @@ uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:ea721dd3203b809039fcc2983f14608dae82b212288b346e0bfe46ec2fab0b7c \
     --hash=sha256:ef6f0d4cc8a9fa1f6a910230cd53545d9a14479311e87e3cb225495952eb672c \
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   uvicorn
+    # via uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
@@ -6843,9 +6792,7 @@ xxhash==3.6.0 \
 yahp==0.1.1 ; python_full_version < '3.12' \
     --hash=sha256:241347623ed42997e5913c6f4cb45f042ba9814d85b3168fa7ca762ad7972efa \
     --hash=sha256:b9d797f4609b69b7c4fdb408b8a87106df6845cbe1f6ddd0da4bc0dbb7b7f496
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   mosaicml
+    # via mosaicml
 yarl==1.23.0 \
     --hash=sha256:03214408cfa590df47728b84c679ae4ef00be2428e11630277be0727eba2d7cc \
     --hash=sha256:041b1a4cefacf65840b4e295c6985f334ba83c30607441ae3cf206a0eed1a2e4 \
