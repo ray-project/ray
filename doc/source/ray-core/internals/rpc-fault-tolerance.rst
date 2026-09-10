@@ -52,8 +52,8 @@ which maps lease IDs to workers. If the new lease request is already present in 
 ``leased_workers`` map, the system knows this lease request is a retry and responds with the 
 already leased worker address.
 
-Hidden problem: long-polling RPCs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Hidden problem: Long-polling RPCs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Network transient errors can happen at any time. For most RPCs, they finish in one I/O context 
 execution, so guarding against whether the request or response failed is sufficient. 
