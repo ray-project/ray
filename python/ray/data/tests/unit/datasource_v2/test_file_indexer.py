@@ -581,6 +581,15 @@ class TestFooterIndexerFileShuffle:
         assert len(batches) > 1
 
 
+def test_list_file_infos_rejects_missing_filesystem():
+    # The FileIndexer base accepts ``filesystem=None`` for indexers that do
+    # their own IO; this one cannot, and must say so instead of failing on a
+    # ``None`` attribute deep inside path expansion.
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    with pytest.raises(ValueError, match="NonSamplingFileIndexer.*filesystem=None"):
+        list(indexer.list_file_infos(pa.array(["a.csv"]), filesystem=None))
+
+
 if __name__ == "__main__":
     import sys
 

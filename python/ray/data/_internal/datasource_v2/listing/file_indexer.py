@@ -252,7 +252,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -280,7 +280,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
@@ -436,7 +436,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileInfo]:
@@ -451,6 +451,13 @@ class NonSamplingFileIndexer(FileIndexer):
         partition filters) are applied here, so both listing paths share one
         filtering point.
         """
+        if filesystem is None:
+            raise ValueError(
+                f"{type(self).__name__} lists files through a PyArrow filesystem, "
+                "but the datasource returned `filesystem=None`. Resolve one in the "
+                "datasource's `__init__` (see `_resolve_paths_and_filesystem`) or "
+                "return an indexer that does its own IO."
+            )
         pruners = pruners or []
         file_info_iterator = self._get_file_info_iterator(
             paths, filesystem, preserve_order
