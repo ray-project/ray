@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
 import ray
-from ray.data._internal.datasource import bigquery_datasource
+from ray.data._internal.datasource.bigquery_client_provider import (
+    BigQueryClientProvider,
+    resolve_client_provider,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
@@ -31,6 +34,7 @@ class BigQueryDatasink(Datasink[None]):
         dataset: str,
         max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
         overwrite_table: Optional[bool] = True,
+        client_provider: Optional[BigQueryClientProvider] = None,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -40,6 +44,7 @@ class BigQueryDatasink(Datasink[None]):
         self.dataset = dataset
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
+        self.client_provider = resolve_client_provider(client_provider, project_id)
 
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         from google.api_core import exceptions
@@ -48,7 +53,7 @@ class BigQueryDatasink(Datasink[None]):
             raise ValueError("project_id and dataset are required args")
 
         # Set up datasets to write
-        client = bigquery_datasource._create_client(project_id=self.project_id)
+        client = self.client_provider.get_client()
         dataset_id = self.dataset.split(".", 1)[0]
         try:
             client.get_dataset(dataset_id)
@@ -74,13 +79,18 @@ class BigQueryDatasink(Datasink[None]):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> None:
-        def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
+        def _write_single_block(
+            block: Block,
+            dataset: str,
+            client_provider: BigQueryClientProvider,
+        ) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery
 
             block = BlockAccessor.for_block(block).to_arrow()
 
-            client = bigquery_datasource._create_client(project_id=project_id)
+            # Built on the worker; the client itself isn't serializable.
+            client = client_provider.get_client()
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
@@ -126,7 +136,7 @@ class BigQueryDatasink(Datasink[None]):
         # Launch a remote task for each block within this write task
         ray.get(
             [
-                _write_single_block.remote(block, self.project_id, self.dataset)
+                _write_single_block.remote(block, self.dataset, self.client_provider)
                 for block in blocks
                 if BlockAccessor.for_block(block).num_rows() > 0
             ]

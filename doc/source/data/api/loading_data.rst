@@ -43,6 +43,8 @@ BigQuery
    :toctree: doc/
 
    read_bigquery
+   BigQueryClientProvider
+   DefaultBigQueryClientProvider
 
 Binary
 ^^^^^^

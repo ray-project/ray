@@ -1,3 +1,4 @@
+import pickle
 from typing import Iterator
 from unittest import mock
 
@@ -10,6 +11,10 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
+from ray.data._internal.datasource.bigquery_client_provider import (
+    BigQueryClientProvider,
+    DefaultBigQueryClientProvider,
+)
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -276,6 +281,151 @@ class TestWriteBigQuery:
         # write() always calls ray.get(), but with an empty list since the
         # zero-row block is filtered out (no remote write tasks launched).
         ray_get_mock.assert_called_once_with([])
+
+
+class _CountingClientProvider(BigQueryClientProvider):
+    """A provider that records how many clients it built.
+
+    Delegates to ``bigquery.Client`` / ``BigQueryReadClient``, which the autouse
+    fixtures above replace with mocks.
+    """
+
+    def __init__(self):
+        self.build_client_calls = 0
+        self.build_read_client_calls = 0
+
+    def _build_client(self):
+        self.build_client_calls += 1
+        return bigquery.Client(project=_TEST_GCP_PROJECT_ID)
+
+    def _build_read_client(self):
+        self.build_read_client_calls += 1
+        return bigquery_storage.BigQueryReadClient()
+
+
+class TestBigQueryClientProvider:
+    """Tests for injecting BigQuery clients via a client provider."""
+
+    def test_default_provider_forwards_credentials_and_options(
+        self, bq_client_full_mock, bqs_client_full_mock
+    ):
+        credentials = mock.Mock(name="credentials")
+        client_options = mock.Mock(name="client_options")
+        provider = DefaultBigQueryClientProvider(
+            project_id=_TEST_GCP_PROJECT_ID,
+            credentials=credentials,
+            client_options=client_options,
+        )
+
+        provider.get_client()
+        _, kwargs = bq_client_full_mock.call_args
+        assert kwargs["project"] == _TEST_GCP_PROJECT_ID
+        assert kwargs["credentials"] is credentials
+        assert kwargs["client_options"] is client_options
+        assert kwargs["client_info"].user_agent.startswith("ray/")
+
+        provider.get_read_client()
+        _, kwargs = bqs_client_full_mock.call_args
+        assert kwargs["credentials"] is credentials
+        assert kwargs["client_options"] is client_options
+        assert kwargs["client_info"].user_agent.startswith("ray/")
+
+    def test_default_provider_kwargs_take_precedence(self, bq_client_full_mock):
+        override = mock.Mock(name="override_credentials")
+        provider = DefaultBigQueryClientProvider(
+            project_id=_TEST_GCP_PROJECT_ID,
+            credentials=mock.Mock(name="credentials"),
+            client_kwargs={"credentials": override, "location": "us-central1"},
+        )
+
+        provider.get_client()
+        _, kwargs = bq_client_full_mock.call_args
+        assert kwargs["credentials"] is override
+        assert kwargs["location"] == "us-central1"
+
+    def test_clients_are_built_once_and_cached(self):
+        provider = _CountingClientProvider()
+
+        assert provider.get_client() is provider.get_client()
+        assert provider.get_read_client() is provider.get_read_client()
+        assert provider.build_client_calls == 1
+        assert provider.build_read_client_calls == 1
+
+    def test_cached_clients_are_dropped_when_serialized(self):
+        """Google's clients aren't picklable, so they must not be pickled.
+
+        See https://github.com/ray-project/ray/issues/65614.
+        """
+        provider = _CountingClientProvider()
+        provider.get_client()
+        provider.get_read_client()
+
+        unpickled = pickle.loads(pickle.dumps(provider))
+
+        assert "_cached_client" not in unpickled.__dict__
+        assert "_cached_read_client" not in unpickled.__dict__
+        # The clients are rebuilt on demand in the receiving process.
+        assert unpickled.build_client_calls == 1
+        unpickled.get_client()
+        assert unpickled.build_client_calls == 2
+
+    def test_read_uses_injected_provider(self):
+        provider = _CountingClientProvider()
+        bq_ds = BigQueryDatasource(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+            client_provider=provider,
+        )
+
+        read_tasks_list = bq_ds.get_read_tasks(2)
+
+        assert len(read_tasks_list) == 2
+        assert provider.build_client_calls == 1
+        assert provider.build_read_client_calls == 1
+
+    def test_read_tasks_do_not_capture_a_client(self):
+        """Read tasks must carry the provider, not a live client."""
+        provider = _CountingClientProvider()
+        bq_ds = BigQueryDatasource(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+            client_provider=provider,
+        )
+        bq_ds.get_read_tasks(1)
+
+        # The datasource is shipped to workers, so it must survive a round-trip
+        # even after the driver has already built its clients.
+        restored = pickle.loads(pickle.dumps(bq_ds))
+        assert "_cached_read_client" not in restored._client_provider.__dict__
+
+    def test_write_uses_injected_provider(self):
+        provider = _CountingClientProvider()
+        bq_datasink = BigQueryDatasink(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+            client_provider=provider,
+        )
+
+        bq_datasink.on_write_start()
+        assert provider.build_client_calls == 1
+
+        # The datasink is shipped to write tasks, so it must survive a
+        # round-trip after the driver has already built its client.
+        restored = pickle.loads(pickle.dumps(bq_datasink))
+        assert "_cached_client" not in restored.client_provider.__dict__
+
+    def test_defaults_to_default_provider(self):
+        bq_ds = BigQueryDatasource(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+        )
+        assert isinstance(bq_ds._client_provider, DefaultBigQueryClientProvider)
+
+        bq_datasink = BigQueryDatasink(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+        )
+        assert isinstance(bq_datasink.client_provider, DefaultBigQueryClientProvider)
 
 
 if __name__ == "__main__":

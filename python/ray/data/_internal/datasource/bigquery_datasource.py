@@ -1,6 +1,10 @@
 import logging
 from typing import TYPE_CHECKING, List, Optional
 
+from ray.data._internal.datasource.bigquery_client_provider import (
+    BigQueryClientProvider,
+    resolve_client_provider,
+)
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -11,51 +15,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _create_user_agent() -> str:
-    import ray
-
-    return f"ray/{ray.__version__}"
-
-
-def _create_client_info():
-    from google.api_core.client_info import ClientInfo
-
-    return ClientInfo(
-        user_agent=_create_user_agent(),
-    )
-
-
-def _create_client_info_gapic():
-    from google.api_core.gapic_v1.client_info import ClientInfo
-
-    return ClientInfo(
-        user_agent=_create_user_agent(),
-    )
-
-
-def _create_client(project_id: str):
-    from google.cloud import bigquery
-
-    return bigquery.Client(
-        project=project_id,
-        client_info=_create_client_info(),
-    )
-
-
-def _create_read_client():
-    from google.cloud import bigquery_storage
-
-    return bigquery_storage.BigQueryReadClient(
-        client_info=_create_client_info_gapic(),
-    )
-
-
 class BigQueryDatasource(Datasource):
     def __init__(
         self,
         project_id: str,
         dataset: Optional[str] = None,
         query: Optional[str] = None,
+        client_provider: Optional[BigQueryClientProvider] = None,
     ):
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -64,6 +30,7 @@ class BigQueryDatasource(Datasource):
         self._project_id = project_id
         self._dataset = dataset
         self._query = query
+        self._client_provider = resolve_client_provider(client_provider, project_id)
 
         if query is not None and dataset is not None:
             raise ValueError(
@@ -79,24 +46,29 @@ class BigQueryDatasource(Datasource):
     ) -> List[ReadTask]:
         from google.cloud import bigquery_storage
 
+        # Bind the provider to a local so the read tasks close over it rather
+        # than over ``self``, and build the read client on the worker -- the
+        # client itself isn't serializable.
+        client_provider = self._client_provider
+
         def _read_single_partition(stream) -> Block:
-            client = _create_read_client()
+            client = client_provider.get_read_client()
             reader = client.read_rows(stream.name)
             return reader.to_arrow()
 
         if self._query:
-            query_client = _create_client(project_id=self._project_id)
+            query_client = self._client_provider.get_client()
             query_job = query_client.query(self._query)
             query_job.result()
             destination = str(query_job.destination)
             dataset_id = destination.split(".")[-2]
             table_id = destination.split(".")[-1]
         else:
-            self._validate_dataset_table_exist(self._project_id, self._dataset)
+            self._validate_dataset_table_exist(self._dataset)
             dataset_id = self._dataset.split(".")[0]
             table_id = self._dataset.split(".")[1]
 
-        bqs_client = _create_read_client()
+        bqs_client = self._client_provider.get_read_client()
         table = f"projects/{self._project_id}/datasets/{dataset_id}/tables/{table_id}"
 
         if parallelism == -1:
@@ -142,10 +114,10 @@ class BigQueryDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def _validate_dataset_table_exist(self, project_id: str, dataset: str) -> None:
+    def _validate_dataset_table_exist(self, dataset: str) -> None:
         from google.api_core import exceptions
 
-        client = _create_client(project_id=project_id)
+        client = self._client_provider.get_client()
         dataset_id = dataset.split(".")[0]
         try:
             client.get_dataset(dataset_id)
