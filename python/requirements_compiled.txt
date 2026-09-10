@@ -102,10 +102,8 @@ argon2-cffi==25.1.0
     # via jupyter-server
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
-array-record==0.8.1 ; sys_platform != "darwin" and platform_system != "Windows"
-    # via
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-    #   tensorflow-datasets
+array-record==0.8.3
+    # via tensorflow-datasets
 arro3-core==0.8.0
     # via deltalake
 arrow==1.4.0
@@ -492,9 +490,8 @@ einops==0.8.2
     #   lerobot
 et-xmlfile==2.0.0
     # via openpyxl
-etils==1.13.0
+etils==1.14.0
     # via
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
     #   mujoco
     #   tensorflow-datasets
@@ -834,9 +831,7 @@ importlib-metadata==6.11.0
     #   opentelemetry-api
     #   tensordict
 importlib-resources==7.1.0
-    # via
-    #   etils
-    #   prophet
+    # via prophet
 iniconfig==2.3.0
     # via pytest
 ipykernel==7.2.0
