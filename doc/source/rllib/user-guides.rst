@@ -11,18 +11,18 @@ User Guides
 .. toctree::
     :hidden:
 
-    rllib-advanced-api
-    rllib-callback
+    advanced-api
+    callback
     checkpoints
     metrics-logger
     single-agent-episode
     connector-v2
-    rllib-replay-buffers
-    rllib-offline
+    replay-buffers
+    offline
     rl-modules
-    rllib-learner
-    rllib-fault-tolerance
-    rllib-dev
+    learner
+    fault-tolerance
+    dev
     scaling-guide
 
 .. _rllib-feature-guide:
