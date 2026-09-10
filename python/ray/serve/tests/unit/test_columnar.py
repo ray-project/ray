@@ -1,15 +1,25 @@
-"""Columnar autoscaling metrics: the SCR1 wire format.
+"""Columnar autoscaling metrics: the SCR1 wire format and the paths that consume it.
 
-Covers framing and O(1) wire detection, the producer-side width gate, decode
-rejection of malformed frames, and the fallback when numpy is unavailable.
+Codec coverage comes first (framing, wire detection, the producer width gate, decode
+rejection, and the numpy fallback), then the plumbing that decodes frames into the
+array stores and aggregates them.
 """
 
+import random
 import sys
+from functools import partial
+from unittest import mock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-from ray.serve._private import autoscaling_metrics_codec as codec
+import ray.serve._private.autoscaling_state as A
+from ray.serve._private import (
+    autoscaling_metrics_codec as codec,
+    autoscaling_metrics_merge as merge,
+)
+from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -19,7 +29,13 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TimeStampedValue,
 )
+from ray.serve._private.controller import ServeController
+from ray.serve._private.metrics_utils import (
+    aggregate_timeseries,
+    merge_instantaneous_total,
+)
 from ray.serve._private.utils import compress_metric_report, decompress_metric_report
+from ray.serve.config import AggregationFunction, AutoscalingConfig
 
 # --------------------------------------------------------------------------
 # shared fixtures
@@ -238,6 +254,481 @@ def test_decode_rejects_negative_ragged_index():
         buf = _tampered_handle_frame(row, n_points=2, replica_keys=["k"], names=["m"])
         with pytest.raises(ValueError, match="ragged index"):
             codec.decode(buf)
+
+
+# --------------------------------------------------------------------------
+# plumbing fixtures
+# --------------------------------------------------------------------------
+
+
+def _cfg(agg=AggregationFunction.MEAN):
+    return AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=1000,
+        target_ongoing_requests=1,
+        aggregation_function=agg,
+    )
+
+
+def _state(agg=AggregationFunction.MEAN):
+    st = DeploymentAutoscalingState(DEP)
+    st._config = _cfg(agg)
+    return st
+
+
+def _rich_replica_report():
+    return ReplicaMetricReport(
+        replica_id=ReplicaID("r42", DEP),
+        metrics={
+            RUNNING_REQUESTS_KEY: [
+                TimeStampedValue(1.0 + i, float(i)) for i in range(5)
+            ],
+            "custom_load": [TimeStampedValue(2.0 + i, 0.5 * i) for i in range(3)],
+        },
+        timestamp=77.0,
+    )
+
+
+def _to_arrays(tl):
+    ts, val, offs = [], [], [0]
+    for s in tl:
+        ts += [p.timestamp for p in s]
+        val += [p.value for p in s]
+        offs.append(len(ts))
+    return np.array(ts, "f8"), np.array(val, "f8"), np.array(offs, "i8")
+
+
+def _random_handle_report(hid, rng, n_replicas):
+    running = {}
+    aggd = {}
+    for r in range(n_replicas):
+        npts = rng.randint(1, 5)
+        key = f"D#{hid}r{r}"
+        running[key] = [
+            TimeStampedValue(
+                round(NOW - 6.0 * (npts - 1 - j) - rng.random(), 2),
+                float(rng.randint(0, 9)),
+            )
+            for j in range(npts)
+        ]
+        aggd[key] = 0.0
+    nq = rng.randint(0, 4)
+    queued = [
+        TimeStampedValue(round(NOW - 3.0 * (nq - 1 - j), 2), float(rng.randint(0, 5)))
+        for j in range(nq)
+    ]
+    return HandleMetricReport(
+        deployment_id=DEP,
+        handle_id=hid,
+        actor_id=f"actor-{hid}",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=queued,
+        metrics={RUNNING_REQUESTS_KEY: running},
+        timestamp=NOW,
+    )
+
+
+def _recorded_state(rep, monkeypatch, now=NOW + 3.0):
+    monkeypatch.setattr(A.time, "time", lambda: now)
+    st = _state()
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    return st
+
+
+class _Observer:
+    """Non-callable stand-in for a Histogram: only `.observe` may be invoked, so passing
+    the metric object where a bound observer belongs fails instead of being absorbed."""
+
+    def __init__(self):
+        self.observed = []
+
+    def observe(self, value, tags=None):
+        self.observed.append((value, tags))
+
+
+def _handle_report_queued(hid, queued):
+    return HandleMetricReport(
+        deployment_id=DEP,
+        handle_id=hid,
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=queued,
+        metrics={RUNNING_REQUESTS_KEY: {}},
+        timestamp=NOW,
+    )
+
+
+def _handle_report_running(hid, replica_str, running, queued):
+    """HandleMetricReport carrying per-replica RUNNING timeseries + queued (the
+    handle-collection default). The sibling _handle_report only covers queued."""
+    return HandleMetricReport(
+        deployment_id=DEP,
+        handle_id=hid,
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=queued,
+        metrics={RUNNING_REQUESTS_KEY: {replica_str: running}},
+        timestamp=NOW,
+    )
+
+
+# --------------------------------------------------------------------------
+# plumbing: array stores, aggregation, controller dispatch
+# --------------------------------------------------------------------------
+
+
+def test_array_merge_matches_object_kernels():
+    """The numpy merge/aggregate must match the object-list Cython kernels exactly,
+    for every aggregation function, on randomized ragged inputs."""
+    rng = random.Random(7)
+    for _ in range(600):
+        tl = []
+        for _ in range(rng.randint(1, 7)):
+            tss = sorted(
+                {
+                    round(rng.uniform(88, 96) + j * rng.uniform(0.03, 0.6), 2)
+                    for j in range(rng.randint(1, 10))
+                }
+            )
+            tl.append([TimeStampedValue(t, float(rng.randint(0, 12))) for t in tss])
+        merged = merge_instantaneous_total(tl)
+        ref_merge = [(round(p.timestamp, 2), p.value) for p in merged]
+        ts, val, offs = _to_arrays(tl)
+        mts, mtot = merge.merge_instantaneous_total_arrays(ts, val, offs)
+        assert ref_merge == [(round(float(t), 2), float(v)) for t, v in zip(mts, mtot)]
+        now = 100.0
+        lw = max(now - merged[-1].timestamp, 1e-3) if merged else 1e-3
+        ws = None
+        ne = [s for s in tl if s]
+        if merged and len(ne) > 1:
+            a = max(s[0].timestamp for s in ne)
+            if a <= merged[-1].timestamp:
+                ws = max(a, merged[0].timestamp)
+        for fn in (
+            AggregationFunction.MEAN,
+            AggregationFunction.MAX,
+            AggregationFunction.MIN,
+        ):
+            ref_v = (
+                aggregate_timeseries(merged, fn, last_window_s=lw, window_start=ws)
+                or 0.0
+            )
+            arr_v = merge.merge_and_aggregate_arrays(ts, val, offs, now, fn.value)
+            assert abs(ref_v - arr_v) < 1e-9, (fn, ref_v, arr_v)
+
+
+def test_array_merge_matches_object_kernels_dense_buckets():
+    """Both harnesses above keep points >=10ms apart -- one pre-rounds timestamps to 2
+    decimals, the other steps by >=0.031s -- so no two points of a source ever land in
+    the same rounding bucket and the collapse path goes untested. This one packs several
+    points per bucket, which is where change detection and rounding can disagree."""
+    rng = random.Random(19)
+    for _ in range(400):
+        tl = []
+        for _ in range(rng.randint(2, 5)):
+            t = 88.0 + rng.random()
+            s = []
+            for _ in range(rng.randint(1, 9)):
+                t += rng.choice([0.0005, 0.001, 0.003, 0.02, 0.5])
+                s.append(TimeStampedValue(t, float(rng.choice([0, 1, 2, 3]))))
+            tl.append(s)
+        ts, val, offs = _to_arrays(tl)
+        mts, mtot = merge.merge_instantaneous_total_arrays(ts, val, offs)
+        ref = merge_instantaneous_total(tl)
+        assert len(mts) == len(ref), (len(mts), len(ref), tl)
+        for i, p in enumerate(ref):
+            assert abs(float(mts[i]) - p.timestamp) < 1e-9, (i, tl)
+            assert abs(float(mtot[i]) - p.value) < 1e-9, (i, tl)
+
+
+def test_array_path_equals_production_object_path_unrounded_timestamps():
+    """Array and object paths must agree on real (unrounded) time.time()-style stamps.
+
+    test_array_merge_matches_object_kernels generates timestamps already rounded to 2
+    decimals, which makes every round() inside the array path a no-op -- it cannot see a
+    rounding divergence. Production timestamps are not 2-decimal.
+
+    The reference here is the production method itself, not a reimplementation of its
+    window logic, and time.time() is pinned because that method reads it internally.
+    """
+    rng = random.Random(11)
+    for _ in range(200):
+        tl = []
+        for _ in range(rng.randint(1, 5)):
+            base = 88.0 + rng.random()
+            tss = sorted(
+                {
+                    base + j * (0.031 + rng.random() * 0.4)
+                    for j in range(rng.randint(1, 8))
+                }
+            )
+            tl.append([TimeStampedValue(t, float(rng.randint(0, 12))) for t in tss])
+
+        das = DeploymentAutoscalingState(DeploymentID(name="d", app_name="a"))
+        das._config = AutoscalingConfig(min_replicas=1, max_replicas=10)
+        ts, val, offs = _to_arrays(tl)
+
+        now = 100.0
+        with mock.patch("time.time", return_value=now):
+            expected = das._merge_and_aggregate_timeseries(list(tl))
+            actual = merge.merge_and_aggregate_arrays(ts, val, offs, now, "mean")
+        assert abs(expected - actual) < 1e-9, (expected, actual, tl)
+
+        # A lone series is passed through untouched by the object path, so the array
+        # path must not perturb its timestamps either.
+        if len([s for s in tl if s]) == 1:
+            mts, _ = merge.merge_instantaneous_total_arrays(ts, val, offs)
+            merged = merge_instantaneous_total(tl)
+            assert [float(p.timestamp) for p in merged] == [float(x) for x in mts]
+
+
+def test_merge_emits_event_for_change_inside_one_bucket():
+    """Regression: a source changing value twice inside ONE 10ms bucket must still emit
+    an event. Rounding and collapsing before LOCF change detection nets the change to
+    zero and drops it -- this input emptied the merge entirely, which makes
+    merge_and_aggregate_arrays short-circuit to 0.0 and the deployment read no load."""
+    tl = [
+        [TimeStampedValue(0.7608, 0.0)],
+        [TimeStampedValue(0.3669, 3.0), TimeStampedValue(0.3684, 0.0)],
+    ]
+    ts, val, offs = _to_arrays(tl)
+    mts, mtot = merge.merge_instantaneous_total_arrays(ts, val, offs)
+    ref = merge_instantaneous_total(tl)
+    assert len(ref) == 1 and len(mts) == 1
+    assert abs(float(mts[0]) - ref[0].timestamp) < 1e-9
+    assert abs(float(mtot[0]) - ref[0].value) < 1e-9
+
+
+def test_round_10ms_matches_c_round_on_ties():
+    """The kernel rounds with C round() (half away from zero); np.round is half-to-even,
+    so the two disagree on exact .5 ties at the 10ms scale."""
+    ties = np.array([0.125, 1700000000.125])
+    assert [float(x) for x in merge._round_10ms(ties)] == [0.13, 1700000000.13]
+    assert float(np.round(ties[0], 2)) == 0.12
+
+
+@pytest.mark.parametrize(
+    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
+)
+def test_fused_handle_path_equals_object_path(agg, monkeypatch):
+    """The live producer->controller columnar handle path (encode ->
+    decode_handle_flat -> record_columnar_metrics_for_handle -> fused array
+    aggregate) totals the SAME as the object path on identical reports."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    rng = random.Random(29)
+    for _ in range(150):
+        reports = [
+            _random_handle_report(f"h{i}", rng, rng.randint(1, 6))
+            for i in range(rng.randint(1, 4))
+        ]
+        keys = set()
+        for rep in reports:
+            keys |= set(rep.metrics[RUNNING_REQUESTS_KEY].keys())
+
+        ref = _state(agg)
+        ref._cached_running_replica_strs = keys
+        for rep in reports:
+            ref._handle_requests[rep.handle_id] = rep
+        ref_total = ref.get_total_num_requests()
+
+        col = _state(agg)
+        col._cached_running_replica_strs = keys
+        for rep in reports:
+            col.record_columnar_metrics_for_handle(
+                codec.decode_handle_flat(codec.encode(rep))
+            )
+        col_total = col.get_total_num_requests()
+        assert abs(ref_total - col_total) < 1e-9, (agg, ref_total, col_total)
+
+
+def test_object_empty_replica_series_does_not_suppress_handle_running(monkeypatch):
+    """A present-but-EMPTY replica running series carries no data, so handle-collected
+    running requests must still be counted (empty series are filtered before the
+    metrics_collected_on_replicas decision)."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    st = _state()
+    rid = ReplicaID("r0", DEP)
+    st._replica_metrics[rid] = ReplicaMetricReport(
+        replica_id=rid,
+        metrics={RUNNING_REQUESTS_KEY: []},  # present but empty
+        timestamp=NOW,
+    )
+    st._running_replicas = {rid}
+    rep = _random_handle_report("h0", random.Random(5), 3)
+    st._cached_running_replica_strs = set(rep.metrics[RUNNING_REQUESTS_KEY].keys())
+    st._handle_requests[rep.handle_id] = rep
+    assert st.get_total_num_requests() > 0.0
+
+
+def test_drop_stale_handle_metrics_prunes_columnar_dead_actor(monkeypatch):
+    rep = _random_handle_report("h1", random.Random(1), 2)
+    st = _recorded_state(rep, monkeypatch)
+    assert "h1" in st._handle_arrays
+    st.drop_stale_handle_metrics(alive_serve_actor_ids=set())  # actor-h1 is dead
+    assert "h1" not in st._handle_arrays
+
+
+def test_drop_stale_handle_metrics_prunes_columnar_timeout(monkeypatch):
+    rep = _random_handle_report("h1", random.Random(1), 2)
+    st = _recorded_state(rep, monkeypatch)
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)  # long past any timeout
+    st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
+    assert "h1" not in st._handle_arrays
+
+
+def test_stale_columnar_handle_report_rejected(monkeypatch):
+    fresh = _random_handle_report("h1", random.Random(1), 2)
+    st = _recorded_state(fresh, monkeypatch)
+    stale = _random_handle_report("h1", random.Random(2), 2)
+    stale = HandleMetricReport(**{**stale.__dict__, "timestamp": NOW - 5.0})
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(stale)))
+    # The delayed report must not overwrite the fresher one.
+    assert st._handle_arrays["h1"]["timestamp"] == NOW
+    assert st._handle_report_ts["h1"] == NOW
+
+
+def test_columnar_ingest_records_delay_through_the_real_helper():
+    """The routing tests below mock `self`, so they never execute _record_metrics_delay
+    and cannot see a wrong argument shape. Run the real helper against a non-callable
+    observer, which is what a Histogram is."""
+    s = MagicMock()
+    s._record_metrics_delay = partial(ServeController._record_metrics_delay, s)
+    s.handle_metrics_delay_histogram = _Observer()
+    ServeController.record_autoscaling_metrics_from_handle(
+        s, codec.encode(_handle_report())
+    )
+    assert len(s.handle_metrics_delay_histogram.observed) == 1
+    delay_ms, tags = s.handle_metrics_delay_histogram.observed[0]
+    assert delay_ms > 0
+    assert tags == {"deployment": "D", "application": "default"}
+
+
+def test_handle_columnar_uses_fast_store():
+    """Columnar bytes route to the array store, never the object store."""
+    s = MagicMock()
+    ServeController.record_autoscaling_metrics_from_handle(
+        s, codec.encode(_handle_report())
+    )
+    asm = s.autoscaling_state_manager
+    asm.record_columnar_metrics_for_handle.assert_called_once()
+    asm.record_request_metrics_for_handle.assert_not_called()
+
+
+def test_handle_cloudpickle_uses_object_store():
+    s = MagicMock()
+    ServeController.record_autoscaling_metrics_from_handle(
+        s, compress_metric_report(_handle_report())
+    )
+    asm = s.autoscaling_state_manager
+    asm.record_columnar_metrics_for_handle.assert_not_called()
+    asm.record_request_metrics_for_handle.assert_called_once()
+
+
+def test_handle_cross_format_staleness_guard():
+    """A delayed report in one wire format must not overwrite fresher data the other
+    wrote. A handle flips object<->columnar as it crosses the columnar width gate, so
+    _handle_report_ts is a unified per-handle last-accepted timestamp gating BOTH ingest
+    paths. Regression for the mixed-rollout stale-overwrite bug."""
+    st = _state()
+    hid = "h0"
+
+    def _rep(ts):
+        return HandleMetricReport(
+            deployment_id=DEP,
+            handle_id=hid,
+            actor_id="a",
+            handle_source=DeploymentHandleSource.PROXY,
+            queued_requests=[TimeStampedValue(NOW, 1.0)],
+            metrics={RUNNING_REQUESTS_KEY: {}},
+            timestamp=ts,
+        )
+
+    # Fresh columnar report @ NOW+10 -> lands in the array store.
+    st.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(_rep(NOW + 10)))
+    )
+    assert hid in st._handle_arrays
+    assert st._handle_report_ts[hid] == NOW + 10
+
+    # STALE object report @ NOW+1 must be rejected: object store stays empty, columnar
+    # data preserved, gate unchanged.
+    st.record_request_metrics_for_handle(_rep(NOW + 1))
+    assert hid not in st._handle_requests
+    assert hid in st._handle_arrays
+    assert st._handle_report_ts[hid] == NOW + 10
+
+    # Fresh object report @ NOW+20 is accepted -> clears columnar, updates the gate.
+    st.record_request_metrics_for_handle(_rep(NOW + 20))
+    assert hid in st._handle_requests
+    assert hid not in st._handle_arrays
+    assert st._handle_report_ts[hid] == NOW + 20
+
+
+@pytest.mark.parametrize(
+    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
+)
+def test_empty_object_running_series_does_not_suppress_columnar_handle(
+    agg, monkeypatch
+):
+    """Regression (@cursor): in a mixed rollout an object (cloudpickle) replica that
+    reports RUNNING_REQUESTS_KEY with an EMPTY series must NOT flip
+    metrics_collected_on_replicas and suppress columnar handle-side running (which
+    carries the real load). The empty series holds no data; the total must include
+    the handle running and match the all-object twin for every aggregation function."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    live = ReplicaID("r_live", DEP)  # running; running reported on a handle
+    idle = ReplicaID("r_idle", DEP)  # running; reports an EMPTY running series
+    live_str, idle_str = live.to_full_id_str(), idle.to_full_id_str()
+    running = [TimeStampedValue(NOW - 6, 4.0), TimeStampedValue(NOW, 6.0)]
+    queued = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 3.0)]
+    handle = _handle_report_running("h0", live_str, running, queued)
+    empty_rep = ReplicaMetricReport(
+        replica_id=idle,
+        metrics={RUNNING_REQUESTS_KEY: []},  # present-but-empty: the flag trigger
+        timestamp=NOW,
+    )
+
+    # All-object twin (reference).
+    ref = _state(agg)
+    ref._handle_requests["h0"] = handle
+    ref._replica_metrics[idle] = empty_rep
+    ref._running_replicas = {live, idle}
+    ref._cached_running_replica_strs = {live_str, idle_str}
+    ref_total = ref.get_total_num_requests()
+
+    # Mixed: columnar handle running + object empty-series replica.
+    mix = _state(agg)
+    mix.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(handle))
+    )
+    mix._replica_metrics[idle] = empty_rep
+    mix._running_replicas = {live, idle}
+    mix._cached_running_replica_strs = {live_str, idle_str}
+    mix_total = mix.get_total_num_requests()
+
+    # Handle running must not be suppressed by the empty object series.
+    assert mix_total > 0.0
+    assert abs(ref_total - mix_total) < 1e-9
+
+
+def test_queued_from_both_stores(monkeypatch):
+    """C: _get_queued_requests includes columnar handle queued, not just object."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    q = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 2.0)]
+    obj_h, col_h = _handle_report_queued("h_obj", q), _handle_report_queued("h_col", q)
+    ref = _state()
+    ref._handle_requests["h_obj"] = obj_h
+    ref._handle_requests["h_col"] = col_h
+    ref._running_replicas, ref._cached_running_replica_strs = set(), set()
+    ref_q = ref._get_queued_requests()
+    mix = _state()
+    mix._handle_requests["h_obj"] = obj_h
+    mix.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(col_h))
+    )
+    mix._running_replicas, mix._cached_running_replica_strs = set(), set()
+    assert mix._get_queued_requests() > 0.0
+    assert abs(ref_q - mix._get_queued_requests()) < 1e-9
 
 
 if __name__ == "__main__":
