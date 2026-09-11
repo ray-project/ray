@@ -313,6 +313,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   double GcsAvailableCpu(const NodeID &node_id) {
     auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
                          .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                         .GetAvailable()
                          .ToNodeResourceSet()
                          .GetResourceMap();
     auto it = resources.find("CPU");
