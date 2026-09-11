@@ -981,7 +981,7 @@ class Pool:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.terminate()
 
-    def close(self):
+    def close(self) -> None:
         """Close the pool.
 
         Prevents any more tasks from being submitted on the pool but allows
@@ -995,7 +995,7 @@ class Pool:
         self._closed = True
         gc.collect()
 
-    def terminate(self):
+    def terminate(self) -> None:
         """Close the pool.
 
         Prevents any more tasks from being submitted on the pool and stops
@@ -1007,7 +1007,7 @@ class Pool:
         for actor, _ in self._actor_pool:
             ray.kill(actor)
 
-    def join(self):
+    def join(self) -> None:
         """Wait for the actors in a closed pool to exit.
 
         If the pool was closed using `close`, this will return once all
