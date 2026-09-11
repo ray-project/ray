@@ -124,10 +124,11 @@ def test_apply_edits_fills_in_major_minor_via_stat_when_unspecified(monkeypatch)
     class _FakeStat:
         st_rdev = fake_rdev
 
+    real_stat = cdi_lib.os.stat
     monkeypatch.setattr(
         cdi_lib.os,
         "stat",
-        lambda p: _FakeStat() if p == "/fake/host/uvm" else os.stat(p),
+        lambda p: _FakeStat() if p == "/fake/host/uvm" else real_stat(p),
     )
     raw_spec = {
         "kind": _KIND,
