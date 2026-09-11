@@ -1676,6 +1676,15 @@ def init(
             "is not the main thread."
         )
 
+    # Enable gRPC fork support in the driver process before any gRPC
+    # channel is created. Without this, fork() after gRPC initialization
+    # deadlocks because the child inherits locked mutexes from gRPC's
+    # background threads. Ray already sets these for worker processes
+    # (in worker_pool.cc) but not for the driver. See #59661.
+    if sys.platform != "win32":
+        os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "1")
+        os.environ.setdefault("GRPC_POLL_STRATEGY", "poll")
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
