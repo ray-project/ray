@@ -135,7 +135,7 @@ class NormalTaskSubmitter {
   void CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
 
   /// Request the owner of the object ID to cancel a request.
-  /// It is used when a object ID is not owned by the current process.
+  /// It is used when an object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
   void RequestOwnerToCancelTask(const ObjectID &object_id,

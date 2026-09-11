@@ -57,7 +57,7 @@ H AbslHashValue(H h, const ResourceDemandKey &key);
 /// Aggregate nodes' pending task info.
 ///
 /// \param resources_data A node's pending task info (by shape).
-/// \param aggregate_load[out] The aggregate pending task info (across the cluster).
+/// \param[out] aggregate_load The aggregate pending task info (across the cluster).
 void FillAggregateLoad(
     const rpc::ResourcesData &resources_data,
     absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> *aggregate_load);

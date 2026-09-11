@@ -316,24 +316,23 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   }
 
-  /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries every
-  /// after `agent_manager_retry_interval_ms` up until `deadline` passed. After which,
-  /// fail_callback is called with the NotFound error from `try_invoke_once`.
+  /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries after
+  /// every `agent_manager_retry_interval_ms` until `deadline_ms` passes. After that,
+  /// `fail_callback` is called with the NotFound error from `try_invoke_once`.
   ///
-  /// Note that retry only happens on network errors, i.e. NotFound and Disconnected, on
-  /// which cases we did not receive a well-formed HTTP response. Application errors
-  /// returned by the server are not retried.
+  /// Note that retries only happen for network errors, i.e., NotFound and Disconnected,
+  /// which indicate that we did not receive a well-formed HTTP response. Application
+  /// errors returned by the server are not retried.
   ///
-  /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
-  /// the check happens after `try_invoke_once` returns. This means if you have a
-  /// successful but very long connection (e.g. runtime env agent is busy downloading
-  /// from s3), you are safe.
+  /// If the retries exceed `deadline_ms`, the raylet exits immediately. The check happens
+  /// after `try_invoke_once` returns, so a successful but long connection is safe (for
+  /// example, while the runtime env agent downloads from S3).
   ///
   /// @tparam T the return type on success.
   /// @param try_invoke_once
   /// @param succ_callback
   /// @param fail_callback
-  /// @param deadline
+  /// @param deadline_ms
   template <typename T>
   void RetryInvokeOnNotFoundWithDeadline(TryInvokeOnce<T> try_invoke_once,
                                          SuccCallback<T> succ_callback,

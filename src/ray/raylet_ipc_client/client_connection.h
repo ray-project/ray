@@ -44,8 +44,6 @@ Status ConnectSocketRetry(local_stream_socket &socket,
                           int num_retries = -1,
                           int64_t timeout_in_ms = -1);
 
-/// \typename ServerConnection
-///
 /// A generic type representing a client connection to a server. This typename
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
@@ -173,8 +171,6 @@ using MessageHandler = std::function<void(
 using ConnectionErrorHandler = std::function<void(std::shared_ptr<ClientConnection>,
                                                   const boost::system::error_code &)>;
 
-/// \typename ClientConnection
-///
 /// A generic type representing a client connection on a server. In addition to
 /// writing messages to the client, like in ServerConnection, this typename can
 /// also be used to process messages asynchronously from client.

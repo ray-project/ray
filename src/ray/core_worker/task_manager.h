@@ -1187,7 +1187,7 @@ class TaskManager : public TaskManagerInterface {
   /// Callback to free GPU object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback_;
 
-  /// Callback to set the direct transport metadata for a object.
+  /// Callback to set the direct transport metadata for an object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
 
   /// Callback to asynchronously free an object's copies on a set of nodes.
