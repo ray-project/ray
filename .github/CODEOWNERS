@@ -140,6 +140,13 @@
 /.buildkite/test.rules.txt @ray-project/ray-ci
 /.buildkite/always.rules.txt @ray-project/ray-ci
 
+# Documentation routing fragment. Carries only doc/-scoped routing (its tags
+# union with test.rules.txt at build time), so ray-docs owns it and can iterate
+# on doc CI routing without a seat on the repo-wide rule files above; ray-ci
+# co-owns and ray-docs-reviewers is a silent fallback for backup approval.
+/.buildkite/doc.rules.txt @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
+/.buildkite/doc.rules.test.txt @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
+
 # Compiled dependency lockfile. Gates the build and test environment.
 /python/requirements_compiled.txt @ray-project/ray-ci
 

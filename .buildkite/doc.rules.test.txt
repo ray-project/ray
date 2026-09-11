@@ -1,0 +1,61 @@
+# Unit tests for doc.rules.txt
+#
+# Format: file_path: tag1 tag2 tag3
+#
+# Run by `rayci test-rules`, which pairs each *.rules.txt in this directory with
+# its *.rules.test.txt companion by name. Each rules file is evaluated on its
+# own, so the tags expected below are the ones doc.rules.txt emits by itself. In
+# a real build these union with test.rules.txt (which skips doc/ paths) and
+# always.rules.txt (which adds `always`/`lint`); those are covered by their own
+# companions. An empty expected tag set (`path:`) asserts a doc-only skip.
+
+# === API reference pages (doc_api, ahead of the prose skip) ===
+doc/source/data/api/ray.data.Dataset.rst: doc_api
+doc/source/ray-observability/reference/api.rst: doc_api
+
+# === Prose and image assets skip premerge ===
+doc/source/data/user-guide.md:
+doc/source/serve/index.rst:
+doc/source/rllib/images/arch.svg:
+doc/README.md:
+
+# === Autodoc / API machinery (doc doc_api, + tools for api_sidebar) ===
+doc/source/conf.py: doc doc_api
+doc/source/custom_directives.py: doc doc_api
+doc/source/_ext/gallery_directive.py: doc doc_api
+doc/requirements-doc.txt: doc doc_api
+doc/source/_ext/api_sidebar.py: doc doc_api tools
+
+# === Redirect YAML (doc_redirects alone) ===
+doc/redirects/serve.yaml: doc_redirects
+
+# === Render-only doc infra (doc) ===
+doc/load_doc_cache.py: doc
+doc/source/data/examples.yml: doc
+doc/source/ray-core/examples/highly_parallel.ipynb: doc
+doc/source/_intersphinx/refresh.py: doc
+
+# === Per-library executable doc assets route to one <lib>_doc step ===
+doc/source/data/working_with_datasets.py: data_doc
+doc/source/serve/doc_code/deployment.py: serve_doc
+doc/source/rllib/doc_code/getting_started.py: rllib_doc
+doc/source/train/doc_code/trainer.py: ml_doc
+doc/source/tune/doc_code/tuner.py: ml_doc
+doc/source/ray-core/doc_code/actors.py: core_doc
+doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
+doc/external/pytorch_tutorial.py: ml_doc
+
+# === LLM doc assets route to the llm step, ahead of data_doc ===
+doc/source/llm/serving.py: llm
+doc/source/data/doc_code/working-with-llms/batch.py: llm
+
+# === doc/BUILD.bazel exercises every library's example step ===
+doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
+
+# === doc/*.py catch-all lands on core_doc ===
+doc/test_myst_doc.py: core_doc
+doc/source/ray-contribute/writing-code-snippets.ipynb: core_doc
+
+# === Starter templates and unrouted doc files skip ===
+doc/source/templates/01_batch_inference/start.py:
+doc/source/some_config.json:
