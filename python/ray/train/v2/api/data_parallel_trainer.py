@@ -231,7 +231,7 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # TODO: The NCCLRASCallback is experiment, therefore, default-off for now
+        # TODO: NCCLRASCallback is experimental. Off by default for now
         if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
             callbacks.append(NCCLRASCallback())
 

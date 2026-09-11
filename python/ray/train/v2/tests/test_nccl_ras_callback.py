@@ -781,7 +781,7 @@ def _join(poller, timeout_s=5.0):
 def make_poller(query, interval_s=0.01):
     """A real RASPoller whose ``query`` is replaced by a fake (the transport is
     exercised by the GPU e2e tests)."""
-    poller = RASPoller(MagicMock(), "ncclras", interval_s=interval_s)
+    poller = RASPoller(MagicMock(), interval_s=interval_s)
     poller.query = query
     return poller
 
@@ -845,7 +845,7 @@ def test_ras_poller_query_falls_back_to_next_worker():
     workers = [MagicMock(name="w0"), MagicMock(name="w1"), MagicMock(name="w2")]
     worker_group = MagicMock()
     worker_group.get_workers.return_value = workers
-    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+    poller = RASPoller(worker_group, interval_s=1.0)
 
     report = create_single_comm_report({2: 5, 3: 3})
     outcomes = {
@@ -867,7 +867,7 @@ def test_ras_poller_query_raises_last_error_when_all_workers_fail():
     workers = [MagicMock(), MagicMock()]
     worker_group = MagicMock()
     worker_group.get_workers.return_value = workers
-    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+    poller = RASPoller(worker_group, interval_s=1.0)
 
     errors = iter(
         [RASQueryError("query_timeout"), RASQueryError("binary_not_found", fatal=True)]
@@ -885,7 +885,7 @@ def test_ras_poller_query_raises_last_error_when_all_workers_fail():
 def test_ras_poller_query_no_workers():
     worker_group = MagicMock()
     worker_group.get_workers.return_value = []
-    poller = RASPoller(worker_group, "ncclras", interval_s=1.0)
+    poller = RASPoller(worker_group, interval_s=1.0)
     with pytest.raises(RASQueryError) as excinfo:
         poller.query("json")
     assert excinfo.value.reason == "no_workers" and not excinfo.value.fatal

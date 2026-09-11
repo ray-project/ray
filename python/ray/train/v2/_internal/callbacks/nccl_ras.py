@@ -580,7 +580,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             math.ceil(_FIRST_SUSPICION_AFTER_S / self._poll_interval_s),
             self._confirm_poll_counts - 1,
         )
-        assert self._suspicion_polls >= 0
         self._periodic_warn_polls = math.ceil(
             _PERIODIC_WARN_EVERY_S / self._poll_interval_s
         )
