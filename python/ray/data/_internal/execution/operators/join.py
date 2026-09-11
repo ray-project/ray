@@ -216,17 +216,18 @@ def _join_tables_iter(
 
     left_on = list(left_key_col_names)
     right_on = list(right_key_col_names)
+    is_semi_or_anti = join_type in (
+        JoinType.LEFT_SEMI,
+        JoinType.LEFT_ANTI,
+        JoinType.RIGHT_SEMI,
+        JoinType.RIGHT_ANTI,
+    )
 
     # Eagerly validate suffix conflicts so callers get a clear error instead
     # of an opaque schema-merge failure. Skip for semi/anti joins: only one
     # side's columns appear in the result, so overlapping non-key names
     # between left and right are harmless.
-    if join_type not in (
-        JoinType.LEFT_SEMI,
-        JoinType.LEFT_ANTI,
-        JoinType.RIGHT_SEMI,
-        JoinType.RIGHT_ANTI,
-    ):
+    if not is_semi_or_anti:
         left_cols = set(left_table.schema.names)
         # Right key columns are coalesced into the left keys, so only right
         # non-key columns can collide with left columns. Subtracting only
@@ -264,22 +265,33 @@ def _join_tables_iter(
     # Polars only suffixes the right side of name collisions
     # (https://github.com/pola-rs/polars/issues/12418). Pre-rename colliding
     # columns so left_suffix / right_suffix match Arrow join behavior.
-    left_cols = set(left_df.collect_schema().names())
-    right_output_cols = set(right_df.collect_schema().names()) - set(right_on)
-    collisions = left_cols & right_output_cols
+    # Skip for semi/anti: only one side appears in the result, so suffixes
+    # must not rewrite the kept side's names (Arrow left them unchanged).
+    if not is_semi_or_anti:
+        left_cols = set(left_df.collect_schema().names())
+        right_output_cols = set(right_df.collect_schema().names()) - set(right_on)
+        collisions = left_cols & right_output_cols
 
-    if left_cols_suffix:
-        # Exclude left keys: left_on still references their original names.
-        renameable_on_left = collisions - set(left_on)
-        if renameable_on_left:
-            left_df = left_df.rename(
-                {c: f"{c}{left_cols_suffix}" for c in renameable_on_left}
+        if left_cols_suffix:
+            # Exclude left keys: left_on still references their original names.
+            renameable_on_left = collisions - set(left_on)
+            if renameable_on_left:
+                left_df = left_df.rename(
+                    {c: f"{c}{left_cols_suffix}" for c in renameable_on_left}
+                )
+
+        if right_cols_suffix and collisions:
+            right_df = right_df.rename(
+                {c: f"{c}{right_cols_suffix}" for c in collisions}
             )
 
-    if right_cols_suffix and collisions:
-        right_df = right_df.rename({c: f"{c}{right_cols_suffix}" for c in collisions})
-
     right_suffix = right_cols_suffix or "_right"
+    # Names present on either input before the join. Used so we do not
+    # drop a user payload column that happens to be named like a suffixed
+    # right key (e.g. ``id_right`` on an ``id`` join).
+    preexisting_cols = set(left_df.collect_schema().names()) | set(
+        right_df.collect_schema().names()
+    )
     joined = left_df.join(
         right_df,
         how=_JOIN_TYPE_TO_POLARS_JOIN_TYPE_MAP[target_join_type],
@@ -289,13 +301,19 @@ def _join_tables_iter(
         coalesce=True,
     )
 
-    if join_type != JoinType.FULL_OUTER:
-        # Match Arrow: drop coalesced-away right keys if Polars still emits them.
+    if join_type not in (JoinType.FULL_OUTER, JoinType.RIGHT_OUTER):
+        # Inner/left: drop coalesced-away right keys if Polars still emits
+        # them as suffixed duplicates. Skip right_outer: it coalesces into
+        # the right keys, so ``{right_key}{suffix}`` is the coalesced key
+        # itself whenever the left already has that name.
+        # Skip names that already existed on an input — those are payload
+        # columns, not duplicate keys. Polars' suffix defaults to
+        # ``_right`` even when the caller passed none.
         joined_cols = joined.collect_schema().names()
         duplicate_columns = [
             col
             for col in (f"{right_key}{right_suffix}" for right_key in right_on)
-            if col in joined_cols
+            if col in joined_cols and col not in preexisting_cols
         ]
         if duplicate_columns:
             joined = joined.drop(duplicate_columns)
