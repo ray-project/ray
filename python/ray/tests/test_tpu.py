@@ -1229,6 +1229,250 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
     assert slice_pg.placement_group is None
 
 
+def test_slice_placement_group_unplaced_addresses():
+    """Test unplaced SlicePlacementGroup returns None for addresses and validates indices."""
+    slice_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    slice_pg._pg_per_slice = False
+    slice_pg._num_slices = 1
+    slice_pg._num_bundles = 2
+    slice_pg._num_hosts = 2
+    slice_pg._managed_pgs = []
+    assert slice_pg.master_addr is None
+    assert slice_pg.master_addrs == [None]
+    assert slice_pg.worker_addrs == [None, None]
+    assert slice_pg.get_worker_addrs(0) == [None, None]
+    assert slice_pg.get_master_addr(0) is None
+
+    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
+        slice_pg.get_master_addr(1)
+    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
+        slice_pg.get_worker_addrs(1)
+    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
+        slice_pg.get_jax_env_vars(slice_index=1)
+    with pytest.raises(ValueError, match="slice_index -1 is out of range"):
+        slice_pg.get_master_addr(-1)
+
+    # Unplaced without overrides or env vars raises RuntimeError
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        slice_pg.get_jax_env_vars(worker_id=0)
+
+    # Explicit worker_hostnames override with process bounds
+    env_explicit = slice_pg.get_jax_env_vars(
+        worker_id=0,
+        worker_hostnames=["host-a", "host-b"],
+        process_bounds="1,2,1",
+        chips_per_process_bounds="2,2,1",
+    )
+    assert env_explicit["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert env_explicit["TPU_PROCESS_BOUNDS"] == "1,2,1"
+    assert env_explicit["TPU_CHIPS_PER_PROCESS_BOUNDS"] == "2,2,1"
+
+
+def test_slice_placement_group_multi_slice_addresses(ray_tpu_cluster):
+    """Test SlicePlacementGroup address resolution across multiple slices."""
+    # 1. Multi-slice with pg_per_slice=False
+    spg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=False,
+    )
+    ray.get(spg.placement_group.ready(), timeout=10)
+    assert len(spg.master_addrs) == 2
+    assert len(spg.worker_addrs) == 4
+    assert len(spg.get_worker_addrs(0)) == 2
+    assert len(spg.get_worker_addrs(1)) == 2
+    assert spg.master_addr == spg.get_master_addr(0)
+    assert spg.get_master_addr(1) is not None
+
+    env_s0 = spg.get_jax_env_vars(slice_index=0, worker_id=0)
+    env_s1 = spg.get_jax_env_vars(slice_index=1, worker_id=0)
+    assert env_s0["TPU_WORKER_HOSTNAMES"] == ",".join(spg.get_worker_addrs(0))
+    assert env_s1["TPU_WORKER_HOSTNAMES"] == ",".join(spg.get_worker_addrs(1))
+    assert env_s0["TPU_WORKER_ID"] == "0"
+    assert env_s1["TPU_WORKER_ID"] == "0"
+    spg.shutdown()
+
+    # 2. Multi-slice with pg_per_slice=True
+    spg_pps = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        pg_per_slice=True,
+    )
+    ray.get([pg.ready() for pg in spg_pps.slice_placement_groups], timeout=10)
+    assert len(spg_pps.master_addrs) == 2
+    assert len(spg_pps.worker_addrs) == 4
+    assert len(spg_pps.get_worker_addrs(0)) == 2
+    assert len(spg_pps.get_worker_addrs(1)) == 2
+    with pytest.raises(
+        ValueError,
+        match="SlicePlacementGroup was created with pg_per_slice=True; use master_addrs",
+    ):
+        _ = spg_pps.master_addr
+    assert spg_pps.get_master_addr(0) == spg_pps.master_addrs[0]
+    assert spg_pps.get_master_addr(1) == spg_pps.master_addrs[1]
+    spg_pps.shutdown()
+
+
+@pytest.mark.parametrize(
+    "worker_hostnames, worker_id, kwargs, expected_env",
+    [
+        # Comma-separated string with standard IPv4 addresses and ports
+        (
+            "10.0.0.1:8471, 10.0.0.2:8471",
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "0"},
+        ),
+        # List of strings with process bounds
+        (
+            ["10.0.0.1:8471", "10.0.0.2:8471"],
+            0,
+            {"process_bounds": "1,2,1", "chips_per_process_bounds": "2,2,1"},
+            {
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+                "TPU_WORKER_ID": "0",
+                "TPU_PROCESS_BOUNDS": "1,2,1",
+                "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
+            },
+        ),
+        # Bare IPv6 addresses (preserve all colons)
+        (
+            ["2001:db8::1", "2001:db8::2"],
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
+        ),
+        # Bracketed IPv6 with ports
+        (
+            ["[2001:db8::1]:8471", "[2001:db8::2]:8471"],
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
+        ),
+        # DNS hostnames with ports
+        (
+            "node-0.cluster.local:8471, node-1.cluster.local:8471",
+            0,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "node-0.cluster.local,node-1.cluster.local",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+        # Mixed string input with surrounding whitespace
+        (
+            " 10.0.0.1:8471 , 10.0.0.2:8471 ",
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "0"},
+        ),
+    ],
+)
+def test_get_jax_env_vars_free_function(
+    worker_hostnames, worker_id, kwargs, expected_env
+):
+    """Test get_jax_env_vars free function parsing, port stripping, and worker ID."""
+    assert (
+        get_jax_env_vars(worker_hostnames, worker_id=worker_id, **kwargs)
+        == expected_env
+    )
+
+
+def test_single_host_slice_placement_group_worker_id(ray_single_host_tpu_cluster):
+    """Test worker_id defaulting and validation on single-host SlicePlacementGroup."""
+    spg = ray.util.tpu.slice_placement_group(
+        topology="2x2x1",
+        accelerator_version="tpu7x",
+    )
+    ray.get(spg.placement_group.ready(), timeout=10)
+    # Auto-defaults to "0" when omitted
+    assert spg.get_jax_env_vars()["TPU_WORKER_ID"] == "0"
+    assert spg.get_jax_runtime_env()["env_vars"]["TPU_WORKER_ID"] == "0"
+
+    # Explicit valid worker_id
+    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
+
+    # Validation errors propagated
+    with pytest.raises(ValueError, match="out of bounds"):
+        spg.get_jax_env_vars(worker_id=1)
+    with pytest.raises(TypeError, match="must be an integer"):
+        spg.get_jax_env_vars(worker_id="invalid")
+
+
+def test_multi_host_slice_placement_group_worker_id(ray_tpu_cluster):
+    """Test worker_id validation and bounds checking on multi-host SlicePlacementGroup."""
+    spg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+    )
+    assert spg.num_hosts == 2
+    assert spg.hosts_per_slice == 2
+    assert spg.bundles_per_slice == 2
+
+    # Verify deterministic bundle-to-worker ID mapping
+    assert spg.bundle_label_selector[0][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
+    assert spg.bundle_label_selector[1][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
+
+    ray.get(spg.placement_group.ready(), timeout=10)
+
+    # Valid worker_ids for JAX
+    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
+    assert spg.get_jax_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
+    assert spg.get_jax_runtime_env(worker_id=1)["env_vars"]["TPU_WORKER_ID"] == "1"
+
+    # Validation errors propagated
+    with pytest.raises(ValueError, match="out of bounds"):
+        spg.get_jax_env_vars(worker_id=2)
+    with pytest.raises(TypeError, match="must be an integer"):
+        spg.get_jax_env_vars(worker_id="foo")
+    with pytest.raises(ValueError, match="out of range"):
+        spg.get_jax_env_vars(slice_index=99)
+
+    spg.shutdown()
+
+
+def test_multi_host_slice_placement_group_multi_bundle_per_host(ray_tpu_cluster):
+    """Test worker_id assignment and address resolution when there are multiple bundles per host."""
+    spg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        resources_per_bundle={"CPU": 0, "TPU": 1},
+    )
+    assert spg.num_hosts == 2
+    assert spg.hosts_per_slice == 2
+    assert spg.bundles_per_slice == 8
+
+    # 8 bundles across 2 hosts -> bundles 0..3 map to host 0, bundles 4..7 map to host 1
+    assert len(spg.bundle_label_selector) == 8
+    for i in range(4):
+        assert (
+            spg.bundle_label_selector[i][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
+        )
+    for i in range(4, 8):
+        assert (
+            spg.bundle_label_selector[i][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
+        )
+
+    # Wait for placement group to schedule all bundles across the cluster
+    ray.get(spg.placement_group.ready(), timeout=10)
+
+    # Valid worker_ids are 0 and 1 (based on num_hosts, not num_bundles)
+    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
+
+    # Out of bounds: worker_id=2 (fails even though num_bundles=8 because num_hosts=2)
+    with pytest.raises(ValueError, match="out of bounds"):
+        spg.get_jax_env_vars(worker_id=2)
+
+    # Address resolution returns 1 address per host (2 addresses total)
+    jax_env = spg.get_jax_env_vars(worker_id=0)
+    assert "TPU_WORKER_HOSTNAMES" in jax_env
+    assert len(jax_env["TPU_WORKER_HOSTNAMES"].split(",")) == 2
+
+    spg.shutdown()
+
+
 def test_chips_per_vm_zero_raises_value_error():
     """Verifies that passing chips_per_vm=0 explicitly raises a ValueError instead of silently using the topology default."""
     with pytest.raises(ValueError):
@@ -2787,243 +3031,6 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
-
-
-def test_slice_placement_group_unplaced_addresses():
-    """Test unplaced SlicePlacementGroup returns None for addresses and validates indices."""
-    slice_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
-    slice_pg._pg_per_slice = False
-    slice_pg._num_slices = 1
-    slice_pg._num_bundles = 2
-    slice_pg._num_hosts = 2
-    slice_pg._managed_pgs = []
-    assert slice_pg.master_addr is None
-    assert slice_pg.master_addrs == [None]
-    assert slice_pg.worker_addrs == [None, None]
-    assert slice_pg.get_worker_addrs(0) == [None, None]
-    assert slice_pg.get_master_addr(0) is None
-
-    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
-        slice_pg.get_master_addr(1)
-    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
-        slice_pg.get_worker_addrs(1)
-    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
-        slice_pg.get_jax_env_vars(slice_index=1)
-    with pytest.raises(ValueError, match="slice_index -1 is out of range"):
-        slice_pg.get_master_addr(-1)
-
-    # Unplaced without overrides or env vars raises RuntimeError
-    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
-        slice_pg.get_jax_env_vars(worker_id=0)
-
-    # Explicit worker_hostnames override with process bounds
-    env_explicit = slice_pg.get_jax_env_vars(
-        worker_id=0,
-        worker_hostnames=["host-a", "host-b"],
-        process_bounds="1,2,1",
-        chips_per_process_bounds="2,2,1",
-    )
-    assert env_explicit["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
-    assert env_explicit["TPU_PROCESS_BOUNDS"] == "1,2,1"
-    assert env_explicit["TPU_CHIPS_PER_PROCESS_BOUNDS"] == "2,2,1"
-
-
-def test_slice_placement_group_multi_slice_addresses(ray_tpu_cluster):
-    """Test SlicePlacementGroup address resolution across multiple slices."""
-    # 1. Multi-slice with pg_per_slice=False
-    spg = ray.util.tpu.slice_placement_group(
-        topology="2x2x2",
-        accelerator_version="v4",
-        num_slices=2,
-        pg_per_slice=False,
-    )
-    ray.get(spg.placement_group.ready(), timeout=10)
-    assert len(spg.master_addrs) == 2
-    assert len(spg.worker_addrs) == 4
-    assert len(spg.get_worker_addrs(0)) == 2
-    assert len(spg.get_worker_addrs(1)) == 2
-    assert spg.master_addr == spg.get_master_addr(0)
-    assert spg.get_master_addr(1) is not None
-
-    env_s0 = spg.get_jax_env_vars(slice_index=0, worker_id=0)
-    env_s1 = spg.get_jax_env_vars(slice_index=1, worker_id=0)
-    assert env_s0["TPU_WORKER_HOSTNAMES"] == ",".join(spg.get_worker_addrs(0))
-    assert env_s1["TPU_WORKER_HOSTNAMES"] == ",".join(spg.get_worker_addrs(1))
-    assert env_s0["TPU_WORKER_ID"] == "0"
-    assert env_s1["TPU_WORKER_ID"] == "0"
-    spg.shutdown()
-
-    # 2. Multi-slice with pg_per_slice=True
-    spg_pps = ray.util.tpu.slice_placement_group(
-        topology="2x2x2",
-        accelerator_version="v4",
-        num_slices=2,
-        pg_per_slice=True,
-    )
-    ray.get([pg.ready() for pg in spg_pps.slice_placement_groups], timeout=10)
-    assert len(spg_pps.master_addrs) == 2
-    assert len(spg_pps.worker_addrs) == 4
-    assert len(spg_pps.get_worker_addrs(0)) == 2
-    assert len(spg_pps.get_worker_addrs(1)) == 2
-    with pytest.raises(
-        ValueError,
-        match="SlicePlacementGroup was created with pg_per_slice=True; use master_addrs",
-    ):
-        _ = spg_pps.master_addr
-    assert spg_pps.get_master_addr(0) == spg_pps.master_addrs[0]
-    assert spg_pps.get_master_addr(1) == spg_pps.master_addrs[1]
-    spg_pps.shutdown()
-
-
-@pytest.mark.parametrize(
-    "worker_hostnames, worker_id, kwargs, expected_env",
-    [
-        # Comma-separated string with standard IPv4 addresses and ports
-        (
-            "10.0.0.1:8471, 10.0.0.2:8471",
-            0,
-            {},
-            {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "0"},
-        ),
-        # List of strings with process bounds
-        (
-            ["10.0.0.1:8471", "10.0.0.2:8471"],
-            0,
-            {"process_bounds": "1,2,1", "chips_per_process_bounds": "2,2,1"},
-            {
-                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-                "TPU_WORKER_ID": "0",
-                "TPU_PROCESS_BOUNDS": "1,2,1",
-                "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
-            },
-        ),
-        # Bare IPv6 addresses (preserve all colons)
-        (
-            ["2001:db8::1", "2001:db8::2"],
-            0,
-            {},
-            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
-        ),
-        # Bracketed IPv6 with ports
-        (
-            ["[2001:db8::1]:8471", "[2001:db8::2]:8471"],
-            0,
-            {},
-            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
-        ),
-        # DNS hostnames with ports
-        (
-            "node-0.cluster.local:8471, node-1.cluster.local:8471",
-            0,
-            {},
-            {
-                "TPU_WORKER_HOSTNAMES": "node-0.cluster.local,node-1.cluster.local",
-                "TPU_WORKER_ID": "0",
-            },
-        ),
-    ],
-)
-def test_get_jax_env_vars_free_function(
-    worker_hostnames, worker_id, kwargs, expected_env
-):
-    """Test get_jax_env_vars free function parsing, port stripping, and worker ID."""
-    assert (
-        get_jax_env_vars(worker_hostnames, worker_id=worker_id, **kwargs)
-        == expected_env
-    )
-
-
-def test_single_host_slice_placement_group_worker_id(ray_single_host_tpu_cluster):
-    """Test worker_id defaulting and validation on single-host SlicePlacementGroup."""
-    spg = ray.util.tpu.slice_placement_group(
-        topology="2x2x1",
-        accelerator_version="tpu7x",
-    )
-    ray.get(spg.placement_group.ready(), timeout=10)
-    # Auto-defaults to "0" when omitted
-    assert spg.get_jax_env_vars()["TPU_WORKER_ID"] == "0"
-    assert spg.get_jax_runtime_env()["env_vars"]["TPU_WORKER_ID"] == "0"
-
-    # Explicit valid worker_id
-    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-
-    # Validation errors propagated
-    with pytest.raises(ValueError, match="out of bounds"):
-        spg.get_jax_env_vars(worker_id=1)
-    with pytest.raises(TypeError, match="must be an integer"):
-        spg.get_jax_env_vars(worker_id="invalid")
-
-
-def test_multi_host_slice_placement_group_worker_id(ray_tpu_cluster):
-    """Test worker_id validation and bounds checking on multi-host SlicePlacementGroup."""
-    spg = ray.util.tpu.slice_placement_group(
-        topology="2x2x2",
-        accelerator_version="v4",
-    )
-    assert spg.num_hosts == 2
-    assert spg.hosts_per_slice == 2
-    assert spg.bundles_per_slice == 2
-
-    # Verify deterministic bundle-to-worker ID mapping
-    assert spg.bundle_label_selector[0][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
-    assert spg.bundle_label_selector[1][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
-
-    ray.get(spg.placement_group.ready(), timeout=10)
-
-    # Valid worker_ids for JAX
-    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_jax_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
-    assert spg.get_jax_runtime_env(worker_id=1)["env_vars"]["TPU_WORKER_ID"] == "1"
-
-    # Validation errors propagated
-    with pytest.raises(ValueError, match="out of bounds"):
-        spg.get_jax_env_vars(worker_id=2)
-    with pytest.raises(TypeError, match="must be an integer"):
-        spg.get_jax_env_vars(worker_id="foo")
-    with pytest.raises(ValueError, match="out of range"):
-        spg.get_jax_env_vars(slice_index=99)
-
-    spg.shutdown()
-
-
-def test_multi_host_slice_placement_group_multi_bundle_per_host(ray_tpu_cluster):
-    """Test worker_id assignment and address resolution when there are multiple bundles per host."""
-    spg = ray.util.tpu.slice_placement_group(
-        topology="2x2x2",
-        accelerator_version="v4",
-        resources_per_bundle={"CPU": 0, "TPU": 1},
-    )
-    assert spg.num_hosts == 2
-    assert spg.hosts_per_slice == 2
-    assert spg.bundles_per_slice == 8
-
-    # 8 bundles across 2 hosts -> bundles 0..3 map to host 0, bundles 4..7 map to host 1
-    assert len(spg.bundle_label_selector) == 8
-    for i in range(4):
-        assert (
-            spg.bundle_label_selector[i][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
-        )
-    for i in range(4, 8):
-        assert (
-            spg.bundle_label_selector[i][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
-        )
-
-    # Wait for placement group to schedule all bundles across the cluster
-    ray.get(spg.placement_group.ready(), timeout=10)
-
-    # Valid worker_ids are 0 and 1 (based on num_hosts, not num_bundles)
-    assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-
-    # Out of bounds: worker_id=2 (fails even though num_bundles=8 because num_hosts=2)
-    with pytest.raises(ValueError, match="out of bounds"):
-        spg.get_jax_env_vars(worker_id=2)
-
-    # Address resolution returns 1 address per host (2 addresses total)
-    jax_env = spg.get_jax_env_vars(worker_id=0)
-    assert "TPU_WORKER_HOSTNAMES" in jax_env
-    assert len(jax_env["TPU_WORKER_HOSTNAMES"].split(",")) == 2
-
-    spg.shutdown()
 
 
 if __name__ == "__main__":
