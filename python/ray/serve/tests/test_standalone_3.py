@@ -218,9 +218,11 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
         return True
 
     def check_proxy_gone() -> bool:
+        # Deliberately not httpx.RequestError: that also covers timeouts, and a request
+        # that timed out means something is still listening.
         try:
             resp = httpx.get("http://localhost:8000/f")
-        except httpx.ConnectError:
+        except (httpx.NetworkError, httpx.RemoteProtocolError):
             return True
         raise AssertionError(f"Proxy still serving: {resp.status_code}")
 
