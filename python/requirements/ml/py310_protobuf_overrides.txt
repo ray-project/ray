@@ -14,7 +14,8 @@
 # 1.75.0 itself requires protobuf 6.
 #
 # An override replaces every requirement on the package, so it must also name
-# the package for py>=3.11 (unpinned, so the compiled constraint decides);
-# otherwise uv drops grpcio-reflection from the py3.12 locks entirely.
+# the package for py>=3.11; otherwise uv drops grpcio-reflection from the py3.12
+# locks entirely. The lower bound keeps that track on protobuf 6 (mirroring the
+# <1.72 line above); the exact version comes from the compiled constraint.
 grpcio-reflection<1.72; python_version < '3.11'
-grpcio-reflection; python_version >= '3.11'
+grpcio-reflection>=1.72; python_version >= '3.11'
