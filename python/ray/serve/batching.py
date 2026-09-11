@@ -259,12 +259,26 @@ class _BatchQueue:
         receiving the first request that will be in the next batch. After the
         timeout, returns as many items as are ready.
 
-        Always returns a batch with at least one item - will block
-        indefinitely until an item comes in.
+        Blocks until an item comes in. Returns an empty batch if assembly fails,
+        after setting exceptions on the affected requests.
         """
 
         batch = []
+        try:
+            return await self._wait_for_batch(batch)
+        except Exception as e:
+            # A sizing callback can fail after requests have been dequeued.
+            # Complete those requests and keep the batching loop running.
+            for request in batch:
+                _set_exception_if_not_done(request.future, e)
+            return [], 0
+
+    async def _wait_for_batch(
+        self, batch: List[_SingleRequest]
+    ) -> Tuple[List[_SingleRequest], int]:
+        """Assemble a batch, tracking dequeued requests for error propagation."""
         first_item = await self.queue.get()  # Block until first item arrives
+        batch.append(first_item)
 
         # Cache current max_batch_size and batch_wait_timeout_s for this batch.
         max_batch_size = self.max_batch_size
@@ -280,10 +294,8 @@ class _BatchQueue:
                     "implementation of the batch_size_fn."
                 )
                 # Set exception on the future so the caller receives it
-                first_item.future.set_exception(exc)
+                _set_exception_if_not_done(first_item.future, exc)
                 return [], 0
-
-        batch.append(first_item)
 
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
@@ -532,24 +544,6 @@ class _BatchQueue:
         if len(batch) == 0:
             return
 
-        # Compute batch size for this sub-batch. Each sub-batch may have a different
-        # size, especially when splitting by model_id, so we compute it here.
-        computed_batch_size = self._compute_batch_size(batch)
-
-        # Calculate and record batch utilization percentage.
-        batch_utilization_percent = (computed_batch_size / self.max_batch_size) * 100
-        self._batch_utilization_histogram.observe(
-            batch_utilization_percent, tags={"function_name": self._function_name}
-        )
-
-        # Record actual batch size (number of requests in the batch computed by the batch_size_fn).
-        self._batch_size_histogram.observe(
-            computed_batch_size, tags={"function_name": self._function_name}
-        )
-
-        # Increment batches processed counter.
-        self._batches_processed_counter.inc(tags={"function_name": self._function_name})
-
         futures = [item.future for item in batch]
 
         # Most of the logic in the function should be wrapped in this try-
@@ -557,6 +551,27 @@ class _BatchQueue:
         # occurs. Otherwise, the futures' requests may hang indefinitely.
         batch_execution_start_time = time.time()
         try:
+            # Recompute after splitting by model ID and removing cancelled requests.
+            # Sizing errors must reach the callers just like handler errors.
+            computed_batch_size = self._compute_batch_size(batch)
+
+            # Calculate and record batch utilization percentage.
+            batch_utilization_percent = (
+                computed_batch_size / self.max_batch_size
+            ) * 100
+            self._batch_utilization_histogram.observe(
+                batch_utilization_percent, tags={"function_name": self._function_name}
+            )
+
+            # Record actual batch size as computed by batch_size_fn.
+            self._batch_size_histogram.observe(
+                computed_batch_size, tags={"function_name": self._function_name}
+            )
+
+            self._batches_processed_counter.inc(
+                tags={"function_name": self._function_name}
+            )
+
             self_arg = batch[0].self_arg
             args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
 
