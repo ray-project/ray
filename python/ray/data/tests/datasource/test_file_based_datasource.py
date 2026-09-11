@@ -12,6 +12,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
+    _add_partitions_to_table,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -262,6 +263,41 @@ def test_partitioning_raises_on_mismatch(ray_start_regular_shared, tmp_path):
     with pytest.raises(ValueError):
         tasks = datasource.get_read_tasks(1)
         execute_read_tasks(tasks)
+
+
+@pytest.mark.parametrize(
+    "column,partition_value,expected_cause",
+    [
+        (pyarrow.array([1], type=pyarrow.int64()), "not-an-int", pyarrow.ArrowInvalid),
+        (pyarrow.array([], type=pyarrow.int64()), "not-an-int", pyarrow.ArrowInvalid),
+        (
+            pyarrow.array([[1]], type=pyarrow.list_(pyarrow.int64())),
+            "not-a-list",
+            pyarrow.ArrowNotImplementedError,
+        ),
+    ],
+)
+def test_add_partitions_to_table_raises_on_cast_error(
+    column, partition_value, expected_cause
+):
+    table = pyarrow.table({"part": column})
+
+    with pytest.raises(ValueError) as exc_info:
+        _add_partitions_to_table(table, {"part": partition_value})
+
+    assert str(exc_info.value) == (
+        f"Partition value {partition_value!r} for field 'part' cannot be cast "
+        f"to target type {column.type}."
+    )
+    assert isinstance(exc_info.value.__cause__, expected_cause)
+
+
+def test_add_partitions_to_table_casts_valid_value():
+    table = pyarrow.table({"part": pyarrow.array([1], type=pyarrow.int64())})
+
+    actual = _add_partitions_to_table(table, {"part": "1"})
+
+    assert actual.equals(table)
 
 
 def test_ignore_missing_paths_true(ray_start_regular_shared, tmp_path):
