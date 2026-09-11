@@ -20,7 +20,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray._private import ray_constants
+from ray._private import logging_utils, ray_constants
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
@@ -56,6 +56,34 @@ from ray.autoscaler._private.cli_logger import cli_logger
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+@pytest.mark.parametrize("tee_enabled", [False, True])
+def test_redirect_stdout_stderr_tee_options(tee_enabled):
+    with (
+        patch.object(logging_utils, "sys") as mock_sys,
+        patch.object(logging_utils, "open_log"),
+        patch.object(
+            logging_utils.StreamRedirector, "redirect_stdout"
+        ) as redirect_stdout,
+        patch.object(
+            logging_utils.StreamRedirector, "redirect_stderr"
+        ) as redirect_stderr,
+    ):
+        mock_sys.stdout.fileno.return_value = 1
+        mock_sys.stderr.fileno.return_value = 2
+
+        logging_utils.redirect_stdout_stderr_if_needed(
+            "stdout.log",
+            "stderr.log",
+            100,
+            3,
+            tee_to_stdout=tee_enabled,
+            tee_to_stderr=tee_enabled,
+        )
+
+    redirect_stdout.assert_called_once_with("stdout.log", 100, 3, tee_enabled, False)
+    redirect_stderr.assert_called_once_with("stderr.log", 100, 3, False, tee_enabled)
 
 
 def test_reopen_changed_inode_seeks_on_non_empty_file(tmp_path):

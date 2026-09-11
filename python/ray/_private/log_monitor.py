@@ -613,6 +613,8 @@ if __name__ == "__main__":
         args.stderr_filepath,
         logging_rotation_bytes,
         logging_rotation_backup_count,
+        tee_to_stdout=ray_constants.LOG_MONITOR_TEE_STDOUT,
+        tee_to_stderr=ray_constants.LOG_MONITOR_TEE_STDOUT,
     )
 
     gcs_client = GcsClient(address=args.gcs_address)
