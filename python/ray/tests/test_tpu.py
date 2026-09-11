@@ -2881,7 +2881,7 @@ def test_slice_placement_group_multi_slice_addresses(ray_tpu_cluster):
         # Comma-separated string with standard IPv4 addresses and ports
         (
             "10.0.0.1:8471, 10.0.0.2:8471",
-            "0",
+            0,
             {},
             {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "0"},
         ),
@@ -2944,13 +2944,13 @@ def test_single_host_slice_placement_group_worker_id(ray_single_host_tpu_cluster
     assert spg.get_jax_env_vars()["TPU_WORKER_ID"] == "0"
     assert spg.get_jax_runtime_env()["env_vars"]["TPU_WORKER_ID"] == "0"
 
-    # Explicit valid worker_id accepts int and str
+    # Explicit valid worker_id
     assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
 
     # Validation errors propagated
     with pytest.raises(ValueError, match="out of bounds"):
         spg.get_jax_env_vars(worker_id=1)
-    with pytest.raises(ValueError, match="must be an integer"):
+    with pytest.raises(TypeError, match="must be an integer"):
         spg.get_jax_env_vars(worker_id="invalid")
 
 
@@ -2972,13 +2972,13 @@ def test_multi_host_slice_placement_group_worker_id(ray_tpu_cluster):
 
     # Valid worker_ids for JAX
     assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_jax_env_vars(worker_id="1")["TPU_WORKER_ID"] == "1"
-    assert spg.get_jax_runtime_env(worker_id="1")["env_vars"]["TPU_WORKER_ID"] == "1"
+    assert spg.get_jax_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
+    assert spg.get_jax_runtime_env(worker_id=1)["env_vars"]["TPU_WORKER_ID"] == "1"
 
     # Validation errors propagated
     with pytest.raises(ValueError, match="out of bounds"):
         spg.get_jax_env_vars(worker_id=2)
-    with pytest.raises(ValueError, match="must be an integer"):
+    with pytest.raises(TypeError, match="must be an integer"):
         spg.get_jax_env_vars(worker_id="foo")
     with pytest.raises(ValueError, match="out of range"):
         spg.get_jax_env_vars(slice_index=99)
