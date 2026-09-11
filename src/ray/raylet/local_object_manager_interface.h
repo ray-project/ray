@@ -16,11 +16,13 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -74,6 +76,11 @@ class LocalObjectManagerInterface {
 
   virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const = 0;
+
+  /// Return the owner address recorded when the given object was pinned on
+  /// this raylet, or std::nullopt if the object is unknown here.
+  virtual std::optional<rpc::Address> GetOwnerAddress(
+      const ObjectID &object_id) const = 0;
 
   virtual std::string DebugString() const = 0;
 };

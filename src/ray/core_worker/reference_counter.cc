@@ -861,6 +861,22 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+
+  // Guarantee the freed-on-producer callbacks fire exactly once, even if the
+  // object was never moved (otherwise the Cython Py_INCREF that keeps the
+  // Python callback alive would never be balanced). When the object is fully
+  // out of scope the producer's copy is definitely gone too, so this is
+  // semantically a producer-free. Guarded by freed_on_producer, and
+  // OnObjectFreedOnProducer clears the vector, so whichever path runs second
+  // is a no-op.
+  if (!it->second.freed_on_producer) {
+    it->second.freed_on_producer = true;
+    for (const auto &callback : it->second.on_object_freed_on_producer_callbacks) {
+      callback(it->first);
+    }
+    it->second.on_object_freed_on_producer_callbacks.clear();
+  }
+
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
@@ -907,6 +923,35 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
   return true;
 }
 
+bool ReferenceCounter::AddObjectFreedOnProducerCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  if (it->second.freed_on_producer) {
+    // The producer already freed its copy; the notification will never fire
+    // again for this object.
+    return false;
+  }
+  it->second.on_object_freed_on_producer_callbacks.emplace_back(callback);
+  return true;
+}
+
+void ReferenceCounter::OnObjectFreedOnProducer(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return;
+  }
+  it->second.freed_on_producer = true;
+  for (const auto &callback : it->second.on_object_freed_on_producer_callbacks) {
+    callback(object_id);
+  }
+  it->second.on_object_freed_on_producer_callbacks.clear();
+}
+
 void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
@@ -944,10 +989,13 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     if (it->second.pinned_at_node_id_.has_value()) {
-      RAY_LOG(INFO).WithField(object_id)
+      // With plasma move semantics enabled, this fires on every successful
+      // producer→consumer handoff (not just during reconstruction), so keep
+      // it at DEBUG to avoid log spam.
+      RAY_LOG(DEBUG).WithField(object_id)
           << "Updating primary location for object to node " << node_id
           << ", but it already has a primary location " << *it->second.pinned_at_node_id_
-          << ". This should only happen during reconstruction";
+          << ". Expected during reconstruction and after a move-semantics handoff.";
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
