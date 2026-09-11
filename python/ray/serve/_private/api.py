@@ -1,10 +1,22 @@
 import asyncio
 import inspect
 import logging
+from enum import Enum
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
-from typing import Any, Dict, List, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from pydantic import BaseModel
 
@@ -19,6 +31,8 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import configure_http_options_with_defaults
 from ray.serve.config import (
     ControllerOptions,
     HTTPOptions,
@@ -31,10 +45,15 @@ from ray.serve.context import (
     _set_global_client,
 )
 from ray.serve.deployment import Application
-from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig, TracingConfig
+from ray.serve.exceptions import RayServeConfigException, RayServeException
+from ray.serve.schema import LoggingConfig, ServeDeploySchema, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+# Reported as "<redacted>" instead of their value in the start-time config error.
+_REDACTED_FIELDS = frozenset({"http_options.ssl_keyfile_password"})
 
 
 def _coerce_controller_options(
@@ -53,28 +72,174 @@ def _coerce_controller_options(
     )
 
 
-def _check_http_options(
-    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
-) -> None:
-    if http_options:
-        client_http_options = client.http_config
-        new_http_options = (
-            http_options
-            if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.model_validate(http_options)
-        )
-        different_fields = []
-        all_http_option_fields = new_http_options.__dict__
-        for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
+def _coerce_options(
+    requested: Union[None, dict, ModelT], model: Type[ModelT]
+) -> Optional[ModelT]:
+    """Validate the caller's options into `model`, or None if they sent none.
 
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
-            )
+    `model_fields_set` on the result is exactly the fields the caller supplied, so
+    validating here loses nothing a raw dict carried.
+    """
+    if not requested:
+        return None
+    if isinstance(requested, dict):
+        # pyrefly drops the TypeVar bound on a classmethod access; mypy accepts it.
+        return model.model_validate(requested)  # pyrefly: ignore[missing-attribute]
+    return requested
+
+
+def _diff_start_time_options(
+    label: str,
+    requested: Optional[BaseModel],
+    current: BaseModel,
+    apply_defaults: Callable[[Any], BaseModel],
+    ignore: FrozenSet[str] = frozenset(),
+) -> Dict[str, Tuple[Any, Any]]:
+    """Map "<label>.<field>" -> (current, requested) for provided fields that differ.
+
+    Keys are qualified by option group because `http_options` and `grpc_options`
+    share field names (`port`).
+
+    Only fields the caller actually provided are compared, and both sides go
+    through the controller's own defaulting, so an env-var default (e.g.
+    RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S) can't masquerade as a requested change.
+    """
+    if requested is None:
+        return {}
+
+    # Unknown keys are dropped by pydantic on the start path too, so they never
+    # reach `model_fields_set` and can't be reported as a change.
+    provided = set(requested.model_fields_set) & (
+        set(type(current).model_fields) - ignore
+    )
+    requested = apply_defaults(requested)
+    return {
+        f"{label}.{field}": (getattr(current, field), getattr(requested, field))
+        for field in provided
+        if getattr(current, field) != getattr(requested, field)
+    }
+
+
+def _describe(field: str, value: Any) -> str:
+    """Render a config value for an error message, unwrapping enums.
+
+    Secrets are redacted because the message reaches an HTTP 400 body and user logs.
+    """
+    if field in _REDACTED_FIELDS:
+        return "<redacted>"
+    return repr(value.value if isinstance(value, Enum) else value)
+
+
+def _requested_proxy_location(
+    http_options: Optional[HTTPOptions],
+    proxy_location: Union[None, str, ProxyLocation],
+) -> Optional[ProxyLocation]:
+    """The placement the caller asked for, or None if they didn't ask.
+
+    `HTTPOptions.location` wins over `proxy_location`, matching how the controller
+    resolves placement. It is read whether or not the caller set it, because
+    `host=None` backfills it to Disabled and that is what startup resolves to.
+    """
+    location = http_options.location if http_options is not None else None
+
+    return ProxyLocation._normalize(
+        location if location is not None else proxy_location
+    )
+
+
+def _check_start_time_config_unchanged(
+    client: ServeControllerClient,
+    http_options: Union[None, dict, HTTPOptions] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
+) -> None:
+    """Raise if the caller asks to change config that is fixed at controller startup.
+
+    Serve bakes HTTP, gRPC, and proxy-placement config into the controller when it
+    starts, so these can only change across a restart. Failing here is what keeps
+    the request from being silently dropped.
+    """
+    requested_http = _coerce_options(http_options, HTTPOptions)
+    requested_grpc = _coerce_options(grpc_options, gRPCOptions)
+    diff = _diff_start_time_options(
+        "http_options",
+        requested_http,
+        client.http_config,
+        configure_http_options_with_defaults,
+        # `location` is reported as `proxy_location` below, against the resolved
+        # placement rather than the raw (deprecated) field.
+        ignore=frozenset({"location"}),
+    )
+    diff.update(
+        _diff_start_time_options(
+            "grpc_options",
+            requested_grpc,
+            client.grpc_config,
+            set_proxy_default_grpc_options,
+        )
+    )
+
+    # Compared against the placement the caller originally asked for, not the one
+    # in effect: direct-ingress mode overrides it, and the override isn't a change
+    # any config can request or avoid.
+    current_location = client.requested_proxy_location
+    requested_location = _requested_proxy_location(requested_http, proxy_location)
+    if requested_location is not None and requested_location != current_location:
+        diff["proxy_location"] = (current_location, requested_location)
+
+    if not diff:
+        return
+
+    changes = ", ".join(
+        f"{field}: {_describe(field, current)} -> {_describe(field, requested)}"
+        for field, (current, requested) in sorted(diff.items())
+    )
+    raise RayServeConfigException(
+        "Serve is already running in this Ray cluster, and the following options "
+        f"are global to the cluster and can't be updated at runtime: {changes}. "
+        "They are fixed when the Serve controller starts. To apply them, shut Serve "
+        "down and start it again (`serve shutdown`, or restart the Ray cluster or "
+        "RayService); to keep the values Serve is running with, drop these fields "
+        "from your config."
+    )
+
+
+def declared_start_time_options(config: ServeDeploySchema) -> Dict[str, Any]:
+    """The start-time options a declarative config explicitly asked for.
+
+    The declarative paths send a fully-defaulted dump to start Serve with, so
+    without this every untouched schema default would read as a requested change.
+    """
+    return {
+        "http_options": config.http_options.model_dump(exclude_unset=True),
+        "grpc_options": config.grpc_options.model_dump(exclude_unset=True),
+        "proxy_location": (
+            config.proxy_location
+            if "proxy_location" in config.model_fields_set
+            else None
+        ),
+    }
+
+
+def _connect_to_existing_client(
+    client: ServeControllerClient,
+    http_options: Union[None, dict, HTTPOptions],
+    grpc_options: Union[None, dict, gRPCOptions],
+    proxy_location: Union[None, str, ProxyLocation],
+    declared_options: Optional[Dict[str, Any]],
+) -> None:
+    """Log the connection and reject changes to config fixed at controller startup."""
+    if declared_options is None:
+        declared_options = {
+            "http_options": http_options,
+            "grpc_options": grpc_options,
+            "proxy_location": proxy_location,
+        }
+    logger.info(
+        f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
+        " New controller_options will not be applied."
+    )
+    _check_start_time_config_unchanged(client, **declared_options)
 
 
 def _create_controller_and_proxy_refs(
@@ -161,6 +326,7 @@ async def serve_start_async(
     global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     proxy_location: Union[None, str, ProxyLocation] = None,
+    declared_options: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -186,12 +352,9 @@ async def serve_start_async(
         except RayServeException:
             client = None
     if client is not None:
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http_options/controller_options will not be applied."
+        _connect_to_existing_client(
+            client, http_options, grpc_options, proxy_location, declared_options
         )
-        if http_options:
-            _check_http_options(client, http_options)
         return client
 
     # Run the blocking controller-creation helper in a worker thread so its
@@ -237,6 +400,7 @@ def serve_start(
     global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     proxy_location: Union[None, str, ProxyLocation] = None,
+    declared_options: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -291,6 +455,11 @@ def serve_start(
             the cluster. See ``ProxyLocation`` for supported options. Defaults
             to ``EveryNode`` when unspecified. An explicit (deprecated)
             ``HTTPOptions.location`` overrides this.
+        declared_options: The subset of the options above that the caller
+            explicitly asked for, checked against an already-running instance
+            instead of the values passed here. Declarative callers must pass
+            this (see ``declared_start_time_options``) because they send a
+            fully-defaulted config to start Serve with.
         **kwargs: Reserved for forwarding to internal controller-start hooks;
             no public keys are currently supported and unknown keys may raise.
 
@@ -310,12 +479,9 @@ def serve_start(
         except RayServeException:
             client = None
     if client is not None:
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http_options/controller_options will not be applied."
+        _connect_to_existing_client(
+            client, http_options, grpc_options, proxy_location, declared_options
         )
-        if http_options:
-            _check_http_options(client, http_options)
         return client
 
     controller, proxy_ready_refs = _create_controller_and_proxy_refs(
