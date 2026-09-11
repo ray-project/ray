@@ -253,7 +253,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
-      if (node.GetLocalView().total != node.GetLocalView().GetAvailable()) {
+      if (!(node.GetLocalView().GetAvailable() ==
+            NodeResourceInstanceSet(node.GetLocalView().total))) {
         return false;
       }
     }
@@ -302,16 +303,21 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                double available_cpu,
                                double total_cpu) {
     rpc::syncer::ResourceViewSyncMessage msg;
-    (*msg.mutable_resources_available())["CPU"] = available_cpu;
+    rpc::syncer::ResourceInstances cpu_inst;
+    cpu_inst.add_values(available_cpu);
+    (*msg.mutable_resources_available_instances())["CPU"] = cpu_inst;
     (*msg.mutable_resources_total())["CPU"] = total_cpu;
     gcs_resource_manager_->UpdateFromResourceView(node_id, msg);
   }
 
   double GcsAvailableCpu(const NodeID &node_id) {
-    return cluster_resource_scheduler_->GetClusterResourceManager()
-        .GetNodeResources(scheduling::NodeID(node_id.Binary()))
-        .GetAvailableSum(scheduling::ResourceID::CPU())
-        .Double();
+    auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
+                         .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                         .GetAvailable()
+                         .ToNodeResourceSet()
+                         .GetResourceMap();
+    auto it = resources.find("CPU");
+    return it != resources.end() ? it->second : 0.0;
   }
 
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,
@@ -1523,6 +1529,71 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
+}
+
+// Regression test: a PG bundle requesting 0.5 GPU must be routed to a node whose GPU
+// instances can actually satisfy the request, not to a node whose per-instance GPU
+// availability is all below 0.5 even though its aggregate appears sufficient.
+//
+// Scenario:
+//   node0 (port 0): 2 GPUs, each with 0.4 free  → aggregate 0.8 >= 0.5, but no
+//                   single instance can fit 0.5. Should NOT be chosen.
+//   node1 (port 1): 2 GPUs, each with 1.0 free  → trivially fits. Should be chosen.
+//
+// Before the fix the scheduler used aggregate scalars, so it picked node0, the raylet
+// rejected the allocation, and the PG was stuck in an infinite spill-back loop.
+// After the fix the scheduler uses per-instance availability and correctly picks node1.
+TEST_F(GcsPlacementGroupSchedulerTest,
+       TestFractionalGpuBundleSkipsUnavailableFragmentedNode) {
+  // --- Set up node0: fragmented GPUs [0.4, 0.4]. ---
+  auto node0 = GenNodeInfo(0);
+  (*node0->mutable_resources_total())["GPU"] = 2.0;
+  gcs_node_manager_->AddNode(node0);
+  gcs_resource_manager_->OnNodeAdd(*node0);
+  const NodeID node0_id = NodeID::FromBinary(node0->node_id());
+
+  // Simulate 0.6 GPU consumed from each of node0's two instances.
+  {
+    rpc::syncer::ResourceViewSyncMessage msg;
+    rpc::syncer::ResourceInstances gpu_inst;
+    gpu_inst.add_values(0.4);
+    gpu_inst.add_values(0.4);
+    (*msg.mutable_resources_available_instances())["GPU"] = gpu_inst;
+    (*msg.mutable_resources_total())["GPU"] = 2.0;
+    gcs_resource_manager_->UpdateFromResourceView(node0_id, msg);
+  }
+
+  // --- Set up node1: both GPU instances fully free [1.0, 1.0]. ---
+  auto node1 = GenNodeInfo(1);
+  (*node1->mutable_resources_total())["GPU"] = 2.0;
+  gcs_node_manager_->AddNode(node1);
+  gcs_resource_manager_->OnNodeAdd(*node1);
+  // node1's GPU instances default to [1.0, 1.0] (initialized from total).
+
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // --- Create a PG with one bundle requesting 0.5 GPU. ---
+  // PACK strategy is the hard case: it prefers the more-utilized node (node0),
+  // so without the per-instance fix the scheduler would pick node0 first.
+  std::vector<std::unordered_map<std::string, double>> bundles = {{{"GPU", 0.5}}};
+  auto pg_spec = GenPlacementGroupCreation(
+      "", bundles, rpc::PlacementStrategy::PACK, JobID::FromInt(1), ActorID::Nil());
+  rpc::CreatePlacementGroupRequest request;
+  request.mutable_placement_group_spec()->CopyFrom(pg_spec.GetMessage());
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  ScheduleUnplacedBundles(pg);
+
+  // The scheduler must have sent the prepare RPC to node1, not node0.
+  WaitPendingDone(raylet_clients_[1]->lease_callbacks, 1);
+  ASSERT_EQ(0, raylet_clients_[0]->num_lease_requested);
+  ASSERT_EQ(1, raylet_clients_[1]->num_lease_requested);
+
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 }
 
 }  // namespace gcs

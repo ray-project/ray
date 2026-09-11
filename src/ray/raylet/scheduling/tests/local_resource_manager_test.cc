@@ -36,7 +36,7 @@ class LocalResourceManagerTest : public ::testing::Test {
       absl::flat_hash_map<ResourceID, double> resource_usage_map) {
     NodeResources resources;
     for (auto &[resource_id, total] : resource_usage_map) {
-      resources.SetAvailableResource(resource_id, total);
+      resources.SetAvailableResource(resource_id, {total});
       resources.total.Set(resource_id, total);
     }
     return resources;
@@ -401,7 +401,8 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
 
   const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
-  ASSERT_EQ(resource_view_sync_messge.resources_available().at("CPU"), 0);
+  // CPU must be absent from the message — not broadcast as a negative value.
+  ASSERT_EQ(resource_view_sync_messge.resources_available_instances().count("CPU"), 0u);
 }
 
 TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {

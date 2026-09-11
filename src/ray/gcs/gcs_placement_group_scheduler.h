@@ -227,6 +227,11 @@ class LeaseStatusTracker {
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
 
+  void SetBundleAllocation(const BundleID &bundle_id, ResourceAllocation allocation);
+
+  /// Returns nullptr if not found.
+  const ResourceAllocation *GetBundleAllocation(const BundleID &bundle_id) const;
+
  private:
   /// Method to update leasing states.
   ///
@@ -270,6 +275,11 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
+
+  /// Per-bundle per-instance resource allocations (original resources, not
+  /// PG-formatted), e.g. {GPU: [0, 1, 0, 0]} meaning GPU instance 1 was used.
+  absl::flat_hash_map<BundleID, ResourceAllocation, pair_hash>
+      acquired_resource_allocations_;
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
@@ -443,11 +453,17 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Acquire the bundle resources from the cluster resources. The matching
   /// release is no longer mirrored here -- when bundles are cancelled or a
   /// scheduling attempt fails, GCS waits for the raylet's next ray-syncer
-  /// broadcast to reconcile its view of the affected nodes' resources.
-  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  /// broadcast to reconcile its view. Per-instance allocation is saved in
+  /// the tracker so CommitBundleResources can create PG resources with the
+  /// correct GPU topology.
+  void AcquireBundleResources(
+      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  void CommitBundleResources(
+      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
