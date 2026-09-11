@@ -108,7 +108,7 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 )
 
 DEFAULT_ENABLE_AGGREGATION_BASED_PREPROCESSORS = env_bool(
-    "RAY_DATA_ENABLE_AGGREGATION_BASED_PREPROCESSORS", False
+    "RAY_DATA_ENABLE_AGGREGATION_BASED_PREPROCESSORS", True
 )
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
@@ -852,7 +852,7 @@ class DataContext:
             first ``transform()`` (computed over the dataset that was passed to
             ``fit()``). When enabled, ``Chain.fit()`` returns without computing
             member statistics; they materialize at the first ``transform()``,
-            ``transform_batch()``, or serialization. Defaults to ``False``.
+            ``transform_batch()``, or serialization. Defaults to ``True``.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
         gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
