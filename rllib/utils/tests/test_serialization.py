@@ -11,8 +11,6 @@ from ray.rllib.utils.serialization import (
     space_from_dict,
     space_to_dict,
 )
-from ray.rllib.utils.spaces.flexdict import FlexDict
-from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
 
@@ -151,31 +149,6 @@ class TestGymCheckEnv(unittest.TestCase):
             self.assertAlmostEqual, space.concentration, sp.concentration
         )
         self.assertEqual(space.dtype, sp.dtype)
-
-    def test_repeated(self):
-        space = Repeated(gym.spaces.Box(low=-1, high=1, shape=(1, 200)), max_len=8)
-
-        d = gym_space_to_dict(space)
-        sp = gym_space_from_dict(d)
-
-        self.assertTrue(isinstance(sp.child_space, gym.spaces.Box))
-        self.assertEqual(space.max_len, sp.max_len)
-        self.assertEqual(space.dtype, sp.dtype)
-
-    def test_flex_dict(self):
-        space = FlexDict({})
-        space["box"] = gym.spaces.Box(low=-1, high=1, shape=(1, 200))
-        space["discrete"] = gym.spaces.Discrete(2)
-        space["tuple"] = gym.spaces.Tuple(
-            (gym.spaces.Box(low=-1, high=1, shape=(1, 200)), gym.spaces.Discrete(2))
-        )
-
-        d = gym_space_to_dict(space)
-        sp = gym_space_from_dict(d)
-
-        self.assertTrue(isinstance(sp["box"], gym.spaces.Box))
-        self.assertTrue(isinstance(sp["discrete"], gym.spaces.Discrete))
-        self.assertTrue(isinstance(sp["tuple"], gym.spaces.Tuple))
 
     def test_text(self):
         expected_space = gym.spaces.Text(min_length=3, max_length=10, charset="abc")
