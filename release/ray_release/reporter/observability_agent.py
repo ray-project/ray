@@ -1,6 +1,7 @@
 import html
 import json
 import os
+import re
 import subprocess
 from typing import Any, Dict, Optional
 
@@ -261,6 +262,22 @@ class ObservabilityAgentReporter(Reporter):
             f"{issue_number} for test {test.get_name()}"
         )
 
+    @staticmethod
+    def _neutralize_github_refs(text: str) -> str:
+        """Stop the agent's prose from mentioning people or linking issues.
+
+        A github comment renders markdown, so an `@name` in the summary
+        notifies a real person and a `#123` posts a backlink on that issue.
+        The summary is free-form text from the agent, so neither is
+        intentional. An empty html comment breaks the autolink and renders as
+        nothing, leaving the text looking exactly as written.
+
+        `#` is only neutralized before a digit, so that url fragments and
+        headings in the prose survive.
+        """
+        text = text.replace("@", "@<!---->")
+        return re.sub(r"#(?=\d)", "#<!---->", text)
+
     def _issue_comment(
         self,
         test: Test,
@@ -273,7 +290,9 @@ class ObservabilityAgentReporter(Reporter):
             "The observability agent looked at the latest failure of "
             f"`{test.get_name()}`.",
             "",
-            summary or "The agent returned no summary for this job.",
+            self._neutralize_github_refs(summary)
+            if summary
+            else "The agent returned no summary for this job.",
         ]
         if result.buildkite_url:
             lines += ["", f"Failing build: {result.buildkite_url}"]

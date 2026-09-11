@@ -802,5 +802,35 @@ def test_the_comment_names_the_missing_summary():
     assert "returned no summary" in issue.comments[0]
 
 
+def test_the_comment_cannot_mention_people_or_link_issues():
+    """The summary is the agent's prose; a mention would notify a real person."""
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+    query_response = {
+        "result": {
+            "analysis": {"summary": "see #1234, raised by @someone"},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+
+    result = _result(ResultStatus.ERROR.value)
+    # A url fragment of our own, to show only the agent's prose is touched.
+    result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1#job"
+    _report_commenting(
+        result,
+        repo,
+        responses=[FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+    )
+
+    body = issue.comments[0]
+    assert "@<!---->someone" in body
+    assert "#<!---->1234" in body
+    # Nothing github would autolink survives.
+    assert "@someone" not in body
+    assert "#1234" not in body
+    # Our own text is untouched: the buildkite url keeps its fragment.
+    assert "builds/1#job" in body
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
