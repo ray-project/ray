@@ -232,30 +232,87 @@ def test_autodetect_tpu_accelerator_type(
     assert TPUAcceleratorManager.get_current_node_accelerator_type() == expected_version
 
 
+def test_normalize_tpu_accelerator_type():
+    """Test normalize_tpu_accelerator_type normalizes accelerator strings."""
+    assert tpu.normalize_tpu_accelerator_type("TPU-V6E") == "v6e"
+    assert tpu.normalize_tpu_accelerator_type("TPU-V5LITEPOD") == "v5litepod"
+    assert tpu.normalize_tpu_accelerator_type("tpu7x-16") == "v7x-16"
+    assert tpu.normalize_tpu_accelerator_type("tpu-v7x-16") == "v7x-16"
+    assert tpu.normalize_tpu_accelerator_type("tpuv7x-16") == "v7x-16"
+    assert tpu.normalize_tpu_accelerator_type("v4-8") == "v4-8"
+    assert tpu.normalize_tpu_accelerator_type("tpu7x") == "v7x"
+    assert tpu.normalize_tpu_accelerator_type("") == ""
+    assert tpu.normalize_tpu_accelerator_type(None) == ""
+
+
+def test_get_current_node_tpu_worker_id_from_env(monkeypatch):
+    """Test worker ID resolution from environment variables when hardware discovery is inactive."""
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "_get_physical_worker_id_from_hardware", lambda: None
+    )
+    monkeypatch.delenv("TPU_WORKER_ID", raising=False)
+    monkeypatch.setattr(
+        "ray._private.accelerators.tpu._get_tpu_metadata", lambda **kwargs: None
+    )
+
+    # 1. Valid worker IDs from environment variable
+    for worker_str, expected in [("0", 0), ("1", 1), ("15", 15)]:
+        monkeypatch.setenv("TPU_WORKER_ID", worker_str)
+        assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected
+
+    # 2. Invalid integer in environment variable fails gracefully (returns None)
+    monkeypatch.setenv("TPU_WORKER_ID", "not_an_int")
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() is None
+
+    # 3. Unset environment variable returns None
+    monkeypatch.delenv("TPU_WORKER_ID")
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() is None
+
+
 @pytest.mark.parametrize(
-    "test_case",
-    [
-        ("gce", "0", 0),
-        ("gke", "0", 0),
-    ],
+    "topology",
+    ["1x1", "2x2", "2x2x1"],
 )
-@patch(
-    "ray._private.accelerators.tpu.TPUAcceleratorManager._get_physical_worker_id_from_hardware",
-    return_value=None,
-)
-@patch("requests.get")
-@patch("os.getenv")
-def test_get_current_node_tpu_worker_id(mock_os, mock_request, mock_hw, test_case):
-    gce_or_gke, worker_id, expected_value = test_case
-    if gce_or_gke == "gce":
-        mock_response = mock.MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = worker_id
-        mock_request.return_value = mock_response
-        mock_os.return_value = None
-    else:
-        mock_os.return_value = worker_id
-    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected_value
+def test_physical_worker_id_single_host_fast_path(topology, monkeypatch):
+    """Single-host topologies are always worker 0 and resolve without querying libtpu."""
+    monkeypatch.setitem(sys.modules, "libtpu", None)
+    assert (
+        TPUAcceleratorManager._get_physical_worker_id_from_hardware(
+            parent_topology=topology
+        )
+        == 0
+    )
+
+
+def test_physical_worker_id_v6e_2x4_single_host(monkeypatch):
+    """v6e-8 has a 2x4 topology with 8 chips on a single host; it should resolve to worker 0."""
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "get_num_workers_in_current_tpu_pod", lambda: 1
+    )
+    monkeypatch.setitem(sys.modules, "libtpu", None)
+    assert (
+        TPUAcceleratorManager._get_physical_worker_id_from_hardware(
+            parent_topology="2x4"
+        )
+        == 0
+    )
+
+
+def test_physical_worker_id_unsupported_generation_fallback(monkeypatch):
+    """When libtpu raises RuntimeError for unsupported generation (e.g. TPU v4), falls back cleanly."""
+    mock_sdk = mock.MagicMock()
+    mock_sdk.slice.get_chip_coordinates.side_effect = RuntimeError(
+        "TPU v4 is not supported"
+    )
+    mock_libtpu = mock.MagicMock()
+    mock_libtpu.sdk = mock_sdk
+
+    monkeypatch.setitem(sys.modules, "libtpu", mock_libtpu)
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x4x4")
+    monkeypatch.setenv("TPU_WORKER_ID", "7")
+
+    assert TPUAcceleratorManager._get_physical_worker_id_from_hardware() is None
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == 7
 
 
 def test_get_current_node_tpu_worker_id_hardware_discovery(monkeypatch):

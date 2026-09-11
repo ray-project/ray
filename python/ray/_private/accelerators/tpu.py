@@ -1,5 +1,6 @@
 import glob
 import logging
+import math
 import os
 import re
 from functools import lru_cache
@@ -677,7 +678,7 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
-    """Normalize a TPU accelerator type string to the standard 'v{gen}' format.
+    """Normalizes a TPU accelerator type string to the standard 'v{gen}' format.
 
     Args:
         accelerator_type: Raw accelerator type string (e.g. "TPU-V6E", "tpu7x-16").
@@ -689,11 +690,13 @@ def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
         return ""
     s = str(accelerator_type).strip().lower()
     if s.startswith("tpu-v"):
-        s = "v" + s[len("tpu-v") :]
-    elif s.startswith("tpu-"):
-        s = s[len("tpu-") :]
-    elif s.startswith("tpu"):
-        s = "v" + s[len("tpu") :]
+        return s[4:]
+    if s.startswith("tpu-"):
+        return "v" + s[4:]
+    if s.startswith("tpuv"):
+        return s[3:]
+    if s.startswith("tpu"):
+        return "v" + s[3:]
     return s
 
 
@@ -938,10 +941,11 @@ class TPUAcceleratorManager(AcceleratorManager):
     ) -> Optional[int]:
         """Query local TPU chip coordinates via libtpu and return the physical worker ID.
 
-        Queries the physical (x, y, z) coordinates of the local TPU ASICs directly
-        from hardware registers. If libtpu is installed and devices are accessible,
-        converts the coordinate into a linear physical rank (0 to N-1) where
-        adjacent indices represent physically adjacent hosts on the ICI mesh.
+        Queries physical coordinates of local TPU chips via libtpu.sdk.slice.
+        If available, converts coordinates into a linear physical worker index
+        (0 to N-1) matching the ICI mesh topology. Returns None if coordinates
+        cannot be retrieved or resolved, falling back to orchestrator-injected
+        environment variables.
 
         Args:
             parent_topology: Optional parent TPU topology (e.g. "4x4"). If omitted,
@@ -951,29 +955,40 @@ class TPUAcceleratorManager(AcceleratorManager):
             The integer physical worker index (0 to N-1), or None if hardware
             coordinates are unavailable or unresolvable.
         """
+        # Single-host pods are always worker 0. Pods spanning multiple VMs
+        # continue to hardware coordinate discovery.
         try:
-            from libtpu import sdk  # type: ignore[import-untyped]
-        except ImportError:
-            logger.debug("libtpu is not installed; skipping hardware discovery.")
-            return None
-        except Exception as e:
-            # Native C++ driver failures may surface as OSError or RuntimeError
-            # during module import on the Ray startup path.
-            logger.debug("Failed to import libtpu: %s", e)
-            return None
-
-        try:
-            coords = sdk.slice.get_chip_coordinates()
-        except Exception as e:
-            logger.debug("Failed to query TPU chip coordinates: %s", e)
-            return None
-
-        if not coords:
-            return None
+            if TPUAcceleratorManager.get_num_workers_in_current_tpu_pod() == 1:
+                return 0
+        except Exception:
+            pass
 
         if not parent_topology:
             parent_topology = TPUAcceleratorManager.get_current_node_tpu_topology()
         if not parent_topology:
+            return None
+
+        clean_parent_topo = parent_topology.strip().lower()
+
+        # Topologies with a single worker in their grid are always worker 0.
+        try:
+            dims = _parse_topology_dims(clean_parent_topo)
+            if math.prod(dims) == 1:
+                return 0
+            if math.prod(_get_worker_dims_for_topology(clean_parent_topo)) == 1:
+                return 0
+        except Exception:
+            pass
+
+        try:
+            from libtpu import sdk  # type: ignore[import-untyped]
+
+            coords = sdk.slice.get_chip_coordinates()
+        except Exception as e:
+            logger.debug("Could not query TPU chip coordinates via libtpu: %s", e)
+            return None
+
+        if not coords:
             return None
 
         try:
@@ -981,9 +996,9 @@ class TPUAcceleratorManager(AcceleratorManager):
                 list(c.coordinates()) if hasattr(c, "coordinates") else list(c[2])
                 for c in coords
             ]
-            return _get_physical_worker_id_from_coords(coords_list, parent_topology)
+            return _get_physical_worker_id_from_coords(coords_list, clean_parent_topo)
         except Exception as e:
-            logger.debug("Could not resolve physical worker ID from hardware: %s", e)
+            logger.debug("Could not resolve physical worker ID from coordinates: %s", e)
             return None
 
     @staticmethod
