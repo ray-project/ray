@@ -259,8 +259,6 @@ class Deployment:
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
-        prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
-        prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -410,12 +408,6 @@ class Deployment:
 
         if deployment_actors is not DEFAULT.VALUE:
             new_deployment_config.deployment_actors = deployment_actors
-
-        if prefer_local_node_routing is not DEFAULT.VALUE:
-            new_deployment_config.prefer_local_node_routing = prefer_local_node_routing
-
-        if prefer_local_az_routing is not DEFAULT.VALUE:
-            new_deployment_config.prefer_local_az_routing = prefer_local_az_routing
 
         gc = new_deployment_config.gang_scheduling_config
         if (
