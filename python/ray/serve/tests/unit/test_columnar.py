@@ -953,14 +953,18 @@ def test_ingest_cpu_fraction_is_a_windowed_rate():
     """Cumulative-over-uptime could never show a controller that saturates late. The
     fraction is anchored on control-loop samples, so it tracks the recent window."""
     tracker = ControllerHealthMetricsTracker()
-    tracker.start_time = 0.0
+    tracker.controller_start_time = 0.0
+    # Before any loop sample anchors a window, it falls back to cumulative over uptime.
+    tracker.record_handle_ingest(500.0)
     with mock.patch("time.time", return_value=1000.0):
-        tracker.record_loop_duration(0.1)  # window anchor, nothing ingested yet
+        assert abs(tracker.collect_metrics().ingest_cpu_fraction - 0.0005) < 1e-9
+    with mock.patch("time.time", return_value=1000.0):
+        tracker.record_loop_duration(0.1)  # window anchor
     tracker.record_handle_ingest(500.0)  # 0.5s of ingest inside the window
     with mock.patch("time.time", return_value=1001.0):
         metrics = tracker.collect_metrics()
     assert abs(metrics.ingest_cpu_fraction - 0.5) < 1e-6
-    assert metrics.handle_reports_received == 1
+    assert metrics.handle_reports_received == 2
 
 
 def test_columnar_decode_is_timed_apart_from_cloudpickle():
