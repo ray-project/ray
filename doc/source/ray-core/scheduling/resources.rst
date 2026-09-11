@@ -163,24 +163,6 @@ and :meth:`task.options() <ray.remote_function.RemoteFunction.options>`/:meth:`a
             :start-after: __specifying_resource_requirements_start__
             :end-before: __specifying_resource_requirements_end__
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Specify required resources.
-            Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 1.0).setResource("special_hardware", 1.0).remote();
-
-            Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 1.0).remote();
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Specify required resources.
-            ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 1.0).SetResource("special_hardware", 1.0).Remote();
-
-            ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 1.0).Remote();
-
 Task and actor resource requirements have implications for the Ray's scheduling concurrency.
 In particular, the sum of the logical resource requirements of all of the
 concurrently executing tasks and actors on a given node cannot exceed the node's total logical resources.

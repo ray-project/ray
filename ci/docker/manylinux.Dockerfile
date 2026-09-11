@@ -4,12 +4,9 @@ ARG HOSTTYPE
 FROM quay.io/pypa/manylinux2014_${HOSTTYPE}:2026.01.02-1
 
 ARG BUILDKITE_BAZEL_CACHE_URL
-ARG RAYCI_DISABLE_JAVA=false
 
 # uid needs to be synced with forge.Dockerfile
 ARG FORGE_UID=2000
-
-ENV BUILD_JAR=1
 
 # Where pip and uv resolve from while building this image. Docker builds cannot see an
 # index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
@@ -22,8 +19,6 @@ ARG RAYCI_IMAGE_PIP_INDEX_URL=""
 ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
-ENV RAYCI_DISABLE_JAVA=$RAYCI_DISABLE_JAVA
-ENV RAY_INSTALL_JAVA=1
 ENV BUILDKITE_BAZEL_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
 
 RUN yum -y install sudo

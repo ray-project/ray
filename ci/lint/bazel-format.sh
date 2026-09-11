@@ -48,9 +48,6 @@ BAZEL_FILES=(
   bazel/BUILD
   bazel/ray.bzl
   BUILD.bazel
-  java/BUILD.bazel
-  cpp/BUILD.bazel
-  cpp/example/_BUILD.bazel
   WORKSPACE
 )
 

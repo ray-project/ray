@@ -86,17 +86,16 @@ repos:
         files: ^src/ray/(gcs/actor|common/cgroup2|common/scheduling|common/ray_syncer|common/test|util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?|raylet|core_worker|ipc)/.*\.(h|cc)$
         exclude: |
           (?x)^(
-            src/ray/raylet/scheduling/.*\.(h|cc)$ |
-            src/ray/core_worker/lib/java/.*\.h$
+            src/ray/raylet/scheduling/.*\.(h|cc)$
           )
 
   - repo: https://github.com/keith/pre-commit-buildifier
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|python|rllib|ci|release|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|python|rllib|ci|release|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -208,19 +207,6 @@ repos:
     rev: v12.0.1
     hooks:
       - id: clang-format
-
-  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.16.0
-    hooks:
-      - id: pretty-format-java
-        args: [--autofix, --google-java-formatter-version=1.7]
-        exclude: |
-          (?x)^(
-            java/api/src/main/java/io/ray/api/ActorCall.java|
-            java/api/src/main/java/io/ray/api/CppActorCall.java|
-            java/api/src/main/java/io/ray/api/PyActorCall.java|
-            java/api/src/main/java/io/ray/api/RayCall.java
-          )
 
   - repo: local
     hooks:

@@ -7,7 +7,7 @@ from threading import Lock
 from typing import Any, Callable, Dict, Optional
 
 import ray._common.signature
-from ray import Language, cross_language
+from ray import Language
 from ray._common import ray_option_utils
 from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._common.serialization import pickle_dumps
@@ -525,9 +525,7 @@ class RemoteFunction:
         fallback_strategy = task_options.get("fallback_strategy")
 
         def invocation(args, kwargs):
-            if self._is_cross_language:
-                list_args = cross_language._format_args(worker, args, kwargs)
-            elif not args and not kwargs and not self._function_signature:
+            if not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
                 list_args = ray._common.signature.flatten_args(

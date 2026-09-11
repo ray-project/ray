@@ -55,10 +55,6 @@ def _get_wheel_names(ray_version: str) -> List[str]:
             wheel_name = f"ray-{ray_version}-{python_version}-{platform}"
             wheel_names.append(wheel_name)
 
-    for platform in ALL_PLATFORMS:
-        wheel_name = f"ray_cpp-{ray_version}-py3-none-{platform}"
-        wheel_names.append(wheel_name)
-
     return wheel_names
 
 

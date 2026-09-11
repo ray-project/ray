@@ -63,7 +63,7 @@ JobID JOB_ID_2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
 constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
-std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
+std::vector<Language> LANGUAGES = {Language::PYTHON};
 
 TEST(WorkerGrpcThreadsWarningTest, WarnsAboveThresholdWhenNotConfigured) {
   ASSERT_FALSE(
@@ -185,7 +185,6 @@ class WorkerPoolMock : public WorkerPool {
             worker_ports,
             gcs_client,
             worker_commands,
-            "",
             []() {},
             0,
             clock,
@@ -359,7 +358,6 @@ class WorkerPoolMock : public WorkerPool {
       auto pushed_it = pushedProcesses_.find(pid);
       if (pushed_it == pushedProcesses_.end()) {
         int runtime_env_hash = 0;
-        bool is_java = false;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (const std::string &command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -368,12 +366,7 @@ class WorkerPoolMock : public WorkerPool {
             runtime_env_hash =
                 std::stoi(command_args.substr(pos + runtime_env_key.size()));
           }
-          pos = command_args.find("java");
-          if (pos != std::string::npos) {
-            is_java = true;
-          }
         }
-        // TODO(SongGuyang): support C++ language workers.
         int num_workers = 1;
         RAY_CHECK(timeout_worker_number <= num_workers)
             << "The timeout worker number cannot exceed the total number of workers";
@@ -381,7 +374,7 @@ class WorkerPoolMock : public WorkerPool {
         for (int i = 0; i < register_workers; i++) {
           auto worker = CreateWorker(GetWorkerId(it->first),
                                      nullptr,
-                                     is_java ? Language::JAVA : Language::PYTHON,
+                                     Language::PYTHON,
                                      job_id,
                                      rpc::WorkerType::WORKER,
                                      runtime_env_hash);
@@ -452,9 +445,7 @@ class WorkerPoolTest : public ::testing::Test {
         R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
         R"(, "enable_worker_prestart": true)" + "}");
-    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                       {Language::JAVA,
-                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}}});
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -642,9 +633,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
+      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  workers.push_back(worker_pool_->CreateWorker(worker_id, nullptr, Language::JAVA));
+  workers.push_back(worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON));
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
@@ -692,10 +683,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleUnknownWorkerRegistration) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, StartupPythonWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::PYTHON, 1);
-}
-
-TEST_F(WorkerPoolDriverRegisteredTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::JAVA, 1);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
@@ -764,28 +751,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   ASSERT_EQ(workers.count(popped_worker), 0);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
-  // Create a Python Worker, and add it to the pool
-  auto py_worker = worker_pool_->CreateWorker(
-      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON);
-  worker_pool_->PushWorker(py_worker);
-  // Check that the Python worker will not be popped if the given lease is a Java lease
-  const LeaseSpecification java_lease_spec =
-      ExampleLeaseSpec(ActorID::Nil(), Language::JAVA);
-  ASSERT_NE(worker_pool_->PopWorkerSync(java_lease_spec), py_worker);
-  // Check that the Python worker can be popped if the given lease is a Python lease
-  const LeaseSpecification py_lease_spec =
-      ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON);
-  ASSERT_EQ(worker_pool_->PopWorkerSync(py_lease_spec), py_worker);
-
-  // Create a Java Worker, and add it to the pool
-  auto java_worker = worker_pool_->CreateWorker(
-      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::JAVA);
-  worker_pool_->PushWorker(java_worker);
-  // Check that the Java worker will be popped now for Java lease
-  ASSERT_EQ(worker_pool_->PopWorkerSync(java_lease_spec), java_worker);
-}
-
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
   LeaseID lease_id = LeaseID::FromRandom();
   LeaseSpecification lease_spec =
@@ -806,62 +771,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
     }
   }
   ASSERT_TRUE(node_id_arg_found);
-}
-
-TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
-  std::vector<std::string> actor_jvm_options;
-  actor_jvm_options.insert(
-      actor_jvm_options.end(),
-      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
-  JobID job_id = JobID::FromInt(12345);
-  ActorID actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-  LeaseSpecification lease_spec = ExampleLeaseSpec(actor_creation_id,
-                                                   Language::JAVA,
-                                                   job_id,
-                                                   actor_jvm_options,
-                                                   LeaseID::FromRandom());
-
-  rpc::JobConfig job_config = rpc::JobConfig();
-  job_config.add_code_search_path("/test/code_search_path");
-  job_config.add_jvm_options("-Xmx1g");
-  job_config.add_jvm_options("-Xms500m");
-  job_config.add_jvm_options("-Dmy-job.hello=world");
-  job_config.add_jvm_options("-Dmy-job.foo=bar");
-  worker_pool_->HandleJobStarted(job_id, job_config);
-
-  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
-  std::vector<std::string> real_command =
-      worker_pool_->GetWorkerCommand(*worker_pool_->LastStartedWorkerProcess());
-
-  // NOTE: When adding a new parameter to Java worker command, think carefully about the
-  // position of this new parameter. Do not modify the order of existing parameters.
-  // Remove the dynamically generated worker-id from real_command before comparing.
-  auto it =
-      std::find_if(real_command.begin(), real_command.end(), [](const std::string &s) {
-        return s.find("-Dray.worker.id=") == 0;
-      });
-  ASSERT_NE(it, real_command.end());
-  real_command.erase(it);
-
-  std::vector<std::string> expected_command;
-  expected_command.push_back("java");
-  // Ray-defined per-job options
-  expected_command.insert(expected_command.end(),
-                          {"-Dray.job.code-search-path=/test/code_search_path"});
-  // User-defined per-job options
-  expected_command.insert(
-      expected_command.end(),
-      {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
-  // Ray-defined per-process options
-  expected_command.push_back("-Dray.internal.runtime-env-hash=0");
-  // User-defined per-process options
-  expected_command.insert(
-      expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
-  // Entry point
-  expected_command.push_back("MainClass");
-  expected_command.push_back("--language=JAVA");
-  ASSERT_EQ(real_command, expected_command);
-  worker_pool_->HandleJobFinished(job_id);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
@@ -1750,26 +1659,20 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   ///
 
   ///
-  /// Register some idle Python and Java (w/ multi-worker enabled) workers
+  /// Register some idle Python workers
   ///
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::vector<Language> languages({Language::PYTHON, Language::JAVA});
   for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
-    for (const auto &language : languages) {
-      PopWorkerStatus status;
-      auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
-          language, rpc::WorkerType::WORKER, JOB_ID, &status);
-      pid_t pid = proc.GetId();
-      int workers_to_start = 1;
-      for (int j = 0; j < workers_to_start; j++) {
-        auto worker = worker_pool_->CreateWorker(worker_id, nullptr, language);
-        workers.push_back(worker);
-        RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
-        worker_pool_->OnWorkerStarted(worker);
-        ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
-        worker_pool_->PushWorker(worker);
-      }
-    }
+    PopWorkerStatus status;
+    auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    pid_t pid = proc.GetId();
+    auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+    workers.push_back(worker);
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, pid, [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushWorker(worker);
   }
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
 
@@ -2556,18 +2459,6 @@ TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   ASSERT_TRUE(callback_called);
 }
 
-TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
-  std::shared_ptr<WorkerInterface> driver = worker_pool_->CreateWorker(
-      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::JAVA, JOB_ID);
-
-  bool callback_called = false;
-  auto callback = [callback_called_ptr = &callback_called](Status, int) mutable {
-    *callback_called_ptr = true;
-  };
-  RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
-  ASSERT_TRUE(callback_called);
-}
-
 // Tests for the worker port pool that raylet hands ports out from.
 TEST(WorkerPortPoolTest, PortRangeIsAPermutationOfTheRange) {
   std::mt19937 gen(42);
@@ -2671,9 +2562,7 @@ class WorkerPoolExplicitZeroPortTest : public WorkerPoolTest {
  public:
   void SetUp() override {
     WorkerPoolTest::SetUp();
-    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                       {Language::JAVA,
-                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}}},
                       /*min_worker_port=*/0,
                       /*max_worker_port=*/0,
                       /*worker_ports=*/{0});
@@ -2715,9 +2604,7 @@ class WorkerPoolPortRangeTest : public WorkerPoolTest {
     WorkerPoolTest::SetUp();
     // Rebuild the pool with a port range so that ports come from the free port
     // pool instead of being left to the OS.
-    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                       {Language::JAVA,
-                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}}},
                       kMinTestWorkerPort,
                       kMaxTestWorkerPort);
     worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());

@@ -310,7 +310,6 @@ The following links were accurate at the time of writing. If a URL has changed, 
 
 - Bazel 7.5.0 (<https://github.com/bazelbuild/bazel/releases/tag/7.5.0>)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - <https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019>)
-- JDK 15 (<https://www.oracle.com/java/technologies/javase-jdk15-downloads.html>)
 - Miniforge 3 (<https://github.com/conda-forge/miniforge/blob/main/README.md>)
 - git for Windows, version 2.31.1 or later (<https://git-scm.com/download/win>)
 
@@ -358,10 +357,7 @@ pip install -e . --verbose
 You can tweak the build with the following environment variables (when running `pip install -e .` or `python setup.py install`):
 
 - `RAY_BUILD_CORE`: If set and equal to `1`, Ray builds the core parts. Defaults to `1`.
-- `RAY_INSTALL_JAVA`: If set and equal to `1`, Ray runs extra build steps to build Java portions of the codebase.
-- `RAY_INSTALL_CPP`: If set and equal to `1`, Ray installs `ray-cpp`.
 - `RAY_BUILD_REDIS`: If set and equal to `1`, Ray builds or fetches Redis binaries. These binaries are only used for testing. Defaults to `1`.
-- `RAY_DISABLE_EXTRA_CPP`: If set and equal to `1`, a regular (non-`cpp`) build won't provide some `cpp` interfaces.
 - `SKIP_BAZEL_BUILD`: If set and equal to `1`, Ray skips all Bazel build steps.
 - `SKIP_THIRDPARTY_INSTALL_CONDA_FORGE`: If set, setup skips installation of third-party packages required for build. This is active on conda-forge where pip isn't used to create a build environment.
 - `RAY_DEBUG_BUILD`: Can be set to `debug`, `asan`, or `tsan`. Ray ignores any other value.

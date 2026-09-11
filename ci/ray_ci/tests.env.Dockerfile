@@ -15,8 +15,7 @@ ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
 ARG RAY_INSTALL_MASK=
 
-# Disable C++ API/worker building by default on CI.
-# To use C++ API/worker, set BUILD_TYPE to "multi-lang".
+# The extra C++ API/worker frontend is not built on CI.
 ENV RAY_DISABLE_EXTRA_CPP=1
 
 # Where pip and uv resolve from while building this image. Docker builds cannot see an
@@ -154,7 +153,7 @@ case "$BUILD_TYPE" in
       unzip -o -q /opt/ray-core/ray_py_proto.zip -d python
       install_redis "python/ray/core/src/ray/thirdparty/redis/src"
       echo "--- Install Ray (editable, skip Bazel)"
-      RAY_INSTALL_JAVA=0 SKIP_BAZEL_BUILD=1 pip install "${INSTALL_FLAGS[@]}" -e python/
+      SKIP_BAZEL_BUILD=1 pip install "${INSTALL_FLAGS[@]}" -e python/
     else
       echo "--- Install Ray (full Bazel build)"
       pip install "${INSTALL_FLAGS[@]}" -e python/
@@ -168,15 +167,6 @@ case "$BUILD_TYPE" in
     echo "--- Install Ray (asan build)"
     pip install "${INSTALL_FLAGS[@]}" -e python/
     bazel run $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:gen_ray_pkg
-    ;;
-  multi-lang)
-    echo "--- Install Ray (multi-lang build)"
-    RAY_DISABLE_EXTRA_CPP=0 RAY_INSTALL_JAVA=1 pip install "${INSTALL_FLAGS[@]}" -e python/
-    ;;
-  java)
-    echo "--- Install Ray (java build)"
-    bash java/build-jar-multiplatform.sh linux
-    RAY_INSTALL_JAVA=1 pip install "${INSTALL_FLAGS[@]}" -e python/
     ;;
   *)
     echo "--- Install Ray (full build)"

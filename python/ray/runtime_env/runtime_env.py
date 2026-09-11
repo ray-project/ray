@@ -299,7 +299,6 @@ class RuntimeEnv(dict):
     known_fields: Set[str] = {
         "py_modules",
         "py_executable",
-        "java_jars",
         "working_dir",
         "conda",
         "pip",
@@ -527,11 +526,6 @@ class RuntimeEnv(dict):
 
     def py_executable(self) -> Optional[str]:
         return self.get("py_executable", None)
-
-    def java_jars(self) -> List[str]:
-        if "java_jars" in self:
-            return list(self["java_jars"])
-        return []
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)

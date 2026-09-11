@@ -96,63 +96,6 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
   virtual std::string CallString() const { return ""; }
 };
 
-class JavaFunctionDescriptor : public FunctionDescriptorInterface {
- public:
-  /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
-  ///
-  /// \param message The protobuf message.
-  explicit JavaFunctionDescriptor(rpc::FunctionDescriptor message)
-      : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::kJavaFunctionDescriptor);
-    typed_message_ = &(message_->java_function_descriptor());
-  }
-
-  virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::kJavaFunctionDescriptor) ^
-           std::hash<std::string>()(typed_message_->class_name()) ^
-           std::hash<std::string>()(typed_message_->function_name()) ^
-           std::hash<std::string>()(typed_message_->signature());
-  }
-
-  inline bool operator==(const JavaFunctionDescriptor &other) const {
-    if (this == &other) {
-      return true;
-    }
-    return this->ClassName() == other.ClassName() &&
-           this->FunctionName() == other.FunctionName() &&
-           this->Signature() == other.Signature();
-  }
-
-  inline bool operator!=(const JavaFunctionDescriptor &other) const {
-    return !(*this == other);
-  }
-
-  virtual std::string ToString() const {
-    return absl::StrFormat(
-        "{type=JavaFunctionDescriptor, class_name=%s, function_name=%s, signature=%s}",
-        typed_message_->class_name(),
-        typed_message_->function_name(),
-        typed_message_->signature());
-  }
-
-  virtual std::string CallString() const {
-    const std::string &class_name = typed_message_->class_name();
-    const std::string &function_name = typed_message_->function_name();
-    return class_name.empty() ? function_name : class_name + "." + function_name;
-  }
-
-  virtual std::string ClassName() const { return typed_message_->class_name(); }
-
-  virtual std::string FunctionName() const { return typed_message_->function_name(); }
-
-  const std::string &Signature() const { return typed_message_->signature(); }
-
- private:
-  const rpc::JavaFunctionDescriptor *typed_message_;
-};
-
 class PythonFunctionDescriptor : public FunctionDescriptorInterface {
  public:
   /// Construct from a protobuf message object.
@@ -223,57 +166,6 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::PythonFunctionDescriptor *typed_message_;
 };
 
-class CppFunctionDescriptor : public FunctionDescriptorInterface {
- public:
-  /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
-  ///
-  /// \param message The protobuf message.
-  explicit CppFunctionDescriptor(rpc::FunctionDescriptor message)
-      : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::kCppFunctionDescriptor);
-    typed_message_ = &(message_->cpp_function_descriptor());
-  }
-
-  virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::kCppFunctionDescriptor) ^
-           std::hash<std::string>()(typed_message_->function_name()) ^
-           std::hash<std::string>()(typed_message_->class_name());
-  }
-
-  inline bool operator==(const CppFunctionDescriptor &other) const {
-    if (this == &other) {
-      return true;
-    }
-    return this->FunctionName() == other.FunctionName() &&
-           this->ClassName() == other.ClassName();
-  }
-
-  inline bool operator!=(const CppFunctionDescriptor &other) const {
-    return !(*this == other);
-  }
-
-  virtual std::string ToString() const {
-    std::string class_name = ClassName().empty() ? "" : ", class_name=" + ClassName();
-    return "{type=CppFunctionDescriptor, function_name=" +
-           typed_message_->function_name() + class_name + "}";
-  }
-
-  virtual std::string CallString() const { return typed_message_->function_name(); }
-
-  virtual std::string DefaultTaskName() const { return CallString(); }
-
-  virtual std::string ClassName() const { return typed_message_->class_name(); }
-
-  const std::string &FunctionName() const { return typed_message_->function_name(); }
-
-  const std::string &Caller() const { return typed_message_->caller(); }
-
- private:
-  const rpc::CppFunctionDescriptor *typed_message_;
-};
-
 typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
@@ -290,15 +182,9 @@ inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor 
   case ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET:
     return static_cast<const EmptyFunctionDescriptor &>(*left) ==
            static_cast<const EmptyFunctionDescriptor &>(*right);
-  case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
-    return static_cast<const JavaFunctionDescriptor &>(*left) ==
-           static_cast<const JavaFunctionDescriptor &>(*right);
   case ray::FunctionDescriptorType::kPythonFunctionDescriptor:
     return static_cast<const PythonFunctionDescriptor &>(*left) ==
            static_cast<const PythonFunctionDescriptor &>(*right);
-  case ray::FunctionDescriptorType::kCppFunctionDescriptor:
-    return static_cast<const CppFunctionDescriptor &>(*left) ==
-           static_cast<const CppFunctionDescriptor &>(*right);
   default:
     RAY_LOG(FATAL) << "Unknown function descriptor type: " << left->Type();
     return false;
@@ -317,13 +203,6 @@ class FunctionDescriptorBuilder {
   /// \return a ray::EmptyFunctionDescriptor
   static FunctionDescriptor Empty();
 
-  /// Build a JavaFunctionDescriptor.
-  ///
-  /// \return a ray::JavaFunctionDescriptor
-  static FunctionDescriptor BuildJava(const std::string &class_name,
-                                      const std::string &function_name,
-                                      const std::string &signature);
-
   /// Build a PythonFunctionDescriptor.
   ///
   /// \return a ray::PythonFunctionDescriptor
@@ -331,13 +210,6 @@ class FunctionDescriptorBuilder {
                                         const std::string &class_name,
                                         const std::string &function_name,
                                         const std::string &function_hash);
-
-  /// Build a CppFunctionDescriptor.
-  ///
-  /// \return a ray::CppFunctionDescriptor
-  static FunctionDescriptor BuildCpp(const std::string &function_name,
-                                     const std::string &caller = "",
-                                     const std::string &class_name = "");
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///

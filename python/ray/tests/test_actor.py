@@ -1624,17 +1624,14 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
-@pytest.mark.parametrize("cross_language", [False, True], ids=["python", "cross_lang"])
-def test_actor_handle_hash_eq(ray_start_regular_shared, cross_language):
-    """hash()/eq/set/dict ops must work for both Python and cross-language handles."""
+def test_actor_handle_hash_eq(ray_start_regular_shared):
+    """hash()/eq/set/dict ops must work for actor handles."""
 
     @ray.remote
     class Actor:
         pass
 
     handle = Actor.remote()
-    if cross_language:
-        handle._ray_is_cross_language = True
 
     h = hash(handle)
     assert isinstance(h, int)

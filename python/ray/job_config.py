@@ -28,11 +28,8 @@ class JobConfig:
             ray.init(job_config=JobConfig(default_actor_lifetime="non_detached"))
 
     Args:
-        jvm_options: The jvm options for java workers of the job.
-        code_search_path: A list of directories or jar files that
-            specify the search path for user code. This will be used as
-            `CLASSPATH` in Java and `PYTHONPATH` in Python.
-            See :ref:`Ray cross-language programming <cross_language>` for more details.
+        code_search_path: A list of directories that specify the search path for
+            user code. This is added to `PYTHONPATH` for Python workers.
         runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
         _client_job: Whether this job was submitted via Ray Client.
         metadata: An opaque metadata dictionary.
@@ -47,7 +44,6 @@ class JobConfig:
 
     def __init__(
         self,
-        jvm_options: Optional[List[str]] = None,
         code_search_path: Optional[List[str]] = None,
         runtime_env: Optional[dict] = None,
         _client_job: bool = False,
@@ -56,10 +52,7 @@ class JobConfig:
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
     ):
-        #: The jvm options for java workers of the job.
-        self.jvm_options = jvm_options or []
-        #: A list of directories or jar files that
-        #: specify the search path for user code.
+        #: A list of directories that specify the search path for user code.
         validated_code_search_path = code_search_path or []
         # Validate eagerly so optimized Python runs do not skip this check.
         if not isinstance(validated_code_search_path, (list, tuple)):
@@ -230,7 +223,6 @@ class JobConfig:
                 pb.ray_namespace = str(uuid.uuid4())
             else:
                 pb.ray_namespace = self.ray_namespace
-            pb.jvm_options.extend(self.jvm_options)
             pb.code_search_path.extend(self.code_search_path)
             pb.py_driver_sys_path.extend(self._py_driver_sys_path)
             for k, v in self.metadata.items():
@@ -283,7 +275,6 @@ class JobConfig:
             A :class:`JobConfig` instance built from the dictionary.
         """
         return cls(
-            jvm_options=job_config_json.get("jvm_options", None),
             code_search_path=job_config_json.get("code_search_path", None),
             runtime_env=job_config_json.get("runtime_env", None),
             metadata=job_config_json.get("metadata", None),

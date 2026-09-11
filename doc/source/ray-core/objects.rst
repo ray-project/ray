@@ -29,22 +29,6 @@ Object refs can be created in two ways.
         y = 1
         object_ref = ray.put(y)
 
-    .. tab-item:: Java
-
-      .. code-block:: java
-
-        // Put an object in Ray's object store.
-        int y = 1;
-        ObjectRef<Integer> objectRef = Ray.put(y);
-
-    .. tab-item:: C++
-
-      .. code-block:: c++
-
-        // Put an object in Ray's object store.
-        int y = 1;
-        ray::ObjectRef<int> object_ref = ray::Put(y);
-
 .. note::
 
     Remote objects are immutable. That is, their values cannot be changed after
@@ -96,53 +80,6 @@ If the current node's object store does not contain the object, the object is do
         .. testoutput::
 
           `get` timed out.
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          // Get the value of one object ref.
-          ObjectRef<Integer> objRef = Ray.put(1);
-          Assert.assertTrue(objRef.get() == 1);
-          // You can also set a timeout(ms) to return early from a ``get`` that's blocking for too long.
-          Assert.assertTrue(objRef.get(1000) == 1);
-
-          // Get the values of multiple object refs in parallel.
-          List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
-          for (int i = 0; i < 3; i++) {
-            objectRefs.add(Ray.put(i));
-          }
-          List<Integer> results = Ray.get(objectRefs);
-          Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
-
-          // Ray.get timeout example: Ray.get will throw an RayTimeoutException if time out.
-          public class MyRayApp {
-            public static int slowFunction() throws InterruptedException {
-              TimeUnit.SECONDS.sleep(10);
-              return 1;
-            }
-          }
-          Assert.assertThrows(RayTimeoutException.class,
-            () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          // Get the value of one object ref.
-          ray::ObjectRef<int> obj_ref = ray::Put(1);
-          assert(*obj_ref.Get() == 1);
-
-          // Get the values of multiple object refs in parallel.
-          std::vector<ray::ObjectRef<int>> obj_refs;
-          for (int i = 0; i < 3; i++) {
-            obj_refs.emplace_back(ray::Put(i));
-          }
-          auto results = ray::Get(obj_refs);
-          assert(results.size() == 3);
-          assert(*results[0] == 0);
-          assert(*results[1] == 1);
-          assert(*results[2] == 2);
 
 Passing Object Arguments
 ------------------------

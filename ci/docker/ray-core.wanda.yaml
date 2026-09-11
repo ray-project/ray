@@ -15,8 +15,6 @@ srcs:
   - python/ray/_raylet.pyi
   - python/ray/_raylet.pyx
   - python/ray/includes/
-  - java/BUILD.bazel
-  - java/dependencies.bzl
   - release/BUILD.bazel
   - release/requirements_py310.txt
   - ci/build/container_resource_utils.py

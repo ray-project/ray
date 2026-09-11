@@ -46,7 +46,7 @@ for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"; do
         echo "Python version incorrect, got ${GOT_PYTHON_VERSION}, want ${PYTHON_VERSION}"
         FAILED="true"
     else
-        pip install --index-url 'https://test.pypi.org/simple/' --extra-index-url 'https://pypi.org/simple' "ray[cpp]==${RAY_VERSION}"
+        pip install --index-url 'https://test.pypi.org/simple/' --extra-index-url 'https://pypi.org/simple' "ray==${RAY_VERSION}"
 
         printf "\n\n\n"
         echo "========================================================="

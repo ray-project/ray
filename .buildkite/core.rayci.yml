@@ -558,34 +558,6 @@ steps:
         --only-tags multi_gpu
     depends_on: coregpubuild-multipy(python=3.10)
 
-  - label: ":ray: core: cpp worker tests"
-    tags:
-      - core_cpp
-      - cpp
-      - oss
-    instance_type: medium
-    commands:
-      - if [[ "$${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
-          echo "build --remote_upload_local_results=false" >> ~/.bazelrc;
-        fi
-      # cpp worker tests has one that tests cross-language with Java.
-      - RAY_INSTALL_JAVA=1 ci/ci.sh build
-      - ci/ci.sh test_cpp
-    depends_on: oss-ci-base_build-multipy(python=3.10)
-    job_env: oss-ci-base_build-py3.10
-
-  - label: ":ray: core: java worker tests"
-    tags:
-      - java
-      - core_python
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --python-version 3.10 --build-name corebuild-py3.10
-        --build-type java
-        --only-tags needs_java
-    depends_on: corebuild-multipy(python=3.10)
-
   - label: ":ray: core: HA integration tests"
     tags:
       - core_python
@@ -625,8 +597,6 @@ steps:
       - corebuild-multipy(python=3.10)
 
   - label: ":core: core: spark-on-ray tests"
-    # NOTE: The Spark-on-Ray tests intentionally aren't triggered by the `java` tag to
-    # avoid running them for every C++ code change.
     tags:
       - spark_on_ray
     instance_type: medium

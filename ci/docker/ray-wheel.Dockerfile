@@ -11,12 +11,10 @@
 #
 
 ARG RAY_CORE_IMAGE
-ARG RAY_JAVA_IMAGE=scratch
 ARG RAY_DASHBOARD_IMAGE=scratch
 ARG MANYLINUX_IMAGE
 
 FROM ${RAY_CORE_IMAGE} AS ray-core
-FROM ${RAY_JAVA_IMAGE} AS ray-java
 FROM ${RAY_DASHBOARD_IMAGE} AS ray-dashboard
 
 # Main build stage - manylinux2014 provides GLIBC 2.17
@@ -50,8 +48,7 @@ USER forge
 # - BUILDKITE_COMMIT: Used for ray.__commit__. Defaults to "unknown" for local builds.
 ENV PYTHON_VERSION=${PYTHON_VERSION} \
     BUILDKITE_COMMIT=${BUILDKITE_COMMIT:-unknown}
-RUN --mount=from=ray-java,target=/mnt/java \
-    --mount=from=ray-dashboard,target=/mnt/dashboard \
+RUN --mount=from=ray-dashboard,target=/mnt/dashboard \
     <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -72,13 +69,6 @@ fi
 
 # C++ core artifacts
 cp -r /tmp/ray_pkg/ray/* python/ray/
-
-# Java JARs (optional)
-if [[ -f /mnt/java/ray_java_pkg.zip ]]; then
-    mkdir -p /tmp/ray_java_pkg
-    unzip -o /mnt/java/ray_java_pkg.zip -d /tmp/ray_java_pkg
-    cp -r /tmp/ray_java_pkg/ray/* python/ray/
-fi
 
 # Build ray wheel
 PY_VERSION="${PYTHON_VERSION//./}"

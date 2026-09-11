@@ -145,17 +145,11 @@ class GcsActor {
 
     const auto &function_descriptor = task_spec_->function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
-    case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
-      actor_table_data_.set_class_name(
-          function_descriptor.java_function_descriptor().class_name());
-      break;
     case rpc::FunctionDescriptor::FunctionDescriptorCase::kPythonFunctionDescriptor:
       actor_table_data_.set_class_name(
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
-      // TODO(Alex): Handle the C++ case, which we currently don't have an
-      // easy equivalent to class_name for.
       break;
     }
 

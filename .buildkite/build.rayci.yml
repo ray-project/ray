@@ -25,66 +25,6 @@ steps:
       - oss
       - skip-on-premerge
 
-  - name: ray-cpp-core-build
-    label: "wanda: cpp core (x86_64)"
-    wanda: ci/docker/ray-cpp-core.wanda.yaml
-    env_file: rayci.env
-    env:
-      ARCH_SUFFIX: ""
-      HOSTTYPE: "x86_64"
-    tags:
-      - release_wheels
-      - oss
-
-  - name: ray-cpp-wheel-build
-    label: "wanda: cpp wheel (x86_64)"
-    wanda: ci/docker/ray-cpp-wheel.wanda.yaml
-    env_file: rayci.env
-    env:
-      PYTHON_VERSION: "3.10"  # Used for upstream images; wheel is Python-agnostic
-      ARCH_SUFFIX: ""
-      HOSTTYPE: "x86_64"
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-    depends_on:
-      - ray-core-build(python=3.10)
-      - ray-cpp-core-build
-      - ray-java-build
-      - ray-dashboard-build
-
-  - label: ":arrow_up: upload: cpp wheel (x86_64)"
-    key: linux_cpp_wheels_upload
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
-        --wanda-image-name=ray-cpp-wheel
-        --file-glob='*.whl'
-        --output-dir=.whl
-      - ./ci/build/copy_build_artifacts.sh wheel
-    depends_on:
-      - ray-cpp-wheel-build
-      - forge
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-      - skip-on-premerge
-
-  - label: ":tapioca: build: jar"
-    key: java_wheels
-    tags:
-      - java
-      - oss
-    instance_type: medium
-    commands:
-      - ./ci/build/build-manylinux-ray.sh
-      - ./ci/build/build-manylinux-jar.sh
-      - ./ci/build/copy_build_artifacts.sh jar
-    depends_on: manylinux-x86_64
-    job_env: manylinux-x86_64
-
   - name: ray-image-cpu-build
     label: "wanda: ray py{{array.python}} cpu (x86_64)"
     wanda: ci/docker/ray-image-cpu.wanda.yaml
@@ -414,7 +354,6 @@ steps:
     soft_fail: true
     commands:
       - export WHEEL_URL="https://files.pythonhosted.org/packages/93/f1/9108c4f878e3cacb767b7dfbbc3a26537c79ab516d2530b9f63b558ba4bb/ray-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
-      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/d3/cf/ef6d5a9a688001f73e4749c48f840455ecec11acde982eb70f387b0dc445/ray_cpp-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
       - bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:

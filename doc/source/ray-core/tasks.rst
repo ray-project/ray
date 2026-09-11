@@ -19,71 +19,6 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
 
         See the :func:`ray.remote<ray.remote>` API for more details.
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          public class MyRayApp {
-            // A regular Java static method.
-            public static int myFunction() {
-              return 1;
-            }
-          }
-
-          // Invoke the above method as a Ray task.
-          // This will immediately return an object ref (a future) and then create
-          // a task that will be executed on a worker process.
-          ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
-
-          // The result can be retrieved with ``ObjectRef::get``.
-          Assert.assertTrue(res.get() == 1);
-
-          public class MyRayApp {
-            public static int slowFunction() throws InterruptedException {
-              TimeUnit.SECONDS.sleep(10);
-              return 1;
-            }
-          }
-
-          // Ray tasks are executed in parallel.
-          // All computation is performed in the background, driven by Ray's internal event loop.
-          for(int i = 0; i < 4; i++) {
-            // This doesn't block.
-            Ray.task(MyRayApp::slowFunction).remote();
-          }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          // A regular C++ function.
-          int MyFunction() {
-            return 1;
-          }
-          // Register as a remote function by `RAY_REMOTE`.
-          RAY_REMOTE(MyFunction);
-
-          // Invoke the above method as a Ray task.
-          // This will immediately return an object ref (a future) and then create
-          // a task that will be executed on a worker process.
-          auto res = ray::Task(MyFunction).Remote();
-
-          // The result can be retrieved with ``ray::ObjectRef::Get``.
-          assert(*res.Get() == 1);
-
-          int SlowFunction() {
-            std::this_thread::sleep_for(std::chrono::seconds(10));
-            return 1;
-          }
-          RAY_REMOTE(SlowFunction);
-
-          // Ray tasks are executed in parallel.
-          // All computation is performed in the background, driven by Ray's internal event loop.
-          for(int i = 0; i < 4; i++) {
-            // This doesn't block.
-            ray::Task(SlowFunction).Remote();
-          }
-
 Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 
 .. code-block:: bash
@@ -122,20 +57,6 @@ You can specify resource requirements in tasks (see :ref:`resource-requirements`
             :start-after: __resource_start__
             :end-before: __resource_end__
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Specify required resources.
-            Ray.task(MyRayApp::myFunction).setResource("CPU", 4.0).setResource("GPU", 2.0).remote();
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Specify required resources.
-            ray::Task(MyFunction).SetResource("CPU", 4.0).SetResource("GPU", 2.0).Remote();
-
 .. _ray-object-refs:
 
 Passing object refs to Ray tasks
@@ -151,39 +72,6 @@ In addition to values, `Object refs <objects.html>`__ can also be passed into re
             :language: python
             :start-after: __pass_by_ref_start__
             :end-before: __pass_by_ref_end__
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            public class MyRayApp {
-                public static int functionWithAnArgument(int value) {
-                    return value + 1;
-                }
-            }
-
-            ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
-            Assert.assertTrue(objRef1.get() == 1);
-
-            // You can pass an object ref as an argument to another Ray task.
-            ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
-            Assert.assertTrue(objRef2.get() == 2);
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            static int FunctionWithAnArgument(int value) {
-                return value + 1;
-            }
-            RAY_REMOTE(FunctionWithAnArgument);
-
-            auto obj_ref1 = ray::Task(MyFunction).Remote();
-            assert(*obj_ref1.Get() == 1);
-
-            // You can pass an object ref as an argument to another Ray task.
-            auto obj_ref2 = ray::Task(FunctionWithAnArgument).Remote(obj_ref1);
-            assert(*obj_ref2.Get() == 2);
 
 Note the following behaviors:
 
@@ -207,20 +95,6 @@ works as follows.
             :language: python
             :start-after: __wait_start__
             :end-before: __wait_end__
-
-    .. tab-item:: Java
-
-      .. code-block:: java
-
-        WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/0, /*timeoutMs=*/1000);
-        System.out.println(waitResult.getReady());  // List of ready objects.
-        System.out.println(waitResult.getUnready());  // list of unready objects.
-
-    .. tab-item:: C++
-
-      .. code-block:: c++
-
-        ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
 Generators
 ----------

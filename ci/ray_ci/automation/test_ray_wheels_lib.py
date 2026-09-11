@@ -29,10 +29,8 @@ def test_get_wheel_names():
     ray_version = "2.50.0"
     wheel_names = _get_wheel_names(ray_version)
 
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(
-        ALL_PLATFORMS
-    )
-    python_versions = list(PYTHON_VERSIONS) + ["py3-none"]
+    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS)
+    python_versions = list(PYTHON_VERSIONS)
 
     for wheel_name in wheel_names:
         assert len(wheel_name.split("-")) == 5
@@ -45,7 +43,7 @@ def test_get_wheel_names():
         ) = wheel_name.split("-")
         platform = platform.split(".")[0]  # Remove the .whl suffix
 
-        assert ray_type in ["ray", "ray_cpp"]
+        assert ray_type == "ray"
         assert ray_version == ray_version
         assert f"{python_version}-{python_version2}" in python_versions
         assert platform in ALL_PLATFORMS

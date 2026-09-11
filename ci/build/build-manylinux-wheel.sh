@@ -26,9 +26,6 @@ else
   exit 1
 fi
 
-# When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
-# have already built the Java code above.
-
 export BAZEL_PATH="$HOME"/bin/bazel
 
 # Pointing a default python3 symlink to the desired python version.
@@ -36,15 +33,8 @@ export BAZEL_PATH="$HOME"/bin/bazel
 sudo ln -sf "/opt/python/${PYTHON}/bin/python3" /usr/local/bin/python3
 
 # build ray wheel
-PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
+PATH="/opt/python/${PYTHON}/bin:$PATH" \
 "/opt/python/${PYTHON}/bin/python" -m pip wheel -v -w dist . --no-deps --no-build-isolation
-
-
-if [[ "${RAY_DISABLE_EXTRA_CPP:-}" != 1 ]]; then
-  # build ray-cpp wheel
-  PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
-  RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" -m pip wheel -v -w dist . --no-deps --no-build-isolation
-fi
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
 # hack, we should use auditwheel instead.

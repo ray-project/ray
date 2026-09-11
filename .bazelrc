@@ -55,11 +55,11 @@ build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"
 build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
-# `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
+# `LC_ALL` and `LANG` are needed for tests that call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 test --test_env=LC_ALL
 test --test_env=LANG
-# Allow C++ worker tests to execute "ray start" with the correct version of Python.
+# Allow tests to execute "ray start" with the correct version of Python.
 test --test_env=VIRTUAL_ENV
 test --test_env=PYENV_VIRTUAL_ENV
 test --test_env=PYENV_VERSION
@@ -295,5 +295,3 @@ build:macos --linkopt=-mmacosx-version-min=12.0
 # the deployment target override; --host_copt applies to the exec configuration.
 build:macos --host_copt=-mmacosx-version-min=12.0
 build:macos --host_linkopt=-mmacosx-version-min=12.0
-# This option controls whether javac checks for missing direct dependencies.
-build --experimental_strict_java_deps=off

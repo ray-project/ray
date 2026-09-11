@@ -313,7 +313,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name datamongobuild-py3.10
         --python-version 3.10
-        --build-type java
         --only-tags data_integration
         --except-tags doctest
     depends_on: datamongobuild-multipy

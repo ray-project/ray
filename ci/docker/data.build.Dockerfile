@@ -3,7 +3,7 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG RAY_CI_JAVA_BUILD=
+ARG INSTALL_JDK=
 ARG IMAGE_TYPE=base
 ARG PYTHON=3.10
 ARG PYTHON_DEPSET=python/deplocks/ci/data-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
@@ -56,9 +56,10 @@ if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
     pyarrow
 fi
 
-if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
-  # These packages increase the image size quite a bit, so we only install them
-  # as needed.
+if [[ $INSTALL_JDK == 1 ]]; then
+  # A JVM is needed for the data integration tests (e.g. Spark/mongo). These
+  # packages increase the image size quite a bit, so we only install them as
+  # needed.
   sudo apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
   # Ensure Java 8 is the default; Ubuntu 22.04 defaults to Java 11 which
   # breaks Spark's reflective access to DirectByteBuffer.

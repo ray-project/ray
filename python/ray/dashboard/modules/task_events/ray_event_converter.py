@@ -23,13 +23,6 @@ def _call_string(function_descriptor: FunctionDescriptor) -> str:
         if not p.class_name:
             return _short_name(p.function_name)
         return f"{_short_name(p.class_name)}.{_short_name(p.function_name)}"
-    if which == "java_function_descriptor":
-        j = function_descriptor.java_function_descriptor
-        if not j.class_name:
-            return j.function_name
-        return f"{j.class_name}.{j.function_name}"
-    if which == "cpp_function_descriptor":
-        return function_descriptor.cpp_function_descriptor.function_name
     return ""
 
 

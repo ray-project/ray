@@ -380,24 +380,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_logging_java.py",
-    ],
-    tags = [
-        "custom_setup",
-        "exclusive",
-        "medium_size_python_tests_shard_1",
-        "needs_java",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "medium",
-    files = [
         "test_multi_node_3.py",
         "test_object_manager.py",
         "test_resource_demand_scheduler.py",
@@ -541,7 +523,6 @@ py_test_module_list(
         "test_concurrency_group.py",
         "test_core_worker_io_thread_stack_size.py",
         "test_cpu_tensor_zero_copy_serialization.py",
-        "test_cross_language.py",
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",

@@ -10,7 +10,6 @@ proto_library(
     srcs = ["common.proto"],
     visibility = [
         ":__subpackages__",
-        "//java:__subpackages__",
     ],
     deps = [
         "//src/ray/protobuf/public:runtime_environment_proto",
@@ -25,7 +24,6 @@ cc_proto_library(
 proto_library(
     name = "profile_events_proto",
     srcs = ["profile_events.proto"],
-    visibility = ["//java:__subpackages__"],
 )
 
 cc_proto_library(
@@ -36,7 +34,6 @@ cc_proto_library(
 proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
-    visibility = ["//java:__subpackages__"],
     deps = [
         ":common_proto",
         ":profile_events_proto",
@@ -59,7 +56,6 @@ proto_library(
     srcs = ["runtime_env_common.proto"],
     visibility = [
         ":__subpackages__",
-        "//java:__subpackages__",
     ],
 )
 
@@ -539,7 +535,6 @@ python_grpc_compile(
 proto_library(
     name = "serve_proto",
     srcs = ["serve.proto"],
-    visibility = ["//java:__subpackages__"],
 )
 
 # These files will be copied into ray/serve/generated directory.

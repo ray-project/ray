@@ -4,20 +4,6 @@ import subprocess
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 MASTER_BRANCH_VERSION = "3.0.0.dev0"
-MASTER_BRANCH_JAVA_VERSION = "2.0.0-SNAPSHOT"
-
-
-def list_java_files(root_dir: str):
-    """
-    Scan the directories and return the sorted list of
-        pom.xml and pom_template.xml files.
-    """
-    files = []
-    for current_root_dir, _, file_names in os.walk(root_dir):
-        for file_name in file_names:
-            if file_name in ["pom.xml", "pom_template.xml"]:
-                files.append(os.path.join(current_root_dir, file_name))
-    return sorted(files)
 
 
 def get_check_output(file_path: str):
@@ -26,7 +12,7 @@ def get_check_output(file_path: str):
 
 def get_current_version(root_dir: str):
     """
-    Scan for current Ray version and return the current versions.
+    Scan for current Ray version and return the current version.
     """
     version_file_path = os.path.join(root_dir, "python/ray/_version.py")
     ray_version_output = get_check_output(version_file_path).split()
@@ -37,30 +23,25 @@ def get_current_version(root_dir: str):
     version = ray_version_output[0]
 
     if version != MASTER_BRANCH_VERSION:
-        main_version = version
-        java_version = version
-        return main_version, java_version
-    return MASTER_BRANCH_VERSION, MASTER_BRANCH_JAVA_VERSION
+        return version
+    return MASTER_BRANCH_VERSION
 
 
 def update_file_version(
     main_version: str,
-    java_version: str,
     new_version: str,
     root_dir: str,
 ):
     """
     Modify the version in the files to the specified version.
     """
-    non_java_files = [
+    files = [
         "ci/ray_ci/utils.py",
         "python/ray/_version.py",
         "rayci.env",
         "src/ray/common/constants.h",
     ]
-    non_java_files.sort()
-    java_files = list_java_files(root_dir)
-    assert len(java_files) > 0
+    files.sort()
 
     def replace_version_in_file(file_path: str, old_version: str):
         """
@@ -75,7 +56,5 @@ def update_file_version(
         with open(abs_file_path, "w") as f:
             f.write(content)
 
-    for file_path in non_java_files:
+    for file_path in files:
         replace_version_in_file(file_path, main_version)
-    for file_path in java_files:
-        replace_version_in_file(file_path, java_version)

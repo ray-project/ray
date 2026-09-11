@@ -6,7 +6,6 @@
 GPU=""
 BASE_IMAGE="ubuntu:22.04"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
-CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.10"
 
 BUILD_ARGS=()
@@ -94,7 +93,6 @@ fi
 RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
 wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
-wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
 WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"

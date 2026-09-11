@@ -136,8 +136,6 @@ from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
 import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402,F401
 
-# TODO(qwang): We should remove this exporting in Ray2.0.
-from ray.cross_language import java_function, java_actor_class  # noqa: E402,F401
 from ray.runtime_context import get_runtime_context  # noqa: E402,F401
 from ray import internal  # noqa: E402,F401
 from ray import util  # noqa: E402,F401
@@ -187,9 +185,6 @@ __all__ = [
     "get_gpu_ids",
     "init",
     "is_initialized",
-    "java_actor_class",
-    "java_function",
-    "cpp_function",
     "kill",
     "Language",
     "method",
@@ -228,11 +223,8 @@ NON_AUTO_INIT_APIS = {
     "available_resources",
     "client",
     "cluster_resources",
-    "cpp_function",
     "init",
     "is_initialized",
-    "java_actor_class",
-    "java_function",
     "method",
     "nodes",
     "remote",

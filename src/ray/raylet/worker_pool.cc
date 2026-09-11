@@ -134,7 +134,6 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const std::vector<int> &worker_ports,
                        gcs::GcsClient &gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        ClockInterface &clock,
@@ -153,7 +152,6 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
       gcs_client_(gcs_client),
-      native_library_path_(std::move(native_library_path)),
       starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external_(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
@@ -307,48 +305,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     const WorkerPool::State &state) const {
   std::vector<std::string> options;
 
-  // Append Ray-defined per-job options here
-  std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
-    if (job_config) {
-      std::string code_search_path_str;
-      for (int i = 0; i < job_config->code_search_path_size(); i++) {
-        auto path = job_config->code_search_path(i);
-        if (i != 0) {
-          code_search_path_str += ":";
-        }
-        code_search_path_str += path;
-      }
-      if (!code_search_path_str.empty()) {
-        code_search_path = code_search_path_str;
-        if (language == Language::JAVA) {
-          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        } else if (language == Language::CPP) {
-          code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
-        } else {
-          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
-        }
-        options.push_back(code_search_path_str);
-      }
-    }
-  }
-
-  // Append user-defined per-job options here
-  if (language == Language::JAVA) {
-    if (!job_config->jvm_options().empty()) {
-      options.insert(options.end(),
-                     job_config->jvm_options().begin(),
-                     job_config->jvm_options().end());
-    }
-  }
-
-  // Append worker-id for JAVA here
-  if (language == Language::JAVA) {
-    options.push_back("-Dray.worker.id=" + worker_id.Hex());
-    options.push_back("-Dray.internal.runtime-env-hash=" +
-                      std::to_string(runtime_env_hash));
-  }
-
   // Append user-defined per-process options here
   options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
 
@@ -400,10 +356,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
-  } else if (language == Language::CPP) {
-    worker_command_args.push_back("--ray_worker_id=" + worker_id.Hex());
-    worker_command_args.push_back("--ray_runtime_env_hash=" +
-                                  std::to_string(runtime_env_hash));
   }
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
@@ -427,7 +379,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   ProcessEnvironment env;
   if (!IsIOWorkerType(worker_type)) {
     // We pass the job ID to worker processes via an environment variable, so we don't
-    // need to add a new CLI parameter for both Python and Java workers.
+    // need to add a new CLI parameter.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
@@ -439,30 +391,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   }
 
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
-
-  // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
-  if (language == Language::CPP) {
-    // Set native library path for shared library search.
-    if (!native_library_path_.empty() || !code_search_path.empty()) {
-#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
-      auto path_env_p = std::getenv(kLibraryPathEnvName);
-      std::string path_env = native_library_path_;
-      if (path_env_p != nullptr && strlen(path_env_p) != 0) {
-        path_env.append(":").append(path_env_p);
-      }
-      // Append per-job code search path to library path.
-      if (!code_search_path.empty()) {
-        path_env.append(":").append(code_search_path);
-      }
-      auto path_env_iter = env.find(kLibraryPathEnvName);
-      if (path_env_iter == env.end()) {
-        env.emplace(kLibraryPathEnvName, path_env);
-      } else {
-        env[kLibraryPathEnvName] = path_env_iter->second.append(":").append(path_env);
-      }
-#endif
-    }
-  }
 
   if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
       RayConfig::instance().preload_python_modules().size() > 0) {
@@ -992,28 +920,22 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
 
   HandleJobStarted(job_id, job_config);
 
-  if (driver->GetLanguage() == Language::JAVA) {
-    send_reply_callback(Status::OK(), port);
-  } else {
-    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
-        !RayConfig::instance().enable_worker_prestart()) {
-      RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      rpc::LeaseSpec rpc_lease_spec;
-      rpc_lease_spec.set_language(Language::PYTHON);
-      rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+  if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+      !RayConfig::instance().enable_worker_prestart()) {
+    RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
+    rpc::LeaseSpec rpc_lease_spec;
+    rpc_lease_spec.set_language(Language::PYTHON);
+    rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
 
-      LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
-      PrestartWorkersInternal(lease_spec, num_prestart_python_workers);
-    }
-
-    // Invoke the `send_reply_callback` later to only finish driver
-    // registration after all prestarted workers are registered to Raylet.
-    // NOTE(clarng): prestart is only for python workers.
-    ExecuteOnPrestartWorkersStarted(
-        [send_reply_callback = std::move(send_reply_callback), port]() {
-          send_reply_callback(Status::OK(), port);
-        });
+    LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
+    PrestartWorkersInternal(lease_spec, num_prestart_python_workers);
   }
+
+  // Invoke the `send_reply_callback` later to only finish driver
+  // registration after all prestarted workers are registered to Raylet.
+  // NOTE(clarng): prestart is only for python workers.
+  ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
+                                   port]() { send_reply_callback(Status::OK(), port); });
   return Status::OK();
 }
 

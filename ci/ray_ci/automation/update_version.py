@@ -21,11 +21,10 @@ def main(new_version: str, root_dir: Optional[str] = None):
         if not root_dir:
             raise Exception("Please specify --root_dir when not running with Bazel.")
 
-    main_version, java_version = get_current_version(root_dir)
+    main_version = get_current_version(root_dir)
 
     update_file_version(
         main_version,
-        java_version,
         new_version,
         root_dir,
     )

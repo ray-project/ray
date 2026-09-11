@@ -160,8 +160,6 @@ TEAM_API_CONFIGS = {
             # TODO(jjyao): document or deprecate these APIs
             "ray.experimental.compiled_dag_ref.CompiledDAGFuture",
             "ray.experimental.compiled_dag_ref.CompiledDAGRef",
-            "ray.cross_language.cpp_actor_class",
-            "ray.cross_language.cpp_function",
             "ray.client_builder.ClientContext",
             "ray.remote_function.RemoteFunction",
         },

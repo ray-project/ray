@@ -41,19 +41,6 @@ steps:
       - ray-core-build(python=3.10)
       - ray-dashboard-build
 
-  # java
-  - label: ":java: java tests"
-    tags: java
-    instance_type: medium
-    commands:
-      # Java tests need the C++ API for multi-langauge worker tests.
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type multi-lang --build-only
-        --python-version 3.10 --build-name corebuild-py3.10
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash -iecuo pipefail
-        "./java/test.sh"
-    depends_on: corebuild-multipy(python=3.10)
-
   # bot
   - label: ":robot_face: CI weekly green metric"
     tags:

@@ -37,61 +37,6 @@ that specific worker. The methods can access and mutate the state of that worker
           # Create an actor from this class.
           counter = Counter.remote()
 
-    .. tab-item:: Java
-
-        ``Ray.actor`` is used to create actors from regular Java classes.
-
-        .. code-block:: java
-
-          // A regular Java class.
-          public class Counter {
-
-            private int value = 0;
-
-            public int increment() {
-              this.value += 1;
-              return this.value;
-            }
-          }
-
-          // Create an actor from this class.
-          // `Ray.actor` takes a factory method that can produce
-          // a `Counter` object. Here, we pass `Counter`'s constructor
-          // as the argument.
-          ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
-
-    .. tab-item:: C++
-
-        ``ray::Actor`` is used to create actors from regular C++ classes.
-
-        .. code-block:: c++
-
-          // A regular C++ class.
-          class Counter {
-
-          private:
-              int value = 0;
-
-          public:
-            int Increment() {
-              value += 1;
-              return value;
-            }
-          };
-
-          // Factory function of Counter class.
-          static Counter *CreateCounter() {
-              return new Counter();
-          };
-
-          RAY_REMOTE(&Counter::Increment, CreateCounter);
-
-          // Create an actor from this class.
-          // `ray::Actor` takes a factory method that can produce
-          // a `Counter` object. Here, we pass `Counter`'s factory function
-          // as the argument.
-          auto counter = ray::Actor(CreateCounter).Remote();
-
 
 
 Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
@@ -132,20 +77,6 @@ Specify resource requirements in actors. See :ref:`resource-requirements` for mo
             class Actor:
                 pass
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Specify required resources for an actor.
-            Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Specify required resources for an actor.
-            ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
-
 
 Calling the actor
 -----------------
@@ -167,22 +98,6 @@ value.
         .. testoutput::
 
             1
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Call the actor.
-            ObjectRef<Integer> objectRef = counter.task(&Counter::increment).remote();
-            Assert.assertTrue(objectRef.get() == 1);
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Call the actor.
-            auto object_ref = counter.Task(&Counter::increment).Remote();
-            assert(*object_ref.Get() == 1);
 
 Methods called on different actors execute in parallel, and methods called on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as shown below.
 
@@ -214,68 +129,6 @@ Methods called on different actors execute in parallel, and methods called on th
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
             [2, 3, 4, 5, 6]
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Create ten Counter actors.
-            List<ActorHandle<Counter>> counters = new ArrayList<>();
-            for (int i = 0; i < 10; i++) {
-                counters.add(Ray.actor(Counter::new).remote());
-            }
-
-            // Increment each Counter once and get the results. These tasks all happen in
-            // parallel.
-            List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
-            for (ActorHandle<Counter> counterActor : counters) {
-                objectRefs.add(counterActor.task(Counter::increment).remote());
-            }
-            // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-            System.out.println(Ray.get(objectRefs));
-
-            // Increment the first Counter five times. These tasks are executed serially
-            // and share state.
-            objectRefs = new ArrayList<>();
-            for (int i = 0; i < 5; i++) {
-                objectRefs.add(counters.get(0).task(Counter::increment).remote());
-            }
-            // prints [2, 3, 4, 5, 6]
-            System.out.println(Ray.get(objectRefs));
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Create ten Counter actors.
-            std::vector<ray::ActorHandle<Counter>> counters;
-            for (int i = 0; i < 10; i++) {
-                counters.emplace_back(ray::Actor(CreateCounter).Remote());
-            }
-
-            // Increment each Counter once and get the results. These tasks all happen in
-            // parallel.
-            std::vector<ray::ObjectRef<int>> object_refs;
-            for (ray::ActorHandle<Counter> counter_actor : counters) {
-                object_refs.emplace_back(counter_actor.Task(&Counter::Increment).Remote());
-            }
-            // prints 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-            auto results = ray::Get(object_refs);
-            for (const auto &result : results) {
-                std::cout << *result;
-            }
-
-            // Increment the first Counter five times. These tasks are executed serially
-            // and share state.
-            object_refs.clear();
-            for (int i = 0; i < 5; i++) {
-                object_refs.emplace_back(counters[0].Task(&Counter::Increment).Remote());
-            }
-            // prints 2, 3, 4, 5, 6
-            results = ray::Get(object_refs);
-            for (const auto &result : results) {
-                std::cout << *result;
-            }
-
 Passing around actor handles
 ----------------------------
 
@@ -294,31 +147,6 @@ You can pass actor handles into other tasks. You can also define remote function
                 for _ in range(10):
                     time.sleep(0.1)
                     counter.increment.remote()
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            public static class MyRayApp {
-
-              public static void foo(ActorHandle<Counter> counter) throws InterruptedException {
-                for (int i = 0; i < 1000; i++) {
-                  TimeUnit.MILLISECONDS.sleep(100);
-                  counter.task(Counter::increment).remote();
-                }
-              }
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            void Foo(ray::ActorHandle<Counter> counter) {
-                for (int i = 0; i < 1000; i++) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    counter.Task(&Counter::Increment).Remote();
-                }
-            }
 
 If you instantiate an actor, you can pass the handle around to various tasks.
 
@@ -351,40 +179,6 @@ If you instantiate an actor, you can pass the handle around to various tasks.
             25
             30
             30
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
-
-            // Start some tasks that use the actor.
-            for (int i = 0; i < 3; i++) {
-              Ray.task(MyRayApp::foo, counter).remote();
-            }
-
-            // Print the counter value.
-            for (int i = 0; i < 10; i++) {
-              TimeUnit.SECONDS.sleep(1);
-              System.out.println(counter.task(Counter::getCounter).remote().get());
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            auto counter = ray::Actor(CreateCounter).Remote();
-
-            // Start some tasks that use the actor.
-            for (int i = 0; i < 3; i++) {
-              ray::Task(Foo).Remote(counter);
-            }
-
-            // Print the counter value.
-            for (int i = 0; i < 10; i++) {
-              std::this_thread::sleep_for(std::chrono::seconds(1));
-              std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
-            }
 
 
 Type hints and static typing for actors

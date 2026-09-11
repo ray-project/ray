@@ -6,8 +6,6 @@
 Configuring Ray
 ===============
 
-.. note:: For running Java applications, see `Java Applications`_.
-
 This page discusses the various ways to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
@@ -305,74 +303,3 @@ authentication and encryption.
 Testing has shown that this overhead is large for small workloads and becomes
 relatively smaller for large workloads.
 The exact overhead depends on the nature of your workload.
-
-Java applications
------------------
-
-.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``. It both starts the Ray cluster services and connects to them.
-
-.. _code_search_path:
-
-Code search path
-~~~~~~~~~~~~~~~~
-
-If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path tells Ray where to load jars when starting Java workers. You must distribute your jar files to the same paths on all nodes of the Ray cluster before running your code.
-
-.. code-block:: bash
-
-  $ java -classpath <classpath> \
-      -Dray.address=<address> \
-      -Dray.job.code-search-path=/path/to/jars/ \
-      <classname> <args>
-
-The ``/path/to/jars/`` points to a directory which contains jars. Workers load all jars in the directory. You can also provide multiple directories for this parameter.
-
-.. code-block:: bash
-
-  $ java -classpath <classpath> \
-      -Dray.address=<address> \
-      -Dray.job.code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2 \
-      <classname> <args>
-
-You don't need to configure code search path if you run a Java application in a single-node cluster.
-
-See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options>` for more information.
-
-.. note:: Currently there's no way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
-
-.. _java-driver-options:
-
-Driver options
-~~~~~~~~~~~~~~
-
-There's a limited set of options for Java drivers. They're not for configuring the Ray cluster, but only for configuring the driver.
-
-Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
-
-- System properties. You can configure system properties either by adding options in the format of ``-Dkey=value`` in the driver command line, or by invoking ``System.setProperty("key", "value");`` before ``Ray.init()``.
-- A `HOCON format <https://github.com/lightbend/config/blob/master/HOCON.md>`__ configuration file. By default, Ray will try to read the file named ``ray.conf`` in the root of the classpath. You can customize the location of the file by setting system property ``ray.config-file`` to the path of the file.
-
-.. note:: Options configured by system properties have higher priority than options configured in the configuration file.
-
-The list of available driver options:
-
-- ``ray.address``
-
-  - The cluster address if the driver connects to an existing Ray cluster. If it's empty, Ray creates a new Ray cluster.
-  - Type: ``String``
-  - Default: empty string.
-
-- ``ray.job.code-search-path``
-
-  - The paths for Java workers to load code from. Currently, Ray only supports directories. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Ray also uses the code search path to load Python code, if specified. This parameter is required for :ref:`cross_language`. If you specify a code search path, you can only run Python remote functions which you can find in the code search path.
-  - Type: ``String``
-  - Default: empty string.
-  - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
-
-- ``ray.job.namespace``
-
-  - The namespace of this job. Ray uses it for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, Ray uses a randomized value.
-  - Type: ``String``
-  - Default: A random UUID string value.
-
-.. _`Apache Arrow`: https://arrow.apache.org/

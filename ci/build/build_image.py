@@ -190,7 +190,6 @@ class ImageBuildConfig:
         python_version: str,
         image_platform: str,
         *,
-        no_java: bool = False,
         no_dashboard: bool = False,
     ) -> ImageBuildConfig:
         ray_image = RayImage(
@@ -223,11 +222,6 @@ class ImageBuildConfig:
             else None
         )
 
-        java_image = (
-            "scratch"
-            if no_java
-            else f"{RAYCI_REGISTRY}/ray-java-build{ray_image.arch_suffix}"
-        )
         dashboard_image = (
             "scratch"
             if no_dashboard
@@ -239,12 +233,11 @@ class ImageBuildConfig:
             "MANYLINUX_VERSION": manylinux_version,
             "HOSTTYPE": ray_image.architecture,
             "ARCH_SUFFIX": ray_image.arch_suffix,
-            "JDK_SUFFIX": "" if no_java else "-jdk",
+            "JDK_SUFFIX": "-jdk",
             "BUILDKITE_COMMIT": commit,
             "RAY_VERSION": ray_version,
             "IS_LOCAL_BUILD": "true",
             "IMAGE_TYPE": ray_image.repo,
-            "RAY_JAVA_IMAGE": java_image,
             "RAY_DASHBOARD_IMAGE": dashboard_image,
         }
         if ray_image.platform.startswith("cu"):
@@ -500,12 +493,6 @@ def main():
         help="List valid platforms for the given image type and exit",
     )
     parser.add_argument(
-        "--no-java",
-        action="store_true",
-        default=False,
-        help="Build wheel without Java JARs",
-    )
-    parser.add_argument(
         "--no-dashboard",
         action="store_true",
         default=False,
@@ -535,7 +522,6 @@ def main():
             args.image_type,
             python_version,
             platform_choice,
-            no_java=args.no_java,
             no_dashboard=args.no_dashboard,
         )
         builder = ImageBuilder(config)

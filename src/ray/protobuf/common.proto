@@ -18,15 +18,14 @@ package ray.rpc;
 
 import "src/ray/protobuf/public/runtime_environment.proto";
 
-option java_package = "io.ray.runtime.generated";
-
 // Language of a task or worker.
 // Note: The Language enum is used in the export API so it is public
 // and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
-  JAVA = 1;
-  CPP = 2;
+  // 1 (JAVA) and 2 (CPP) were removed when the Java/C++ language
+  // frontends were dropped. Do not reuse these values.
+  reserved 1, 2;
 }
 
 // Type of a worker.
@@ -131,13 +130,6 @@ message Address {
   bytes worker_id = 4;
 }
 
-/// Function descriptor for Java.
-message JavaFunctionDescriptor {
-  string class_name = 1;
-  string function_name = 2;
-  string signature = 3;
-}
-
 /// Function descriptor for Python.
 message PythonFunctionDescriptor {
   string module_name = 1;
@@ -146,20 +138,14 @@ message PythonFunctionDescriptor {
   string function_hash = 4;
 }
 
-/// Function descriptor for C/C++.
-message CppFunctionDescriptor {
-  /// Remote function name.
-  string function_name = 1;
-  string caller = 2;
-  string class_name = 3;
-}
-
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
+  // 1 (java_function_descriptor) and 3 (cpp_function_descriptor) were removed
+  // when the Java/C++ language frontends were dropped. Do not reuse these
+  // field numbers.
+  reserved 1, 3;
   oneof function_descriptor {
-    JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
-    CppFunctionDescriptor cpp_function_descriptor = 3;
   }
 }
 
@@ -449,11 +435,11 @@ message JobConfig {
     NON_DETACHED = 1;
   }
 
-  // The jvm options for java workers of the job.
-  repeated string jvm_options = 2;
-  // A list of directories or files (jar files or dynamic libraries) that specify the
-  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
-  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
+  // 2 (jvm_options) was removed when the Java language frontend was dropped.
+  // Do not reuse this field number.
+  reserved 2;
+  // A list of directories or files that specify the search path for user code.
+  // This is added to `PYTHONPATH` for Python workers.
   repeated string code_search_path = 3;
   // Runtime environment to run the code
   RuntimeEnvInfo runtime_env_info = 4;
@@ -816,7 +802,6 @@ message ActorCreationTaskSpec {
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
-  // Used by Java workers for JVM options.
   repeated string dynamic_worker_options = 4;
   // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 5;

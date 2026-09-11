@@ -19,7 +19,6 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/profile_events.proto";
 
-option java_package = "io.ray.runtime.generated";
 
 // These indexes are mapped to table names in backend storage.
 enum TablePrefix {

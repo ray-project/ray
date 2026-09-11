@@ -56,29 +56,6 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
           # Other Ray APIs will not work until `ray.init()` is called.
           ray.init()
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            import io.ray.api.Ray;
-
-            public class MyRayApp {
-
-              public static void main(String[] args) {
-                // Other Ray APIs will not work until `Ray.init()` is called.
-                Ray.init();
-                ...
-              }
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            #include <ray/api.h>
-            // Other Ray APIs will not work until `ray::Init()` is called.
-            ray::Init()
-
 When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
 
 .. note::
@@ -104,30 +81,6 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
             ... # ray program
             ray.shutdown()
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            import io.ray.api.Ray;
-
-            public class MyRayApp {
-
-              public static void main(String[] args) {
-                Ray.init();
-                ... // ray program
-                Ray.shutdown();
-              }
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            #include <ray/api.h>
-            ray::Init()
-            ... // ray program
-            ray::Shutdown()
-
 To check if Ray is initialized, use the ``is_initialized`` API.
 
 .. tab-set::
@@ -142,36 +95,6 @@ To check if Ray is initialized, use the ``is_initialized`` API.
 
             ray.shutdown()
             assert not ray.is_initialized()
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            import io.ray.api.Ray;
-
-            public class MyRayApp {
-
-            public static void main(String[] args) {
-                    Ray.init();
-                    Assert.assertTrue(Ray.isInitialized());
-                    Ray.shutdown();
-                    Assert.assertFalse(Ray.isInitialized());
-                }
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            #include <ray/api.h>
-
-            int main(int argc, char **argv) {
-                ray::Init();
-                assert(ray::IsInitialized());
-
-                ray::Shutdown();
-                assert(!ray::IsInitialized());
-            }
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
 
@@ -207,41 +130,6 @@ You can connect to this Ray instance by starting a driver process on the same no
 
         import ray
         ray.init()
-
-    .. tab-item:: java
-
-        .. code-block:: java
-
-          import io.ray.api.Ray;
-
-          public class MyRayApp {
-
-            public static void main(String[] args) {
-              Ray.init();
-              ...
-            }
-          }
-
-        .. code-block:: bash
-
-          java -classpath <classpath> \
-            -Dray.address=<address> \
-            <classname> <args>
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          #include <ray/api.h>
-
-          int main(int argc, char **argv) {
-            ray::Init();
-            ...
-          }
-
-        .. code-block:: bash
-
-          RAY_ADDRESS=<address> ./<binary> <args>
 
 
 You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`on-prem` for more details. Calling ``ray.init()`` on any of the cluster machines will connect to the same Ray cluster.

@@ -27,12 +27,6 @@
 # Python worker.
 /python/ray/ @ray-project/ray-core
 
-# Java worker.
-/java/ @ray-project/ray-core
-
-# C++ worker
-/cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
-
 /doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
 /doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
 /doc/source/ray-observability/ @ray-project/ray-core @ray-project/ray-docs
@@ -80,7 +74,6 @@
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
-/java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /python/ray/dashboard/modules/serve/ @ray-project/ray-serve
 /doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs

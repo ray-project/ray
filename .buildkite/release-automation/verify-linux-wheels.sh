@@ -24,14 +24,9 @@ conda activate rayio
 pip install \
     --index-url https://test.pypi.org/simple/ \
     --extra-index-url https://pypi.org/simple \
-    "ray[cpp]==${RAY_VERSION}"
+    "ray==${RAY_VERSION}"
 
 (
     cd release/util
     python sanity_check.py --ray_version="${RAY_VERSION}" --ray_commit="${RAY_COMMIT}"
-)
-
-(
-    cd release/util
-    bash sanity_check_cpp.sh
 )

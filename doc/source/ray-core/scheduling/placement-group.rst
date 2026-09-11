@@ -59,43 +59,6 @@ Placement group scheduling is asynchronous. The `ray.util.placement_group` retur
             :start-after: __create_pg_start__
             :end-before: __create_pg_end__
 
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          // Initialize Ray.
-          Ray.init();
-
-          // Construct a list of bundles.
-          Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
-          List<Map<String, Double>> bundles = ImmutableList.of(bundle);
-
-          // Make a creation option with bundles and strategy.
-          PlacementGroupCreationOptions options =
-            new PlacementGroupCreationOptions.Builder()
-              .setBundles(bundles)
-              .setStrategy(PlacementStrategy.STRICT_SPREAD)
-              .build();
-
-          PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          // Initialize Ray.
-          ray::Init();
-
-          // Construct a list of bundles.
-          std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
-
-          // Make a creation option with bundles and strategy.
-          ray::internal::PlacementGroupCreationOptions options{
-              false, "my_pg", bundles, ray::internal::PlacementStrategy::PACK};
-
-          ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
-
 You can block your program until the placement group is ready using one of two APIs:
 
 * :func:`ready <ray.util.placement_group.PlacementGroup.ready>`, which is compatible with ``ray.get``
@@ -109,34 +72,6 @@ You can block your program until the placement group is ready using one of two A
             :language: python
             :start-after: __ready_pg_start__
             :end-before: __ready_pg_end__
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          // Wait for the placement group to be ready within the specified time(unit is seconds).
-          boolean ready = pg.wait(60);
-          Assert.assertTrue(ready);
-
-          // You can look at placement group states using this API.
-          List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
-          for (PlacementGroup group: allPlacementGroup) {
-            System.out.println(group);
-          }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          // Wait for the placement group to be ready within the specified time(unit is seconds).
-          bool ready = pg.Wait(60);
-          assert(ready);
-
-          // You can look at placement group states using this API.
-          std::vector<ray::PlacementGroup> all_placement_group = ray::GetAllPlacementGroups();
-          for (const ray::PlacementGroup &group : all_placement_group) {
-            std::cout << group.GetName() << std::endl;
-          }
 
 Let's verify the placement group is successfully created.
 
@@ -252,62 +187,6 @@ You can schedule actors or tasks to a placement group using
             :language: python
             :start-after: __schedule_pg_start__
             :end-before: __schedule_pg_end__
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          public static class Counter {
-            private int value;
-
-            public Counter(int initValue) {
-              this.value = initValue;
-            }
-
-            public int getValue() {
-              return value;
-            }
-
-            public static String ping() {
-              return "pong";
-            }
-          }
-
-          // Create GPU actors on a gpu bundle.
-          for (int index = 0; index < 1; index++) {
-            Ray.actor(Counter::new, 1)
-              .setPlacementGroup(pg, 0)
-              .remote();
-          }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          class Counter {
-          public:
-            Counter(int init_value) : value(init_value){}
-            int GetValue() {return value;}
-            std::string Ping() {
-              return "pong";
-            }
-          private:
-            int value;
-          };
-
-          // Factory function of Counter class.
-          static Counter *CreateCounter() {
-            return new Counter();
-          };
-
-          RAY_REMOTE(&Counter::Ping, &Counter::GetValue, CreateCounter);
-
-          // Create GPU actors on a gpu bundle.
-          for (int index = 0; index < 1; index++) {
-            ray::Actor(CreateCounter)
-              .SetPlacementGroup(pg, 0)
-              .Remote(1);
-          }
 
 .. note::
 
@@ -477,24 +356,6 @@ group using the :func:`remove_placement_group <ray.util.remove_placement_group>`
             :start-after: __remove_pg_start__
             :end-before: __remove_pg_end__
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          PlacementGroups.removePlacementGroup(placementGroup.getId());
-
-          PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(placementGroup.getId());
-          Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          ray::RemovePlacementGroup(placement_group.GetID());
-
-          ray::PlacementGroup removed_placement_group = ray::GetPlacementGroup(placement_group.GetID());
-          assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
-
 .. _ray-placement-group-observability-ref:
 
 Observe and Debug Placement Groups
@@ -569,10 +430,6 @@ set ``placement_group_capture_child_tasks`` to True.
           :start-after: __child_capture_pg_start__
           :end-before: __child_capture_pg_end__
 
-    .. tab-item:: Java
-
-        It's not implemented for Java APIs yet.
-
 When ``placement_group_capture_child_tasks`` is True, but you don't want to schedule
 child tasks and actors to the same placement group, specify ``PlacementGroupSchedulingStrategy(placement_group=None)``.
 
@@ -608,68 +465,6 @@ placement group across jobs.
             :start-after: __get_pg_start__
             :end-before: __get_pg_end__
 
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-          // Create a placement group with a unique name.
-          Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
-          List<Map<String, Double>> bundles = ImmutableList.of(bundle);
-
-          PlacementGroupCreationOptions options =
-            new PlacementGroupCreationOptions.Builder()
-              .setBundles(bundles)
-              .setStrategy(PlacementStrategy.STRICT_SPREAD)
-              .setName("global_name")
-              .build();
-
-          PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-          pg.wait(60);
-
-          ...
-
-          // Retrieve the placement group later somewhere.
-          PlacementGroup group = PlacementGroups.getPlacementGroup("global_name");
-          Assert.assertNotNull(group);
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-          // Create a placement group with a globally unique name.
-          std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
-
-          ray::PlacementGroupCreationOptions options{
-              true/*global*/, "global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
-
-          ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
-          pg.Wait(60);
-
-          ...
-
-          // Retrieve the placement group later somewhere.
-          ray::PlacementGroup group = ray::GetGlobalPlacementGroup("global_name");
-          assert(!group.Empty());
-
-        We also support non-global named placement group in C++, which means that the placement group name is only valid within the job and cannot be accessed from another job.
-
-        .. code-block:: c++
-
-          // Create a placement group with a job-scope-unique name.
-          std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1.0}}};
-
-          ray::PlacementGroupCreationOptions options{
-              false/*non-global*/, "non_global_name", bundles, ray::PlacementStrategy::STRICT_SPREAD};
-
-          ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
-          pg.Wait(60);
-
-          ...
-
-          // Retrieve the placement group later somewhere in the same job.
-          ray::PlacementGroup group = ray::GetPlacementGroup("non_global_name");
-          assert(!group.Empty());
-
 .. _placement-group-detached:
 
 [Advanced] Detached Placement Group
@@ -691,10 +486,6 @@ To keep the placement group alive regardless of its job or detached actor, speci
             :language: python
             :start-after: __detached_pg_start__
             :end-before: __detached_pg_end__
-
-    .. tab-item:: Java
-
-        The lifetime argument isn't implemented for Java APIs yet.
 
 Let's terminate the current script and start a new Python script. Call ``ray list placement-groups``, and you can see the placement group is not removed.
 

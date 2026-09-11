@@ -18,14 +18,6 @@ Actor Pool
 
         See the :class:`package reference <ray.util.ActorPool>` for more information.
 
-    .. tab-item:: Java
-
-        Actor pool hasn't been implemented in Java yet.
-
-    .. tab-item:: C++
-
-        Actor pool hasn't been implemented in C++ yet.
-
 Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

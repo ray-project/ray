@@ -6,11 +6,6 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 
-# Build ray java
-if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
-  bazel run //java:gen_ray_java_pkg
-fi
-
 export PATH="/usr/local/node/bin:$PATH"
 
 # Build ray dashboard

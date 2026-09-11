@@ -34,15 +34,6 @@ if [[ "${ARCH}" == "x86_64" ]]; then
     devtoolset-8-libasan-devel.x86_64
 fi
 
-# Install ray java dependencies.
-if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1" ]]; then
-  sudo yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-  java -version
-  JAVA_BIN="$(readlink -f "$(command -v java)")"
-  echo "java_bin path ${JAVA_BIN}"
-  export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
-fi
-
 # Install nodejs
 NODE_VERSION_FULL="14.21.3"
 

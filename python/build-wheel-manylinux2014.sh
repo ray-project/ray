@@ -24,8 +24,6 @@ if [ "$EUID" -eq 0 ]; then
 
 fi
 
-export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
-
 # Python version key, interpreter version code
 PYTHON_VERSIONS=(
   "py39 cp39-cp39"
@@ -55,10 +53,9 @@ for PYTHON_VERSIONS in "${PYTHON_VERSIONS[@]}" ; do
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
-  # and the -e flag ensures that we don't remove the .whl directory, the
-  # dashboard directory and jars directory, as well as the compiled
-  # dependency constraints.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
+  # and the -e flag ensures that we don't remove the .whl directory and the
+  # dashboard directory, as well as the compiled dependency constraints.
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/requirements_compiled.txt
 
   ./ci/build/build-manylinux-wheel.sh "${PYTHON}"
 done
@@ -66,6 +63,3 @@ done
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
 bazel clean
-
-# Build ray jar
-./ci/build/build-manylinux-jar.sh

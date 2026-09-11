@@ -704,12 +704,6 @@ def test_function_descriptor():
     assert python_descriptor == python_descriptor2
     assert hash(python_descriptor) == hash(python_descriptor2)
     assert python_descriptor.function_id == python_descriptor2.function_id
-    java_descriptor = ray._raylet.JavaFunctionDescriptor(
-        "class_name", "function_name", "signature"
-    )
-    java_descriptor2 = pickle.loads(pickle.dumps(java_descriptor))
-    assert java_descriptor == java_descriptor2
-    assert python_descriptor != java_descriptor
     assert python_descriptor != object()
     d = {python_descriptor: 123}
     assert d.get(python_descriptor2) == 123

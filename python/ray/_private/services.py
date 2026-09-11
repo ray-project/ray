@@ -7,7 +7,6 @@ import logging
 import mmap
 import multiprocessing
 import os
-import shutil
 import signal
 import socket
 import subprocess
@@ -68,12 +67,6 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
 
 JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
-
-# Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
-
-# Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
@@ -310,7 +303,6 @@ def _find_address_from_flag(flag: str):
     #     --object-store-name=... --raylet-name=...
     #     --temp-dir=/tmp/ray
     #     --metrics-agent-port=41856 --redis-password=[MASKED]
-    #     --java_worker_command= --cpp_worker_command=
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
     #     --dashboard_agent_command=/usr/bin/python
@@ -1765,48 +1757,6 @@ def start_raylet(
         ["{},{}".format(*kv) for kv in static_resources.items()]
     )
 
-    has_java_command = False
-    if shutil.which("java") is not None:
-        has_java_command = True
-
-    ray_java_installed = False
-    try:
-        jars_dir = get_ray_jars_dir()
-        if os.path.exists(jars_dir):
-            ray_java_installed = True
-    except Exception:
-        pass
-
-    include_java = has_java_command and ray_java_installed
-    if include_java is True:
-        java_worker_command = build_java_worker_command(
-            gcs_address,
-            plasma_store_name,
-            raylet_name,
-            redis_username,
-            redis_password,
-            session_dir,
-            node_ip_address,
-            setup_worker_path,
-        )
-    else:
-        java_worker_command = []
-
-    if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
-        cpp_worker_command = build_cpp_worker_command(
-            gcs_address,
-            plasma_store_name,
-            raylet_name,
-            redis_username,
-            redis_password,
-            session_dir,
-            log_dir,
-            node_ip_address,
-            setup_worker_path,
-        )
-    else:
-        cpp_worker_command = []
-
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
@@ -1970,9 +1920,6 @@ def start_raylet(
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
-        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
-        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
-        f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
         f"--log_dir={log_dir}",
@@ -2054,129 +2001,6 @@ def start_raylet(
         env_updates=env_updates,
     )
     return process_info
-
-
-def get_ray_jars_dir():
-    """Return a directory where all ray-related jars and
-    their dependencies locate."""
-    current_dir = RAY_PATH
-    jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
-    if not os.path.exists(jars_dir):
-        raise RuntimeError(
-            "Ray jars is not packaged into ray. "
-            "Please build ray with java enabled "
-            "(set env var RAY_INSTALL_JAVA=1)"
-        )
-    return os.path.abspath(os.path.join(current_dir, "jars"))
-
-
-def build_java_worker_command(
-    bootstrap_address: str,
-    plasma_store_name: str,
-    raylet_name: str,
-    redis_username: str,
-    redis_password: str,
-    session_dir: str,
-    node_ip_address: str,
-    setup_worker_path: str,
-):
-    """This method assembles the command used to start a Java worker.
-
-    Args:
-        bootstrap_address: Bootstrap address of ray cluster.
-        plasma_store_name: The name of the plasma store socket to connect
-           to.
-        raylet_name: The name of the raylet socket to create.
-        redis_username: The username to connect to Redis.
-        redis_password: The password to connect to Redis.
-        session_dir: The path of this session.
-        node_ip_address: The IP address for this node.
-        setup_worker_path: The path of the Python file that will set up
-            the environment for the worker process.
-    Returns:
-        The command string for starting Java worker.
-    """
-    pairs = []
-    if bootstrap_address is not None:
-        pairs.append(("ray.address", bootstrap_address))
-    pairs.append(("ray.raylet.node-manager-port", "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
-
-    if plasma_store_name is not None:
-        pairs.append(("ray.object-store.socket-name", plasma_store_name))
-
-    if raylet_name is not None:
-        pairs.append(("ray.raylet.socket-name", raylet_name))
-
-    if redis_username is not None:
-        pairs.append(("ray.redis.username", redis_username))
-
-    if redis_password is not None:
-        pairs.append(("ray.redis.password", redis_password))
-
-    if node_ip_address is not None:
-        pairs.append(("ray.node-ip", node_ip_address))
-
-    pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
-    pairs.append(("ray.session-dir", session_dir))
-    command = (
-        [sys.executable]
-        + [setup_worker_path]
-        + ["-D{}={}".format(*pair) for pair in pairs]
-    )
-
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
-
-    return command
-
-
-def build_cpp_worker_command(
-    bootstrap_address: str,
-    plasma_store_name: str,
-    raylet_name: str,
-    redis_username: str,
-    redis_password: str,
-    session_dir: str,
-    log_dir: str,
-    node_ip_address: str,
-    setup_worker_path: str,
-):
-    """This method assembles the command used to start a CPP worker.
-
-    Args:
-        bootstrap_address: The bootstrap address of the cluster.
-        plasma_store_name: The name of the plasma store socket to connect
-           to.
-        raylet_name: The name of the raylet socket to create.
-        redis_username: The username to connect to Redis.
-        redis_password: The password to connect to Redis.
-        session_dir: The path of this session.
-        log_dir: The path of logs.
-        node_ip_address: The ip address for this node.
-        setup_worker_path: The path of the Python file that will set up
-            the environment for the worker process.
-    Returns:
-        The command string for starting CPP worker.
-    """
-
-    command = [
-        sys.executable,
-        setup_worker_path,
-        DEFAULT_WORKER_EXECUTABLE,
-        f"--ray_plasma_store_socket_name={plasma_store_name}",
-        f"--ray_raylet_socket_name={raylet_name}",
-        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={bootstrap_address}",
-        f"--ray_redis_username={redis_username}",
-        f"--ray_redis_password={redis_password}",
-        f"--ray_session_dir={session_dir}",
-        f"--ray_logs_dir={log_dir}",
-        f"--ray_node_ip_address={node_ip_address}",
-        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
-    ]
-
-    return command
 
 
 def determine_plasma_store_config(

@@ -77,7 +77,6 @@ py_test(
     srcs = ["bundled_dependency_versions_test.py"],
     data = [
         "//:python/setup.py",
-        "//java:dependencies.bzl",
     ],
     tags = [
         "ci_unit",

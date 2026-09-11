@@ -368,7 +368,7 @@ pkg_zip(
         "//conditions:default": [],
     }),
     out = "ray_pkg.zip",
-    visibility = ["//java:__pkg__"],
+    visibility = ["//visibility:public"],
 )
 
 genrule(

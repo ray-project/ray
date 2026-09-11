@@ -93,34 +93,6 @@ compile_pip_dependencies() {
   )
 }
 
-test_cpp() {
-  if [[ "${OSTYPE}" == darwin* ]]; then
-    echo "use macos_ci.sh to run cpp tests"
-    exit 1
-  fi
-
-  # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
-  # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
-  echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
-  bazel build --config=ci //cpp:all
-  bazel run --config=ci //cpp:gen_ray_cpp_pkg
-
-  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
-  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
-  # run cluster mode test with external cluster
-  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
-    --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
-  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
-
-  # run the cpp example, currently does not work on mac
-  rm -rf ray-template
-  ray cpp --generate-bazel-project-template-to ray-template
-  (
-    cd ray-template
-    bash run.sh
-  )
-}
-
 test_macos_wheels() {
   local TEST_WHEEL_RESULT=0
 
@@ -248,12 +220,6 @@ _validate_macos_wheels_commit_str() {
 
   for whl in .whl/*.whl; do
     basename="${whl##*/}"
-
-    if [[ "$basename" =~ "_cpp" ]]; then
-      # cpp wheels cannot be checked this way
-      echo "Skipping CPP wheel ${basename} for wheel commit validation."
-      continue
-    fi
 
     WHL_COMMIT=$(unzip -p "$whl" "*ray/_version.py" | grep "^commit" | awk -F'"' '{print $2}')
 

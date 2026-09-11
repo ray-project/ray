@@ -16,18 +16,6 @@ steps:
       HOSTTYPE: "aarch64"
     instance_type: builder-arm64
 
-  - name: ray-java-build-aarch64
-    label: "wanda: java build (aarch64)"
-    wanda: ci/docker/ray-java.wanda.yaml
-    tags:
-      - release_wheels
-      - java
-    env_file: rayci.env
-    env:
-      ARCH_SUFFIX: "-aarch64"
-      HOSTTYPE: "aarch64"
-    instance_type: builder-arm64
-
   - name: raycpubase-aarch64
     label: "wanda: ray.py{{array.python}}.cpu.base (aarch64)"
     tags:
@@ -214,7 +202,6 @@ steps:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
       JDK_SUFFIX: "-jdk"
-      RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build-aarch64"
       RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard-aarch64"
       WHEEL_NAME_SUFFIX: ""
     tags:
@@ -222,7 +209,6 @@ steps:
       - linux_wheels
     depends_on:
       - ray-core-build-aarch64($)
-      - ray-java-build-aarch64
       - ray-dashboard-build-aarch64
     instance_type: builder-arm64
 
@@ -244,55 +230,6 @@ steps:
         - "3.14"
     depends_on:
       - ray-wheel-build-aarch64($)
-      - forge
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-      - skip-on-premerge
-
-  - name: ray-cpp-core-build-aarch64
-    label: "wanda: cpp core (aarch64)"
-    wanda: ci/docker/ray-cpp-core.wanda.yaml
-    env_file: rayci.env
-    env:
-      ARCH_SUFFIX: "-aarch64"
-      HOSTTYPE: "aarch64"
-    tags:
-      - release_wheels
-      - oss
-    instance_type: builder-arm64
-
-  - name: ray-cpp-wheel-build-aarch64
-    label: "wanda: cpp wheel (aarch64)"
-    wanda: ci/docker/ray-cpp-wheel.wanda.yaml
-    env_file: rayci.env
-    env:
-      PYTHON_VERSION: "3.10"  # Used for upstream images; wheel is Python-agnostic
-      ARCH_SUFFIX: "-aarch64"
-      HOSTTYPE: "aarch64"
-    tags:
-      - release_wheels
-      - linux_wheels
-      - oss
-    depends_on:
-      - ray-core-build-aarch64(python=3.10)
-      - ray-cpp-core-build-aarch64
-      - ray-java-build-aarch64
-      - ray-dashboard-build-aarch64
-    instance_type: builder-arm64
-
-  - label: ":arrow_up: upload: cpp wheel (aarch64)"
-    key: linux_cpp_wheels_upload_aarch64
-    instance_type: small  # x86_64 instance since crane is currently only x86_64
-    commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
-        --wanda-image-name=ray-cpp-wheel-aarch64
-        --file-glob='*.whl'
-        --output-dir=.whl
-      - ./ci/build/copy_build_artifacts.sh wheel
-    depends_on:
-      - ray-cpp-wheel-build-aarch64
       - forge
     tags:
       - release_wheels

@@ -32,7 +32,7 @@ TEST_F(ProtoSchemaTest, TestActorDeathCauseBackwardCompatibility) {
 
   rpc::RayException ray_exception;
   rpc::ActorDeathCause actor_death_cause1;
-  ray_exception.set_language(rpc::Language::CPP);
+  ray_exception.set_language(rpc::Language::PYTHON);
   ray_exception.set_formatted_exception_string("exception string");
   std::string set_serialized_exception_byte_data = "serialized exception bytes data";
   ray_exception.set_serialized_exception(set_serialized_exception_byte_data);

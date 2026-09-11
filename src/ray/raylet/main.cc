@@ -100,13 +100,8 @@ DEFINE_bool(head, false, "Whether this node is a head node.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
-DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(dashboard_agent_command, "", "Dashboard agent command.");
 DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
-DEFINE_string(cpp_worker_command, "", "CPP worker command.");
-DEFINE_string(native_library_path,
-              "",
-              "The native library path which includes the core libraries.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
@@ -254,11 +249,8 @@ int main(int argc, char *argv[]) {
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
-  const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string dashboard_agent_command = FLAGS_dashboard_agent_command;
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
-  const std::string cpp_worker_command = FLAGS_cpp_worker_command;
-  const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
@@ -637,19 +629,8 @@ int main(int argc, char *argv[]) {
       node_manager_config.worker_commands.emplace(
           make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
     }
-    if (!java_worker_command.empty()) {
-      node_manager_config.worker_commands.emplace(
-          make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
-    }
-    if (!cpp_worker_command.empty()) {
-      node_manager_config.worker_commands.emplace(
-          make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
-    }
-    node_manager_config.native_library_path = native_library_path;
-    if (python_worker_command.empty() && java_worker_command.empty() &&
-        cpp_worker_command.empty()) {
-      RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
-                     << "should be provided";
+    if (python_worker_command.empty()) {
+      RAY_LOG(FATAL) << "The Python worker command should be provided";
     }
     if (dashboard_agent_command.empty()) {
       RAY_LOG(FATAL) << "Dashboard agent command must be non empty";
@@ -747,7 +728,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.worker_ports,
         *gcs_client,
         node_manager_config.worker_commands,
-        node_manager_config.native_library_path,
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,

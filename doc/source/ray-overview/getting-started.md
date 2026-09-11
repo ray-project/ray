@@ -364,7 +364,7 @@ Learn more about Ray RLlib
 </a>
 <br></br>
 
-Ray Core provides simple primitives for building and running distributed applications. It enables you to turn regular Python or Java functions and classes into distributed stateless tasks and stateful actors with just a few lines of code.
+Ray Core provides simple primitives for building and running distributed applications. It enables you to turn regular Python functions and classes into distributed stateless tasks and stateful actors with just a few lines of code.
 
 The examples below show you how to:
 1. Convert Python functions to Ray tasks for parallel execution
@@ -404,47 +404,6 @@ futures = [f.remote(i) for i in range(4)]
 print(ray.get(futures)) # [0, 1, 4, 9]
 ```
 
-````
-
-````{tab-item} Java
-
-```{note}
-To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
-```
-
-Use `Ray.init` to initialize Ray runtime.
-Then use `Ray.task(...).remote()` to convert any Java static method into a Ray task.
-The task runs asynchronously in a remote worker process. The `remote` method returns an ``ObjectRef``,
-and you can fetch the actual result with ``get``.
-
-```{code-block} java
-
-import io.ray.api.ObjectRef;
-import io.ray.api.Ray;
-import java.util.ArrayList;
-import java.util.List;
-
-public class RayDemo {
-
-    public static int square(int x) {
-        return x * x;
-    }
-
-    public static void main(String[] args) {
-        // Initialize Ray runtime.
-        Ray.init();
-        List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
-        // Invoke the `square` method 4 times remotely as Ray tasks.
-        // The tasks run in parallel in the background.
-        for (int i = 0; i < 4; i++) {
-            objectRefList.add(Ray.task(RayDemo::square, i).remote());
-        }
-        // Get the actual results of the tasks.
-        System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
-    }
-}
-```
-
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
@@ -465,7 +424,7 @@ Learn more about Ray Core
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
 :animate: fade-in-slide-down
 
-Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
+Ray provides actors to allow you to parallelize an instance of a class in Python.
 When you instantiate a class that is a Ray actor, Ray starts a remote instance
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
@@ -503,62 +462,6 @@ counters = [Counter.remote() for i in range(4)]
 futures = [c.read.remote() for c in counters]
 print(ray.get(futures)) # [1, 1, 1, 1]
 ```
-````
-
-````{tab-item} Java
-
-
-```{note}
-To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
-```
-
-```{code-block} java
-
-import io.ray.api.ActorHandle;
-import io.ray.api.ObjectRef;
-import io.ray.api.Ray;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-
-public class RayDemo {
-
-    public static class Counter {
-
-        private int value = 0;
-
-        public void increment() {
-            this.value += 1;
-        }
-
-        public int read() {
-            return this.value;
-        }
-    }
-
-    public static void main(String[] args) {
-        // Initialize Ray runtime.
-        Ray.init();
-        List<ActorHandle<Counter>> counters = new ArrayList<>();
-        // Create 4 actors from the `Counter` class.
-        // These run in remote worker processes.
-        for (int i = 0; i < 4; i++) {
-            counters.add(Ray.actor(Counter::new).remote());
-        }
-
-        // Invoke the `increment` method on each actor.
-        // This sends an actor task to each remote actor.
-        for (ActorHandle<Counter> counter : counters) {
-            counter.task(Counter::increment).remote();
-        }
-        // Invoke the `read` method on each actor, and print the results.
-        List<ObjectRef<Integer>> objectRefList = counters.stream()
-            .map(counter -> counter.task(Counter::read).remote())
-            .collect(Collectors.toList());
-        System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
-    }
-}
-```
 
 ```{button-ref}  ../ray-core/walkthrough
 :color: primary
@@ -567,7 +470,6 @@ public class RayDemo {
 
 Learn more about Ray Core
 ```
-
 ````
 
 `````

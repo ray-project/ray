@@ -101,7 +101,7 @@ build_wheel_windows() {
       exit 1
     fi
 
-    # build ray wheel and ray-cpp wheel
+    # build ray wheel
     # delvewheel packs any needed system dlls like msvcp140.dll
     uv run --no-project --no-config --no-cache \
       --with wheel==0.45.1 \
@@ -112,7 +112,6 @@ build_wheel_windows() {
       /bin/bash -o pipefail -ec "
         python -m pip wheel -v -w dist . --no-deps --use-pep517
         delvewheel repair dist/ray-*.whl
-        RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps --use-pep517
       "
   )
 }

@@ -300,8 +300,6 @@ cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
 # representation.
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_PYTHON "ray::Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "ray::Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "ray::Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"

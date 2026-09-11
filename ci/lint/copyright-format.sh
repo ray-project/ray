@@ -41,14 +41,12 @@ TMP_FILE="/tmp/.cr_tmp"
 # The cpp files that will be checked and formatted.
 INCLUDES_CPP_DIRS=(
     src
-    cpp
 )
 
 # The files that should be skipped.
 EXCLUDES_DIRS=(
     src/ray/object_manager/plasma/
     src/ray/thirdparty
-    cpp/example
 )
 
 ERROR_FILES=()

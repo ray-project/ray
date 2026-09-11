@@ -24,7 +24,7 @@ except ImportError:
 import ray._common.signature as signature
 import ray._private.ray_constants as ray_constants
 import ray._raylet
-from ray import ActorClassID, Language, ObjectRef, cross_language
+from ray import ActorClassID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
@@ -2064,11 +2064,8 @@ class ActorClass(Generic[T]):
         if actor_method_cpu == 1:
             actor_placement_resources = resources.copy()
             actor_placement_resources["CPU"] += 1
-        if meta.is_cross_language:
-            creation_args = cross_language._format_args(worker, args, kwargs)
-        else:
-            function_signature = meta.method_meta.signatures["__init__"]
-            creation_args = signature.flatten_args(function_signature, args, kwargs)
+        function_signature = meta.method_meta.signatures["__init__"]
+        creation_args = signature.flatten_args(function_signature, args, kwargs)
 
         use_placement_group = scheduling_strategy is not None and isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -2148,20 +2145,6 @@ class ActorClass(Generic[T]):
             class_name = meta.actor_creation_function_descriptor.class_name
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name)
-            )
-
-        # Update the creation descriptor based on number of arguments
-        if meta.is_cross_language:
-            func_name = "<init>"
-            if meta.language == Language.CPP:
-                func_name = meta.actor_creation_function_descriptor.function_name
-            meta.actor_creation_function_descriptor = (
-                cross_language._get_function_descriptor_for_actor_method(
-                    meta.language,
-                    meta.actor_creation_function_descriptor,
-                    func_name,
-                    str(len(args) + len(kwargs)),
-                )
             )
 
         allow_out_of_order_execution = actor_options.get("allow_out_of_order_execution")
@@ -2533,24 +2516,13 @@ class ActorHandle(Generic[T]):
 
         args = args or []
         kwargs = kwargs or {}
-        if self._ray_is_cross_language:
-            list_args = cross_language._format_args(worker, args, kwargs)
-            function_descriptor = cross_language._get_function_descriptor_for_actor_method(  # noqa: E501
-                self._ray_actor_language,
-                self._ray_actor_creation_function_descriptor,
-                method_name,
-                # The signature for xlang should be "{length_of_arguments}" to handle
-                # overloaded methods.
-                signature=str(len(args) + len(kwargs)),
-            )
-        else:
-            function_signature = self._ray_method_signatures[method_name]
+        function_signature = self._ray_method_signatures[method_name]
 
-            if not args and not kwargs and not function_signature:
-                list_args = []
-            else:
-                list_args = signature.flatten_args(function_signature, args, kwargs)
-            function_descriptor = self._ray_function_descriptor[method_name]
+        if not args and not kwargs and not function_signature:
+            list_args = []
+        else:
+            list_args = signature.flatten_args(function_signature, args, kwargs)
+        function_descriptor = self._ray_function_descriptor[method_name]
 
         if num_returns == "dynamic":
             num_returns = -1

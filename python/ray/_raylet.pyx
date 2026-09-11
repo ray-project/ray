@@ -113,8 +113,6 @@ from ray.includes.common cimport (
     CGrpcStatusCode,
     CLineageReconstructionTask,
     move,
-    LANGUAGE_CPP,
-    LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
     LocalMemoryBuffer,
     TASK_TYPE_NORMAL_TASK,
@@ -662,10 +660,6 @@ cdef class Language:
     def __repr__(self):
         if <int32_t>self.lang == <int32_t>LANGUAGE_PYTHON:
             return "PYTHON"
-        elif <int32_t>self.lang == <int32_t>LANGUAGE_CPP:
-            return "CPP"
-        elif <int32_t>self.lang == <int32_t>LANGUAGE_JAVA:
-            return "JAVA"
         else:
             raise Exception("Unexpected error")
 
@@ -673,8 +667,6 @@ cdef class Language:
         return Language, (<int32_t>self.lang,)
 
     PYTHON = Language.from_native(LANGUAGE_PYTHON)
-    CPP = Language.from_native(LANGUAGE_CPP)
-    JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef CPlacementStrategy prepare_c_strategy(c_string strategy) except *:

@@ -48,16 +48,7 @@ def test_call_string_python_with_class():
     assert rec._call_string(fd) == "MyCls.m"
 
 
-def test_call_string_java_and_cpp_and_empty():
-    java = FunctionDescriptor()
-    java.java_function_descriptor.class_name = "C"
-    java.java_function_descriptor.function_name = "f"
-    assert rec._call_string(java) == "C.f"
-
-    cpp = FunctionDescriptor()
-    cpp.cpp_function_descriptor.function_name = "g"
-    assert rec._call_string(cpp) == "g"
-
+def test_call_string_empty():
     assert rec._call_string(FunctionDescriptor()) == ""
 
 

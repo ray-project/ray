@@ -6,7 +6,6 @@ import subprocess
 import sys
 from typing import Dict, List, Optional
 
-from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
 from ray.core.generated.common_pb2 import Language
 from ray.util.annotations import DeveloperAPI
@@ -24,13 +23,11 @@ class RuntimeEnvContext:
         env_vars: Dict[str, str] = None,
         py_executable: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
-        java_jars: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
-        self.java_jars = java_jars or []
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -46,17 +43,6 @@ class RuntimeEnvContext:
             executable = [self.py_executable]
         elif language == Language.PYTHON:
             executable = ["exec", self.py_executable]
-        elif language == Language.JAVA:
-            executable = ["java"]
-            ray_jars = os.path.join(get_ray_jars_dir(), "*")
-
-            local_java_jars = []
-            for java_jar in self.java_jars:
-                local_java_jars.append(f"{java_jar}/*")
-                local_java_jars.append(java_jar)
-
-            class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
-            passthrough_args = class_path_args + passthrough_args
         elif sys.platform == "win32":
             executable = []
         else:

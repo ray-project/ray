@@ -10,8 +10,6 @@ process dies. When actors terminate gracefully, Ray calls the actor's
 ``__ray_shutdown__()`` method if defined, allowing for cleanup of resources
 (see :ref:`actor-cleanup` for details).
 
-Note that automatic termination of actors is not yet supported in Java or C++.
-
 .. _ray-kill-actors:
 
 Manual termination via an actor handle
@@ -40,25 +38,6 @@ manually destroyed.
             ray.kill(actor_handle)
             # Force kill: the actor exits immediately without cleanup.
             # This will NOT call __ray_shutdown__() or atexit handlers.
-
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            actorHandle.kill();
-            // This will not go through the normal Java System.exit teardown logic, so any
-            // shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
-            // not be called.
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            actor_handle.Kill();
-            // This will not go through the normal C++ std::exit
-            // teardown logic, so any exit handlers installed in
-            // the actor using ``std::atexit`` will not be called.
 
 
 This will cause the actor to immediately exit its process, causing any current,
@@ -130,28 +109,6 @@ This will kill the actor process and release resources associated/assigned to th
         This approach should generally not be necessary as actors are automatically garbage
         collected. The ``ObjectRef`` resulting from the task can be waited on to wait
         for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            Ray.exitActor();
-
-        Garbage collection for actors hasn't been implemented yet, so this is currently the
-        only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
-        can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
-        throw a ``RayActorException``).
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            ray::ExitActor();
-
-        Garbage collection for actors hasn't been implemented yet, so this is currently the
-        only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
-        can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
-        throw a ``RayActorException``).
 
 Note that this method of termination waits until any previously submitted
 tasks finish executing and then exits the process gracefully with sys.exit.

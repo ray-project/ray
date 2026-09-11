@@ -64,12 +64,3 @@ Runtime Context
     ray.runtime_context.get_runtime_context
     ray.runtime_context.RuntimeContext
     ray.get_gpu_ids
-
-Cross Language
---------------
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ray.cross_language.java_function
-    ray.cross_language.java_actor_class

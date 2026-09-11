@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import platform
-import shutil
 import signal
 import subprocess
 import sys
@@ -2798,84 +2797,6 @@ def healthcheck(address, component, skip_version_check):
         sys.exit(1)
 
 
-@cli.command()
-@click.option(
-    "--show-library-path",
-    "-show",
-    required=False,
-    is_flag=True,
-    help="Show the cpp include path and library path, if provided.",
-)
-@click.option(
-    "--generate-bazel-project-template-to",
-    "-gen",
-    required=False,
-    type=str,
-    help="The directory to generate the bazel project template to, if provided.",
-)
-@click.option(
-    "--bazel-version",
-    default="6.5.0",
-    required=False,
-    type=str,
-    help="The bazel version to use, if provided.",
-)
-@add_click_logging_options
-def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
-    """Show the cpp library path and generate the bazel project template.
-
-    This command MUST be run from the ray project root directory if
-    --generate-bazel-project-template-to is set.
-    """
-    if sys.platform == "win32":
-        raise click.ClickException("Ray C++ API is not supported on Windows currently.")
-
-    if not show_library_path and not generate_bazel_project_template_to:
-        raise ValueError(
-            "Please input at least one option of '--show-library-path'"
-            " and '--generate-bazel-project-template-to'."
-        )
-
-    raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    cpp_dir = os.path.join(raydir, "cpp")
-    cpp_template_dir = os.path.join(cpp_dir, "example")
-    include_dir = os.path.join(cpp_dir, "include")
-    lib_dir = os.path.join(cpp_dir, "lib")
-    if not os.path.isdir(cpp_dir):
-        raise ValueError('Please install ray with C++ API by "pip install ray[cpp]".')
-    if show_library_path:
-        cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
-        cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
-    if generate_bazel_project_template_to:
-        out_dir = generate_bazel_project_template_to
-        # copytree expects that the dst dir doesn't exist
-        # so we manually delete it if it exists.
-        if os.path.exists(out_dir):
-            shutil.rmtree(out_dir)
-
-        shutil.copytree(cpp_template_dir, out_dir)
-        for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
-            # Renames the bazel related files by removing the leading underscore.
-            dest_name = os.path.join(out_dir, filename[1:])
-            shutil.move(os.path.join(out_dir, filename), dest_name)
-
-        out_include_dir = os.path.join(out_dir, "thirdparty/include")
-        shutil.copytree(include_dir, out_include_dir)
-        out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
-        shutil.copytree(lib_dir, out_lib_dir)
-
-        with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
-            f.write(bazel_version.strip() + "\n")
-
-        cli_logger.print(
-            "Project template generated to {}",
-            cf.bold(f"{os.path.abspath(out_dir)}"),
-        )
-
-        cli_logger.print("To build and run this template, run")
-        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
-
-
 @cli.command(hidden=True)
 def sanity_check():
     """Run a sanity check to check that the Ray installation works.
@@ -2971,7 +2892,6 @@ cli.add_command(local_dump)
 cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)

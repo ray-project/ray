@@ -14,7 +14,6 @@ This section covers extended topics on how to use Ray.
     starting-ray
     ray-generator
     namespaces
-    cross-language
     using-ray-with-jupyter
     ray-dag
     miscellaneous

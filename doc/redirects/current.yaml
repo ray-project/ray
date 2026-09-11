@@ -305,9 +305,6 @@ redirects:
 - from: /using-ray-with-pytorch.html
   to: /train/examples.html
   type: page
-- from: /cross-language.html
-  to: /ray-core/cross-language.html
-  type: page
 - from: /multiprocessing.html
   to: /ray-more-libs/multiprocessing.html
   type: page

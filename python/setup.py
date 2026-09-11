@@ -28,8 +28,6 @@ SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_CORE = os.getenv("RAY_BUILD_CORE", "1") == "1"
-BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA", "0") == "1"
-BUILD_CPP = os.getenv("RAY_DISABLE_EXTRA_CPP") != "1"
 BUILD_REDIS = os.getenv("RAY_BUILD_REDIS", "1") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
@@ -68,7 +66,6 @@ def find_version(*filepath):
 
 class SetupType(Enum):
     RAY = 1
-    RAY_CPP = 2
 
 
 class BuildType(Enum):
@@ -122,23 +119,13 @@ elif build_type == "deps-only":
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
-if os.getenv("RAY_INSTALL_CPP") == "1":
-    # "ray-cpp" wheel package.
-    setup_spec = SetupSpec(
-        SetupType.RAY_CPP,
-        "ray-cpp",
-        "A subpackage of Ray which provides the Ray C++ API.",
-        BUILD_TYPE,
-    )
-else:
-    # "ray" primary wheel package.
-    setup_spec = SetupSpec(
-        SetupType.RAY,
-        "ray",
-        "Ray provides a simple, "
-        "universal API for building distributed applications.",
-        BUILD_TYPE,
-    )
+# "ray" primary wheel package.
+setup_spec = SetupSpec(
+    SetupType.RAY,
+    "ray",
+    "Ray provides a simple, " "universal API for building distributed applications.",
+    BUILD_TYPE,
+)
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -155,18 +142,6 @@ ray_files = [
 
 if sys.platform == "linux":
     ray_files.append("ray/core/libjemalloc.so")
-
-if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
-    ray_files.append("ray/jars/ray_dist.jar")
-
-if setup_spec.type == SetupType.RAY_CPP:
-    setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
-    # C++ API library and project template files.
-    setup_spec.files_to_include += [
-        os.path.join(dirpath, filename)
-        for dirpath, dirnames, filenames in os.walk("ray/cpp")
-        for filename in filenames
-    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -329,8 +304,6 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
-
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
         "gymnasium==1.2.2",
@@ -360,18 +333,8 @@ if setup_spec.type == SetupType.RAY:
     # and no deployment needs all of them. Instead you should list
     # the extras you actually need, see
     # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
-    #
-    # "all" will not include "cpp" anymore. It is a big depedendency
-    # that most people do not need.
-    #
-    # Instead, when cpp is supported, we add a "all-cpp".
     setup_spec.extras["all"] = list(
-        set(
-            chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
-        )
-    )
-    setup_spec.extras["all-cpp"] = list(
-        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+        set(chain.from_iterable([v for k, v in setup_spec.extras.items()]))
     )
 
     # "llm" is not included in all, by design. vllm's dependency set is very
@@ -548,7 +511,7 @@ if is_conda_forge_build and is_native_windows_or_msys():
     replace_symlinks_with_junctions()
 
 
-def build(build_python, build_java, build_cpp, build_redis):
+def build(build_python, build_redis):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
             "Detected Python version {}, which is not supported. "
@@ -603,10 +566,6 @@ def build(build_python, build_java, build_cpp, build_redis):
     bazel_targets = []
     if build_python:
         bazel_targets.append("//:gen_ray_pkg")
-    if build_cpp:
-        bazel_targets.append("//cpp:gen_ray_cpp_pkg")
-    if build_java:
-        bazel_targets.append("//java:gen_ray_java_pkg")
     if build_redis:
         bazel_targets.append("//:gen_redis_pkg")
 
@@ -732,9 +691,9 @@ def copy_file(target_dir, filename, rootdir):
 
 def pip_run(build_ext):
     if SKIP_BAZEL_BUILD or setup_spec.build_type == BuildType.DEPS_ONLY:
-        build(False, False, False, False)
+        build(False, False)
     else:
-        build(BUILD_CORE, BUILD_JAVA, BUILD_CPP, BUILD_REDIS)
+        build(BUILD_CORE, BUILD_REDIS)
 
     if setup_spec.type == SetupType.RAY:
         if setup_spec.build_type == BuildType.DEPS_ONLY:
@@ -770,13 +729,6 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
-    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
-    # older versions require the wheel package
-    try:
-        from setuptools.command.bdist_wheel import bdist_wheel
-    except ImportError:
-        from wheel.bdist_wheel import bdist_wheel
-
     class build_ext(setuptools.command.build_ext.build_ext):
         def run(self):
             return pip_run(self)
@@ -784,22 +736,6 @@ if __name__ == "__main__":
     class BinaryDistribution(setuptools.Distribution):
         def has_ext_modules(self):
             return True
-
-    class RayCppBdistWheel(bdist_wheel):
-        """Build a Python-agnostic wheel for ray-cpp.
-
-        The wheel contains platform-specific C++ binaries, so we keep a platform
-        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
-        """
-
-        def finalize_options(self):
-            super().finalize_options()
-            # Wheel contains C++ binaries, so force a real platform tag, not "any".
-            self.root_is_pure = False
-
-        def get_tag(self):
-            _, _, platform_tag = super().get_tag()
-            return "py3", "none", platform_tag
 
     # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
@@ -817,11 +753,7 @@ if __name__ == "__main__":
         # If the license text has multiple lines, add an ending endline.
         license_text += "\n"
 
-    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
-    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
     cmdclass = {"build_ext": build_ext}
-    if setup_spec.type == SetupType.RAY_CPP:
-        cmdclass["bdist_wheel"] = RayCppBdistWheel
 
     setuptools.setup(
         name=setup_spec.name,

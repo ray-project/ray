@@ -40,10 +40,6 @@ std::string WorkerTypeString(WorkerType type) {
 std::string LanguageString(Language language) {
   if (language == Language::PYTHON) {
     return "python";
-  } else if (language == Language::JAVA) {
-    return "java";
-  } else if (language == Language::CPP) {
-    return "cpp";
   }
   RAY_CHECK(false);
   return "";

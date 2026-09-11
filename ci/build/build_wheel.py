@@ -42,16 +42,10 @@ class BuildConfig:
     raymake_version: str
     manylinux_version: str
     commit: str
-    no_java: bool = False
     no_dashboard: bool = False
 
     @property
     def build_env(self) -> dict[str, str]:
-        java_image = (
-            "scratch"
-            if self.no_java
-            else f"{RAYCI_REGISTRY}/ray-java-build{self.arch_suffix}"
-        )
         dashboard_image = (
             "scratch"
             if self.no_dashboard
@@ -63,10 +57,9 @@ class BuildConfig:
             "MANYLINUX_VERSION": self.manylinux_version,
             "HOSTTYPE": self.hosttype,
             "ARCH_SUFFIX": self.arch_suffix,
-            "JDK_SUFFIX": "" if self.no_java else "-jdk",
+            "JDK_SUFFIX": "-jdk",
             "BUILDKITE_COMMIT": self.commit,
             "IS_LOCAL_BUILD": "true",
-            "RAY_JAVA_IMAGE": java_image,
             "RAY_DASHBOARD_IMAGE": dashboard_image,
             "WHEEL_NAME_SUFFIX": "",
         }
@@ -77,7 +70,6 @@ class BuildConfig:
         python_version: str,
         output_dir: str,
         *,
-        no_java: bool = False,
         no_dashboard: bool = False,
     ) -> BuildConfig:
         root = find_ray_root()
@@ -101,7 +93,6 @@ class BuildConfig:
             raymake_version=raymake_version,
             manylinux_version=manylinux_version,
             commit=commit,
-            no_java=no_java,
             no_dashboard=no_dashboard,
         )
 
@@ -122,8 +113,6 @@ class WheelBuilder:
             raise BuildError("raymake not found. Run via ./build-wheel.sh")
 
         excluded = []
-        if self.config.no_java:
-            excluded.append("java")
         if self.config.no_dashboard:
             excluded.append("dashboard")
 
@@ -191,12 +180,6 @@ def main():
     )
 
     parser.add_argument(
-        "--no-java",
-        action="store_true",
-        default=False,
-        help="Build wheel without Java JARs",
-    )
-    parser.add_argument(
         "--no-dashboard",
         action="store_true",
         default=False,
@@ -214,7 +197,6 @@ def main():
             BuildConfig.from_env(
                 args.python_version,
                 args.output_dir,
-                no_java=args.no_java,
                 no_dashboard=args.no_dashboard,
             )
         )

@@ -197,18 +197,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "rules_jvm_external",
-        url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
-        sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
-    )
-
-    auto_http_archive(
-        name = "bazel_common",
-        url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
-        sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
-    )
-
-    auto_http_archive(
         name = "bazel_skylib",
         sha256 = "9f38886a40548c6e96c106b752f242130ee11aaa068a56ba7e56f4511f33e4f2",
         url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
@@ -278,12 +266,6 @@ def ray_deps_setup():
             # https://github.com/cython/cython/pull/7053
             "//thirdparty/patches:cython.patch",
         ],
-    )
-
-    auto_http_archive(
-        name = "com_github_johnynek_bazel_jar_jar",
-        url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
-        sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
     )
 
     auto_http_archive(

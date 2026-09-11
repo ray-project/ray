@@ -247,7 +247,7 @@ mkdir -p "$BAZEL_CACHE_DIR"
 echo "=== Bazel disk cache: $BAZEL_CACHE_DIR ($(du -sh "$BAZEL_CACHE_DIR" 2>/dev/null | cut -f1)) ==="
 
 # Remove stale wheels from previous builds to avoid picking the wrong version.
-rm -f .whl/ray-*.whl .whl/ray_cpp-*.whl
+rm -f .whl/ray-*.whl
 
 # Build the manylinux wheel with persistent Bazel cache
 echo "=== Building Ray wheel ==="
