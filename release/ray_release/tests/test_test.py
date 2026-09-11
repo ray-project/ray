@@ -199,6 +199,31 @@ def _repo():
     return GitHubClient("token").get_repo("owner/repo")
 
 
+def test_has_open_github_issue_no_issue_number() -> None:
+    assert not Test().has_open_github_issue(_repo())
+
+
+@responses.activate
+def test_has_open_github_issue_open() -> None:
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "open"})
+    assert Test(github_issue_number="1").has_open_github_issue(_repo())
+
+
+@responses.activate
+def test_has_open_github_issue_closed() -> None:
+    # _close_github_issue leaves the number behind, so a recovered test keeps
+    # pointing at a closed issue; the state has to be checked, not the number.
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "closed"})
+    assert not Test(github_issue_number="1").has_open_github_issue(_repo())
+
+
+@responses.activate
+def test_has_open_github_issue_github_exception() -> None:
+    # Unreachable github answers "no open issue known here", never "no issue".
+    responses.add(responses.GET, _ISSUE_URL, json={"message": "Not Found"}, status=404)
+    assert not Test(name="test", github_issue_number="1").has_open_github_issue(_repo())
+
+
 def test_is_jailed_with_open_issue_not_jailed() -> None:
     assert not Test(state="passing").is_jailed_with_open_issue(_repo())
 

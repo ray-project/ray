@@ -348,18 +348,21 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
+    def has_open_github_issue(self, ray_github: "GitHubRepo") -> bool:
         """
-        Returns whether this test is jailed with open issue.
+        Returns whether this test has a tracked github issue that is open.
+
+        Checking that the issue is open is required rather than defensive:
+        ReleaseTestStateMachine._close_github_issue closes the issue but leaves
+        KEY_GITHUB_ISSUE_NUMBER on the test, so a recovered test keeps a number
+        pointing at a closed issue indefinitely.
+
+        A failure to reach GitHub answers False. The caller can only read this
+        as "no open issue is known here", never as "this test has no open
+        issue".
         """
         from ray_release.github_client import GitHubException
 
-        # is jailed
-        state = self.get_state()
-        if state != TestState.JAILED:
-            return False
-
-        # has open issue
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
         if issue_number is None:
             return False
@@ -371,6 +374,14 @@ class Test(dict):
                 f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
             )
             return False
+
+    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
+        """
+        Returns whether this test is jailed with open issue.
+        """
+        return self.get_state() == TestState.JAILED and self.has_open_github_issue(
+            ray_github
+        )
 
     def is_stable(self) -> bool:
         """

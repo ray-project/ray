@@ -11,6 +11,7 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
+from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.util import ANYSCALE_HOST, anyscale_job_url, format_link
 
 # Result statuses that trigger the observability agent. These are the failures
@@ -196,6 +197,7 @@ class ObservabilityAgentReporter(Reporter):
             )
 
         self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+        self._comment_on_github_issue(test, result, summary, slack_thread)
 
         analysis_file = self._write_analysis(message)
         if analysis_file:
@@ -205,6 +207,85 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+    def _comment_on_github_issue(
+        self,
+        test: Test,
+        result: Result,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> None:
+        """Comment the analysis on the test's github issue, if one is open.
+
+        Only tests the state machine is tracking have an issue, and the number
+        it is tracked by only reaches this reporter because RayTestDBReporter
+        refreshes the test from S3 before this one runs. A test with no known
+        open issue is skipped, which is also what a failure to reach GitHub
+        looks like -- see Test.has_open_github_issue.
+        """
+        # Checked before the repo handle is built, because building it fetches
+        # the github bot token from AWS Secrets Manager. Most failing tests have
+        # no tracked issue, and they should not pay for that call -- nor carry
+        # its failure modes on the critical path of a failed test.
+        issue_number = test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if issue_number is None:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; no github issue is tracked for it"
+            )
+            return
+
+        try:
+            ray_repo = TestStateMachine.get_ray_repo()
+            if not test.has_open_github_issue(ray_repo):
+                logger.info(
+                    f"Skip commenting the observability agent analysis for test "
+                    f"{test.get_name()}; issue {issue_number} is not open"
+                )
+                return
+
+            ray_repo.get_issue(issue_number).create_comment(
+                self._issue_comment(test, result, summary, slack_thread)
+            )
+        except Exception:
+            # Commenting is supplementary, and glue.py does not guard the
+            # reporting loop, so nothing here may reach the test's result.
+            logger.exception(
+                f"Could not comment the observability agent analysis on the "
+                f"github issue for test {test.get_name()}"
+            )
+            return
+
+        logger.info(
+            f"Commented the observability agent analysis on github issue "
+            f"{issue_number} for test {test.get_name()}"
+        )
+
+    def _issue_comment(
+        self,
+        test: Test,
+        result: Result,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> str:
+        """The comment body: the summary, and where to go for the rest."""
+        lines = [
+            "The observability agent looked at the latest failure of "
+            f"`{test.get_name()}`.",
+            "",
+            summary or "The agent returned no summary for this job.",
+        ]
+        if result.buildkite_url:
+            lines += ["", f"Failing build: {result.buildkite_url}"]
+        if slack_thread:
+            lines += [
+                "",
+                f"The full report, with the evidence and next steps behind the "
+                f"summary, is in [this slack thread]({slack_thread}). The agent is "
+                "under active development; please rate the report there with the "
+                "'All good' or 'Needs correction' buttons.",
+            ]
+        return "\n".join(lines)
 
     def _annotate(
         self,

@@ -2,7 +2,7 @@ import json
 import os
 import sys
 from typing import Any, Dict, List, Optional
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -672,6 +672,134 @@ def test_the_annotation_escapes_what_the_agent_sent():
     assert 'href="https://x&quot; onmouseover=&quot;alert(1)"' in body
     # Our own markup is still markup.
     assert "<strong>" in body and "<br/>" in body
+
+
+class FakeIssue:
+    def __init__(self, state: str = "open"):
+        self.state = state
+        self.comments = []
+
+    def create_comment(self, body: str) -> None:
+        self.comments.append(body)
+
+
+class FakeRepo:
+    def __init__(self, issue=None, raises=None):
+        self._issue = issue
+        self._raises = raises
+        self.get_issue_calls = []
+
+    def get_issue(self, number):
+        self.get_issue_calls.append(number)
+        if self._raises:
+            raise self._raises
+        return self._issue
+
+
+def _report_commenting(result, repo, responses=None):
+    """Run the reporter with a fake github repo; nothing here reaches github."""
+    fake_post = FakePost(
+        responses or [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)]
+    )
+    get_ray_repo = MagicMock(return_value=repo)
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
+            get_ray_repo,
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(_test_with_issue(), result)
+    return get_ray_repo
+
+
+def _test_with_issue(issue_number="123"):
+    test = Test({"name": "test_name"})
+    if issue_number is not None:
+        test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
+    return test
+
+
+def test_comments_on_an_open_issue():
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+    result = _result(ResultStatus.ERROR.value)
+    result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1"
+
+    _report_commenting(result, repo)
+
+    assert len(issue.comments) == 1
+    body = issue.comments[0]
+    assert SUMMARY in body
+    assert SLACK_THREAD in body
+    assert result.buildkite_url in body
+    assert "test_name" in body
+
+
+def test_does_not_comment_on_a_closed_issue():
+    issue = FakeIssue(state="closed")
+    repo = FakeRepo(issue=issue)
+
+    _report_commenting(_result(ResultStatus.ERROR.value), repo)
+
+    assert issue.comments == []
+
+
+def test_does_not_reach_github_without_a_tracked_issue():
+    """Building the repo handle costs an AWS secret fetch; skip it entirely."""
+    get_ray_repo = MagicMock()
+    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
+            get_ray_repo,
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test(), _result(ResultStatus.ERROR.value)
+        )
+
+    get_ray_repo.assert_not_called()
+
+
+def test_a_github_failure_does_not_propagate(caplog):
+    repo = FakeRepo(raises=RuntimeError("github is down"))
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report_commenting(_result(ResultStatus.ERROR.value), repo)
+
+    assert "Could not comment the observability agent analysis" in caplog.text
+
+
+def test_the_comment_names_the_missing_summary():
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+    query_response = {"result": {"analysis": {}, "metadata": {}}}
+
+    _report_commenting(
+        _result(ResultStatus.ERROR.value),
+        repo,
+        responses=[FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+    )
+
+    assert "returned no summary" in issue.comments[0]
 
 
 if __name__ == "__main__":
