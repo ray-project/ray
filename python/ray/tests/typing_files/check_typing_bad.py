@@ -1,4 +1,5 @@
 import ray
+from ray.types import ObjectRef as PublicObjectRef
 
 ray.init()
 
@@ -26,6 +27,7 @@ d = f.remote(1) + 1
 
 # Check return type
 ref_to_str = f.remote(1)
+wrong_public_object_ref: PublicObjectRef[int] = ref_to_str  # Fail
 unwrapped_str = ray.get(ref_to_str)
 unwrapped_str + 100  # Fail
 
