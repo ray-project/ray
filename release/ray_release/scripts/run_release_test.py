@@ -131,7 +131,7 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
 
-    # Set for the nightly master runs only, in
+    # Set for the automatic master runs only, in
     # .buildkite/release/custom-image-build-and-test-init.sh: the agent costs a
     # debug session and a minute or two per failure. Compared against "1" rather
     # than tested for truthiness, so that setting it to 0 turns the agent off,
