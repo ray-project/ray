@@ -587,10 +587,11 @@ def _backfill_missing_fields(
             # If the field is missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
 
-    # Reconstruct the struct column with aligned fields
+    # Preserve parent nulls independently of the aligned child values.
     return pa.StructArray.from_arrays(
         aligned_fields,
         fields=unified_struct_type,
+        mask=column.is_null(),
     )
 
 

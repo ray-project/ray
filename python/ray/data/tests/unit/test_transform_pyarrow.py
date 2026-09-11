@@ -1571,6 +1571,61 @@ def test_align_struct_fields_simple(simple_struct_blocks, simple_struct_schema):
     ]
 
 
+@pytest.mark.parametrize("chunked", [False, True])
+@pytest.mark.parametrize("promote_field", [False, True])
+def test_arrow_concat_preserves_struct_nulls(chunked, promote_field):
+    struct_type = pa.struct([("a", pa.int64())])
+    # A null parent may have non-null child values in Arrow. They must stay hidden.
+    column = pa.StructArray.from_arrays(
+        [pa.array([99, 42, None, 1])],
+        fields=struct_type,
+        mask=pa.array([False, True, False, False]),
+    ).slice(1)
+    if chunked:
+        column = pa.chunked_array([column.slice(0, 1), column.slice(1)])
+    wider_type = pa.struct(
+        [("a", pa.float64() if promote_field else pa.int64()), ("b", pa.string())]
+    )
+    blocks = [
+        pa.table({"s": column}),
+        pa.table({"s": pa.array([{"a": 2, "b": "x"}], type=wider_type)}),
+    ]
+
+    result = concat(blocks, promote_types=True)
+
+    assert result["s"].type == wider_type
+    assert result["s"].to_pylist() == [
+        None,
+        {"a": None, "b": None},
+        {"a": 1, "b": None},
+        {"a": 2, "b": "x"},
+    ]
+    assert result["s"].is_null().to_pylist() == [True, False, False, False]
+
+
+def test_arrow_concat_preserves_nested_struct_nulls():
+    inner_type = pa.struct([("a", pa.int64())])
+    outer_type = pa.struct([("inner", inner_type)])
+    column = pa.array(
+        [None, {"inner": None}, {"inner": {"a": None}}, {"inner": {"a": 1}}],
+        type=outer_type,
+    )
+    blocks = [
+        pa.table({"s": column}),
+        pa.table({"s": [{"inner": {"a": 2, "b": "x"}}]}),
+    ]
+
+    result = concat(blocks, promote_types=True)
+
+    assert result["s"].to_pylist() == [
+        None,
+        {"inner": None},
+        {"inner": {"a": None, "b": None}},
+        {"inner": {"a": 1, "b": None}},
+        {"inner": {"a": 2, "b": "x"}},
+    ]
+
+
 def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     """Test nested struct field alignment."""
     t1, t2 = nested_struct_blocks
