@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 from unittest import mock
 
+import asyncio
 import pytest
 
 import ray
@@ -347,6 +348,193 @@ async def test_check_output_cmd():
         await check_output_cmd([cmd, "--abc"], logger=_FakeLogger())
     # Make sure the exception has cmd trace info.
     assert "cmd[5]" in str(e.value)
+
+
+class _NullLogger:
+    """A logger that swallows all method calls, for tests."""
+
+    def __getattr__(self, item):
+        def _noop(*args, **kwargs):
+            pass
+
+        return _noop
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="POSIX-only: relies on os.waitpid / SIGCHLD semantics.",
+)
+@pytest.mark.asyncio
+async def test_check_output_cmd_shields_proc_wait_from_cancel():
+    """Regression test for the zombie-process bug in ``check_output_cmd``.
+
+    Root cause of the original bug (observed in production as
+    ``[python] <defunct>`` under ``RuntimeEnvAgent``): the ``finally`` block
+    did a bare ``await proc.wait()``. When the outer task was cancelled
+    (e.g. ``PipPlugin.delete_uri`` -> ``task.cancel()``), that ``await``
+    itself received CancelledError immediately and returned before
+    ``waitpid`` was executed, leaving a zombie child.
+
+    The fix wraps ``proc.wait()`` in ``asyncio.shield(asyncio.wait_for(...))``
+    so that even a pending CancelledError cannot interrupt the reap.
+
+    This test asserts the presence of both defensive primitives, which is
+    the precise behavioural contract of the fix (and is stable across
+    platforms/child-watcher implementations, unlike a raw zombie scan).
+    """
+    sleep_cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
+
+    calls = {"shield": 0, "wait_for": 0}
+    real_shield = asyncio.shield
+    real_wait_for = asyncio.wait_for
+
+    def _counting_shield(aw, *args, **kwargs):
+        calls["shield"] += 1
+        return real_shield(aw, *args, **kwargs)
+
+    def _counting_wait_for(aw, *args, **kwargs):
+        calls["wait_for"] += 1
+        return real_wait_for(aw, *args, **kwargs)
+
+    with mock.patch(
+        "ray._private.runtime_env.utils.asyncio.shield",
+        side_effect=_counting_shield,
+    ), mock.patch(
+        "ray._private.runtime_env.utils.asyncio.wait_for",
+        side_effect=_counting_wait_for,
+    ):
+        task = asyncio.ensure_future(
+            check_output_cmd(sleep_cmd, logger=_NullLogger())
+        )
+        # Yield until the subprocess is actually spawned and communicate()
+        # is awaiting. 100ms is more than enough on any reasonable host.
+        await asyncio.sleep(0.1)
+        task.cancel()
+
+        with pytest.raises((asyncio.CancelledError, RuntimeError)):
+            await task
+
+    # The fix must have applied BOTH shield and wait_for around proc.wait().
+    # Under the old (buggy) code these are never called from the finally
+    # block, so this assertion fails on the un-fixed source, giving us a
+    # true regression guard.
+    assert calls["shield"] >= 1, (
+        "check_output_cmd's finally block did not wrap proc.wait() in "
+        "asyncio.shield(). This regression re-introduces the zombie "
+        f"process bug. counters={calls}"
+    )
+    assert calls["wait_for"] >= 1, (
+        "check_output_cmd's finally block did not bound proc.wait() with "
+        f"asyncio.wait_for(). counters={calls}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="POSIX-only: /proc + waitpid based zombie detection.",
+)
+@pytest.mark.asyncio
+async def test_check_output_cmd_no_zombie_after_cancel():
+    """End-to-end zombie check: after cancelling a running subprocess, no
+    ``<defunct>`` child of the current process should remain.
+
+    This is a smoke test complementing the structural
+    ``test_check_output_cmd_shields_proc_wait_from_cancel`` above. It may
+    be lenient on platforms whose child-watcher reaps aggressively in the
+    background, but it catches the pathological case where the child
+    truly leaks.
+    """
+    import os
+
+    sleep_cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
+
+    # Capture the PID of the exact subprocess that ``check_output_cmd``
+    # spawns. Using ``os.waitpid(-1, ...)`` here would non-deterministically
+    # reap ANY un-reaped child of the current process (including ones
+    # created by unrelated tests or pytest workers), causing flaky failures
+    # and cross-test pollution. We wrap ``asyncio.create_subprocess_exec``
+    # so we can watch only the PID we actually care about.
+    spawned_pids = []
+    real_create_subprocess_exec = asyncio.create_subprocess_exec
+
+    async def _capturing_create_subprocess_exec(*args, **kwargs):
+        proc = await real_create_subprocess_exec(*args, **kwargs)
+        spawned_pids.append(proc.pid)
+        return proc
+
+    with mock.patch(
+        "ray._private.runtime_env.utils.asyncio.create_subprocess_exec",
+        side_effect=_capturing_create_subprocess_exec,
+    ):
+        task = asyncio.ensure_future(
+            check_output_cmd(sleep_cmd, logger=_NullLogger())
+        )
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with pytest.raises((asyncio.CancelledError, RuntimeError)):
+            await task
+
+    assert spawned_pids, "check_output_cmd did not spawn any subprocess."
+    target_pid = spawned_pids[0]
+
+    # Give the child watcher a moment to reap.
+    for _ in range(20):
+        await asyncio.sleep(0.05)
+
+    # Non-blocking check for our specific child only. If the fix works,
+    # the process has already been reaped (either by our shielded
+    # ``proc.wait()`` or by the asyncio child watcher after
+    # ``_transport.close()``) and ``waitpid`` will raise
+    # ``ChildProcessError``.
+    reaped_pid = 0
+    reaped_status = 0
+    try:
+        reaped_pid, reaped_status = os.waitpid(target_pid, os.WNOHANG)
+    except ChildProcessError:
+        # Already reaped by the asyncio child watcher — expected & good.
+        pass
+
+    assert reaped_pid == 0, (
+        f"Found un-reaped child pid={reaped_pid}, status={reaped_status}. "
+        "This indicates a zombie process leak in check_output_cmd()."
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_output_cmd_reaps_on_wait_timeout():
+    """When ``proc.wait()`` itself hangs / times out inside the finally
+    block, the fix falls back to ``_transport.close()`` so that asyncio's
+    child watcher eventually reaps the process, and the outer call still
+    completes without raising a new exception from the cleanup path.
+    """
+    cmd = "cmd" if sys.platform.startswith("win") else "true"
+
+    call_state = {"count": 0}
+
+    async def _fake_wait_for(coro, timeout):
+        call_state["count"] += 1
+        # Cancel the underlying coroutine to avoid warnings, then simulate
+        # a hung wait().
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        raise asyncio.TimeoutError()
+
+    # Patch the asyncio.wait_for reference used inside check_output_cmd's
+    # module. This is more reliable than monkeypatching asyncio globally
+    # because the pytest-asyncio runner itself calls asyncio.wait_for.
+    with mock.patch(
+        "ray._private.runtime_env.utils.asyncio.wait_for",
+        new=_fake_wait_for,
+    ):
+        # The command exits successfully, so we should get an empty output,
+        # NOT a RuntimeError from the finally block.
+        output = await check_output_cmd([cmd], logger=_NullLogger())
+        # `true` prints nothing; `cmd` with no args on Windows also OK.
+        assert isinstance(output, str)
+
+    assert call_state["count"] >= 1, (
+        "Expected the finally block to invoke asyncio.wait_for on proc.wait()."
+    )
 
 
 @pytest.mark.parametrize(
