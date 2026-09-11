@@ -292,8 +292,15 @@ def test_add_partitions_to_table_raises_on_cast_error(
     assert isinstance(exc_info.value.__cause__, expected_cause)
 
 
-def test_add_partitions_to_table_casts_valid_value():
-    table = pyarrow.table({"part": pyarrow.array([1], type=pyarrow.int64())})
+@pytest.mark.parametrize(
+    "column",
+    [
+        pyarrow.array([1], type=pyarrow.int64()),
+        pyarrow.array([], type=pyarrow.int64()),
+    ],
+)
+def test_add_partitions_to_table_casts_valid_value(column):
+    table = pyarrow.table({"part": column})
 
     actual = _add_partitions_to_table(table, {"part": "1"})
 

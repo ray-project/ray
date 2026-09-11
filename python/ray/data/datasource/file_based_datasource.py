@@ -497,16 +497,16 @@ def _add_partitions_to_table(
                 ) from e
             if is_empty:
                 column = column.slice(0, 0)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
-
-            if not values_are_equal:
-                raise ValueError(
-                    f"Partition column {field} exists in table data, but partition "
-                    f"value '{value}' is different from in-data values: "
-                    f"{table[field].unique().to_pylist()}."
-                )
+                if not values_are_equal:
+                    raise ValueError(
+                        f"Partition column {field} exists in table data, but partition "
+                        f"value '{value}' is different from in-data values: "
+                        f"{table[field].unique().to_pylist()}."
+                    )
 
             i = table.schema.get_field_index(field)
             table = table.set_column(i, field, column)
