@@ -253,7 +253,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             return None
 
         try:
-            spec = json.loads(result.stdout)
+            # nvidia-ctk can write more than one JSON document to stdout
+            # (e.g. --feature-flag=enable-coherent-annotations). The full
+            # spec is always written first, so decode only that one.
+            spec = json.JSONDecoder().raw_decode(result.stdout.lstrip())[0]
         except json.JSONDecodeError as e:
             logger.warning(f"nvidia-ctk produced unparseable CDI spec output: {e}")
             return None
