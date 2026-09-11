@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional, Union
 import jinja2
 from pydantic import ValidationError
 from vllm.entrypoints.chat_utils import load_chat_template
-from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.engine.protocol import ErrorResponse
+from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.serve.engine.protocol import ErrorResponse
 from vllm.exceptions import VLLMClientError
 from vllm.renderers import renderer_from_config
 from vllm.renderers.inputs.preprocess import extract_prompt_components
