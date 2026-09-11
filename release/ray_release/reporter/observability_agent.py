@@ -89,6 +89,14 @@ FEEDBACK_REMINDER = (
     ">>> report with the 'All good' or 'Needs correction' buttons in the thread."
 )
 
+# The markdown regions github renders verbatim: fenced code blocks and inline
+# code spans. It neither parses html nor autolinks inside them, so the agent's
+# prose is passed through untouched there -- see _sanitize_summary.
+CODE_REGION = re.compile(
+    r"^(?:```|~~~).*?(?:^(?:```|~~~)[^\n]*$|\Z)|`+[^`]*`+",
+    re.DOTALL | re.MULTILINE,
+)
+
 # Creating a debug session is a quick bookkeeping call, whereas the query runs
 # the actual analysis over the job's metrics and logs.
 CREATE_DEBUG_SESSION_TIMEOUT = 60
@@ -197,9 +205,9 @@ class ObservabilityAgentReporter(Reporter):
                 "\n>>> and its feedback buttons cannot be reached from here."
             )
 
-        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
-        self._comment_on_github_issue(test, result, summary, slack_thread)
-
+        # The analysis is already computed, and writing it is local and free,
+        # so it is done before the two remote side effects below: if github
+        # hangs and the step is killed, the build still has what it paid for.
         analysis_file = self._write_analysis(message)
         if analysis_file:
             logger.info(
@@ -208,6 +216,9 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+        self._comment_on_github_issue(test, result, summary, slack_thread)
 
     def _comment_on_github_issue(
         self,
@@ -228,8 +239,11 @@ class ObservabilityAgentReporter(Reporter):
         # the github bot token from AWS Secrets Manager. Most failing tests have
         # no tracked issue, and they should not pay for that call -- nor carry
         # its failure modes on the critical path of a failed test.
+        # `not`, not `is None`: state_machine.py guards this key the same way,
+        # and an empty number would otherwise reach GitHub as a request for
+        # /issues/ -- paying for the secret fetch this check exists to avoid.
         issue_number = test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
-        if issue_number is None:
+        if not issue_number:
             logger.info(
                 f"Skip commenting the observability agent analysis for test "
                 f"{test.get_name()}; no github issue is tracked for it"
@@ -241,7 +255,9 @@ class ObservabilityAgentReporter(Reporter):
             if not test.has_open_github_issue(ray_repo):
                 logger.info(
                     f"Skip commenting the observability agent analysis for test "
-                    f"{test.get_name()}; issue {issue_number} is not open"
+                    f"{test.get_name()}; no open github issue is known for it. "
+                    f"Issue {issue_number} is closed, or github could not be "
+                    f"reached -- a warning above says which"
                 )
                 return
 
@@ -263,20 +279,54 @@ class ObservabilityAgentReporter(Reporter):
         )
 
     @staticmethod
-    def _neutralize_github_refs(text: str) -> str:
-        """Stop the agent's prose from mentioning people or linking issues.
+    def _sanitize_summary(summary: str) -> str:
+        """Make the agent's prose safe to interpolate into a github comment.
 
-        A github comment renders markdown, so an `@name` in the summary
-        notifies a real person and a `#123` posts a backlink on that issue.
-        The summary is free-form text from the agent, so neither is
-        intentional. An empty html comment breaks the autolink and renders as
-        nothing, leaving the text looking exactly as written.
+        The body renders as markdown and the summary is free-form text from
+        the agent, so three things in it are side effects rather than
+        intentions: an `@name` notifies a real person, a `#123` posts a
+        backlink on that issue, and anything github reads as an html tag --
+        `<lambda>` and `<module>` are routine in a traceback -- is dropped by
+        its sanitizer before the reader sees it. So escape the markup, as the
+        buildkite annotation does, and break the two autolinks with an empty
+        html comment. All of it renders as nothing, leaving the text reading
+        exactly as the agent wrote it.
 
-        `#` is only neutralized before a digit, so that url fragments and
-        headings in the prose survive.
+        `#` is only broken before a digit, so url fragments survive. Code
+        spans and fenced blocks are left alone entirely: github autolinks
+        neither and renders neither as html, and rewriting inside one would
+        show the escapes and the comment marker literally in a quoted log
+        line.
         """
-        text = text.replace("@", "@<!---->")
-        return re.sub(r"#(?=\d)", "#<!---->", text)
+
+        def defuse(text: str) -> str:
+            # Escaping first, so that the markers inserted after it survive.
+            text = html.escape(text, quote=False)
+            text = text.replace("@", "@<!---->")
+            return re.sub(r"#(?=\d)", "#<!---->", text)
+
+        parts = []
+        position = 0
+        for code in CODE_REGION.finditer(summary):
+            parts.append(defuse(summary[position : code.start()]))
+            parts.append(code.group(0))
+            position = code.end()
+        parts.append(defuse(summary[position:]))
+        return "".join(parts)
+
+    @staticmethod
+    def _markdown_link(text: str, url: str) -> str:
+        """Render a link to a url that came out of the agent's response.
+
+        Only a plain http url becomes a link, in the `<...>` destination form:
+        anything else could close the link early and leave the rest of itself
+        to be read as markdown of its own, in a comment written by the CI bot.
+        A url that does not qualify is shown as code, which renders whatever
+        it holds and links none of it.
+        """
+        if re.fullmatch(r"https?://[^\s<>()\[\]`]+", url):
+            return f"[{text}](<{url}>)"
+        return f"{text}: `{url.replace('`', '')}`"
 
     def _issue_comment(
         self,
@@ -290,7 +340,7 @@ class ObservabilityAgentReporter(Reporter):
             "The observability agent looked at the latest failure of "
             f"`{test.get_name()}`.",
             "",
-            self._neutralize_github_refs(summary)
+            self._sanitize_summary(summary)
             if summary
             else "The agent returned no summary for this job.",
         ]
@@ -300,9 +350,10 @@ class ObservabilityAgentReporter(Reporter):
             lines += [
                 "",
                 f"The full report, with the evidence and next steps behind the "
-                f"summary, is in [this slack thread]({slack_thread}). The agent is "
-                "under active development; please rate the report there with the "
-                "'All good' or 'Needs correction' buttons.",
+                f"summary, is in "
+                f"{self._markdown_link('this slack thread', slack_thread)}. The "
+                "agent is under active development; please rate the report there "
+                "with the 'All good' or 'Needs correction' buttons.",
             ]
         return "\n".join(lines)
 

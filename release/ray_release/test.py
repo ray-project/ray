@@ -364,7 +364,7 @@ class Test(dict):
         from ray_release.github_client import GitHubException
 
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
-        if issue_number is None:
+        if not issue_number:
             return False
         try:
             issue = ray_github.get_issue(issue_number)

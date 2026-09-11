@@ -109,7 +109,16 @@ def _report(
     responses: List[FakeResponse],
     skip_command_failures: bool = False,
     analysis_file: Optional[str] = None,
+    test: Optional[Test] = None,
+    repo: Optional["FakeRepo"] = None,
+    get_ray_repo: Optional[MagicMock] = None,
 ) -> FakePost:
+    """Run the reporter against fakes; no call here leaves the process.
+
+    `repo` is the github repo the reporter is handed, and `get_ray_repo` the
+    mock that hands it over, for the tests that care whether it was asked for
+    at all -- it fetches a secret from AWS on its first call.
+    """
     fake_post = FakePost(responses)
     env = {
         "ANYSCALE_HOST": "https://console.anyscale-staging.com",
@@ -131,8 +140,12 @@ def _report(
             "ray_release.reporter.observability_agent.SKIP_COMMAND_FAILURES",
             skip_command_failures,
         ),
+        patch(
+            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
+            get_ray_repo or MagicMock(return_value=repo),
+        ),
     ):
-        ObservabilityAgentReporter().report_result(_test(), result)
+        ObservabilityAgentReporter().report_result(test or _test(), result)
     return fake_post
 
 
@@ -696,36 +709,29 @@ class FakeRepo:
         return self._issue
 
 
-def _report_commenting(result, repo, responses=None):
-    """Run the reporter with a fake github repo; nothing here reaches github."""
-    fake_post = FakePost(
-        responses or [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)]
-    )
-    get_ray_repo = MagicMock(return_value=repo)
-    with (
-        patch.dict(
-            os.environ,
-            {
-                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
-                "ANYSCALE_CLI_TOKEN": "test_token",
-            },
-            clear=True,
-        ),
-        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
-        patch(
-            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
-            get_ray_repo,
-        ),
-    ):
-        ObservabilityAgentReporter().report_result(_test_with_issue(), result)
-    return get_ray_repo
-
-
-def _test_with_issue(issue_number="123"):
+def _test_with_issue(issue_number: Optional[str] = "123") -> Test:
     test = Test({"name": "test_name"})
     if issue_number is not None:
         test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
     return test
+
+
+def _comment_on(repo: FakeRepo, summary: str = SUMMARY, **kwargs) -> str:
+    """Report a failure of a test with an open issue; return the comment body."""
+    query_response = {
+        "result": {
+            "analysis": {"summary": summary},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        test=_test_with_issue(),
+        repo=repo,
+        **kwargs,
+    )
+    return repo._issue.comments[0]
 
 
 def test_comments_on_an_open_issue():
@@ -734,7 +740,12 @@ def test_comments_on_an_open_issue():
     result = _result(ResultStatus.ERROR.value)
     result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1"
 
-    _report_commenting(result, repo)
+    _report(
+        result,
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        test=_test_with_issue(),
+        repo=repo,
+    )
 
     assert len(issue.comments) == 1
     body = issue.comments[0]
@@ -748,33 +759,27 @@ def test_does_not_comment_on_a_closed_issue():
     issue = FakeIssue(state="closed")
     repo = FakeRepo(issue=issue)
 
-    _report_commenting(_result(ResultStatus.ERROR.value), repo)
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        test=_test_with_issue(),
+        repo=repo,
+    )
 
     assert issue.comments == []
 
 
-def test_does_not_reach_github_without_a_tracked_issue():
+@pytest.mark.parametrize("issue_number", [None, "", 0])
+def test_does_not_reach_github_without_a_tracked_issue(issue_number):
     """Building the repo handle costs an AWS secret fetch; skip it entirely."""
     get_ray_repo = MagicMock()
-    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
-    with (
-        patch.dict(
-            os.environ,
-            {
-                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
-                "ANYSCALE_CLI_TOKEN": "test_token",
-            },
-            clear=True,
-        ),
-        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
-        patch(
-            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
-            get_ray_repo,
-        ),
-    ):
-        ObservabilityAgentReporter().report_result(
-            _test(), _result(ResultStatus.ERROR.value)
-        )
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        test=_test_with_issue(issue_number),
+        get_ray_repo=get_ray_repo,
+    )
 
     get_ray_repo.assert_not_called()
 
@@ -783,7 +788,12 @@ def test_a_github_failure_does_not_propagate(caplog):
     repo = FakeRepo(raises=RuntimeError("github is down"))
 
     with caplog.at_level("ERROR", logger=logger.name):
-        _report_commenting(_result(ResultStatus.ERROR.value), repo)
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            test=_test_with_issue(),
+            repo=repo,
+        )
 
     assert "Could not comment the observability agent analysis" in caplog.text
 
@@ -793,10 +803,11 @@ def test_the_comment_names_the_missing_summary():
     repo = FakeRepo(issue=issue)
     query_response = {"result": {"analysis": {}, "metadata": {}}}
 
-    _report_commenting(
+    _report(
         _result(ResultStatus.ERROR.value),
-        repo,
-        responses=[FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        test=_test_with_issue(),
+        repo=repo,
     )
 
     assert "returned no summary" in issue.comments[0]
@@ -806,20 +817,25 @@ def test_the_comment_cannot_mention_people_or_link_issues():
     """The summary is the agent's prose; a mention would notify a real person."""
     issue = FakeIssue(state="open")
     repo = FakeRepo(issue=issue)
-    query_response = {
-        "result": {
-            "analysis": {"summary": "see #1234, raised by @someone"},
-            "metadata": {"slack_thread": SLACK_THREAD},
-        }
-    }
-
     result = _result(ResultStatus.ERROR.value)
     # A url fragment of our own, to show only the agent's prose is touched.
     result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1#job"
-    _report_commenting(
+
+    _report(
         result,
-        repo,
-        responses=[FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        [
+            FakeResponse(CREATE_RESPONSE),
+            FakeResponse(
+                {
+                    "result": {
+                        "analysis": {"summary": "see #1234, raised by @someone"},
+                        "metadata": {"slack_thread": SLACK_THREAD},
+                    }
+                }
+            ),
+        ],
+        test=_test_with_issue(),
+        repo=repo,
     )
 
     body = issue.comments[0]
@@ -830,6 +846,68 @@ def test_the_comment_cannot_mention_people_or_link_issues():
     assert "#1234" not in body
     # Our own text is untouched: the buildkite url keeps its fragment.
     assert "builds/1#job" in body
+
+
+def test_the_comment_escapes_what_the_agent_sent():
+    """Unescaped, github's sanitizer drops <lambda> and the reader never sees it."""
+    issue = FakeIssue(state="open")
+
+    body = _comment_on(
+        FakeRepo(issue=issue),
+        summary="failed inside <lambda> in <module> & exited",
+    )
+
+    assert "&lt;lambda&gt; in &lt;module&gt; &amp; exited" in body
+    assert "<lambda>" not in body
+
+
+def test_the_comment_leaves_the_agents_code_spans_alone():
+    """Github renders code verbatim, so rewriting inside one corrupts it."""
+    issue = FakeIssue(state="open")
+
+    body = _comment_on(
+        FakeRepo(issue=issue),
+        summary="the actor `TrainWorker@10.0.1.5` died:\n```\nraise <lambda> #1\n```",
+    )
+
+    assert "`TrainWorker@10.0.1.5`" in body
+    assert "raise <lambda> #1" in body
+
+
+def test_the_slack_link_target_cannot_escape_the_link():
+    """The thread url is another value the agent's response decides."""
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [
+            FakeResponse(CREATE_RESPONSE),
+            FakeResponse(
+                {
+                    "result": {
+                        "analysis": {"summary": SUMMARY},
+                        "metadata": {"slack_thread": "https://slack/p1) [x](evil)"},
+                    }
+                }
+            ),
+        ],
+        test=_test_with_issue(),
+        repo=repo,
+    )
+
+    body = issue.comments[0]
+    # A url that cannot be a link destination is shown as code, not linked.
+    assert "[this slack thread](" not in body
+    assert "this slack thread: `https://slack/p1) [x](evil)`" in body
+
+
+def test_the_slack_link_uses_a_bounded_destination():
+    issue = FakeIssue(state="open")
+
+    body = _comment_on(FakeRepo(issue=issue))
+
+    assert f"[this slack thread](<{SLACK_THREAD}>)" in body
 
 
 if __name__ == "__main__":
