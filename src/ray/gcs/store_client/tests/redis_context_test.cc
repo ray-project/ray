@@ -23,7 +23,10 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -33,6 +36,44 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/redis_tcp_keepalive.h"
 #include "ray/util/clock.h"
+
+#ifdef __linux__
+namespace {
+
+// Only this test binary wraps setsockopt. The override is scoped to the thread
+// calling Connect; unrelated options and calls outside that scope reach libc.
+thread_local const std::function<bool(int, int, int)> *setsockopt_failure = nullptr;
+
+class ScopedSetsockoptFailure {
+ public:
+  explicit ScopedSetsockoptFailure(std::function<bool(int, int, int)> failure)
+      : failure_(std::move(failure)),
+        previous_(std::exchange(setsockopt_failure, &failure_)) {}
+
+  ~ScopedSetsockoptFailure() { setsockopt_failure = previous_; }
+
+  ScopedSetsockoptFailure(const ScopedSetsockoptFailure &) = delete;
+  ScopedSetsockoptFailure &operator=(const ScopedSetsockoptFailure &) = delete;
+
+ private:
+  const std::function<bool(int, int, int)> failure_;
+  const std::function<bool(int, int, int)> *previous_;
+};
+
+}  // namespace
+
+extern "C" int __real_setsockopt(
+    int fd, int level, int option, const void *value, socklen_t length);
+
+extern "C" int __wrap_setsockopt(
+    int fd, int level, int option, const void *value, socklen_t length) {
+  if (setsockopt_failure != nullptr && (*setsockopt_failure)(fd, level, option)) {
+    errno = EPERM;
+    return -1;
+  }
+  return __real_setsockopt(fd, level, option, value, length);
+}
+#endif
 
 namespace ray {
 namespace gcs {
@@ -323,6 +364,118 @@ TEST_F(RedisContextKeepaliveTest, EnableFailureStopsBeforeTuning) {
     EXPECT_EQ(raw->err, 0);
   }
 }
+
+#if defined(__linux__) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && \
+    defined(TCP_KEEPCNT)
+class RedisContextKeepaliveConnectFailureTest
+    : public RedisContextKeepaliveTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(RedisContextKeepaliveConnectFailureTest, TuningFailureAllowsConnectAndCommands) {
+  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = 7;
+  RayConfig::instance().redis_tcp_keepalive_probes() = 4;
+  RayConfig::instance().redis_db_connect_retries() = 3;
+  RayConfig::instance().redis_db_connect_wait_milliseconds() = 0;
+  instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                     /*running_on_single_thread=*/true};
+  Clock clock;
+  RedisContext context(io_service, clock);
+
+  const std::map<int, int> timing_options = {
+      {TCP_KEEPIDLE, 7}, {TCP_KEEPINTVL, 7}, {TCP_KEEPCNT, 4}};
+  std::map<std::pair<int, int>, int> rejected_values;
+  std::vector<int> configured_fds;
+  size_t timing_calls = 0;
+  Status status;
+  {
+    ScopedSetsockoptFailure failure([&](int fd, int level, int option) {
+      if (level == SOL_SOCKET && option == SO_KEEPALIVE) {
+        configured_fds.push_back(fd);
+      }
+      if (level == IPPROTO_TCP && timing_options.count(option) != 0) {
+        ++timing_calls;
+        if (GetParam() == -1 || option == GetParam()) {
+          rejected_values[{fd, option}] = GetIntSockOpt(fd, level, option);
+          return true;
+        }
+      }
+      return false;
+    });
+    status = ConnectToLocalRedis(context);
+  }
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  const std::vector<int> fds = {context.sync_context()->fd,
+                                context.async_context().GetRawRedisAsyncContext()->c.fd};
+  EXPECT_EQ(configured_fds, fds);
+  EXPECT_EQ(timing_calls, fds.size() * timing_options.size());
+  ASSERT_EQ(rejected_values.size(),
+            fds.size() * (GetParam() == -1 ? timing_options.size() : 1));
+  for (const int fd : fds) {
+    EXPECT_EQ(GetIntSockOpt(fd, SOL_SOCKET, SO_KEEPALIVE), 1);
+    for (const auto &[option, requested] : timing_options) {
+      const auto rejected = rejected_values.find({fd, option});
+      const int expected =
+          rejected == rejected_values.end() ? requested : rejected->second;
+      EXPECT_EQ(GetIntSockOpt(fd, IPPROTO_TCP, option), expected);
+    }
+  }
+  EXPECT_EQ(context.sync_context()->err, 0);
+  EXPECT_EQ(context.async_context().GetRawRedisAsyncContext()->c.err, 0);
+  CheckCommands(context);
+}
+
+INSTANTIATE_TEST_SUITE_P(RejectedOptions,
+                         RedisContextKeepaliveConnectFailureTest,
+                         ::testing::Values(TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT, -1));
+
+class RedisContextKeepaliveEnableFailureTest
+    : public RedisContextKeepaliveTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(RedisContextKeepaliveEnableFailureTest, EnableFailureDoesNotRetryAndCleansUp) {
+  const bool fail_async = GetParam();
+  RayConfig::instance().redis_tcp_keepalive_interval_seconds() = 7;
+  RayConfig::instance().redis_tcp_keepalive_probes() = 4;
+  RayConfig::instance().redis_db_connect_retries() = 3;
+  RayConfig::instance().redis_db_connect_wait_milliseconds() = 0;
+  instrumented_io_context io_service{/*enable_lag_probe=*/false,
+                                     /*running_on_single_thread=*/true};
+  Clock clock;
+  RedisContext context(io_service, clock);
+
+  int enable_calls = 0;
+  int timing_calls = 0;
+  Status status;
+  {
+    ScopedSetsockoptFailure failure([&](int, int level, int option) {
+      if (level == SOL_SOCKET && option == SO_KEEPALIVE) {
+        ++enable_calls;
+        // Let the sync context connect when exercising async setup failure.
+        return !fail_async || enable_calls > 1;
+      }
+      if (level == IPPROTO_TCP &&
+          (option == TCP_KEEPIDLE || option == TCP_KEEPINTVL || option == TCP_KEEPCNT)) {
+        ++timing_calls;
+      }
+      return false;
+    });
+    status = ConnectToLocalRedis(context);
+  }
+  EXPECT_TRUE(status.IsIOError()) << status.ToString();
+  // Count calls with a nonzero retry budget instead of relying on elapsed time.
+  EXPECT_EQ(enable_calls, fail_async ? 2 : 1);
+  EXPECT_EQ(timing_calls, fail_async ? 3 : 0);
+
+  // The same object must be reusable after either partial setup failure.
+  ASSERT_TRUE(ConnectToLocalRedis(context).ok());
+  CheckCommands(context);
+}
+
+INSTANTIATE_TEST_SUITE_P(SyncAndAsync,
+                         RedisContextKeepaliveEnableFailureTest,
+                         ::testing::Bool());
+#endif
 
 // Regression guard for the escape hatch: interval 0 must leave the sockets
 // exactly as they were before this feature existed.
