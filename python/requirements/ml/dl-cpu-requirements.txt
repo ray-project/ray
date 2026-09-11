@@ -14,12 +14,12 @@ tf-keras==2.20.0
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
 --extra-index-url https://wheels.astral.sh/simple/cpu/  # for CPU builds of torch-scatter
---find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html  # for CPU builds of torch-sparse
+--find-links https://data.pyg.org/whl/torch-2.10.0+cpu.html  # for CPU builds of torch-sparse
 
-torch==2.9.0
+torch==2.10.0
 torchmetrics==0.10.3
 torchtext==0.18.0
-torchvision==0.24.0
+torchvision==0.25.0
 # xgboost pulls nvidia-nccl-cu12 transitively even in CPU context. Align the
 # pin with what cu128 torch requires so the compiled lock doesn't clash with
 # GPU depsets that consume it as a constraint.
@@ -37,8 +37,8 @@ nvidia-nccl-cu12==2.27.5; platform_system == 'Linux' and platform_machine != 'aa
 # and nothing on Windows or macOS uses PyG, so both are skipped off Linux.
 # torch-cluster and torch-spline-conv are not referenced anywhere in Ray and
 # torch-geometric>=2.3 treats them as optional, so they are dropped.
-torch-scatter==2.1.2+cpu.torch.2.9; sys_platform == 'linux'
-torch-sparse==0.6.18+pt29cpu; sys_platform == 'linux'
+torch-scatter==2.1.2+cpu.torch.2.10; sys_platform == 'linux'
+torch-sparse==0.6.18+pt210cpu; sys_platform == 'linux'
 torch-geometric==2.5.3
 
 cupy-cuda12x==13.6.0; sys_platform != 'darwin'
