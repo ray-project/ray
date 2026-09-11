@@ -1,6 +1,7 @@
 [project]
 requires-python = ">=3.10"
 
+
 [tool.mypy]
 # No global settings here: flags come from the pre-commit hook invocations.
 # This table must exist for the per-module overrides below to be read.
