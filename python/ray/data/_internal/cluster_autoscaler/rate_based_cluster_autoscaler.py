@@ -594,7 +594,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS_S} seconds."
+                f" {self._autoscaling_request_expire_time_s} seconds."
             )
             logger.warning(msg, exc_info=True)
 
