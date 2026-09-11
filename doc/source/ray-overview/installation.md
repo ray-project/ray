@@ -182,18 +182,6 @@ There are minor variations to the format of the wheel filename; it's best to mat
 * For MacOS x86_64, commits predating August 7, 2021 will have `macosx_10_13` in the filename instead of `macosx_10_15`.
 * For MacOS x86_64, commits predating June 1, 2025 will have `macosx_10_15` in the filename instead of `macosx_12_0`.
 
-(apple-silicon-support)=
-
-## M1 Mac (Apple Silicon) Support
-
-Ray supports machines running Apple Silicon (such as M1 macs). Multi-node clusters are untested. To get started with local Ray development:
-
-Install Ray the same way as described above, for example:
-
-```shell
-pip install -U "ray[default]"
-```
-
 (windows-support)=
 
 ## Windows Support
