@@ -195,6 +195,10 @@ class SandboxConfig:
             raise ValueError(
                 f"gpu_ids must contain only non-empty strings, got {self.gpu_ids!r}."
             )
+        if len(set(self.gpu_ids)) != len(self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must not contain duplicates, got {self.gpu_ids!r}."
+            )
 
         assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
         if not assigned_gpu_ids:
