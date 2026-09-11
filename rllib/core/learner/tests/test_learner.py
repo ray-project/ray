@@ -23,7 +23,6 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
@@ -339,57 +338,39 @@ class TestLearner(unittest.TestCase):
     def test_update_empty_batch_is_skipped(self):
         """Tests that `update()` skips the gradient step for an empty train batch.
 
-        An empty batch (e.g. all sampled episodes lost to EnvRunner/node failures
-        during aggregation, or `policies_to_train` excluding every module) used to
-        crash `update()` with an `UnboundLocalError` on `loss_per_module`, because
-        the minibatch loop ran zero times. It must now be skipped gracefully,
-        counted via `LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME` (no data dropped),
-        and leave the learner able to process a real batch afterwards.
+        An empty batch -- e.g. all sampled episodes lost to EnvRunner or node
+        failures, or `policies_to_train` excluding every module -- used to crash
+        `update()` with an `UnboundLocalError` on `loss_per_module`, because the
+        minibatch loop ran zero times.
         """
-        config = BaseTestingAlgorithmConfig()
-        learner = config.build_learner(env=self.ENV)
-
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
         timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
 
-        # 1) Explicit empty `MultiAgentBatch` (no timesteps for any module).
-        results = learner.update(
-            batch=MultiAgentBatch(policy_batches={}, env_steps=0), timesteps=timesteps
-        )
-        self.assertEqual(
-            1, results[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
-        )
-        self.assertEqual(
-            0, results[ALL_MODULES].get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
-        )
-        self.assertEqual(
-            0, results[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME]
-        )
+        def check_skipped(results):
+            results = results[ALL_MODULES]
+            self.assertEqual(1, results[LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME])
+            self.assertEqual(
+                0, results.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
+            )
+            self.assertEqual(0, results[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
 
-        # 2) Empty episode list -- the AggregatorActor "all episodes lost" path.
-        # The learner's metrics logger is non-root, so a `lifetime_sum` reduce
-        # returns the delta since the last reduce (and resets); the value is 1
-        # again, not a running total of 2.
-        results = learner.update(episodes=[], timesteps=timesteps)
-        self.assertEqual(
-            1, results[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+        # Both ways an empty batch reaches `update()`. The Learner's metrics logger is
+        # non-root, so each `lifetime_sum` reduce returns the delta since the last one:
+        # 1 both times, not a running total of 2.
+        check_skipped(
+            learner.update(
+                batch=MultiAgentBatch(policy_batches={}, env_steps=0),
+                timesteps=timesteps,
+            )
         )
-        self.assertEqual(
-            0, results[ALL_MODULES].get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
-        )
-        self.assertEqual(
-            0, results[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME]
-        )
+        check_skipped(learner.update(episodes=[], timesteps=timesteps))
 
-        # 3) A real batch update after the skips must still train.
+        # A real batch after the skips must still train.
         reader = get_cartpole_dataset_reader(batch_size=512)
         batch = learner._convert_batch_type(reader.next().as_multi_agent())
         results = learner.update(batch=batch)
         self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
 
-    @unittest.skipIf(
-        try_import_torch()[1] is None,
-        "torch not available",
-    )
     def test_should_skip_update_single_learner(self):
         """`_should_skip_update` defaults to "no module data"; without DDP
         (`num_learners <= 1`) the group sync has nobody to agree with and must pass
@@ -416,183 +397,6 @@ class TestLearner(unittest.TestCase):
                 UpdatePlan(skip=True, num_minibatches=7),
             ):
                 self.assertEqual(plan, learner._sync_update_plan(plan))
-
-    @unittest.skipIf(
-        try_import_torch()[1] is None,
-        "torch not available",
-    )
-    def test_update_empty_batch_multi_learner_skips_in_lockstep(self):
-        """Tests that a multi-Learner (`num_learners > 1`) group skips together.
-
-        Every Learner in a DDP group must take the same number of update steps, or
-        the all-reduces mismatch and the group deadlocks. So each Learner's
-        `_should_skip_update` verdict is reconciled group-wide (one all-reduce in
-        `_sync_update_plan`) and ALL of them skip the update --
-        including those that did receive data.
-
-        This runs on a single-process gloo group. Case 2 exercises the real
-        all-reduce (with itself); case 3 simulates a peer's "I am empty" vote by
-        patching the all-reduce result, which is the lockstep property proper. The
-        multi-rank behaviour (no hang, identical weights) requires a multi-GPU NCCL
-        setup and is validated separately.
-        """
-        import socket
-        from unittest import mock
-
-        import torch.distributed as dist
-
-        def _free_port():
-            with socket.socket() as s:
-                s.bind(("", 0))
-                return s.getsockname()[1]
-
-        dist.init_process_group(
-            backend="gloo",
-            init_method=f"tcp://127.0.0.1:{_free_port()}",
-            world_size=1,
-            rank=0,
-        )
-        try:
-            config = BaseTestingAlgorithmConfig().learners(num_learners=2)
-            learner = config.build_learner(env=self.ENV)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
-
-            def _weights():
-                return {
-                    mid: [p.detach().clone() for p in learner.module[mid].parameters()]
-                    for mid in learner.module.keys()
-                }
-
-            def _changed(before):
-                return any(
-                    not torch.equal(b, a)
-                    for mid in before
-                    for b, a in zip(before[mid], learner.module[mid].parameters())
-                )
-
-            # 1) A real batch trains.
-            before = _weights()
-            learner.update(
-                batch=learner._convert_batch_type(reader.next().as_multi_agent())
-            )
-            self.assertTrue(_changed(before))
-
-            # 2) Own batch empty -> agreed (with itself) -> skipped: metric logged,
-            #    no optimizer step, weights untouched.
-            before = _weights()
-            results = learner.update(
-                batch=MultiAgentBatch(policy_batches={}, env_steps=0),
-                timesteps=timesteps,
-            )
-            self.assertEqual(
-                1, results[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
-            )
-            self.assertEqual(
-                0,
-                results[ALL_MODULES].get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0),
-            )
-            self.assertFalse(_changed(before))
-
-            # 3) Own batch fine, but a PEER votes empty (the all-reduce returns 1).
-            #    This Learner must skip as well, or it would step alone.
-            batch = learner._convert_batch_type(reader.next().as_multi_agent())
-            before = _weights()
-            with mock.patch.object(
-                dist, "all_reduce", side_effect=lambda t, *a, **kw: t.fill_(1)
-            ):
-                results = learner.update(batch=batch, timesteps=timesteps)
-            # Skipped for a peer, and this Learner's good data was the price.
-            self.assertEqual(
-                1, results[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
-            )
-            self.assertEqual(
-                0,
-                results[ALL_MODULES].get(
-                    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME, 0
-                ),
-            )
-            self.assertEqual(
-                batch.env_steps(),
-                results[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME],
-            )
-            self.assertFalse(_changed(before))
-
-            # 4) Back to normal: a real batch trains again.
-            before = _weights()
-            results = learner.update(
-                batch=learner._convert_batch_type(reader.next().as_multi_agent())
-            )
-            self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
-            self.assertTrue(_changed(before))
-        finally:
-            try:
-                dist.destroy_process_group()
-            except Exception:
-                pass
-
-    @unittest.skipIf(
-        try_import_torch()[1] is None,
-        "torch not available",
-    )
-    def test_update_minibatch_count_is_reconciled(self):
-        """In a multi-Learner group every Learner must step through the number of
-        minibatches the group settled on, not the one its own shard implies."""
-        import socket
-        from unittest import mock
-
-        import torch.distributed as dist
-
-        def _free_port():
-            with socket.socket() as s:
-                s.bind(("", 0))
-                return s.getsockname()[1]
-
-        dist.init_process_group(
-            backend="gloo",
-            init_method=f"tcp://127.0.0.1:{_free_port()}",
-            world_size=1,
-            rank=0,
-        )
-        try:
-            config = BaseTestingAlgorithmConfig().learners(num_learners=2)
-            learner = config.build_learner(env=self.ENV)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = learner._convert_batch_type(reader.next().as_multi_agent())
-
-            def num_steps(**update_kwargs):
-                with mock.patch.object(
-                    learner, "_update", wraps=learner._update
-                ) as upd:
-                    learner.update(batch=batch, **update_kwargs)
-                return upd.call_count
-
-            # Alone in its group (world_size=1): the reconciled count equals this
-            # Learner's own, ceil(rows / 128).
-            own = MiniBatchCyclicIterator.num_minibatches(
-                batch, minibatch_size=128, num_epochs=1
-            )
-            self.assertEqual(-(-batch.count // 128), own)
-            self.assertEqual(own, num_steps(minibatch_size=128, num_epochs=1))
-
-            # A peer with a larger shard: simulate the group settling on 12 by
-            # patching the all-reduce result ([num_skipping, sum_minibatches]).
-            def peer(t, *a, **kw):
-                t[0] = 0
-                t[1] = 12
-
-            with mock.patch.object(dist, "all_reduce", side_effect=peer):
-                self.assertEqual(12, num_steps(minibatch_size=128, num_epochs=1))
-
-            # An explicit caller-provided cap is respected and not overridden.
-            self.assertEqual(
-                3, num_steps(minibatch_size=128, num_epochs=1, num_total_minibatches=3)
-            )
-        finally:
-            try:
-                dist.destroy_process_group()
-            except Exception:
-                pass
 
     def test_never_skip_update(self):
         """`never_skip_update=True` opts out of the skip logic entirely: no

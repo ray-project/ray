@@ -336,9 +336,7 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
-        # `None` means: skip this update. `_create_iterator_if_necessary` has already
-        # warned and counted it; the parameters are returned unchanged and there is no
-        # loss to report.
+        # `None` means: skip this update.
         if batch_iter is None:
             if not _no_metrics_reduce:
                 return params, {}, self.metrics.reduce()

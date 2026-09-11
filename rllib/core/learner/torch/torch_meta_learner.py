@@ -161,9 +161,7 @@ class TorchMetaLearner(TorchLearner):
             **kwargs,
         )
 
-        # `None` means: skip this update. The inherited `_create_iterator_if_necessary`
-        # has agreed with the other Learners of the group, warned and counted it; only
-        # the per-update bookkeeping remains.
+        # `None` means: skip this update.
         if batch_iter is None:
             self.after_gradient_based_update(timesteps=timesteps or {})
             if not _no_metrics_reduce:

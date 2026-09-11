@@ -533,22 +533,12 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
-        # Without DDP there is no group to agree with (same condition
-        # `_make_modules_ddp_if_necessary` wraps on); without an initialized process
-        # group there is nothing to agree over (a Learner built with
-        # `num_learners > 1` but driven directly, as in unit tests).
         if (
             self.config.num_learners <= 1
             or not torch.distributed.is_available()
             or not torch.distributed.is_initialized()
         ):
             return plan
-        # One SUM all-reduce per `update()` carrying the whole plan, on the
-        # device/backend DDP uses (NCCL needs a CUDA tensor). It blocks until every
-        # Learner arrives, but DDP already keeps the group in lockstep per minibatch,
-        # so this only moves where a fast Learner waits -- from inside its first
-        # backward to just before its first forward -- and adds the collective's own
-        # latency.
         summed = torch.tensor(
             [int(plan.skip), plan.num_minibatches],
             dtype=torch.int64,
