@@ -1041,15 +1041,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 stacklevel=2,
             )
 
-        # Determine scheduling strategy
-        non_strict_pack_pgs_exist = any(
-            d.is_non_strict_pack_pg() for d in self._deployments.values()
-        )
-        use_pack_strategy = (
-            RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist
-        )
-
-        if use_pack_strategy:
+        if self._use_pack_strategy():
             # This branch is only reached if each deployment either:
             # 1. Use STRICT_PACK placement group strategy, or
             # 2. Do not use placement groups at all.
@@ -1073,6 +1065,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
 
         return deployment_to_replicas_to_stop
+
+    def _use_pack_strategy(self) -> bool:
+        return RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not any(
+            d.is_non_strict_pack_pg() for d in self._deployments.values()
+        )
 
     def _schedule_with_pack_strategy(self):
         """Tries to schedule pending replicas using PACK strategy."""
@@ -1593,6 +1590,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def get_node_to_compact(
         self, allow_new_compaction: bool
     ) -> Optional[Tuple[str, float]]:
+        if not self._use_pack_strategy():
+            if self._compacting_node:
+                logger.info(
+                    f"Canceling compaction of {self._compacting_node.target_node_id} "
+                    "because pack scheduling is no longer in effect."
+                )
+                self._compacting_node = None
+            return None
+
         if self._compacting_node:
             self._update_compacting_node_info()
         if self._compacting_node:

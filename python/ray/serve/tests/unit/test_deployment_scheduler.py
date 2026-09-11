@@ -2652,6 +2652,9 @@ def test_get_deployment_placement_candidates_orders_primary_before_fallback():
     ]
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_respects_actor_label_selector():
     dep_id = DeploymentID(name="deployment1")
     east_filler_dep_id = DeploymentID(name="east-filler")
@@ -2708,6 +2711,9 @@ def test_get_node_to_compact_respects_actor_label_selector():
     assert node_info[0] == "node-west"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_respects_actor_fallback_label_selector():
     dep_id = DeploymentID(name="deployment1")
     filler_dep_id = DeploymentID(name="east-filler")
@@ -2746,6 +2752,9 @@ def test_get_node_to_compact_respects_actor_fallback_label_selector():
     assert node_info[0] == "node-west"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_respects_bundle_label_selector():
     dep_id = DeploymentID(name="deployment1")
     t4_filler_dep_id = DeploymentID(name="t4-filler")
@@ -2801,6 +2810,9 @@ def test_get_node_to_compact_respects_bundle_label_selector():
     assert node_info[0] == "node-a100"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_active_compaction_can_schedule_upscale_to_source_node():
     dep_id = DeploymentID(name="deployment1")
     filler_dep_id = DeploymentID(name="filler")
@@ -2859,6 +2871,9 @@ def test_active_compaction_can_schedule_upscale_to_source_node():
     assert scheduling_strategy.node_id == node_id_1
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_skips_gang_deployments():
     gang_dep_id = DeploymentID(name="gang")
     filler_dep_id = DeploymentID(name="filler")
@@ -2892,6 +2907,40 @@ def test_get_node_to_compact_skips_gang_deployments():
     node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
     assert node_info is not None
     assert node_info[0] == "node1"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
+    d_id = DeploymentID(name="deployment1")
+    pg_id = DeploymentID(name="pg")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 3})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r1", d_id), "node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+
+    scheduler.on_deployment_created(pg_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        pg_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        ),
+    )
+    assert not scheduler._use_pack_strategy()
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    assert scheduler._compacting_node is None
+
+    scheduler.on_deployment_deleted(pg_id)
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
 
 
 if __name__ == "__main__":
