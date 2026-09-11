@@ -12,12 +12,16 @@ from ray_release.test import Test
 from ray_release.util import ANYSCALE_HOST, format_link
 
 # Result statuses that trigger the observability agent. These are the failures
-# that are attributable to the test workload itself. Infra failures
-# (INFRA_ERROR, INFRA_TIMEOUT and TRANSIENT_INFRA_ERROR) are excluded, as the
-# agent has nothing to say about a job that never got to run.
+# that are attributable to the test workload itself, TIMEOUT included: it is set
+# only for ExitCode.COMMAND_TIMEOUT, the test command outrunning its own
+# timeout, and what it was doing when the clock ran out is exactly the kind of
+# question the agent is there to answer. Infra failures (INFRA_ERROR,
+# INFRA_TIMEOUT and TRANSIENT_INFRA_ERROR) are excluded, as the agent has
+# nothing to say about a job that never got to run.
 OBSERVABILITY_AGENT_TRIGGER_STATUSES = (
     ResultStatus.RUNTIME_ERROR.value,
     ResultStatus.ERROR.value,
+    ResultStatus.TIMEOUT.value,
     ResultStatus.UNKNOWN.value,
 )
 
@@ -34,8 +38,9 @@ COMMAND_FAILURE_RETURN_CODES = (
 # handed to the observability agent.
 # TODO: off until the reviewers of this change decide whether the agent should
 # look at command failures. Note that with the trigger statuses as they are, a
-# result with the ERROR status always carries one of those return codes, so
-# turning this on leaves only the RUNTIME_ERROR and UNKNOWN statuses triggering.
+# result with the ERROR or TIMEOUT status always carries one of those return
+# codes, so turning this on leaves only the RUNTIME_ERROR and UNKNOWN statuses
+# triggering.
 SKIP_COMMAND_FAILURES = False
 
 # The debug session is always asked the same question; the agent itself decides

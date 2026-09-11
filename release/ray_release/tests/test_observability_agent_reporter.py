@@ -116,6 +116,9 @@ def test_trigger_on_error_statuses():
     for status in (
         ResultStatus.RUNTIME_ERROR.value,
         ResultStatus.ERROR.value,
+        # The test command outran its own timeout; why is a question for the
+        # agent, not one the harness can answer from the exit code.
+        ResultStatus.TIMEOUT.value,
         ResultStatus.UNKNOWN.value,
     ):
         fake_post = _report(
@@ -147,7 +150,6 @@ def test_no_op_on_other_statuses():
         ResultStatus.INFRA_ERROR.value,
         ResultStatus.INFRA_TIMEOUT.value,
         ResultStatus.TRANSIENT_INFRA_ERROR.value,
-        ResultStatus.TIMEOUT.value,
     ):
         assert _report(_result(status), []).requests == []
 
