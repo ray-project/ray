@@ -1,5 +1,4 @@
-datasets==4.4.1
-# Keep in sync with huggingface-hub in the llm-cu130 image (transformers 5.x
-# requires huggingface-hub>=1.5.0); the byod layer installs this with --no-deps
-# on top of the image, so a mismatch would downgrade the image's copy.
-huggingface-hub==1.13.0; python_version == "3.12"
+# 4.8 is the first datasets line whose dill cap (<0.4.2) admits the dill the
+# llm-cu130 image ships (0.4.1); the lock is constrained to the image, so an
+# older pin here is unsatisfiable rather than a silent downgrade.
+datasets>=4.8,<5
