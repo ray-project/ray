@@ -1,7 +1,6 @@
 """Metadata exporter API for Ray Data datasets."""
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
@@ -420,9 +419,7 @@ class LoggerDatasetMetadataExporter(DatasetMetadataExporter):
             # The export API is not enabled, so we shouldn't create an exporter
             return None
 
-        log_directory = os.path.join(
-            ray._private.worker._global_node.get_session_dir_path(), "logs"
-        )
+        log_directory = ray._private.worker._global_node.get_logs_dir_path()
 
         try:
             logger = get_export_event_logger(

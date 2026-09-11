@@ -1786,6 +1786,7 @@ def start_raylet(
             redis_username,
             redis_password,
             session_dir,
+            log_dir,
             node_ip_address,
             setup_worker_path,
         )
@@ -1831,6 +1832,7 @@ def start_raylet(
             f"--gcs-address={gcs_address}",
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
+            f"--logs-dir={log_dir}",
             f"--webui={webui}",
             f"--cluster-id={cluster_id}",
         ]
@@ -2077,6 +2079,7 @@ def build_java_worker_command(
     redis_username: str,
     redis_password: str,
     session_dir: str,
+    log_dir: str,
     node_ip_address: str,
     setup_worker_path: str,
 ):
@@ -2090,6 +2093,7 @@ def build_java_worker_command(
         redis_username: The username to connect to Redis.
         redis_password: The password to connect to Redis.
         session_dir: The path of this session.
+        log_dir: The path of the directory used for Ray log files.
         node_ip_address: The IP address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
@@ -2117,7 +2121,7 @@ def build_java_worker_command(
         pairs.append(("ray.node-ip", node_ip_address))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", log_dir))
     pairs.append(("ray.session-dir", session_dir))
     command = (
         [sys.executable]
