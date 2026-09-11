@@ -46,7 +46,6 @@ from ray.data.checkpoint.checkpoint_writer import (
 from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
     InvalidCheckpointingConfig,
-    is_generated_id_checkpoint,
 )
 from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
@@ -210,14 +209,11 @@ class TestCheckpointConfig:
         assert config.id_column == "generated_id_col"
         assert config.generated_id_column == "generated_id_col"
         assert config.has_generated_id_column
-        assert is_generated_id_checkpoint(config)
 
     def test_id_column_config_is_not_generated_id(self, local_path):
         config = CheckpointConfig(ID_COL, local_path)
         assert config.generated_id_column is None
         assert not config.has_generated_id_column
-        assert not is_generated_id_checkpoint(config)
-        assert not is_generated_id_checkpoint(None)
 
     def test_override_backend_emits_deprecation_warning(self):
         with pytest.warns(FutureWarning, match="deprecated"):

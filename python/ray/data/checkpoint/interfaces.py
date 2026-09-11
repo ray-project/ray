@@ -262,11 +262,6 @@ class CheckpointConfig:
         return self.generated_id_column is not None
 
 
-def is_generated_id_checkpoint(config: Optional["CheckpointConfig"]) -> bool:
-    """Whether ``config`` uses auto-generated row IDs (None-safe)."""
-    return getattr(config, "has_generated_id_column", False)
-
-
 @DeveloperAPI
 class InvalidCheckpointingConfig(Exception):
     """Exception which indicates that the checkpointing
