@@ -229,7 +229,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
@@ -241,7 +241,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
