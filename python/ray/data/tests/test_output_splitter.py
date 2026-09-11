@@ -277,6 +277,84 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
     )
 
 
+def _stalling_splitter(num_outputs, num_bundles):
+    """An OutputSplitter fed ``num_bundles`` that match no locality hint.
+
+    ``_get_locations`` is stubbed to a node absent from the hints, so
+    ``_find_preferred_bundle`` never matches and dispatch depends entirely on
+    the buffer reaching ``_max_buffer_size``.
+    """
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(num_bundles)])
+    )
+    op = OutputSplitter(
+        input_op,
+        num_outputs,
+        equal=True,
+        data_context=DataContext.get_current(),
+        locality_hints=[f"node{i}" for i in range(num_outputs)],
+    )
+    op._get_locations = lambda bundle: ["node-not-in-hints"]
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    return op
+
+
+@pytest.mark.timeout(30)
+def test_split_operator_withholds_output_below_locality_buffer_cap(
+    ray_start_regular_shared,
+):
+    """Below ``_max_buffer_size``, a locality miss holds *every* bundle.
+
+    ``_try_dispatch_bundles`` only falls back to dispatching the longest-waiting
+    bundle once the buffer reaches the cap. Until then a bundle with no locality
+    match is kept, so a consumer sees nothing at all. This is safe when upstream
+    can keep producing, but wedges the pipeline if upstream is blocked (e.g. the
+    object store budget is exhausted), since the buffer can never reach the cap.
+    """
+    num_outputs = 16
+    op = _stalling_splitter(num_outputs, num_bundles=30)
+
+    assert op._max_buffer_size == 2 * num_outputs  # 32
+    # Every bundle is buffered and not one was dispatched.
+    assert len(op._buffer) == 30
+    assert not op.has_next()
+
+    # Reaching the cap releases output, which confirms the threshold -- not the
+    # equal-distribution constraint -- is what withheld it.
+    for extra in make_ref_bundles([[i] for i in range(100, 102)]):
+        op.add_input(extra, 0)
+    assert op.has_next()
+
+
+@pytest.mark.timeout(30)
+def test_split_operator_flushes_buffer_when_inputs_are_done(ray_start_regular_shared):
+    """End of input is not affected: ``all_inputs_done`` force-flushes.
+
+    Bounds the stall above -- it only lasts while upstream is still expected to
+    produce, so a pipeline that reaches end-of-stream always drains.
+    """
+    num_outputs = 16
+    op = _stalling_splitter(num_outputs, num_bundles=30)
+    assert not op.has_next()
+
+    op.all_inputs_done()
+
+    assert op.has_next()
+    per_split = collections.defaultdict(list)
+    while op.has_next():
+        bundle = op.get_next()
+        for block_ref in bundle.block_refs:
+            per_split[bundle.output_split_idx].extend(list(ray.get(block_ref)["id"]))
+
+    # `equal=True` truncates the remainder rather than skewing the splits, so
+    # 30 rows over 16 outputs yields one row each and drops the leftover 14.
+    assert sorted(per_split) == list(range(num_outputs))
+    assert all(len(rows) == 1 for rows in per_split.values()), per_split
+
+
 if __name__ == "__main__":
     import sys
 
