@@ -440,7 +440,7 @@ class ServeController:
             if autoscaling_metrics_codec.is_columnar(handle_metric_report):
                 decode_start = time.time()
                 d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
-                self._health_metrics_tracker.record_decompress(
+                self._health_metrics_tracker.record_columnar_decode(
                     (time.time() - decode_start) * 1000
                 )
                 self._record_metrics_delay(

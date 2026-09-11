@@ -3,7 +3,7 @@ import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque
+from typing import Deque, Tuple
 
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.schema import ControllerHealthMetrics, DurationStats
@@ -61,18 +61,27 @@ class ControllerHealthMetricsTracker:
     replica_ingest_durations: Deque[float] = field(
         default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
     )
-    # Decompress-only time (ms), to split transport cost from state-write cost.
+    # Decompress-only time (ms), to split transport cost from state-write cost. Kept
+    # per wire format: the two codecs are not comparable, and blending them hides
+    # exactly the difference the columnar format is meant to make.
     decompress_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
+    )
+    columnar_decode_durations: Deque[float] = field(
         default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
     )
 
     # Monotonic counters since controller start.
     handle_reports_received: int = 0
     replica_reports_received: int = 0
-    # Cumulative wall-seconds spent on the ingestion path since start. Divided
-    # by uptime this yields the fraction of the single event loop consumed by
-    # ingestion (a saturation signal: approaches 1.0 as ingestion monopolizes it).
+    # Cumulative wall-seconds spent on the ingestion path since start.
     total_ingest_seconds: float = 0.0
+    # (wall clock, total_ingest_seconds) sampled once per control loop, so
+    # ingest_cpu_fraction can report a recent rate rather than a lifetime average
+    # that a long-lived controller can never move.
+    ingest_totals: Deque[Tuple[float, float]] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
 
     # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
@@ -81,6 +90,8 @@ class ControllerHealthMetricsTracker:
 
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
+        # Sampled here, not on the ingest path, so the rate costs the fan-in nothing.
+        self.ingest_totals.append((time.time(), self.total_ingest_seconds))
 
     def record_handle_metrics_delay(self, delay_ms: float):
         self.handle_metrics_delays.append(delay_ms)
@@ -112,6 +123,9 @@ class ControllerHealthMetricsTracker:
 
     def record_decompress(self, duration_ms: float):
         self.decompress_durations.append(duration_ms)
+
+    def record_columnar_decode(self, duration_ms: float):
+        self.columnar_decode_durations.append(duration_ms)
 
     def collect_metrics(self) -> ControllerHealthMetrics:
         """Collect and return current health metrics."""
@@ -160,11 +174,20 @@ class ControllerHealthMetricsTracker:
             list(self.replica_ingest_durations)
         )
         decompress_stats = DurationStats.from_values(list(self.decompress_durations))
+        columnar_decode_stats = DurationStats.from_values(
+            list(self.columnar_decode_durations)
+        )
         ingest_reports_received = (
             self.handle_reports_received + self.replica_reports_received
         )
-        # Average fraction of one event-loop core consumed by ingestion.
-        ingest_cpu_fraction = self.total_ingest_seconds / uptime if uptime > 0 else 0.0
+        # Fraction of one event-loop core consumed by ingestion over the sampled
+        # window, falling back to uptime before the first loop sample lands.
+        ingest_span, ingest_seconds = uptime, self.total_ingest_seconds
+        if self.ingest_totals:
+            sampled_at, sampled_total = self.ingest_totals[0]
+            ingest_span = now - sampled_at
+            ingest_seconds = self.total_ingest_seconds - sampled_total
+        ingest_cpu_fraction = ingest_seconds / ingest_span if ingest_span > 0 else 0.0
 
         # Get memory usage in MB
         # Note: ru_maxrss is in bytes on macOS but kilobytes on Linux
@@ -203,6 +226,7 @@ class ControllerHealthMetricsTracker:
             handle_ingest_duration_ms=handle_ingest_stats,
             replica_ingest_duration_ms=replica_ingest_stats,
             metrics_decompress_duration_ms=decompress_stats,
+            columnar_decode_duration_ms=columnar_decode_stats,
             handle_reports_received=self.handle_reports_received,
             replica_reports_received=self.replica_reports_received,
             ingest_reports_received=ingest_reports_received,

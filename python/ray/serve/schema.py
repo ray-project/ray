@@ -1770,7 +1770,16 @@ class ControllerHealthMetrics(BaseModel):
     )
     metrics_decompress_duration_ms: Optional[DurationStats] = Field(
         default=None,
-        description="Per-call decompress time for metric reports (rolling window, ms).",
+        description=(
+            "Per-call decompress time for cloudpickle metric reports "
+            "(rolling window, ms)."
+        ),
+    )
+    columnar_decode_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decode time for columnar metric reports (rolling window, ms)."
+        ),
     )
     handle_reports_received: int = Field(
         default=0, description="Total handle metric reports ingested since start."
@@ -1785,9 +1794,9 @@ class ControllerHealthMetrics(BaseModel):
     ingest_cpu_fraction: float = Field(
         default=0.0,
         description=(
-            "Average fraction of one event-loop core consumed by the metrics "
-            "ingestion path (cumulative ingest seconds / uptime). Approaches "
-            "1.0 as ingestion monopolizes the single control-loop thread."
+            "Fraction of one event-loop core consumed by the metrics ingestion "
+            "path over the recent sampling window. Approaches 1.0 as ingestion "
+            "monopolizes the single control-loop thread."
         ),
     )
 

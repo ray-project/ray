@@ -1,8 +1,8 @@
 """Columnar autoscaling metrics: the SCR1 wire format and the paths that consume it.
 
-Codec coverage comes first (framing, wire detection, the producer width gate, decode
-rejection, and the numpy fallback), then the plumbing that decodes frames into the
-array stores and aggregates them.
+Codec coverage comes first (framing, wire detection, which reports are encoded
+columnar, and decode rejection), then the plumbing that decodes frames into the array
+stores and aggregates them.
 """
 
 import random
@@ -142,7 +142,7 @@ def _tampered_handle_frame(
 
 
 # --------------------------------------------------------------------------
-# codec: framing, wire detection, width gate, decode rejection, numpy fallback
+# codec: framing, wire detection, encode selection, decode rejection
 # --------------------------------------------------------------------------
 
 
@@ -274,19 +274,6 @@ def _state(agg=AggregationFunction.MEAN):
     st = DeploymentAutoscalingState(DEP)
     st._config = _cfg(agg)
     return st
-
-
-def _rich_replica_report():
-    return ReplicaMetricReport(
-        replica_id=ReplicaID("r42", DEP),
-        metrics={
-            RUNNING_REQUESTS_KEY: [
-                TimeStampedValue(1.0 + i, float(i)) for i in range(5)
-            ],
-            "custom_load": [TimeStampedValue(2.0 + i, 0.5 * i) for i in range(3)],
-        },
-        timestamp=77.0,
-    )
 
 
 def _to_arrays(tl):
@@ -624,14 +611,18 @@ def test_columnar_ingest_records_delay_through_the_real_helper():
 
 
 def test_handle_columnar_uses_fast_store():
-    """Columnar bytes route to the array store, never the object store."""
+    """Columnar bytes route to the array store, never the object store, and arrive
+    DECODED: asserting the call alone passes even if the raw frame is forwarded."""
     s = MagicMock()
-    ServeController.record_autoscaling_metrics_from_handle(
-        s, codec.encode(_handle_report())
-    )
+    rep = _handle_report()
+    ServeController.record_autoscaling_metrics_from_handle(s, codec.encode(rep))
     asm = s.autoscaling_state_manager
     asm.record_columnar_metrics_for_handle.assert_called_once()
     asm.record_request_metrics_for_handle.assert_not_called()
+    (payload,) = asm.record_columnar_metrics_for_handle.call_args[0]
+    assert payload["handle_id"] == rep.handle_id
+    assert payload["deployment_id"] == rep.deployment_id
+    assert payload["timestamp"] == rep.timestamp
 
 
 def test_handle_cloudpickle_uses_object_store():
@@ -646,9 +637,9 @@ def test_handle_cloudpickle_uses_object_store():
 
 def test_handle_cross_format_staleness_guard():
     """A delayed report in one wire format must not overwrite fresher data the other
-    wrote. A handle flips object<->columnar as it crosses the columnar width gate, so
-    _handle_report_ts is a unified per-handle last-accepted timestamp gating BOTH ingest
-    paths. Regression for the mixed-rollout stale-overwrite bug."""
+    wrote. A producer on a pre-columnar version still sends objects, so _handle_report_ts
+    is a unified per-handle last-accepted timestamp gating BOTH ingest paths. Regression
+    for the mixed-rollout stale-overwrite bug."""
     st = _state()
     hid = "h0"
 
@@ -749,6 +740,53 @@ def test_queued_from_both_stores(monkeypatch):
     mix._running_replicas, mix._cached_running_replica_strs = set(), set()
     assert mix._get_queued_requests() > 0.0
     assert abs(ref_q - mix._get_queued_requests()) < 1e-9
+
+
+@pytest.mark.parametrize(
+    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
+)
+def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
+    """Replica-reported running wins over handle-reported running, as on the object
+    path. This is the mixed branch every direct-ingress and metrics-on-replica
+    deployment takes on every tick, and counting both would double the total."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    rid = ReplicaID("r0", DEP)
+    rid_str = rid.to_full_id_str()
+    replica_running = [TimeStampedValue(NOW - 6, 1.0), TimeStampedValue(NOW, 2.0)]
+    handle_running = [TimeStampedValue(NOW - 6, 7.0), TimeStampedValue(NOW, 9.0)]
+    queued = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 3.0)]
+    handle = _handle_report_running("h0", rid_str, handle_running, queued)
+    replica_report = ReplicaMetricReport(
+        replica_id=rid,
+        metrics={RUNNING_REQUESTS_KEY: replica_running},
+        timestamp=NOW,
+    )
+
+    def _build(columnar):
+        st = _state(agg)
+        st.record_request_metrics_for_replica(replica_report)
+        if columnar:
+            st.record_columnar_metrics_for_handle(
+                codec.decode_handle_flat(codec.encode(handle))
+            )
+        else:
+            st._handle_requests["h0"] = handle
+        st._running_replicas = [rid]
+        st._cached_running_replica_strs = {rid_str}
+        return st.get_total_num_requests()
+
+    mixed, all_object = _build(True), _build(False)
+    assert abs(mixed - all_object) < 1e-9, (agg, mixed, all_object)
+    # Guard against a vacuous pass: handle running is strictly larger, so a total that
+    # included it would exceed the replica-only twin.
+    ref = _state(agg)
+    ref.record_request_metrics_for_replica(replica_report)
+    ref.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(_handle_report_queued("h0", queued)))
+    )
+    ref._running_replicas = [rid]
+    ref._cached_running_replica_strs = {rid_str}
+    assert abs(mixed - ref.get_total_num_requests()) < 1e-9
 
 
 if __name__ == "__main__":

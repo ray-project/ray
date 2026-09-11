@@ -4,8 +4,7 @@ This is the EXACT spec for an array-input port of the two _raylet Cython kernels
 (`merge_instantaneous_total_cython`, `time_weighted_average_cython`), operating on
 the columnar layout — flat float64 `ts`/`val` arrays + CSR-style per-source
 `offsets` — with no per-point Python objects. Kept exact-equivalent to the
-object-list kernels (randomized equivalence tests in
-tests/unit/test_columnar_review_hardening.py).
+object-list kernels (randomized equivalence tests in tests/unit/test_columnar.py).
 
 Pinned semantics of merge_instantaneous_total_cython (verified 8000/8000):
   1. Drop empty sources.
@@ -101,7 +100,12 @@ def aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s) -> fl
     vals = mtot if window_start is None else mtot[mts >= window_start]
     if vals.size == 0:
         return 0.0
-    return float(vals.max() if agg_function == "max" else vals.min())
+    if agg_function == "max":
+        return float(vals.max())
+    if agg_function == "min":
+        return float(vals.min())
+    # Fail as loudly as the object kernel rather than silently reducing with min.
+    raise ValueError(f"Invalid aggregation function: {agg_function}")
 
 
 def merge_and_aggregate_arrays(

@@ -66,10 +66,42 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
     return raw
 
 
+def _single_source_block(ts, val):
+    """(ts, val) arrays as a one-source block. `None` offsets say "one source", which
+    keeps the mixed route from allocating a two-element array per replica per tick."""
+    return (ts, val, None)
+
+
+def _running_csr(payload: FlatHandleReport):
+    """The report's running points as one CSR block: arrays, per-replica offsets, and
+    the replica key per source. The encoder lays a metric's points out contiguously, so
+    this is normally a view; a frame that is not pays one copy here, not per tick."""
+    entries = payload["entries"]
+    rows = entries[entries[:, 0] == payload["mi"]]
+    ts, val = payload["ts"], payload["val"]
+    if not rows.size:
+        return ts[:0], val[:0], np.zeros(1, dtype=np.int64), []
+    keys = [payload["replica_keys"][i] for i in rows[:, 1].tolist()]
+    offs, lens = rows[:, 2], rows[:, 3]
+    csr = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lens)))
+    if np.array_equal(offs[1:], offs[:-1] + lens[:-1]):
+        base, end = int(offs[0]), int(offs[-1] + lens[-1])
+        return ts[base:end], val[base:end], csr, keys
+    spans = [(int(o), int(o) + int(n)) for o, n in zip(offs.tolist(), lens.tolist())]
+    return (
+        np.concatenate([ts[a:b] for a, b in spans]),
+        np.concatenate([val[a:b] for a, b in spans]),
+        csr,
+        keys,
+    )
+
+
 def _columnar_peak_requests(entry: dict) -> float:
     """Columnar form of HandleMetricReport.total_requests: peak per series, summed."""
-    series = [entry["q_val"], *(v for _, _, v in entry["running_segments"])]
-    return sum(float(s.max()) for s in series if s.size)
+    val, offs = entry["run_val"], entry["run_offsets"]
+    peaks = [float(entry["q_val"].max())] if entry["q_val"].size else []
+    peaks += [float(val[a:b].max()) for a, b in zip(offs[:-1], offs[1:]) if b > a]
+    return sum(peaks)
 
 
 def _log_dropped_handle(handle_id, actor_id, peak_requests, timeout_s, dead_actor):
@@ -106,6 +138,9 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # (report timestamp, array block) memo of each replica's running series, so the
+        # object->array conversion runs once per report, not once per decision tick.
+        self._replica_running_arrays: Dict[ReplicaID, tuple] = dict()
         # Columnar per-handle arrays: metadata + per-replica running + queued
         # (filled whenever a columnar frame arrives).
         self._handle_arrays: Dict[str, dict] = dict()
@@ -223,6 +258,7 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
+        self._replica_running_arrays.pop(replica_id, None)
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -301,31 +337,60 @@ class DeploymentAutoscalingState:
         one fused numpy merge (no per-point Python objects)."""
         if not self._handle_arrays:
             return 0.0
-        return self._aggregate_segments(
-            self._handle_running_columnar_segments(self._cached_running_replica_strs)
-            + self._queued_columnar_segments()
+        return self._aggregate_blocks(
+            self._handle_running_columnar_blocks(self._cached_running_replica_strs)
+            + self._queued_columnar_blocks()
         )
 
-    def _queued_columnar_segments(self):
-        """Columnar per-handle queued arrays as (ts, val) segments."""
+    def _replica_running_blocks(self):
+        """Running blocks of the replicas still running. Memoized against the stored
+        report's timestamp, so a series is converted once per report rather than on
+        every decision tick; _replica_metrics stays the only source of truth."""
+        blocks = []
+        for replica_id in self._running_replicas:
+            report = self._replica_metrics.get(replica_id)
+            if report is None:
+                continue
+            series = report.metrics.get(RUNNING_REQUESTS_KEY)
+            if not series:
+                continue
+            cached = self._replica_running_arrays.get(replica_id)
+            if cached is None or cached[0] != report.timestamp:
+                block = _single_source_block(*self._series_to_arrays(series))
+                cached = (report.timestamp, block)
+                self._replica_running_arrays[replica_id] = cached
+            blocks.append(cached[1])
+        return blocks
+
+    def _queued_columnar_blocks(self):
+        """Columnar per-handle queued arrays as one-source blocks."""
         return [
-            (hm["q_ts"], hm["q_val"])
+            (hm["q_ts"], hm["q_val"], None)
             for hm in self._handle_arrays.values()
             if hm["q_ts"].size
         ]
 
-    def _handle_running_columnar_segments(self, running):
-        """Array-view segments of each columnar handle's running series, masked to
-        replicas still in `running` (mirrors _collect_handle_running_requests). Sliced
-        at write time; this runs on the 0.1s decision path."""
-        return [
-            (rts, rval)
-            for hm in self._handle_arrays.values()
-            for rkey, rts, rval in hm["running_segments"]
-            if rkey in running
-        ]
+    def _handle_running_columnar_blocks(self, running):
+        """CSR blocks of each columnar handle's running series, masked to replicas still
+        in `running` (mirrors _collect_handle_running_requests). Passed through whole
+        while every replica is still running; only a changed membership pays a slice."""
+        blocks = []
+        for hm in self._handle_arrays.values():
+            keys, offs = hm["run_keys"], hm["run_offsets"]
+            if not keys:
+                continue
+            if running.issuperset(keys):
+                blocks.append((hm["run_ts"], hm["run_val"], offs))
+                continue
+            ts, val = hm["run_ts"], hm["run_val"]
+            blocks += [
+                _single_source_block(ts[a:b], val[a:b])
+                for key, a, b in zip(keys, offs[:-1], offs[1:])
+                if key in running
+            ]
+        return blocks
 
-    def _series_to_segment(self, series):
+    def _series_to_arrays(self, series):
         """Object timeseries -> (ts, val) float64 arrays (the cheap direction: object
         sources in a mixed fleet are the THIN ones, few points each)."""
         n = len(series)
@@ -334,24 +399,33 @@ class DeploymentAutoscalingState:
             np.fromiter((p.value for p in series), dtype=np.float64, count=n),
         )
 
-    def _series_segments(self, series_list):
-        """Thin object timeseries -> segments (empties dropped)."""
-        return [self._series_to_segment(s) for s in series_list if s]
+    def _series_blocks(self, series_list):
+        """Thin object timeseries -> one-source blocks (empties dropped)."""
+        return [
+            _single_source_block(*self._series_to_arrays(s)) for s in series_list if s
+        ]
 
-    def _aggregate_segments(self, segments) -> float:
-        """One fused numpy merge over (ts, val) array segments. 0.0 when empty."""
-        segments = [s for s in segments if s[0].size]
-        if not segments:
+    def _aggregate_blocks(self, blocks) -> float:
+        """One fused numpy merge over (ts, val, offsets) blocks. 0.0 when empty."""
+        blocks = [b for b in blocks if b[0].size]
+        if not blocks:
             return 0.0
-        offs = [0]
-        for tarr, _ in segments:
-            offs.append(offs[-1] + tarr.size)
+        if len(blocks) == 1 and blocks[0][2] is not None:
+            ts, val, offsets = blocks[0]
+        else:
+            starts, base = [], 0
+            for bts, _, boffs in blocks:
+                if boffs is None:
+                    starts.append(base)
+                else:
+                    starts.extend((boffs[:-1] + base).tolist())
+                base += bts.size
+            starts.append(base)
+            ts = np.concatenate([b[0] for b in blocks])
+            val = np.concatenate([b[1] for b in blocks])
+            offsets = np.array(starts, dtype=np.int64)
         return autoscaling_metrics_merge.merge_and_aggregate_arrays(
-            np.concatenate([t for t, _ in segments]),
-            np.concatenate([v for _, v in segments]),
-            np.array(offs, dtype=np.int64),
-            time.time(),
-            self._config.aggregation_function,
+            ts, val, offsets, time.time(), self._config.aggregation_function
         )
 
     def record_request_metrics_for_handle(
@@ -363,9 +437,9 @@ class DeploymentAutoscalingState:
         """
         handle_id = handle_metric_report.handle_id
         send_timestamp = handle_metric_report.timestamp
-        # Unified staleness gate across BOTH wire formats (see _handle_report_ts): a
-        # handle flips object<->columnar when it crosses the columnar width gate, so
-        # guard against a delayed report in either format wiping the other's data.
+        # Unified staleness gate across BOTH wire formats (see _handle_report_ts):
+        # producers on a pre-columnar version still send objects, so guard against a
+        # delayed report in either format wiping the other's data.
         last_ts = self._handle_report_ts.get(handle_id)
         if last_ts is None or send_timestamp > last_ts:
             self._handle_requests[handle_id] = handle_metric_report
@@ -379,23 +453,9 @@ class DeploymentAutoscalingState:
         last_ts = self._handle_report_ts.get(hid)
         if last_ts is None or payload["timestamp"] > last_ts:
             self._handle_report_ts[hid] = payload["timestamp"]
-            mi = payload["mi"]
-            # entries/replica_keys/mi are frozen once stored, so slice the running
-            # segments here rather than rebuilding them on every 0.1s decision tick.
-            p_ts, p_val = payload["ts"], payload["val"]
-            running_segments = (
-                [
-                    (
-                        payload["replica_keys"][int(r[1])],
-                        p_ts[int(r[2]) : int(r[2]) + int(r[3])],
-                        p_val[int(r[2]) : int(r[2]) + int(r[3])],
-                    )
-                    for r in payload["entries"]
-                    if int(r[0]) == mi and int(r[3]) > 0
-                ]
-                if mi >= 0
-                else []
-            )
+            # Resolve the running block once here rather than rebuilding it on every
+            # 0.1s decision tick: the frame is frozen for as long as it is stored.
+            run_ts, run_val, run_offsets, run_keys = _running_csr(payload)
             self._handle_arrays[hid] = {
                 "actor_id": payload["actor_id"],
                 "is_component": payload["handle_source"]
@@ -404,14 +464,12 @@ class DeploymentAutoscalingState:
                     DeploymentHandleSource.REPLICA.value,
                 ),
                 "timestamp": payload["timestamp"],
-                "ts": payload["ts"],
-                "val": payload["val"],
-                "entries": payload["entries"],
-                "mi": payload["mi"],
-                "replica_keys": payload["replica_keys"],
                 "q_ts": payload["q_ts"],
                 "q_val": payload["q_val"],
-                "running_segments": running_segments,
+                "run_ts": run_ts,
+                "run_val": run_val,
+                "run_offsets": run_offsets,
+                "run_keys": run_keys,
             }
             self._handle_requests.pop(hid, None)
 
@@ -799,16 +857,16 @@ class DeploymentAutoscalingState:
         are converted to small arrays. Empty object series are dropped so they
         cannot flip metrics_collected_on_replicas and suppress handle-side running
         (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
-        segments = self._series_segments(self._collect_replica_running_requests())
-        metrics_collected_on_replicas = bool(segments)
+        blocks = self._replica_running_blocks()
+        metrics_collected_on_replicas = bool(blocks)
         if not metrics_collected_on_replicas:
-            segments += self._handle_running_columnar_segments(
+            blocks += self._handle_running_columnar_blocks(
                 self._cached_running_replica_strs
             )
-            segments += self._series_segments(self._collect_handle_running_requests())
-        segments += self._queued_columnar_segments()
-        segments += self._series_segments(self._collect_handle_queued_requests())
-        return self._aggregate_segments(segments)
+            blocks += self._series_blocks(self._collect_handle_running_requests())
+        blocks += self._queued_columnar_blocks()
+        blocks += self._series_blocks(self._collect_handle_queued_requests())
+        return self._aggregate_blocks(blocks)
 
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
@@ -833,14 +891,8 @@ class DeploymentAutoscalingState:
             return self._merge_and_aggregate_timeseries(queued_obj)
         # Columnar present: one fused array merge over both queued sources
         # (disjoint by dedup-at-write) -- exact aggregation.
-        return self._aggregate_segments(
-            self._queued_columnar_segments() + self._series_segments(queued_obj)
-        )
-
-    def _aggregate_single_array(self, ts, val, now, agg) -> float:
-        """Time-weighted aggregate of a single source's (ts, val) arrays."""
-        return autoscaling_metrics_merge.merge_and_aggregate_arrays(
-            ts, val, np.array([0, ts.size], dtype=np.int64), now, agg
+        return self._aggregate_blocks(
+            self._queued_columnar_blocks() + self._series_blocks(queued_obj)
         )
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:
@@ -853,15 +905,17 @@ class DeploymentAutoscalingState:
             Dict mapping metric name to dict of replica ID to aggregated metric value.
         """
         aggregated_metrics: Dict[str, Dict[ReplicaID, float]] = defaultdict(dict)
+
         for replica_id in self._running_replicas:
-            # A replica is in the object store OR the columnar stores (dedup-at-write).
             replica_metric_report = self._replica_metrics.get(replica_id)
-            if replica_metric_report is not None:
-                for metric_name, timeseries in replica_metric_report.metrics.items():
-                    aggregated_metrics[metric_name][
-                        replica_id
-                    ] = self._merge_and_aggregate_timeseries([timeseries])
+            if replica_metric_report is None:
                 continue
+
+            for metric_name, timeseries in replica_metric_report.metrics.items():
+                # Aggregate the timeseries for this custom metric
+                aggregated_value = self._merge_and_aggregate_timeseries([timeseries])
+                aggregated_metrics[metric_name][replica_id] = aggregated_value
+
         return dict(aggregated_metrics)
 
     def _get_raw_custom_metrics(
@@ -873,12 +927,16 @@ class DeploymentAutoscalingState:
             Dict mapping metric name to dict of replica ID to raw metric timeseries.
         """
         raw_metrics: Dict[str, Dict[ReplicaID, TimeSeries]] = defaultdict(dict)
+
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id)
-            if replica_metric_report is not None:
-                for metric_name, timeseries in replica_metric_report.metrics.items():
-                    raw_metrics[metric_name][replica_id] = timeseries
+            if replica_metric_report is None:
                 continue
+
+            for metric_name, timeseries in replica_metric_report.metrics.items():
+                # Extract values from TimeStampedValue list
+                raw_metrics[metric_name][replica_id] = timeseries
+
         return dict(raw_metrics)
 
 
