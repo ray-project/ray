@@ -365,17 +365,31 @@ class TransformClock:
         self._timers: List[_TimedStep] = []
 
     def chain(self, steps: List["Step"], blocks: Iterable[Any]) -> Iterable[Any]:
-        """Build the timed pipeline over ``blocks``.
+        """Wrap each step in a timer and link them into one pipeline.
 
-        Nothing runs until the result is pulled: each step calls its ``apply``
-        on its first ``__next__``, which is what puts an eagerly consuming
-        stage's work inside a timed window. That places one requirement on a
-        stage -- a stage that depends on an upstream stage's side effects has
-        to consume upstream to get them, because until it does, upstream has
-        not run. Reading state an upstream stage leaves on the ``TaskContext``
-        before draining the input is the way to get this wrong;
-        ``_generate_commit_checkpoint_transform`` and
-        ``generate_collect_write_stats_fn`` both drain first for this reason.
+        ``data`` starts as the raw input blocks, and each pass through the
+        loop wraps it one layer deeper. A checkpointed write, simplified to
+        two stages, builds this::
+
+            data = blocks
+            data = _TimedStep(prepare.apply, blocks)  # timer 0 reads the blocks
+            data = _TimedStep(commit.apply, timer0)   # timer 1 reads timer 0
+            return data                               # the whole chain
+
+        ``self._timers`` holds them in that same order, which is what lets
+        :meth:`drain` recover each step's own time from its neighbour's.
+
+        Nothing has run when this returns. Here is how that chain runs once
+        the caller pulls it::
+
+            next(timer1)      commit's body starts
+            list(blocks)      commit drains its input, pulling timer0
+            next(timer0)      prepare's body starts
+            prepare returns   the pending checkpoints are now on ctx
+            commit continues  it reads them and commits
+
+        ``commit`` starts first; ``prepare`` runs inside its drain. Read
+        ``ctx`` before draining and there is nothing there.
         """
         self._steps = steps
         self._timers = []
