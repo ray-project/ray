@@ -309,11 +309,10 @@ class DAGNode(DAGNodeBase):
             _max_buffered_results: The maximum number of results that can be
                 buffered at the driver. If more than this number of results
                 are buffered, `RayCgraphCapacityExceeded` is raised. Note that
-                when result corresponding to an execution is retrieved
-                (by calling `ray.get()` on a `CompiledDAGRef` or
-                `CompiledDAGRef` or await on a `CompiledDAGFuture`), results
-                corresponding to earlier executions that have not been retrieved
-                yet are buffered.
+                when a result corresponding to an execution is retrieved
+                (by calling `ray.get()` on a `CompiledDAGRef` or await on a
+                `CompiledDAGFuture`), results corresponding to earlier
+                executions that have not been retrieved yet are buffered.
             _overlap_gpu_communication: (experimental) Whether to overlap GPU
                 communication with computation during DAG execution. If True, the
                 communication and computation can be overlapped, which can improve
