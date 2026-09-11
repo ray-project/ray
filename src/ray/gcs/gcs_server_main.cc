@@ -200,6 +200,11 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
   auto storage_operation_count_counter =
       ray::gcs::GetGcsStorageOperationCountCounterMetric();
+  auto redis_request_payload_bytes_sum =
+      ray::gcs::GetGcsRedisRequestPayloadBytesSumMetric();
+  auto redis_response_payload_bytes_sum =
+      ray::gcs::GetGcsRedisResponsePayloadBytesSumMetric();
+  auto redis_command_count_counter = ray::gcs::GetGcsRedisCommandCountCounterMetric();
   auto resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
   auto health_check_rpc_latency_ms_histogram =
       ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
@@ -230,6 +235,9 @@ int main(int argc, char *argv[]) {
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
       /*storage_operation_count_counter=*/storage_operation_count_counter,
+      /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum,
+      /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum,
+      /*redis_command_count_counter=*/redis_command_count_counter,
       resource_usage_gauge,
       scheduler_placement_time_ms_histogram,
       health_check_rpc_latency_ms_histogram,
