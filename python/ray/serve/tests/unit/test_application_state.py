@@ -1713,6 +1713,56 @@ class TestOverrideDeploymentInfo:
         assert old_version.ray_actor_options_hash == new_version.ray_actor_options_hash
         assert not old_version.requires_actor_restart(new_version)
 
+    def test_override_locality_routing(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    prefer_local_node_routing=False,
+                    prefer_local_az_routing=False,
+                )
+            ],
+        )
+
+        updated_info = override_deployment_info({"A": info}, config)["A"]
+        assert updated_info.deployment_config.prefer_local_node_routing is False
+        assert updated_info.deployment_config.prefer_local_az_routing is False
+        # The router reads the config value only when the option name is
+        # recorded here; otherwise it falls back to the env var.
+        assert updated_info.deployment_config.user_configured_option_names.issuperset(
+            {"prefer_local_node_routing", "prefer_local_az_routing"}
+        )
+
+    def test_override_locality_routing_absent_preserves_code_value(self):
+        info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig.from_default(
+                prefer_local_node_routing=False
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+        info.deployment_config.user_configured_option_names = {
+            "prefer_local_node_routing"
+        }
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[DeploymentSchema(name="A", num_replicas=3)],
+        )
+
+        updated_info = override_deployment_info({"A": info}, config)["A"]
+        assert updated_info.deployment_config.prefer_local_node_routing is False
+        assert (
+            "prefer_local_node_routing"
+            in updated_info.deployment_config.user_configured_option_names
+        )
+
     def test_override_autoscaling_config(self, info):
         config = ServeApplicationSchema(
             name="default",
