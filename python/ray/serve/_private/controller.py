@@ -81,6 +81,7 @@ from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.tracing_utils import validate_tracing_exporter_import_path
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -397,6 +398,12 @@ class ServeController:
         proxy, which would otherwise fail on a malformed payload.
         """
         global_tracing_config = _coerce_tracing_config(global_tracing_config)
+
+        # Resolve the exporter import path now so an invalid path fails this
+        # `serve deploy` / `apply_config` request fast, instead of being
+        # checkpointed below and only surfacing later at each proxy/replica's
+        # `setup_tracing` (and reloading on controller recovery).
+        validate_tracing_exporter_import_path(global_tracing_config)
 
         if self.global_tracing_config == global_tracing_config:
             return

@@ -1192,16 +1192,25 @@ class Replica:
         tracing_config = ray.get(
             self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
         )
-        is_tracing_setup_successful = setup_tracing(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-            # ray.get of the ActorHandle result is mistyped as list; it is a
-            # TracingConfig at runtime (the controller never returns None).
-            tracing_config=tracing_config,  # type: ignore[arg-type]
-        )
-        if is_tracing_setup_successful:
-            logger.info("Successfully set up tracing for replica")
+        # Never let a bad tracing config crash replica startup: mirror the
+        # proxy's long-poll handler, which logs and continues. A bad
+        # `exporter_import_path` raises out of `import_attr` inside
+        # `setup_tracing`; the controller validates the path at deploy time,
+        # but that check runs against the head node, so a path importable
+        # there may still fail to import on this worker node.
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+                # ray.get of the ActorHandle result is mistyped as list; it is a
+                # TracingConfig at runtime (the controller never returns None).
+                tracing_config=tracing_config,  # type: ignore[arg-type]
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception:
+            logger.exception("Failed to set up tracing for replica.")
 
         # get node ID
         self._node_id = ray.get_runtime_context().get_node_id()

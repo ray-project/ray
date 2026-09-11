@@ -235,6 +235,32 @@ def tracing_decorator_factory(
     return tracing_decorator
 
 
+def validate_tracing_exporter_import_path(
+    tracing_config: "TracingConfig",  # noqa: F821
+) -> None:
+    """Eagerly resolve the exporter import path so a bad one fails fast.
+
+    Mirrors the path resolution in ``setup_tracing``: when tracing is enabled,
+    the effective exporter import path (the user-provided path, or the default
+    when empty) must be importable. Propagates whatever ``import_attr`` raises
+    (e.g. ``ModuleNotFoundError`` / ``AttributeError``).
+
+    The controller calls this before checkpointing/broadcasting a config so an
+    invalid path fails the ``serve deploy`` / ``apply_config`` request instead
+    of being persisted and only surfacing later at each proxy/replica. Note
+    this validates against the *caller's* environment, so proxies and replicas
+    still guard their own ``setup_tracing`` calls (a path importable on the
+    head node may not be importable on a worker node).
+    """
+    if not tracing_config.enabled:
+        return
+    exporter_import_path = (
+        tracing_config.exporter_import_path or DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+    )
+    # We only need to confirm the path resolves; discard the result.
+    import_attr(exporter_import_path)
+
+
 def setup_tracing(
     component_name: str,
     component_id: str,
