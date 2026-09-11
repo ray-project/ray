@@ -33,7 +33,10 @@ def _make_k8s_event(
     event_timestamp: datetime = None,
     component: str = "kubelet",
     reporting_component: str = "",
+    reporting_controller: str = "",
     with_source: bool = True,
+    series: MagicMock = None,
+    deprecated_count: int = None,
 ) -> MagicMock:
     evt = MagicMock()
     evt.metadata.uid = uid
@@ -45,15 +48,28 @@ def _make_k8s_event(
     evt.reason = reason
     evt.type = event_type
     evt.count = count
+    evt.deprecated_count = deprecated_count
     evt.last_timestamp = last_timestamp
     evt.first_timestamp = first_timestamp
     evt.event_time = event_timestamp
     evt.reporting_component = reporting_component
+    evt.reporting_controller = reporting_controller
+    evt.series = series
     if with_source:
         evt.source.component = component
     else:
         evt.source = None
     return evt
+
+
+def _make_series(
+    count: int = None,
+    last_observed_time: datetime = None,
+) -> MagicMock:
+    series = MagicMock()
+    series.count = count
+    series.last_observed_time = last_observed_time
+    return series
 
 
 @pytest.mark.asyncio
@@ -233,6 +249,58 @@ def test_timestamp_falls_back_to_first_timestamp():
 
     assert delivered_event is not None
     assert delivered_event.timestamp.seconds == int(ts.timestamp())
+
+
+def test_timestamp_prefers_series_last_observed_time():
+    delivered_event = None
+
+    def callback(event: RayEvent):
+        nonlocal delivered_event
+        delivered_event = event
+
+    provider = KubernetesEventProvider(callback)
+    ts_series = datetime(2025, 6, 1, 14, 0, 0, tzinfo=timezone.utc)
+    ts_legacy = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    evt = _make_k8s_event(
+        last_timestamp=ts_legacy,
+        series=_make_series(count=5, last_observed_time=ts_series),
+    )
+    provider._process_k8s_event(evt)
+
+    assert delivered_event is not None
+    assert delivered_event.timestamp.seconds == int(ts_series.timestamp())
+
+
+@pytest.mark.parametrize(
+    "count,series_count,expected_custom_count",
+    [
+        (1, 8, "8"),  # series.count takes precedence over legacy count
+        (1, 1, None),  # count == 1 is omitted
+        (6, None, "6"),  # falls back to legacy count when series is None
+    ],
+)
+def test_process_k8s_event_custom_fields_count(
+    count, series_count, expected_custom_count
+):
+    delivered_event = None
+
+    def callback(event: RayEvent):
+        nonlocal delivered_event
+        delivered_event = event
+
+    provider = KubernetesEventProvider(callback)
+    series = _make_series(count=series_count) if series_count is not None else None
+    evt = _make_k8s_event(count=count, series=series)
+    provider._process_k8s_event(evt)
+
+    assert delivered_event is not None
+    if expected_custom_count is not None:
+        assert (
+            delivered_event.platform_event.custom_fields["count"]
+            == expected_custom_count
+        )
+    else:
+        assert "count" not in delivered_event.platform_event.custom_fields
 
 
 @pytest.mark.parametrize(
