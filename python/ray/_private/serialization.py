@@ -128,6 +128,9 @@ def _rdt_ref_deserializer(
     )
     rdt_manager = ray._private.worker.global_worker.rdt_manager
     rdt_manager.set_rdt_metadata(obj_ref.hex(), rdt_meta)
+    ray._private.worker.global_worker.core_worker.add_borrowed_object_out_of_scope_callback(
+        obj_ref, rdt_manager.remove_borrowed_rdt_metadata
+    )
 
     return obj_ref
 

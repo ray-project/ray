@@ -184,9 +184,9 @@ class RDTManager:
         # they can be accessed from the user's python thread or the CoreWorker's main io service thread.
         self._lock = threading.Lock()
 
-        # A dictionary that maps from owned object's ID to RDTMeta.
-        # This dictionary is hosted on the "driver" process of the actors that
-        # store and send/receive RDT objects.
+        # A dictionary that maps from an owned or borrowed object's ID to RDTMeta.
+        # This dictionary is process-local to drivers and actor workers that
+        # manage, send, or receive RDT objects.
         self._managed_rdt_metadata: Dict[str, RDTMeta] = {}
         # Condition variable to wait for the tensor transport meta to be set.
         self._tensor_transport_meta_cv = threading.Condition(self._lock)
@@ -299,6 +299,11 @@ class RDTManager:
     def get_rdt_metadata(self, obj_id: str) -> Optional[RDTMeta]:
         with self._lock:
             return self._managed_rdt_metadata.get(obj_id, None)
+
+    def remove_borrowed_rdt_metadata(self, obj_id_binary: bytes):
+        """Remove local metadata after a borrowed RDT ref goes out of scope."""
+        with self._lock:
+            self._managed_rdt_metadata.pop(obj_id_binary.hex(), None)
 
     def wait_for_tensor_transport_metadata(
         self, obj_id: str, timeout: float
@@ -1003,8 +1008,6 @@ class RDTManager:
         Otherwise, queue up the free operation until the tensor metadata is available.
         """
         # NOTE: This may have to change if we support lineage reconstruction for RDT
-        # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
-        # the NIXL ray.put / ray.get
         with self._lock:
             self._queued_transfers.pop(object_id, None)
             rdt_meta = self._managed_rdt_metadata[object_id]
