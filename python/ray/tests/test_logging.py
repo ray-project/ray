@@ -20,7 +20,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray._private import logging_utils, ray_constants
+from ray._private import logging_utils, ray_constants, services
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
@@ -84,6 +84,28 @@ def test_redirect_stdout_stderr_tee_options(tee_enabled):
 
     redirect_stdout.assert_called_once_with("stdout.log", 100, 3, tee_enabled, False)
     redirect_stderr.assert_called_once_with("stderr.log", 100, 3, False, tee_enabled)
+
+
+@pytest.mark.parametrize(
+    ("tee_enabled", "expected_stream"),
+    [(False, subprocess.DEVNULL), (True, None)],
+)
+def test_start_log_monitor_preserves_streams_for_tee(tee_enabled, expected_stream):
+    with (
+        patch.object(ray_constants, "LOG_MONITOR_TEE_STDOUT", tee_enabled),
+        patch.object(services, "start_ray_process") as start_ray_process,
+    ):
+        services.start_log_monitor(
+            "session",
+            "logs",
+            "gcs-address",
+            "node-address",
+            stdout_filepath="stdout.log",
+            stderr_filepath="stderr.log",
+        )
+
+    assert start_ray_process.call_args.kwargs["stdout_file"] == expected_stream
+    assert start_ray_process.call_args.kwargs["stderr_file"] == expected_stream
 
 
 def test_reopen_changed_inode_seeks_on_non_empty_file(tmp_path):
