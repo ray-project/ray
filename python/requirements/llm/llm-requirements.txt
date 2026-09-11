@@ -1,5 +1,9 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
 vllm[audio]==0.29.0
+# TODO (jeffreywang): Remove this upper bound after vLLM supports the
+# transformers 5.17 Pixtral API. vLLM 0.29.0 imports PixtralRotaryEmbedding,
+# which transformers 5.17 removed.
+transformers>=5.10.4,<5.17
 prometheus-fastapi-instrumentator>=8.0.0  # for starlette v1.0.1+
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.29.0/requirements/kv_connectors.txt#L4

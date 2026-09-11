@@ -522,6 +522,14 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
             # Issue: https://github.com/vllm-project/vllm/issues/30521.
             tensor_parallel_size=2,
             pipeline_parallel_size=1,
+            # vLLM profiles the maximum multimodal input while the engine starts,
+            # before the per-request mm_processor_kwargs below are available.
+            mm_processor_kwargs=dict(
+                min_pixels=28 * 28,
+                max_pixels=1280 * 28 * 28,
+                fps=1,
+                cap_pixels_per_frame=True,
+            ),
         ),
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
@@ -544,6 +552,7 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
                 min_pixels=28 * 28,
                 max_pixels=1280 * 28 * 28,
                 fps=1,
+                cap_pixels_per_frame=True,
             ),
             messages=[
                 {"role": "system", "content": "You are an assistant"},
