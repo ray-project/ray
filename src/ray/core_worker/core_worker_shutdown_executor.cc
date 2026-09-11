@@ -269,17 +269,14 @@ void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
   RAY_LOG(INFO) << "Executing handle exit: " << exit_type << " - " << detail
                 << " (timeout: " << timeout_ms.count() << "ms)";
 
-  if (ShouldWorkerIdleExit()) {
-    auto actual_timeout = timeout_ms;
-    if (actual_timeout.count() == -1) {
-      actual_timeout = std::chrono::milliseconds{10000};  // 10s default
-    }
-
-    ExecuteExit(exit_type, detail, actual_timeout, nullptr);
-  } else {
-    RAY_LOG(INFO) << "Worker not idle, ignoring exit request: " << detail;
-    NotifyComplete();
+  // RequestShutdown declines an idle exit while the worker is busy, so by the time this
+  // runs the state machine has committed to shutting down and there is no way back.
+  auto actual_timeout = timeout_ms;
+  if (actual_timeout.count() == -1) {
+    actual_timeout = std::chrono::milliseconds{10000};  // 10s default
   }
+
+  ExecuteExit(exit_type, detail, actual_timeout, nullptr);
 }
 
 void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
