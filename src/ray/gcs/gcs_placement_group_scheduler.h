@@ -204,11 +204,6 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
-  /// This method returns bundle locations that success to commit resources.
-  ///
-  /// \return Location of bundles that success to commit resources on a node.
-  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
-
   /// This method returns bundle locations.
   ///
   /// \return Location of bundles.
@@ -254,9 +249,6 @@ class LeaseStatusTracker {
 
   /// Location of bundles that commit requests failed.
   std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
-
-  /// Location of bundles that committed requests success.
-  std::shared_ptr<BundleLocations> committed_bundle_locations_;
 
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::PREPARING;
@@ -454,11 +446,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy);
 
-  /// Help function to check if the resource_name has the pattern
-  /// {original_resource_name}_group_{placement_group_id}, which means
-  /// wildcard resource.
-  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
-
   instrumented_io_context &io_context_;
 
   /// Used to update placement group information upon creation, deletion, etc.
@@ -484,7 +471,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 
   friend class GcsPlacementGroupSchedulerTest;
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
 };
 
 }  // namespace gcs

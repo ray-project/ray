@@ -16,7 +16,6 @@
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -377,10 +376,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       node_id,
                                       schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
-      auto commited_bundle_locations = std::make_shared<BundleLocations>();
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-        (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
       }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
@@ -723,21 +720,6 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
   }
 }
 
-bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
-    const std::string &resource_name) {
-  std::string_view resource_name_view(resource_name);
-  std::string_view pattern("_group_");
-
-  // The length of {placement_group_id} is fixed, so we just need to check that if the
-  // length and the pos of `_group_` match.
-  if (resource_name_view.size() < pattern.size() + 2 * PlacementGroupID::Size()) {
-    return false;
-  }
-
-  auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
-  return resource_name_view.substr(idx, pattern.size()) == pattern;
-}
-
 LeaseStatusTracker::LeaseStatusTracker(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
@@ -745,7 +727,6 @@ LeaseStatusTracker::LeaseStatusTracker(
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
-  committed_bundle_locations_ = std::make_shared<BundleLocations>();
   bundle_locations_ = std::make_shared<BundleLocations>();
   for (const auto &bundle : unplaced_bundles) {
     const auto &iter = schedule_map.find(bundle->BundleId());
@@ -830,8 +811,6 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-  } else {
-    committed_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
 }
 
@@ -859,11 +838,6 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
 const std::shared_ptr<BundleLocations>
     &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
-}
-
-const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetCommittedBundleLocations()
-    const {
-  return committed_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations() const {
