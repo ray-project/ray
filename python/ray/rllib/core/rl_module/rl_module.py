@@ -193,7 +193,7 @@ class RLModuleSpec:
             )
         return spec
 
-    def update(self, other, override: bool = True) -> None:
+    def update(self, other: "RLModuleSpec", override: bool = True) -> None:
         """Updates this spec with the given other spec. Works like dict.update().
 
         Args:
@@ -375,6 +375,8 @@ class RLModule(Checkpointable, abc.ABC):
 
 
     Args:
+        config: Deprecated. Use the individual keyword arguments instead. Passing
+            anything but the default value here raises an error.
         observation_space: The observation space of the model. Note that in multi-agent
             setups, this is typically the observation space of an agent that maps to
             this RLModule.
@@ -387,6 +389,9 @@ class RLModule(Checkpointable, abc.ABC):
         learner_only: If True, RLlib won't built this RLModule on EnvRunner actors.
             False by default.
         model_config: A config dict to specify features of this RLModule.
+        catalog_class: An optional `Catalog` subclass used to build the RLModule's
+            sub-components (encoder, heads, action distribution classes). Deprecated.
+        **kwargs: Forwarded to the `Checkpointable` base class constructor.
 
     Attributes:
         action_dist_cls: An optional ray.rllib.core.distribution.distribution.
@@ -407,14 +412,14 @@ class RLModule(Checkpointable, abc.ABC):
 
     def __init__(
         self,
-        config=DEPRECATED_VALUE,
+        config: Any = DEPRECATED_VALUE,
         *,
         observation_space: Optional[gym.Space] = None,
         action_space: Optional[gym.Space] = None,
         inference_only: Optional[bool] = None,
         learner_only: bool = False,
         model_config: Optional[Union[dict, DefaultModelConfig]] = None,
-        catalog_class=None,
+        catalog_class: Optional[Type["Catalog"]] = None,
         **kwargs,
     ):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
@@ -706,11 +711,21 @@ class RLModule(Checkpointable, abc.ABC):
         """Returns the state dict of the module.
 
         Args:
+            components: An optional collection of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a
+                large NN) and at the same time, these components are not required by
+                the caller.
+            not_components: An optional collection of string keys to be excluded in
+                the returned state, even if the same string is part of `components`.
+                This is useful to get the complete state of the class, except for some
+                very large sub-components.
             inference_only: Whether the returned state should be an inference-only
                 state (w/o those model components that are not needed for action
                 computations, such as a value function or a target network).
                 Note that setting this to `False` might raise an error if
                 `self.inference_only` is True.
+            **kwargs: Forward compatible kwargs.
 
         Returns:
             This RLModule's state dict.

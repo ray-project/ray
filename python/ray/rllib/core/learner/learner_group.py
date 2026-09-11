@@ -278,6 +278,9 @@ class LearnerGroup(Checkpointable):
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
+            batches: A list of data batches to use for the update. If there are more
+                than one Learner workers, the list of batches is split amongst these
+                and one list shard is sent to each Learner.
             batch_refs: A list of Ray ObjectRefs to the batches. If there are more
                 than one Learner workers, the list of batch refs is split amongst these and
                 one list shard is sent to each Learner.
@@ -287,11 +290,15 @@ class LearnerGroup(Checkpointable):
             episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
                 than one Learner workers, the list of episode refs is split amongst these and
                 one list shard is sent to each Learner.
-            timesteps: A dictionary of timesteps to pass to the Learners's update method.
-                This is usually used for learning rate scheduling but can be used for any other purpose.
+            data_iterators: A list of Ray Data `DataIterator` instances to stream the
+                training data from. If there are more than one Learner workers, the
+                list of iterators is split amongst these and one list shard is sent to
+                each Learner.
             training_data: A TrainingData object to use for the update. If not provided,
                 a new TrainingData object will be created from the batch, batches, batch_refs,
                 episodes, and episodes_refs.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -302,19 +309,8 @@ class LearnerGroup(Checkpointable):
                 Learner workers' states should be identical, so we use the first
                 Learner's state here. Useful for avoiding an extra `get_weights()` call,
                 e.g. for synchronizing EnvRunner weights.
-            num_epochs: The number of complete passes over the entire train batch. Each
-                pass might be further split into n minibatches (if `minibatch_size`
-                provided).
-            minibatch_size: The size of minibatches to use to further split the train
-                `batch` into sub-batches. The `batch` is then iterated over n times
-                where n is `len(batch) // minibatch_size`.
-            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
-                If the train batch has a time rank (axis=1), shuffling will only take
-                place along the batch axis to not disturb any intact (episode)
-                trajectories. Also, shuffling is always skipped if `minibatch_size` is
-                None, meaning the entire train batch is processed each epoch, making it
-                unnecessary to shuffle.
-            **kwargs:
+            **kwargs: Additional keyword arguments passed on to each Learner's
+                `update()` method.
 
         Returns:
             If `async_update` is False, a dictionary with the reduced results of the
@@ -609,7 +605,7 @@ class LearnerGroup(Checkpointable):
         state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
         return state
 
-    def set_weights(self, weights) -> None:
+    def set_weights(self, weights: StateDict) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
 
         Args:
@@ -675,6 +671,8 @@ class LearnerGroup(Checkpointable):
                 (only if they return a RayActorError).
                 Also not that this setting is ignored if `healthy_only=True` (b/c this
                 setting only affects actors that are currently tagged as unhealthy).
+            **kwargs: Additional keyword arguments to pass into `func` alongside the
+                Learner itself.
 
         Returns:
             A list of size len(Learners) with the return values of all calls to `func`.

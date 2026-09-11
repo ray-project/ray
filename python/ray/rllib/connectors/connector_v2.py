@@ -265,7 +265,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 between different ConnectorV2 pieces (in the same pipeline) or across
                 ConnectorV2 pipelines (meaning between env-to-module and module-to-env).
             metrics: Optional MetricsLogger instance to log custom metrics to.
-            kwargs: Forward API-compatibility kwargs.
+            **kwargs: Forward API-compatibility kwargs.
 
         Returns:
             The transformed connector output.
@@ -303,8 +303,9 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 originally.
 
         Yields:
-            All SingleAgentEpisodes in the input list, whereby MultiAgentEpisodes will
-            be broken down into their individual SingleAgentEpisode components.
+            SingleAgentEpisode: All SingleAgentEpisodes in the input list, whereby
+                MultiAgentEpisodes will be broken down into their individual
+                SingleAgentEpisode components.
         """
         list_indices = defaultdict(int)
 

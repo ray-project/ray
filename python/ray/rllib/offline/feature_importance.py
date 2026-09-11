@@ -167,11 +167,11 @@ class FeatureImportance(OfflineEvaluator):
         Args:
             policy: the policy to use for feature importance.
             repeat: number of times to repeat the perturbation.
-            perturb_fn: function to perturb the features. By default reshuffle the
-                features within the batch.
             limit_fraction: fraction of the dataset to use for feature importance
                 This is only used in estimate_on_dataset when the dataset is too large
                 to compute feature importance on.
+            perturb_fn: function to perturb the features. By default reshuffle the
+                features within the batch.
         """
         super().__init__(policy)
         self.repeat = repeat

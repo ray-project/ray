@@ -54,6 +54,13 @@ class SACTFModel(TFModelV2):
         """Initialize a SACTFModel instance.
 
         Args:
+            obs_space: Observation space of the target gym env. This may have an
+                `original_space` attribute that specifies how to unflatten the
+                tensor into a ragged tensor.
+            action_space: Action space of the target gym env.
+            num_outputs: Number of output units of the model.
+            model_config: Config for the model, documented in ModelCatalog.
+            name: Name (scope) for the model.
             policy_model_config: The config dict for the
                 policy network.
             q_model_config: The config dict for the
@@ -62,7 +69,7 @@ class SACTFModel(TFModelV2):
                 stable Q-learning.
             initial_alpha: The initial value for the to-be-optimized
                 alpha parameter (default: 1.0).
-            target_entropy (Optional[float]): A target entropy value for
+            target_entropy: A target entropy value for
                 the to-be-optimized alpha parameter. If None, will use the
                 defaults described in the papers for SAC (and discrete SAC).
 
@@ -135,7 +142,13 @@ class SACTFModel(TFModelV2):
         """
         return input_dict["obs"], state
 
-    def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
+    def build_policy_model(
+        self,
+        obs_space: gym.spaces.Space,
+        num_outputs: int,
+        policy_model_config: ModelConfigDict,
+        name: str,
+    ) -> TFModelV2:
         """Builds the policy model used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -143,8 +156,14 @@ class SACTFModel(TFModelV2):
         top level SAC `policy_model` config key to make this default
         implementation of `build_policy_model` use your custom policy network.
 
+        Args:
+            obs_space: Observation space of the policy sub-model.
+            num_outputs: Number of output units of the policy sub-model.
+            policy_model_config: The config dict for the policy network.
+            name: Name (scope) for the policy sub-model.
+
         Returns:
-            TFModelV2: The TFModelV2 policy sub-model.
+            The TFModelV2 policy sub-model.
         """
         model = ModelCatalog.get_model_v2(
             obs_space,
@@ -156,7 +175,14 @@ class SACTFModel(TFModelV2):
         )
         return model
 
-    def build_q_model(self, obs_space, action_space, num_outputs, q_model_config, name):
+    def build_q_model(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        q_model_config: ModelConfigDict,
+        name: str,
+    ) -> TFModelV2:
         """Builds one of the (twin) Q-nets used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -164,8 +190,18 @@ class SACTFModel(TFModelV2):
         top level SAC `q_model_config` config key to make this default implementation
         of `build_q_model` use your custom Q-nets.
 
+        Args:
+            obs_space: Observation space of the Q-net sub-model. In the continuous
+                action case, the actions are concatenated to (or tuple-ized with)
+                these observations to form the Q-net's input space.
+            action_space: Action space of the Q-net sub-model.
+            num_outputs: Number of output units of the Q-net sub-model (1 for
+                continuous actions, the number of actions for discrete ones).
+            q_model_config: The config dict for the Q-network(s).
+            name: Name (scope) for the Q-net sub-model.
+
         Returns:
-            TFModelV2: The TFModelV2 Q-net sub-model.
+            The TFModelV2 Q-net sub-model.
         """
         self.concat_obs_and_actions = False
         if self.discrete:
@@ -203,7 +239,7 @@ class SACTFModel(TFModelV2):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
-            actions (Optional[TensorType]): Continuous action batch to return
+            actions: Continuous action batch to return
                 Q-values for. Shape: [BATCH_SIZE, action_dim]. If None
                 (discrete action case), return Q-values for all actions.
 
@@ -222,7 +258,7 @@ class SACTFModel(TFModelV2):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
-            actions (Optional[Tensor]): Actions to return the Q-values for.
+            actions: Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim]. If None (discrete action
                 case), return Q-values for all actions.
 
@@ -274,7 +310,7 @@ class SACTFModel(TFModelV2):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `model(obs)`).
-            state_in List(TensorType): State input for recurrent cells
+            state_in: State input for recurrent cells
             seq_lens: Sequence lengths of input- and state
                 sequences
 

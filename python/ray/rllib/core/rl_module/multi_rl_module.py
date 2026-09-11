@@ -72,7 +72,7 @@ class MultiRLModule(RLModule):
 
     def __init__(
         self,
-        config=DEPRECATED_VALUE,
+        config: Any = DEPRECATED_VALUE,
         *,
         observation_space: Optional[gym.Space] = None,
         action_space: Optional[gym.Space] = None,
@@ -86,6 +86,8 @@ class MultiRLModule(RLModule):
         """Initializes a MultiRLModule instance.
 
         Args:
+            config: Deprecated. Use the individual keyword arguments instead. Passing
+                a `MultiRLModuleConfig` here raises an error.
             observation_space: The MultiRLModule's observation space.
             action_space: The MultiRLModule's action space.
             inference_only: The MultiRLModule's `inference_only` setting. If True, force
@@ -93,9 +95,12 @@ class MultiRLModule(RLModule):
                 If None, infers the value for `inference_only` by setting it to True,
                 iff all `inference_only` flags inside `rl_module_specs`, otherwise to
                 False.
+            learner_only: The MultiRLModule's `learner_only` setting. Currently ignored
+                by `MultiRLModule` and only respected by the individual submodules.
             model_config: The MultiRLModule's `model_config` dict.
             rl_module_specs: A dict mapping ModuleIDs to `RLModuleSpec` instances used
                 to create the submodules.
+            **kwargs: Forwarded to the `RLModule` base class constructor.
         """
         if config != DEPRECATED_VALUE and isinstance(config, MultiRLModuleConfig):
             deprecation_warning(
@@ -337,6 +342,7 @@ class MultiRLModule(RLModule):
             return_dict: Whether to return a dict mapping ModuleID to the individual
                 module's return values of calling `func`. If False (default), return
                 a list.
+            **kwargs: Additional keyword arguments passed on to each `func` call.
 
         Returns:
             The list of return values of all calls to
@@ -379,6 +385,7 @@ class MultiRLModule(RLModule):
 
         Args:
             module_id: The module ID to get.
+            default: The value to return if `module_id` is not found in self.
 
         Returns:
             The RLModule with the given module ID or `default` if `module_id` not found

@@ -17,15 +17,12 @@ class RelativePositionEmbedding(nn.Module):
     matrix.
 
     Args:
-        seq_length: The max. sequence length (time axis).
         out_dim: The number of nodes to go into the first Tranformer
             layer with.
-
-    Returns:
-        torch.Tensor: The encoding matrix Phi.
+        **kwargs: Forwarded to the `nn.Module` constructor.
     """
 
-    def __init__(self, out_dim, **kwargs):
+    def __init__(self, out_dim: int, **kwargs):
         super().__init__()
         self.out_dim = out_dim
 
@@ -63,7 +60,8 @@ class RelativeMultiHeadAttention(nn.Module):
         """Initializes a RelativeMultiHeadAttention nn.Module object.
 
         Args:
-            in_dim (int):
+            in_dim: The input dimension of this module, i.e. the size of the
+                incoming feature vectors.
             out_dim: The output dimension of this module. Also known as
                 "attention dim".
             num_heads: The number of attention heads to use.
@@ -72,10 +70,10 @@ class RelativeMultiHeadAttention(nn.Module):
                 Denoted `D` in [2].
             input_layernorm: Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
-            output_activation (Union[str, callable]): Optional activation
+            output_activation: Optional activation
                 function or activation function specifier (str).
                 Should be "relu" for GTrXL.
-            **kwargs:
+            **kwargs: Forwarded to the `nn.Module` constructor.
         """
         super().__init__(**kwargs)
 

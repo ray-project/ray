@@ -371,6 +371,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             continues_B_T: The continues batch in the shape (B, T) and of type float32
                 (1.0 -> continue; 0.0 -> end of episode).
             fwd_out: The `forward_train` outputs of the DreamerV3RLModule.
+
+        Returns:
+            A dict mapping loss names to their loss tensors, containing the
+            decoder-, reward-, continue-, and total prediction losses, each as a
+            per-timestep (B, T) tensor (keys ending in `_B_T`) and as the
+            corresponding scalar mean.
         """
 
         # Learn to produce symlog'd observation predictions.

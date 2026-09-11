@@ -15,6 +15,10 @@ def override(parent_cls: type) -> Callable[[F], F]:
             `parent_class` does not actually have the method or the class, in which
             method is defined is not a subclass of `parent_class`, an error is raised.
 
+    Returns:
+        A decorator that validates the decorated method against `parent_cls` and
+        returns it unchanged.
+
     .. testcode::
         :skipif: True
 
