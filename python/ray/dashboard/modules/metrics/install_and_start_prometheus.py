@@ -8,6 +8,7 @@ from pathlib import Path
 
 import requests
 
+from ray._private.tar_utils import safe_extract_tar
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
@@ -62,7 +63,7 @@ def download_file(url, filename):
 def install_prometheus(file_path):
     try:
         with tarfile.open(file_path) as tar:
-            tar.extractall()
+            safe_extract_tar(tar)
         logging.info("Prometheus installed successfully.")
         return True
     except Exception as e:
