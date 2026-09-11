@@ -9,6 +9,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
+from ray.llm._internal.common.utils.llmman_utils import is_oci_path, resolve_oci_model
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
@@ -193,7 +194,12 @@ class VLLMEngineConfig(BaseModelExtended):
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
             model_source = llm_config.model_loading_config.model_source
-            if is_remote_path(model_source):
+            if is_oci_path(model_source):
+                # A CNCF ModelPack artifact is pulled through an llmman daemon
+                # and extracted; from here it is an ordinary local directory,
+                # so no mirror config is needed and vLLM loads it directly.
+                hf_model_id = resolve_oci_model(model_source)
+            elif is_remote_path(model_source):
                 # Remote URIs (s3://, gs://, …) are download addresses,
                 # not HuggingFace IDs.  Using the URI verbatim as
                 # hf_model_id propagates the scheme and slashes into the
@@ -332,7 +338,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @staticmethod
     def _detect_fractional_gpu_from_pg(
-        placement_group_config: Optional[Dict[str, Any]]
+        placement_group_config: Optional[Dict[str, Any]],
     ) -> Optional[float]:
         if not placement_group_config:
             return None
