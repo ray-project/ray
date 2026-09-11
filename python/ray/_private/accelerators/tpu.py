@@ -52,14 +52,6 @@ TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
-# The following defines environment variables that allow
-# us to access a subset of TPU visible chips.
-#
-# See: https://github.com/google/jax/issues/14977 for an example/more details.
-TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
-
 # Mapping of chips per host/process to LibTPU 3D coordinate bounding boxes (X,Y,Z).
 TPU_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
     1: "1,1,1",
@@ -67,6 +59,14 @@ TPU_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
     4: "2,2,1",
     8: "2,4,1",
 }
+
+# The following defines environment variables that allow
+# us to access a subset of TPU visible chips.
+#
+# See: https://github.com/google/jax/issues/14977 for an example/more details.
+TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
+TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = TPU_CHIPS_PER_PROCESS_BOUNDS[1]
+TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = TPU_CHIPS_PER_PROCESS_BOUNDS[2]
 
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
