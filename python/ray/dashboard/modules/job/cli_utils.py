@@ -35,6 +35,9 @@ def extract_concise_error_message(message: str) -> str:
     last = matches[-1]
     innermost = f"{last.group(1)}: {last.group(2)}"
     if len(matches) < 2:
+        # A lone traceback has no nesting to collapse; keep its frames intact.
+        if "Traceback (most recent call last)" in message:
+            return message.strip()
         return innermost
     penultimate = matches[-2]
     # Only collapse when the penultimate summary line actually introduces

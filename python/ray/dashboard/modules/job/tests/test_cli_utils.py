@@ -65,6 +65,17 @@ ValueError: Job with submission_id pytorch-mnist-job already exists."""
         )
         assert extract_concise_error_message(message) == message
 
+    def test_single_level_traceback_keeps_frames(self):
+        # A single-level traceback should not be reduced to just the summary
+        # line; the frames are needed for debugging.
+        message = (
+            "Request failed with status code 400: Traceback (most recent call last):\n"
+            '  File ".../ray/dashboard/modules/job/job_head.py", line 407, in submit_job\n'
+            "    raise RuntimeError(...)\n"
+            "RuntimeError: validation failed."
+        )
+        assert extract_concise_error_message(message) == message.strip()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
