@@ -1671,6 +1671,32 @@ class TestEncoderSerialization:
         assert exc_info.value.preprocessor_type == "NonExistentEncoder"
 
 
+def test_encoders_fit_via_aggregation():
+    """Encoder fits register plan aggregators, not driver-side callable stats.
+
+    This is what allows a `Dataset.aggregate()`-based fit (one distributed
+    query per preprocessor, batchable with others) instead of the legacy
+    `compute_unique_value_indices` map_batches + driver-side counter merge.
+    """
+    df = pd.DataFrame({"A": ["a", "b", "a"], "B": [["x"], ["y"], ["x", "y"]]})
+    ds = ray.data.from_pandas(df)
+
+    encoders = [
+        OrdinalEncoder(["A"]),
+        OneHotEncoder(["A"], max_categories={"A": 1}),
+        MultiHotEncoder(["B"]),
+        LabelEncoder("A"),
+        Categorizer(["A"]),
+    ]
+    for encoder in encoders:
+        encoder.fit(ds)
+        assert not encoder._stat_computation_plan.has_custom_stat_fn(), (
+            f"{type(encoder).__name__} should fit via aggregators, "
+            "not callable stats"
+        )
+        assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
+
+
 if __name__ == "__main__":
     import sys
 
