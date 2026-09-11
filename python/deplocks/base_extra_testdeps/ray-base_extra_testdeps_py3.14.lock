@@ -1278,8 +1278,15 @@ grpcio==1.76.0 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
+    #   ray
+grpcio-reflection==1.76.0 \
+    --hash=sha256:d7c43f2047a2a9c9320a5905aa7133c677977436b5f63e6a868e507864a11c73 \
+    --hash=sha256:e0e7e49921c2ee951e5ddff0bdbacbd1ac1a70888beb61d567f3d01b799decb1
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
     #   ray
 grpcio-status==1.76.0 \
     --hash=sha256:25fcbfec74c15d1a1cb5da3fab8ee9672852dc16a5a9eeb5baf7d7a9952943cd \
@@ -2741,6 +2748,7 @@ protobuf==6.33.6 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

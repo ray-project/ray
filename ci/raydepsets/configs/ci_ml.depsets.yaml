@@ -65,6 +65,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/ml/py310_protobuf_overrides.txt
       - --unsafe-package pip
     build_arg_sets:
       - py310
@@ -91,6 +92,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/ml/py310_protobuf_overrides.txt
       - --unsafe-package pip
     build_arg_sets:
       - py310
@@ -118,6 +120,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/ml/py310_protobuf_overrides.txt
       - --unsafe-package pip
     pre_hooks:
       - ci/raydepsets/pre_hooks/strip-pytorch-lightning-constraint.sh
