@@ -143,6 +143,28 @@ def test_generate_cdi_spec_success():
         assert kwargs["capture_output"] is True
 
 
+def test_generate_cdi_spec_decodes_only_first_of_multiple_documents():
+    """If nvidia-ctk ever writes multiple JSON documents to stdout back to
+    back with no separator (see the comment on the raw_decode call this
+    exercises), only the first (full) document must be decoded, not
+    concatenated with or replaced by the trailing ones."""
+    fake_result = MagicMock(
+        returncode=0,
+        stdout=(
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}]}'
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}], "class": "coherent"}'
+        ),
+        stderr="",
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [{"name": "0"}],
+        }
+
+
 def test_generate_cdi_spec_caches_success():
     """A second call reuses the first's result instead of shelling out to
     nvidia-ctk again."""
