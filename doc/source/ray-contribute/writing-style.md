@@ -41,6 +41,8 @@ Describe current behavior in the present tense. Avoid "will" for things that are
 - Use: "Ray Serve routes the request to a replica."
 - Not: "Ray Serve will route the request to a replica."
 
+A committed deprecation timeline is a real future event, not a description of current behavior, so it takes "will". Write those notices with the shared fragments in [Deprecation notices](#deprecation-notices) instead of rephrasing around the word.
+
 ### Address the reader as "you"
 
 Write in second person. Don't write about "the user" or "developers" in the abstract.
@@ -244,6 +246,48 @@ Ray caches the object in the local object store.
 ````
 
 Choose the level by severity. Use `tip` for optional advice, `note` for supporting information, `caution` for something that needs care, and `warning` for an action that can lose data or break a workload. Convert a standalone caveat or limitation into the matching admonition so it stands out instead of hiding in a paragraph.
+
+### Deprecation notices
+
+Announce a deprecation with a shared fragment rather than your own wording. Ray defines the sentences once in `myst_substitutions` in `doc/source/conf.py`, so every notice reads the same and a change to the phrasing reaches every page at once.
+
+Two fragments cover the lifecycle:
+
+- `deprecation_planned` announces a deprecation that hasn't happened yet. The feature still works today.
+- `deprecation_notice` announces a deprecation that's already in effect and names the release that removes the feature.
+
+Set the values in the page's front matter, then reference the fragment:
+
+````markdown
+---
+myst:
+  substitutions:
+    deprecated_feature: "`partition_size_hint`"
+    deprecated_in: "2.58"
+---
+
+- `partition_size_hint`: Hint to the joining operator about partition size. {{ deprecation_planned }}
+````
+
+That renders as "Ray will deprecate `partition_size_hint` in Ray 2.58."
+
+The fragments take four values. `deprecated_feature` and `deprecated_in` are required, and the build fails if you leave either one out:
+
+| Value | Required | Meaning |
+|---|---|---|
+| `deprecated_feature` | Yes | The API, parameter, or setting you're deprecating. Wrap it in backticks. |
+| `deprecated_in` | Yes | The Ray version that deprecates the feature. |
+| `removed_in` | No | The Ray version that removes the feature. Without it, the notice reads "a future release." |
+| `deprecation_replacement` | No | What the reader should use instead. Adds a "Use X instead." sentence. |
+
+For a standalone notice rather than a sentence inside a list or paragraph, include the matching admonition. `_deprecation.md` renders a `warning` and `_deprecation_planned.md` renders a `note`, which matches the severity of a deprecation that's already in effect against one that's still ahead:
+
+````markdown
+```{include} /_includes/_deprecation.md
+```
+````
+
+Front matter substitutions apply to a whole page, so a page carries one set of values. When you need to document two separately versioned deprecations on the same page, write the second one out in full and leave a comment explaining why it doesn't use the fragment.
 
 ### Code blocks
 
