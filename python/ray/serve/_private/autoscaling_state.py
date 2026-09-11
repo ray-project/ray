@@ -66,6 +66,12 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
     return raw
 
 
+# Width at which one gather beats slicing each surviving replica. Below it the gather's
+# ~10 numpy calls per handle cost more than the slices they replace (measured crossover:
+# 32 replicas 1.7x worse, 64 replicas parity, 256 replicas 2.1x better).
+_GATHER_MIN_REPLICAS = 64
+
+
 def _single_source_block(ts, val):
     """(ts, val) arrays as a one-source block. `None` offsets say "one source", which
     keeps the mixed route from allocating a two-element array per replica per tick."""
@@ -168,6 +174,9 @@ class DeploymentAutoscalingState:
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
         self._cached_running_replica_strs: Set[str] = set()
+        # Bumped only when the running set actually changes, so a handle that has to
+        # mask out stopped replicas does it once per change, not once per tick.
+        self._running_gen: int = 0
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         # Track timestamps of last scale up and scale down events
@@ -284,10 +293,11 @@ class DeploymentAutoscalingState:
 
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
+        replica_strs = {r.to_full_id_str() for r in running_replicas}
+        if replica_strs != self._cached_running_replica_strs:
+            self._running_gen += 1
         self._running_replicas = running_replicas
-        self._cached_running_replica_strs = {
-            r.to_full_id_str() for r in running_replicas
-        }
+        self._cached_running_replica_strs = replica_strs
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -385,16 +395,38 @@ class DeploymentAutoscalingState:
             if running.issuperset(keys):
                 blocks.append((hm["run_ts"], hm["run_val"], offs))
                 continue
+            cached = hm.get("masked")
+            if cached is not None and cached[0] == self._running_gen:
+                blocks += cached[1]
+                continue
+            blocks += self._mask_running_block(hm, keys, offs, running)
+        return blocks
+
+    def _mask_running_block(self, hm, keys, offs, running):
+        """Blocks for the replicas of one handle that are still running, memoized
+        against the running-set generation: a scale-down leaves a handle's frame naming
+        a stopped replica for a whole report interval, which is ~100 decision ticks."""
+        ts, val = hm["run_ts"], hm["run_val"]
+        if len(keys) < _GATHER_MIN_REPLICAS:
+            bounds = offs.tolist()
+            masked = [
+                _single_source_block(ts[a:b], val[a:b])
+                for key, a, b in zip(keys, bounds, bounds[1:])
+                if key in running
+            ]
+        else:
             mask = np.fromiter(
                 (k in running for k in keys), dtype=bool, count=len(keys)
             )
-            if not mask.any():
-                continue
-            starts, lens = offs[:-1][mask], np.diff(offs)[mask]
-            csr = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lens)))
-            gather = np.repeat(starts - csr[:-1], lens) + np.arange(csr[-1])
-            blocks.append((hm["run_ts"][gather], hm["run_val"][gather], csr))
-        return blocks
+            if mask.any():
+                starts, lens = offs[:-1][mask], np.diff(offs)[mask]
+                csr = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lens)))
+                gather = np.repeat(starts - csr[:-1], lens) + np.arange(csr[-1])
+                masked = [(ts[gather], val[gather], csr)]
+            else:
+                masked = []
+        hm["masked"] = (self._running_gen, masked)
+        return masked
 
     def _series_to_arrays(self, series):
         """Object timeseries -> (ts, val) float64 arrays (the cheap direction: object

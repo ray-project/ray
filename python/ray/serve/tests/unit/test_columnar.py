@@ -795,20 +795,31 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
 @pytest.mark.parametrize(
     "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
 )
-def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
+@pytest.mark.parametrize("stop_at", [0, 2, 4])
+@pytest.mark.parametrize("wide", [False, True])
+def test_columnar_handle_masks_replicas_that_stopped(agg, stop_at, wide, monkeypatch):
     """A handle lags the running set on every scale-down, so its frame still names a
     stopped replica. That replica's points must be dropped, and the survivors must total
     exactly what the object path totals. Covers the gather branch of
-    _handle_running_columnar_blocks, which the whole-block fast path skips."""
+    _handle_running_columnar_blocks, which the whole-block fast path skips.
+
+    stop_at moves the stopped replica through the frame: only when it is last are the
+    survivors a contiguous prefix and the gather the identity permutation, so a middle
+    or first stop is what actually exercises the index arithmetic. `wide` drives the
+    same fixture down both implementations of that masking, which a width threshold
+    otherwise hides from a small fixture.
+    """
     monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    monkeypatch.setattr(A, "_GATHER_MIN_REPLICAS", 0 if wide else 1000)
     live = [ReplicaID(f"r{i}", DEP) for i in range(4)]
     gone = ReplicaID("r_gone", DEP)
+    order = live[:stop_at] + [gone] + live[stop_at:]
     running = {
         r.to_full_id_str(): [
             TimeStampedValue(NOW - 6, float(i + 1)),
             TimeStampedValue(NOW, float(i + 2)),
         ]
-        for i, r in enumerate(live + [gone])
+        for i, r in enumerate(order)
     }
     handle = HandleMetricReport(
         deployment_id=DEP,
@@ -838,6 +849,40 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
     )
     col_all._cached_running_replica_strs = live_strs | {gone.to_full_id_str()}
     assert col_all.get_total_num_requests() > col.get_total_num_requests()
+
+
+def test_masked_running_blocks_follow_the_running_set(monkeypatch):
+    """The masking is memoized against the running-set generation, so a replica coming
+    back must invalidate it. A cache that never expires would keep reporting the
+    scaled-down total forever."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    replicas = [ReplicaID(f"r{i}", DEP) for i in range(3)]
+    rep = HandleMetricReport(
+        deployment_id=DEP,
+        handle_id="h0",
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=[],
+        metrics={
+            RUNNING_REQUESTS_KEY: {
+                # Distinct per replica, so every subset totals differently.
+                r.to_full_id_str(): [TimeStampedValue(NOW, float(1 << i))]
+                for i, r in enumerate(replicas)
+            }
+        },
+        timestamp=NOW,
+    )
+    st = _state()
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    # Two different subsets, so both miss the whole-block fast path and both have to
+    # consult the memo. A cache that never expires would serve the first for the second.
+    st.update_running_replica_ids([replicas[0], replicas[1]])
+    keeps_r1 = st.get_total_num_requests()
+    st.update_running_replica_ids([replicas[0], replicas[2]])
+    keeps_r2 = st.get_total_num_requests()
+    assert abs(keeps_r1 - keeps_r2) > 0.5, (keeps_r1, keeps_r2)
+    st.update_running_replica_ids([replicas[0], replicas[1]])
+    assert abs(st.get_total_num_requests() - keeps_r1) < 1e-9
 
 
 def test_empty_running_rows_keep_the_whole_block_fast_path(monkeypatch):
