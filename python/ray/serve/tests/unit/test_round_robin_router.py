@@ -7,8 +7,10 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     RequestMetadata,
 )
-from ray.serve._private.request_router import PendingRequest
-from ray.serve._private.request_router import request_router as request_router_module
+from ray.serve._private.request_router import (
+    PendingRequest,
+    request_router as request_router_module,
+)
 from ray.serve._private.test_utils import (
     FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
     FakeRunningReplica,
