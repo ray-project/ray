@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import os
 import sys
 import threading
 import time
@@ -119,10 +120,14 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # itself costs, plus arg resolution, plus time spent waiting behind other
 # requests on the single pinned LLMRouter replica's event loop -- none of
 # which the queue-based instrumentation can see.
-try:
-    from bench.pd_trace import ENABLED as _PD_TRACE_ENABLED
-except ImportError:
-    _PD_TRACE_ENABLED = False
+# Read the env var DIRECTLY rather than importing bench.pd_trace: this module
+# is imported by the LLMRouter ingress actor, which is built by
+# _build_openai_ingress_request_router with no runtime_env at all -- so it gets
+# no PYTHONPATH, the `bench` package is not importable there, the import would
+# fall to ImportError, and the flag would silently pin False. That is the exact
+# failure mode that made the earlier request_router.py instrumentation record
+# nothing. os.environ needs no PYTHONPATH and no benchmark-repo dependency.
+_PD_TRACE_ENABLED = bool(os.environ.get("RAY_PD_TRACE"))
 
 
 def _pd_fastpath_log_sample(
