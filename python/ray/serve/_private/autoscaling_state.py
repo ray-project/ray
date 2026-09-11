@@ -67,21 +67,17 @@ def _clip_window_start(
     window_start: Optional[float],
     first_ts: float,
     last_ts: float,
-    end_ts: float,
     clip_window_s: float,
 ) -> Optional[float]:
-    """Cap window_start to the most recent clip_window_s of [.., end_ts], dropping a
-    stale ramp transient from the aggregated request total. Apply only to the
-    scale-driving total; callers feeding custom policies pass 0 to keep the full window.
-    A no-op when clip_window_s <= 0, when the window is wider than the data, or when it
-    sits entirely past last_ts (stalled metrics) -- clipping there would leave MAX/MIN
-    (which hard-filter with no carry-forward) one sample or none, a false scale-down.
+    """Cap window_start to the last clip_window_s of DATA, dropping a stale ramp
+    transient from the aggregated request total. Anchored on last_ts rather than the
+    wall clock, so a metrics stall neither strands MAX/MIN (which hard-filter with no
+    carry-forward) on the final sample nor folds the transient back in as data ages.
+    Apply only to the scale-driving total; custom-policy callers pass 0 for the full window.
     """
     if clip_window_s <= 0:
         return window_start
-    clip_limit = end_ts - clip_window_s
-    if clip_limit >= last_ts:
-        return window_start
+    clip_limit = last_ts - clip_window_s
     if window_start is None:
         return clip_limit if clip_limit > first_ts else None
     return max(window_start, clip_limit)
@@ -568,7 +564,6 @@ class DeploymentAutoscalingState:
                 window_start,
                 merged_timeseries[0].timestamp,
                 merged_timeseries[-1].timestamp,
-                merged_timeseries[-1].timestamp + last_window_s,
                 clip_window_s,
             )
 
