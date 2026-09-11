@@ -10,6 +10,7 @@ ray_cc_library(
     ],
     visibility = [
         "//src/ray/common:__subpackages__",
+        "//src/ray/raylet:__subpackages__",
     ],
     deps = [
         "//src/ray/common:status",

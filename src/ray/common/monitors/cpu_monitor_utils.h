@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -38,6 +39,25 @@ class CpuMonitorUtils {
    */
   static int64_t GetCpuLimit(
       const std::string &root_cgroup_path = std::string(kRootCgroupPath));
+
+  /**
+   * @brief Sets a mock CPU limit used only during tests.
+   *
+   * @param mock_limit Mock CPU limit.
+   */
+  static void SetMockCpuLimit(int64_t mock_limit) {
+    mock_cpu_limit_.store(mock_limit, std::memory_order_relaxed);
+  }
+
+  /**
+   * @brief Clears the mock CPU limit used during tests.
+   */
+  static void ClearMockCpuLimit() {
+    mock_cpu_limit_.store(-1, std::memory_order_relaxed);
+  }
+
+ private:
+  static std::atomic<int64_t> mock_cpu_limit_;
 };
 
 }  // namespace ray
