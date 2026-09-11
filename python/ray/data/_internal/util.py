@@ -1520,6 +1520,41 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
+def _annotate_exception_with_retry_context(
+    exc: BaseException,
+    *,
+    description: str,
+    attempts: int,
+    max_attempts: int,
+    total_backoff_s: float,
+    exception_str: str,
+) -> None:
+    """Append retry context to ``exc`` in place, preserving its type and traceback."""
+    suffix = (
+        f"Failed to {description} after {attempts}/{max_attempts} "
+        f"attempts (total backoff {total_backoff_s:.1f}s)."
+    )
+    if "ACCESS_DENIED" in exception_str:
+        suffix += (
+            "\nThis looks like an AWS S3 permissions error. Make sure your "
+            "credentials have the correct permissions. If this problem persists, "
+            "try refreshing your credentials, or use s3fs with boto3 (pass "
+            "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
+        )
+    suffix += (
+        "\nTo change retry attempts, backoff, or which errors are retried, "
+        "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
+        "for I/O; `retried_map_errors` and `max_map_retries` for any task)."
+    )
+    try:
+        if exc.args and isinstance(exc.args[0], str):
+            exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
+        else:
+            exc.args = exc.args + (suffix,)
+    except Exception:
+        pass
+
+
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1556,6 +1591,7 @@ def iterate_with_retry(
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     num_items_yielded = 0
+    total_backoff_s = 0.0
     for attempt in range(max_attempts):
         try:
             iterable = iterable_factory()
@@ -1575,12 +1611,21 @@ def iterate_with_retry(
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
+                total_backoff_s += backoff
                 logger.debug(
                     f"Retrying attempt {attempt + 1} to {description} "
                     f"after {backoff:.1f}s due to: {error_str}"
                 )
                 time.sleep(backoff)
             else:
+                _annotate_exception_with_retry_context(
+                    e,
+                    description=description,
+                    attempts=attempt + 1,
+                    max_attempts=max_attempts,
+                    total_backoff_s=total_backoff_s,
+                    exception_str=error_str,
+                )
                 if unwrap_cause:
                     raise e
                 raise e from None
