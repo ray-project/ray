@@ -214,6 +214,19 @@ class CoreWorkerProcessImpl {
   /// Thread that drains object_freed_callback_service_.
   boost::thread object_freed_callback_thread_;
 
+  /// Dedicated io_context for FreeObjectOnNodesAsync gRPC calls, keeping them
+  /// off both io_service_ (which handles gRPC handlers and GCS) and
+  /// object_freed_callback_service_ (which handles lightweight BRC callbacks).
+  instrumented_io_context object_free_rpc_service_{/*enable_lag_probe=*/false,
+                                                   /*running_on_single_thread=*/true};
+
+  /// Keeps object_free_rpc_service_ alive until explicitly stopped.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_free_rpc_service_work_;
+
+  /// Thread that drains object_free_rpc_service_.
+  boost::thread object_free_rpc_thread_;
+
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 

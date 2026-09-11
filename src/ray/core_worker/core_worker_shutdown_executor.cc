@@ -111,6 +111,15 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker->object_freed_callback_thread_.join();
   }
 
+  // Post stop() so queued free batches still reach the raylet. io_service_ is already
+  // stopped, so their replies never run and only the first batch per node goes out.
+  core_worker->object_free_rpc_service_.post(
+      [&svc = core_worker->object_free_rpc_service_]() { svc.stop(); },
+      "CoreWorker.StopFreeRpcService");
+  if (core_worker->object_free_rpc_thread_.joinable()) {
+    core_worker->object_free_rpc_thread_.join();
+  }
+
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.
