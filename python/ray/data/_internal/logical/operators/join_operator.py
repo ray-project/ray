@@ -260,4 +260,10 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
         except (pa.ArrowTypeError, pa.ArrowInvalid, pa.ArrowKeyError, ValueError):
             return None
+        except Exception as exc:
+            # Polars is imported lazily; its error types aren't available
+            # unless the package is installed.
+            if type(exc).__module__.startswith("polars"):
+                return None
+            raise
         return joined.schema

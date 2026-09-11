@@ -1026,6 +1026,137 @@ def test_overlapping_non_key_columns_without_suffixes(
         )
 
 
+@pytest.mark.parametrize("join_type", ["right_semi", "right_anti"])
+def test_right_semi_anti_asymmetric_keys(ray_start_regular_shared_2_cpus, join_type):
+    """Right semi/anti must swap join keys when Polars rewrites them as left joins."""
+    left = ray.data.from_items(
+        [{"id": 0, "lval": 10}, {"id": 1, "lval": 20}, {"id": 2, "lval": 30}]
+    )
+    right = ray.data.from_items(
+        [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+            {"user_id": 3, "rval": 300},
+        ]
+    )
+
+    joined = left.join(
+        right,
+        join_type=join_type,
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["user_id"])
+
+    if join_type == "right_semi":
+        assert result == [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+        ]
+    else:
+        assert result == [{"user_id": 3, "rval": 300}]
+
+
+def test_join_tables_empty_yields_schema():
+    """A 0-row Polars streaming join must still yield a schema-carrying table."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import (
+        _join_tables_iter,
+        join_tables,
+    )
+
+    left = pa.schema(
+        [pa.field("k", pa.string()), pa.field("lval", pa.int32())]
+    ).empty_table()
+    right = pa.schema(
+        [pa.field("k", pa.string()), pa.field("rval", pa.float32())]
+    ).empty_table()
+
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("k",),
+        right_key_col_names=("k",),
+    )
+    # Polars exports String as large_string.
+    assert joined.schema == pa.schema(
+        [
+            pa.field("k", pa.large_string()),
+            pa.field("lval", pa.int32()),
+            pa.field("rval", pa.float32()),
+        ]
+    )
+
+    batches = list(
+        _join_tables_iter(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("k",),
+            right_key_col_names=("k",),
+        )
+    )
+    assert len(batches) == 1
+    assert batches[0].num_rows == 0
+    assert batches[0].schema == joined.schema
+
+
+def test_chained_join_with_empty_partitions(ray_start_regular_shared_2_cpus):
+    """A 0-row Polars streaming join must still yield a schema-carrying table.
+
+    Mimics a TPCH-style chain (nation ⋈ region ⋈ supplier) where the first
+    join uses more partitions than distinct keys, so many partitions have
+    0 matching rows. If those partitions yield nothing, BlockOutputBuffer
+    manufactures a 0-column sentinel that poisons the second join.
+    """
+    import pyarrow as pa
+
+    nation = ray.data.from_arrow(
+        pa.table(
+            {
+                "n_nationkey": pa.array(range(5), type=pa.int64()),
+                "n_regionkey": pa.array([10, 11, 12, 13, 14], type=pa.int64()),
+            }
+        )
+    )
+    region = ray.data.from_arrow(
+        pa.table(
+            {
+                "r_regionkey": pa.array(range(3), type=pa.int64()),
+                "r_name": ["X", "Y", "Z"],
+            }
+        )
+    )
+    supplier = ray.data.from_arrow(
+        pa.table(
+            {
+                "s_suppkey": pa.array(range(20), type=pa.int64()),
+                "s_nationkey": pa.array([i % 5 for i in range(20)], type=pa.int64()),
+            }
+        )
+    )
+
+    nation_region = nation.join(
+        region,
+        join_type="inner",
+        on=("n_regionkey",),
+        right_on=("r_regionkey",),
+        num_partitions=16,
+    )
+    result = nation_region.join(
+        supplier,
+        join_type="inner",
+        on=("n_nationkey",),
+        right_on=("s_nationkey",),
+        num_partitions=16,
+    )
+
+    assert len(result.take_all()) == 0
+
+
 if __name__ == "__main__":
     import sys
 

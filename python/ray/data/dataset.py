@@ -3606,6 +3606,8 @@ class Dataset:
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
+        Joins require the ``polars`` package.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",

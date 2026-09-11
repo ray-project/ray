@@ -47,6 +47,7 @@ Ray Data supports the following join types. See :meth:`Dataset.join <ray.data.Da
   columns from the requested side.
 
 Internally, joins use the :ref:`hash-shuffle backend <hash-shuffle>`.
+Each hash partition is joined with Polars.
 :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``), which is in alpha, provides an
 updated hash-shuffle implementation for joins. To use it, set the shuffle strategy before creating a
 ``Dataset``:

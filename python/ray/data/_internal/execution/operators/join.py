@@ -40,15 +40,15 @@ class _DatasetPreprocessingResult:
     unsupported_projection: "pa.Table"
 
 
-_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
+# Polars has no right-semi / right-anti; those are rewritten to left-semi /
+# left-anti after swapping the inputs. See ``_join_tables_iter``.
+_JOIN_TYPE_TO_POLARS_JOIN_TYPE_MAP = {
     JoinType.INNER: "inner",
-    JoinType.LEFT_OUTER: "left outer",
-    JoinType.RIGHT_OUTER: "right outer",
-    JoinType.FULL_OUTER: "full outer",
-    JoinType.LEFT_SEMI: "left semi",
-    JoinType.RIGHT_SEMI: "right semi",
-    JoinType.LEFT_ANTI: "left anti",
-    JoinType.RIGHT_ANTI: "right anti",
+    JoinType.LEFT_OUTER: "left",
+    JoinType.RIGHT_OUTER: "right",
+    JoinType.FULL_OUTER: "full",
+    JoinType.LEFT_SEMI: "semi",
+    JoinType.LEFT_ANTI: "anti",
 }
 
 
@@ -62,7 +62,7 @@ class JoiningAggregation(ShuffleAggregation):
         - Accumulating identical keys from both sequences into the same partition
         - Performing join on individual partitions independently
 
-    For actual joining, Pyarrow native joining functionality is utilised.
+    For the in-partition join, Polars streaming join is used.
     """
 
     def __init__(
@@ -82,7 +82,7 @@ class JoiningAggregation(ShuffleAggregation):
             left_key_col_names
         ), "Number of columns for both left and right join operands has to match"
 
-        assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
+        assert isinstance(join_type, JoinType), (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
@@ -107,7 +107,7 @@ class JoiningAggregation(ShuffleAggregation):
         left_table = _combine(left_partition_shards)
         right_table = _combine(right_partition_shards)
 
-        yield join_tables(
+        yield from _join_tables_iter(
             left_table,
             right_table,
             join_type=self._join_type,
@@ -153,7 +153,7 @@ def _make_join_reduce_fn(
             # drops the preserved side's rows for preserving joins, left_outer/
             # full_outer and left_anti/right_anti.
             return
-        yield join_tables(
+        yield from _join_tables_iter(
             left_table,
             right_table,
             join_type=join_type,
@@ -176,20 +176,51 @@ def join_tables(
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
 ) -> "pa.Table":
-    """Apply preprocess -> ``pa.Table.join`` -> postprocess to two input tables.
+    """Join two tables and return a single Arrow table.
 
-    Shared between the physical executor (``JoiningAggregation.finalize``)
-    and plan-time schema inference (``Join.infer_schema``), which calls
-    this with empty tables built from the input schemas. Plan-time and
-    runtime schemas therefore agree by construction.
+    Shared with plan-time schema inference (``Join.infer_schema``), which
+    calls this with empty tables built from the input schemas. Plan-time and
+    runtime schemas therefore agree by construction. The physical executor
+    uses ``_join_tables_iter`` so Polars can stream output batches.
     """
+    import pyarrow as pa
+
+    blocks = list(
+        _join_tables_iter(
+            left_table,
+            right_table,
+            join_type=join_type,
+            left_key_col_names=left_key_col_names,
+            right_key_col_names=right_key_col_names,
+            left_columns_suffix=left_columns_suffix,
+            right_columns_suffix=right_columns_suffix,
+        )
+    )
+    if len(blocks) == 1:
+        return blocks[0]
+    return pa.concat_tables(blocks)
+
+
+def _join_tables_iter(
+    left_table: "pa.Table",
+    right_table: "pa.Table",
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+) -> Iterator[Block]:
+    """Preprocess -> Polars streaming join -> postprocess, yielding Arrow batches."""
+    pl = _require_polars()
+
     left_on = list(left_key_col_names)
     right_on = list(right_key_col_names)
 
     # Eagerly validate suffix conflicts so callers get a clear error instead
-    # of the opaque PyArrow schema-merge error ('Field X exists 2 times').
-    # Skip for semi/anti joins: only one side's columns appear in the result,
-    # so overlapping non-key names between left and right are harmless.
+    # of an opaque schema-merge failure. Skip for semi/anti joins: only one
+    # side's columns appear in the result, so overlapping non-key names
+    # between left and right are harmless.
     if join_type not in (
         JoinType.LEFT_SEMI,
         JoinType.LEFT_ANTI,
@@ -197,10 +228,9 @@ def join_tables(
         JoinType.RIGHT_ANTI,
     ):
         left_cols = set(left_table.schema.names)
-        # PyArrow drops right key columns from output (coalescing them into
-        # the left keys), so only right non-key columns can collide with
-        # left columns. Subtracting only right_on (not left_on) correctly
-        # handles asymmetric key names (left_on != right_on).
+        # Right key columns are coalesced into the left keys, so only right
+        # non-key columns can collide with left columns. Subtracting only
+        # right_on (not left_on) correctly handles asymmetric key names.
         right_output_cols = set(right_table.schema.names) - set(right_on)
         collisions = left_cols & right_output_cols
         if left_columns_suffix is None and right_columns_suffix is None and collisions:
@@ -209,29 +239,97 @@ def join_tables(
                 f"(overlapping columns: {sorted(collisions)})"
             )
 
-    # Preprocess: split unsupported columns and add index columns if needed
     preprocess_result_l, preprocess_result_r = _preprocess(
         left_table, right_table, left_on, right_on, join_type
     )
 
-    # Perform the join on supported columns
-    arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[join_type]
+    left_df = pl.from_arrow(preprocess_result_l.supported_projection).lazy()
+    right_df = pl.from_arrow(preprocess_result_r.supported_projection).lazy()
 
-    supported = preprocess_result_l.supported_projection.join(
-        preprocess_result_r.supported_projection,
-        join_type=arrow_join_type,
-        keys=left_on,
-        right_keys=right_on,
-        left_suffix=left_columns_suffix,
-        right_suffix=right_columns_suffix,
+    target_join_type = join_type
+    left_cols_suffix = left_columns_suffix
+    right_cols_suffix = right_columns_suffix
+
+    # Polars has no right-semi / right-anti; swap sides and run the left form.
+    if target_join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI):
+        left_df, right_df = right_df, left_df
+        left_on, right_on = right_on, left_on
+        left_cols_suffix, right_cols_suffix = right_cols_suffix, left_cols_suffix
+        target_join_type = (
+            JoinType.LEFT_SEMI
+            if target_join_type is JoinType.RIGHT_SEMI
+            else JoinType.LEFT_ANTI
+        )
+
+    # Polars only suffixes the right side of name collisions
+    # (https://github.com/pola-rs/polars/issues/12418). Pre-rename colliding
+    # columns so left_suffix / right_suffix match Arrow join behavior.
+    left_cols = set(left_df.collect_schema().names())
+    right_output_cols = set(right_df.collect_schema().names()) - set(right_on)
+    collisions = left_cols & right_output_cols
+
+    if left_cols_suffix:
+        # Exclude left keys: left_on still references their original names.
+        renameable_on_left = collisions - set(left_on)
+        if renameable_on_left:
+            left_df = left_df.rename(
+                {c: f"{c}{left_cols_suffix}" for c in renameable_on_left}
+            )
+
+    if right_cols_suffix and collisions:
+        right_df = right_df.rename({c: f"{c}{right_cols_suffix}" for c in collisions})
+
+    right_suffix = right_cols_suffix or "_right"
+    joined = left_df.join(
+        right_df,
+        how=_JOIN_TYPE_TO_POLARS_JOIN_TYPE_MAP[target_join_type],
+        left_on=left_on,
+        right_on=right_on,
+        suffix=right_suffix,
+        coalesce=True,
     )
 
-    # Add back unsupported columns
-    return _postprocess(
-        supported,
-        preprocess_result_l.unsupported_projection,
-        preprocess_result_r.unsupported_projection,
-    )
+    if join_type != JoinType.FULL_OUTER:
+        # Match Arrow: drop coalesced-away right keys if Polars still emits them.
+        joined_cols = joined.collect_schema().names()
+        duplicate_columns = [
+            col
+            for col in (f"{right_key}{right_suffix}" for right_key in right_on)
+            if col in joined_cols
+        ]
+        if duplicate_columns:
+            joined = joined.drop(duplicate_columns)
+
+    has_output = False
+    for batch in joined.collect_batches(engine="streaming"):
+        has_output = True
+        yield _postprocess(
+            batch.to_arrow(),
+            preprocess_result_l.unsupported_projection,
+            preprocess_result_r.unsupported_projection,
+        )
+
+    # Streaming collect can return no batches for a 0-row join. Yield a
+    # schema-carrying empty table so downstream joins don't see a 0-column
+    # sentinel.
+    if not has_output:
+        empty = pl.DataFrame(schema=joined.collect_schema()).to_arrow()
+        yield _postprocess(
+            empty,
+            preprocess_result_l.unsupported_projection,
+            preprocess_result_r.unsupported_projection,
+        )
+
+
+def _require_polars():
+    try:
+        import polars as pl
+    except ImportError as e:
+        raise ImportError(
+            "Dataset.join depends on 'polars', but Ray Data couldn't import it. "
+            "Install it by running `pip install polars`."
+        ) from e
+    return pl
 
 
 def _preprocess(
@@ -525,11 +623,10 @@ class JoinOperator(HashShufflingOperatorBase):
             estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to perform actual (in-memory) join
-        # operation (inclusive of 50% overhead allocated for Pyarrow join
-        # implementation)
+        # (inclusive of overhead allocated for Polars' in-memory join)
         #
         # NOTE:
-        #   - 2x due to budgeted 100% overhead of Arrow's in-memory join
+        #   - 2x due to budgeted 100% overhead of the in-memory join
         join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
