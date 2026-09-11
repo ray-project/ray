@@ -149,7 +149,7 @@ For more information on working with batches, see
 :ref:`Inspecting batches <inspecting-batches>`.
 
 Iterating with a token budget
-============================
+==============================
 
 For variable-length sequences, use :meth:`~ray.data.Dataset.iter_bucket_batches`
 to group similar lengths and limit the sum of sequence lengths in each batch:
@@ -181,8 +181,8 @@ For tokenized text, return the length of the token ID sequence from ``length_fn`
 The method sorts each window of at most ``buffer_size`` rows independently and
 keeps every row, including the final batch of each window. Larger windows improve
 grouping but require more memory and increase the delay before the first batch.
-The buffer limit counts rows, not bytes. Input order changes, and rows are not
-shuffled. ``prefetch_batches`` controls the number of input windows prefetched.
+The buffer limit counts rows, not bytes. Input order changes, and rows aren't
+shuffled. ``prefetch_batches`` controls how many input windows to fetch ahead.
 
 The budget counts lengths before padding. If you pad each sequence to the longest
 sequence in its batch, the padded token count can exceed ``max_tokens``. The method
