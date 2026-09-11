@@ -18,7 +18,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
-| Release nodes left underused after downscaling | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` (node compaction) | Long-running service whose deployments scale up and down |
+| Release nodes left underused after downscaling | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Long-running service whose deployments scale up and down |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
 | Shard large embeddings across nodes | `placement_group_bundles` + `STRICT_SPREAD` | Recommendation model with distributed embedding table |
 | Simple deployment, no special needs | Default (just `ray_actor_options`) | Single-GPU model |
@@ -283,7 +283,7 @@ Pack scheduling automatically falls back to spread scheduling when any deploymen
 
 #### Node compaction
 
-Packing only decides where *new* replicas go. As deployments scale down or get deleted, nodes end up partially used, so pack scheduling also actively **compacts** the cluster:
+Packing only decides where new replicas go. As deployments scale down or get deleted, nodes end up partially used, so pack scheduling also actively compacts the cluster:
 
 1. Once every deployment has been `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S` seconds and no node is draining, the scheduler looks for a worker node whose replicas can all be bin-packed onto the other non-idle nodes. If several nodes qualify, it picks the one with the most total resources, then the one with the fewest replicas to move.
 2. Replicas on that node are migrated with a start-then-stop pattern: a replacement is started on another node and the old replica is stopped only after the replacement is running, so serving capacity never dips.
