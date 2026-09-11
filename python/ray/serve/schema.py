@@ -567,6 +567,26 @@ class DeploymentSchema(BaseModel):
         ge=0,
         le=100,
     )
+    prefer_local_node_routing: bool = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Whether to prefer routing requests to replicas on the same node as "
+            "the caller. Applies to both proxy-to-replica and replica-to-replica "
+            "routing. Defaults to the value of the "
+            "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING environment variable "
+            "(enabled by default)."
+        ),
+    )
+    prefer_local_az_routing: bool = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Whether to prefer routing requests to replicas in the same "
+            "availability zone as the caller. Applies to both proxy-to-replica "
+            "and replica-to-replica routing. Defaults to the value of the "
+            "RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING environment variable "
+            "(enabled by default)."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -764,6 +784,8 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         request_router_config=info.deployment_config.request_router_config,
         rolling_update_percentage=info.deployment_config.rolling_update_percentage,
         max_surge_percent=info.deployment_config.max_surge_percent,
+        prefer_local_node_routing=info.deployment_config.prefer_local_node_routing,
+        prefer_local_az_routing=info.deployment_config.prefer_local_az_routing,
     )
 
     if info.deployment_config.autoscaling_config is not None:
