@@ -250,6 +250,7 @@ python/ray/data/tests/preprocessors/test_torch.py
 python/ray/data/tests/preprocessors/test_transformer.py
 python/ray/data/tests/preprocessors/test_vectorizer.py
 python/ray/data/tests/test_actor_pool_map_operator.py
+python/ray/data/tests/test_advanced_fault_tolerance.py
 python/ray/data/tests/test_agg_e2e.py
 python/ray/data/tests/test_arrow_block.py
 python/ray/data/tests/test_arrow_serialization.py
@@ -302,6 +303,7 @@ python/ray/data/tests/test_map_operator.py
 python/ray/data/tests/test_map_transformer.py
 python/ray/data/tests/test_metadata_provider.py
 python/ray/data/tests/test_monotonically_increasing_id.py
+python/ray/data/tests/test_node_aware_actor_pool.py
 python/ray/data/tests/test_numpy_support.py
 python/ray/data/tests/test_object_gc.py
 python/ray/data/tests/test_op_runtime_metrics.py
