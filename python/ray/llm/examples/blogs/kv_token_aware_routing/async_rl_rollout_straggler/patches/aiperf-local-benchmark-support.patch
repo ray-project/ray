@@ -1,0 +1,149 @@
+diff --git a/src/aiperf/credit/callback_handler.py b/src/aiperf/credit/callback_handler.py
+index a12281756..69ceb4b3d 100644
+--- a/src/aiperf/credit/callback_handler.py
++++ b/src/aiperf/credit/callback_handler.py
+@@ -14,6 +14,7 @@ Key responsibilities:
+ from __future__ import annotations
+
+ import inspect
++import os
+ from collections.abc import Awaitable, Callable
+ from dataclasses import dataclass
+ from typing import TYPE_CHECKING
+@@ -37,6 +38,26 @@ if TYPE_CHECKING:
+ _logger = AIPerfLogger(__name__)
+
+
++def _closed_loop_turn_concurrency_enabled() -> bool:
++    """Whether the prefill limiter is acting as a whole-turn limiter.
++
++    Normal AIPerf semantics deliberately release a prefill slot at first token:
++    the limiter bounds prompt work, not streaming generations. The agentic
++    routing benchmark needs a different, explicitly opt-in contract: a client
++    slot is held from request dispatch through the final streamed token. We
++    reuse the existing all-turn acquisition path and alter only release timing,
++    so roots, DAG children, and join turns are all covered by one global limit.
++    """
++    return os.environ.get(
++        "AIPERF_CLOSED_LOOP_TURN_CONCURRENCY", ""
++    ).strip().lower() in {
++        "1",
++        "true",
++        "yes",
++        "on",
++    }
++
++
+ @dataclass(slots=True)
+ class PhaseCallbackContext:
+     """Context for handling callbacks for a specific phase.
+@@ -641,9 +662,14 @@ class CreditCallbackHandler:
+                 for _ in range(in_flight):
+                     concurrency.release_session_slot(phase)
+
+-        # Prefill slot is normally released on TTFT. If the request failed or was
+-        # cancelled before first token, we release here to prevent slot leaks.
+-        if not credit_return.first_token_sent:
++        # A normal prefill slot is released at TTFT. In the explicit
++        # closed-loop-turn mode it instead represents a client request slot,
++        # which must remain held until the final streamed token. Requests that
++        # fail before TTFT still release here in both modes.
++        if (
++            _closed_loop_turn_concurrency_enabled()
++            or not credit_return.first_token_sent
++        ):
+             concurrency.release_prefill_slot(phase)
+
+     async def on_first_token(self, first_token: FirstToken) -> None:
+@@ -672,5 +698,9 @@ class CreditCallbackHandler:
+         # Track the release
+         handler.progress.increment_prefill_released()
+
+-        # Release the prefill slot
+-        handler.concurrency_manager.release_prefill_slot(key)
++        # Under the opt-in closed-loop contract this is only a prefill-complete
++        # accounting event. The request slot releases in ``on_credit_return``
++        # after the final streamed token, preserving exactly N in-flight client
++        # requests across roots, children, and join turns.
++        if not _closed_loop_turn_concurrency_enabled():
++            handler.concurrency_manager.release_prefill_slot(key)
+diff --git a/src/aiperf/dataset/loader/dag_jsonl.py b/src/aiperf/dataset/loader/dag_jsonl.py
+index d4f96269b..e992e58cc 100644
+--- a/src/aiperf/dataset/loader/dag_jsonl.py
++++ b/src/aiperf/dataset/loader/dag_jsonl.py
+@@ -400,7 +400,15 @@ class DagJsonlLoader(BaseFileLoader):
+             model=t.model,
+             max_tokens=t.max_tokens,
+             extra_body=dict(t.extra) if t.extra is not None else None,
+-            delay=self._delay_cap_tracker.clamp(t.delay),
++            # A DAG delay defaults to zero. When an absolute timestamp is
++            # authored, translate that implicit zero into None so downstream
++            # fixed-schedule replay has one unambiguous timing signal.
++            timestamp=t.timestamp,
++            delay=(
++                None
++                if t.timestamp is not None
++                else self._delay_cap_tracker.clamp(t.delay)
++            ),
+         )
+
+     def _desugar_forks(self) -> None:
+diff --git a/src/aiperf/config/dataset/resolver.py b/src/aiperf/config/dataset/resolver.py
+index 1c3728772..fe7d23fff 100644
+--- a/src/aiperf/config/dataset/resolver.py
++++ b/src/aiperf/config/dataset/resolver.py
+@@ -363,6 +363,26 @@ class DatasetResolver:
+         if dataset_type == CustomDatasetType.BASETEN_TRACE:
+             return True
+
++        # DAG JSONL carries scheduling metadata on each authored turn rather
++        # than at conversation level. A timestamp on turn 0 is precisely the
++        # contract consumed by FixedScheduleStrategy, so recognize it here
++        # instead of incorrectly rejecting a valid timestamped DAG before the
++        # loader can construct its Turn metadata.
++        if dataset_type == CustomDatasetType.DAG_JSONL:
++            record = first_record
++            if record is None:
++                record = DatasetResolver._read_first_jsonl_record(file_path)
++            if not isinstance(record, dict):
++                return False
++            turns = record.get("turns")
++            if not isinstance(turns, list) or not turns or not isinstance(turns[0], dict):
++                return False
++            first_turn = turns[0]
++            return (
++                first_turn.get("timestamp") is not None
++                or first_turn.get("delay") is not None
++            )
++
+         record = first_record
+         if record is None:
+             from pathlib import Path
+diff --git a/src/aiperf/dataset/loader/dag_jsonl_models.py b/src/aiperf/dataset/loader/dag_jsonl_models.py
+index c7cc379fb..248793361 100644
+--- a/src/aiperf/dataset/loader/dag_jsonl_models.py
++++ b/src/aiperf/dataset/loader/dag_jsonl_models.py
+@@ -154,6 +154,11 @@ class DagTurn(AIPerfBaseModel):
+         "Each entry may be a bare string (auto-join on next turn) or a "
+         "``DagSpawn`` object carrying a ``join_at`` index for delayed joins.",
+     )
++    timestamp: int | float | None = Field(
++        default=None,
++        description="Absolute turn-start timestamp in milliseconds. Used by AIPerf "
++        "fixed-schedule replay; never sent in the HTTP request body.",
++    )
+     delay: float = Field(
+         default=0.0,
+         ge=0.0,
+@@ -165,6 +170,11 @@ class DagTurn(AIPerfBaseModel):
+     @model_validator(mode="after")
+     def _validate_messages(self) -> "DagTurn":
+         validate_chat_messages(self.messages)
++        # ``delay`` historically defaults to zero in DAG JSONL. Preserve that
++        # compatibility while rejecting a real delay paired with an absolute
++        # timestamp, whose two timing semantics would be ambiguous.
++        if self.timestamp is not None and self.delay != 0.0:
++            raise ValueError("timestamp and a non-zero delay cannot both be set")
+         return self
+
+     @field_validator("max_tokens", mode="before")

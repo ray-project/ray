@@ -1,0 +1,145 @@
+diff --git a/lib/kv-router/src/scheduling/config.rs b/lib/kv-router/src/scheduling/config.rs
+index 367177d8c6..a414227a61 100644
+--- a/lib/kv-router/src/scheduling/config.rs
++++ b/lib/kv-router/src/scheduling/config.rs
+@@ -126,6 +126,7 @@ fn log_env_config(config: &KvRouterConfig) {
+         overlap_score_credit_decay = config.overlap_score_credit_decay,
+         prefill_load_scale = config.prefill_load_scale,
+         decode_active_request_weight = config.decode_active_request_weight,
++        cache_affinity_only = config.cache_affinity_only,
+         router_temperature = config.router_temperature,
+         use_kv_events = config.use_kv_events,
+         router_replica_sync = config.router_replica_sync,
+@@ -178,6 +179,9 @@ fn kv_router_config_from_lookup(
+     if let Some(value) = parse_f64(&get_env, "DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT") {
+         config.decode_active_request_weight = value;
+     }
++    if let Some(value) = parse_bool(&get_env, "DYN_ROUTER_CACHE_AFFINITY_ONLY") {
++        config.cache_affinity_only = value;
++    }
+     for key in [
+         "DYN_ROUTER_KV_OVERLAP_SCORE_WEIGHT",
+         "DYN_OVERLAP_SCORE_WEIGHT",
+@@ -511,6 +515,8 @@ struct KvRouterConfigSerde {
+     overlap_score_credit_decay: f64,
+     prefill_load_scale: f64,
+     decode_active_request_weight: f64,
++    #[serde(default)]
++    cache_affinity_only: bool,
+     overlap_score_weight: Option<f64>,
+     host_cache_hit_weight: f64,
+     disk_cache_hit_weight: f64,
+@@ -555,6 +561,7 @@ impl Default for KvRouterConfigSerde {
+             overlap_score_credit_decay: config.overlap_score_credit_decay,
+             prefill_load_scale: config.prefill_load_scale,
+             decode_active_request_weight: config.decode_active_request_weight,
++            cache_affinity_only: config.cache_affinity_only,
+             overlap_score_weight: None,
+             host_cache_hit_weight: config.host_cache_hit_weight,
+             disk_cache_hit_weight: config.disk_cache_hit_weight,
+@@ -616,6 +623,12 @@ pub struct KvRouterConfig {
+     /// compute matters more than resident KV footprint. Defaults to 0.0.
+     pub decode_active_request_weight: f64,
+
++    /// Demonstration mode: score a candidate solely by matching KV-cache
++    /// overlap. Raw/residual prefill work and all decode-load terms are
++    /// excluded from selection. Defaults to false.
++    #[serde(default)]
++    pub cache_affinity_only: bool,
++
+     #[serde(default = "default_host_cache_hit_weight")]
+     pub host_cache_hit_weight: f64,
+
+@@ -766,6 +779,7 @@ impl Default for KvRouterConfig {
+             overlap_score_credit_decay: default_overlap_score_credit_decay(),
+             prefill_load_scale: default_prefill_load_scale(),
+             decode_active_request_weight: default_decode_active_request_weight(),
++            cache_affinity_only: false,
+             host_cache_hit_weight: default_host_cache_hit_weight(),
+             disk_cache_hit_weight: default_disk_cache_hit_weight(),
+             router_temperature: 0.0,
+@@ -823,6 +837,7 @@ impl TryFrom<KvRouterConfigSerde> for KvRouterConfig {
+             overlap_score_credit_decay: compat.overlap_score_credit_decay,
+             prefill_load_scale,
+             decode_active_request_weight: compat.decode_active_request_weight,
++            cache_affinity_only: compat.cache_affinity_only,
+             host_cache_hit_weight: compat.host_cache_hit_weight,
+             disk_cache_hit_weight: compat.disk_cache_hit_weight,
+             router_temperature: compat.router_temperature,
+diff --git a/lib/kv-router/src/scheduling/selector.rs b/lib/kv-router/src/scheduling/selector.rs
+index ee81348742..0e7b72ac70 100644
+--- a/lib/kv-router/src/scheduling/selector.rs
++++ b/lib/kv-router/src/scheduling/selector.rs
+@@ -159,6 +159,7 @@ struct DefaultWorkerScorer<C> {
+
+ struct DefaultWorkerPicker<'a> {
+     default_temperature: f64,
++    cache_affinity_only: bool,
+     #[cfg(any(test, feature = "bench"))]
+     deterministic_rng: Option<&'a Arc<Mutex<fastrand::Rng>>>,
+     selector_lifetime: PhantomData<&'a DefaultWorkerSelector>,
+@@ -229,6 +230,25 @@ impl<C: Borrow<KvRouterConfig>> DefaultWorkerScorer<C> {
+         let weights = context.weights;
+         let worker = row.worker;
+         let effective_overlap_blocks = row.effective_overlap_blocks;
++
++        // Demonstration scorer used to show pure KV-cache affinity. This
++        // strictly decreasing, non-negative transform keeps the selector's
++        // taint-multiplier semantics safe while scoring only matching KV overlap.
++        //
++        // Do not replace this with ``raw_prefill - overlap``: that expression
++        // also scores the uncached suffix and is not cache-affinity-only.
++        if kv_router_config.cache_affinity_only {
++            let matching_overlap_blocks = effective_overlap_blocks.max(0.0);
++            let logit = 1.0 / (1.0 + matching_overlap_blocks);
++            tracing::debug!(
++                "{formula_name} for worker_id={} dp_rank={:?} cache-affinity-only: {logit:.3} \\
++                 = 1 / (1 + matching_overlap_blocks) = 1 / (1 + {matching_overlap_blocks:.3})",
++                worker.worker_id,
++                worker.dp_rank,
++            );
++            return logit;
++        }
++
+         let shared_overlap_blocks = weights.shared_cache_multiplier * row.shared_beyond as f64;
+         // Normalize backlog above the least-loaded eligible worker by this request's
+         // size. The rational decay softly trades cache locality for prefill balance,
+@@ -330,6 +350,7 @@ impl<'a> DefaultWorkerPicker<'a> {
+     fn from_selector(selector: &'a DefaultWorkerSelector) -> Self {
+         Self {
+             default_temperature: selector.kv_router_config.router_temperature,
++            cache_affinity_only: selector.kv_router_config.cache_affinity_only,
+             #[cfg(any(test, feature = "bench"))]
+             deterministic_rng: selector.deterministic_rng.as_ref(),
+             selector_lifetime: PhantomData,
+@@ -516,7 +537,11 @@ where
+
+                     if score == best_logit {
+                         tie_count += 1;
+-                        if rng.usize(0..tie_count) == 0 {
++                        if self.cache_affinity_only
++                            && best_worker.map_or(true, |best| worker < best)
++                        {
++                            best_worker = Some(worker);
++                        } else if !self.cache_affinity_only && rng.usize(0..tie_count) == 0 {
+                             best_worker = Some(worker);
+                         }
+                     }
+@@ -550,8 +575,15 @@ where
+
+                     if score == best_logit {
+                         tie_count += 1;
+-                        // Reservoir sampling keeps tied minima uniform without collecting workers.
+-                        if fastrand::usize(0..tie_count) == 0 {
++                        if self.cache_affinity_only
++                            && best_worker.map_or(true, |best| worker < best)
++                        {
++                            // Equal cache scores use a stable, non-load tie-breaker.
++                            best_worker = Some(worker);
++                        } else if !self.cache_affinity_only
++                            // Reservoir sampling keeps non-cache-only ties uniform.
++                            && fastrand::usize(0..tie_count) == 0
++                        {
+                             best_worker = Some(worker);
+                         }
+                     }
