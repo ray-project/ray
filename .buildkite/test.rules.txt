@@ -682,6 +682,17 @@ ci/ci.sh
 @ llm
 ;
 
+# The dependency pipeline is not a library suite, so the `@ java` catch-all
+# below is the wrong default: editing it should run the jobs it defines, not an
+# unrelated Java worker suite. Emit `deplock_check`, the tag on its
+# `raydepsets_compile_all_dependencies` lock-consistency job, so a change to the
+# pipeline runs that check without fanning out to the wheel/image matrix that
+# `python_dependencies` carries. Must precede the `.buildkite/*.rayci.yml`
+# fallback.
+.buildkite/dependencies.rayci.yml
+@ deplock_check
+;
+
 .buildkite/*.rayci.yml
 @ java
 ;
