@@ -30,6 +30,9 @@ from ray.serve._private.common import (
     TimeStampedValue,
 )
 from ray.serve._private.controller import ServeController
+from ray.serve._private.controller_health_metrics_tracker import (
+    ControllerHealthMetricsTracker,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -787,6 +790,143 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
     ref._running_replicas = [rid]
     ref._cached_running_replica_strs = {rid_str}
     assert abs(mixed - ref.get_total_num_requests()) < 1e-9
+
+
+@pytest.mark.parametrize(
+    "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
+)
+def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
+    """A handle lags the running set on every scale-down, so its frame still names a
+    stopped replica. That replica's points must be dropped, and the survivors must total
+    exactly what the object path totals. Covers the gather branch of
+    _handle_running_columnar_blocks, which the whole-block fast path skips."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    live = [ReplicaID(f"r{i}", DEP) for i in range(4)]
+    gone = ReplicaID("r_gone", DEP)
+    running = {
+        r.to_full_id_str(): [
+            TimeStampedValue(NOW - 6, float(i + 1)),
+            TimeStampedValue(NOW, float(i + 2)),
+        ]
+        for i, r in enumerate(live + [gone])
+    }
+    handle = HandleMetricReport(
+        deployment_id=DEP,
+        handle_id="h0",
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=[TimeStampedValue(NOW, 1.0)],
+        metrics={RUNNING_REQUESTS_KEY: running},
+        timestamp=NOW,
+    )
+    live_strs = {r.to_full_id_str() for r in live}
+
+    ref = _state(agg)
+    ref._handle_requests["h0"] = handle
+    ref._cached_running_replica_strs = live_strs
+    col = _state(agg)
+    col.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(handle))
+    )
+    col._cached_running_replica_strs = live_strs
+    assert abs(ref.get_total_num_requests() - col.get_total_num_requests()) < 1e-9
+    # Guard against a vacuous pass: the stopped replica carries the largest series, so
+    # counting it would move the total.
+    col_all = _state(agg)
+    col_all.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(handle))
+    )
+    col_all._cached_running_replica_strs = live_strs | {gone.to_full_id_str()}
+    assert col_all.get_total_num_requests() > col.get_total_num_requests()
+
+
+def test_empty_running_rows_keep_the_whole_block_fast_path(monkeypatch):
+    """A replica that reported no running points must not appear in run_keys, or it
+    would drop the handle onto the masking branch for data it does not even carry."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    live, idle = ReplicaID("r0", DEP), ReplicaID("r_idle", DEP)
+    rep = HandleMetricReport(
+        deployment_id=DEP,
+        handle_id="h0",
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=[TimeStampedValue(NOW, 1.0)],
+        metrics={
+            RUNNING_REQUESTS_KEY: {
+                live.to_full_id_str(): [TimeStampedValue(NOW, 3.0)],
+                idle.to_full_id_str(): [],
+            }
+        },
+        timestamp=NOW,
+    )
+    st = _state()
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    assert st._handle_arrays["h0"]["run_keys"] == [live.to_full_id_str()]
+
+
+def test_replica_running_memo_invalidates_on_a_new_report(monkeypatch):
+    """The memo is keyed on the stored report's timestamp, so a fresh report must be
+    converted again rather than served from the cache."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    rid = ReplicaID("r0", DEP)
+    st = _state()
+    st._running_replicas = [rid]
+    st._cached_running_replica_strs = {rid.to_full_id_str()}
+
+    def _report(ts, value):
+        return ReplicaMetricReport(
+            replica_id=rid,
+            metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(ts, value)]},
+            timestamp=ts,
+        )
+
+    st.record_request_metrics_for_replica(_report(NOW, 2.0))
+    first = st._replica_running_blocks()
+    assert st._replica_running_arrays[rid][0] == NOW
+    # Cache hit: the same report must hand back the very same arrays.
+    assert st._replica_running_blocks()[0][0] is first[0][0]
+    st.record_request_metrics_for_replica(_report(NOW + 5, 9.0))
+    after = st._replica_running_blocks()
+    assert st._replica_running_arrays[rid][0] == NOW + 5
+    assert float(after[0][1][0]) == 9.0
+    # A stopped replica takes its memo with it.
+    st.on_replica_stopped(rid)
+    assert rid not in st._replica_running_arrays
+
+
+def test_aggregate_arrays_rejects_an_unknown_function():
+    """The object kernel raises on an unrecognized aggregation function; the array form
+    must not quietly reduce with min instead."""
+    mts, mtot = np.array([1.0, 2.0, 3.0]), np.array([5.0, 9.0, 1.0])
+    with pytest.raises(ValueError, match="Invalid aggregation function"):
+        merge.aggregate_arrays(mts, mtot, "p90", None, 1.0)
+    assert merge.aggregate_arrays(mts, mtot, "max", None, 1.0) == 9.0
+    assert merge.aggregate_arrays(mts, mtot, "min", None, 1.0) == 1.0
+
+
+def test_ingest_cpu_fraction_is_a_windowed_rate():
+    """Cumulative-over-uptime could never show a controller that saturates late. The
+    fraction is anchored on control-loop samples, so it tracks the recent window."""
+    tracker = ControllerHealthMetricsTracker()
+    tracker.start_time = 0.0
+    with mock.patch("time.time", return_value=1000.0):
+        tracker.record_loop_duration(0.1)  # window anchor, nothing ingested yet
+    tracker.record_handle_ingest(500.0)  # 0.5s of ingest inside the window
+    with mock.patch("time.time", return_value=1001.0):
+        metrics = tracker.collect_metrics()
+    assert abs(metrics.ingest_cpu_fraction - 0.5) < 1e-6
+    assert metrics.handle_reports_received == 1
+
+
+def test_columnar_decode_is_timed_apart_from_cloudpickle():
+    """Blending the two codecs into one deque hides the difference the format exists to
+    make, so each wire format reports its own decode time."""
+    tracker = ControllerHealthMetricsTracker()
+    tracker.record_decompress(4.0)
+    tracker.record_columnar_decode(1.0)
+    metrics = tracker.collect_metrics()
+    assert metrics.metrics_decompress_duration_ms.mean == 4.0
+    assert metrics.columnar_decode_duration_ms.mean == 1.0
 
 
 if __name__ == "__main__":

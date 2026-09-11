@@ -77,7 +77,9 @@ def _running_csr(payload: FlatHandleReport):
     the replica key per source. The encoder lays a metric's points out contiguously, so
     this is normally a view; a frame that is not pays one copy here, not per tick."""
     entries = payload["entries"]
-    rows = entries[entries[:, 0] == payload["mi"]]
+    # Drop data-free rows: they contribute nothing, and keeping their replica keys would
+    # let a replica that never reported knock the whole handle off the fast path below.
+    rows = entries[(entries[:, 0] == payload["mi"]) & (entries[:, 3] > 0)]
     ts, val = payload["ts"], payload["val"]
     if not rows.size:
         return ts[:0], val[:0], np.zeros(1, dtype=np.int64), []
@@ -98,9 +100,9 @@ def _running_csr(payload: FlatHandleReport):
 
 def _columnar_peak_requests(entry: dict) -> float:
     """Columnar form of HandleMetricReport.total_requests: peak per series, summed."""
-    val, offs = entry["run_val"], entry["run_offsets"]
+    val, offs = entry["run_val"], entry["run_offsets"].tolist()
     peaks = [float(entry["q_val"].max())] if entry["q_val"].size else []
-    peaks += [float(val[a:b].max()) for a, b in zip(offs[:-1], offs[1:]) if b > a]
+    peaks += [float(val[a:b].max()) for a, b in zip(offs, offs[1:])]
     return sum(peaks)
 
 
@@ -372,8 +374,9 @@ class DeploymentAutoscalingState:
 
     def _handle_running_columnar_blocks(self, running):
         """CSR blocks of each columnar handle's running series, masked to replicas still
-        in `running` (mirrors _collect_handle_running_requests). Passed through whole
-        while every replica is still running; only a changed membership pays a slice."""
+        in `running` (mirrors _collect_handle_running_requests). Whole block while every
+        replica is still running; a stale key costs one gather, never a slice per
+        replica, since a handle lags the running set on every scale-down."""
         blocks = []
         for hm in self._handle_arrays.values():
             keys, offs = hm["run_keys"], hm["run_offsets"]
@@ -382,12 +385,15 @@ class DeploymentAutoscalingState:
             if running.issuperset(keys):
                 blocks.append((hm["run_ts"], hm["run_val"], offs))
                 continue
-            ts, val = hm["run_ts"], hm["run_val"]
-            blocks += [
-                _single_source_block(ts[a:b], val[a:b])
-                for key, a, b in zip(keys, offs[:-1], offs[1:])
-                if key in running
-            ]
+            mask = np.fromiter(
+                (k in running for k in keys), dtype=bool, count=len(keys)
+            )
+            if not mask.any():
+                continue
+            starts, lens = offs[:-1][mask], np.diff(offs)[mask]
+            csr = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lens)))
+            gather = np.repeat(starts - csr[:-1], lens) + np.arange(csr[-1])
+            blocks.append((hm["run_ts"][gather], hm["run_val"][gather], csr))
         return blocks
 
     def _series_to_arrays(self, series):
