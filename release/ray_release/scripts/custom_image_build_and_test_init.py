@@ -257,6 +257,13 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
+    # Set for the nightly master runs only; see
+    # .buildkite/release/custom-image-build-and-test-init.sh. Compared against
+    # "1" rather than tested for truthiness, so that a 0 stays off instead of
+    # being forwarded to every step as a 1.
+    if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
+        env["TRIGGER_OBSERVABILITY_AGENT"] = "1"
+
     # Pipe through RAYCI_BUILD_ID from the forge step.
     # TODO(khluu): convert the steps to rayci steps and stop passing through
     # RAYCI_BUILD_ID.
