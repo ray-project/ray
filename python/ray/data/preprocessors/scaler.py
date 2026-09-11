@@ -281,6 +281,8 @@ class MinMaxScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
@@ -297,8 +299,12 @@ class MinMaxScaler(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=Min, columns=self._columns
+        )
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=Max, columns=self._columns
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -428,6 +434,8 @@ class MaxAbsScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
@@ -444,8 +452,9 @@ class MaxAbsScaler(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self._columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=AbsMax, columns=self._columns
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -586,6 +595,8 @@ class RobustScaler(SerializablePreprocessorBase):
 
     DEFAULT_QUANTILE_PRECISION = 800
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -619,37 +630,36 @@ class RobustScaler(SerializablePreprocessorBase):
         return self._quantile_precision
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        quantiles = [
-            self._quantile_range[0],
-            0.50,
-            self._quantile_range[1],
+        # One single-quantile sketch per statistic, so each result lands under
+        # its own stats_ key (the plan routes one result per aggregator alias).
+        stat_quantiles = [
+            ("low_quantile", self._quantile_range[0]),
+            ("median", 0.50),
+            ("high_quantile", self._quantile_range[1]),
         ]
-        aggregates = [
-            ApproximateQuantile(
-                on=col,
-                quantiles=quantiles,
-                quantile_precision=self._quantile_precision,
-            )
-            for col in self._columns
-        ]
-        aggregated = dataset.aggregate(*aggregates)
 
-        self.stats_ = {}
-        for col in self._columns:
-            quantiles_for_column = aggregated[f"approx_quantile({col})"]
-
+        def unpack_quantile(quantiles_for_column):
             # A column with no observed values has no quantiles: the sketch is
             # empty and the aggregation returns nothing to unpack. Store None
-            # for each statistic and let `_transform_pandas` propagate nulls,
-            # rather than failing here with `not enough values to unpack`.
-            if not quantiles_for_column or len(quantiles_for_column) != len(quantiles):
-                low_q = med_q = high_q = None
-            else:
-                low_q, med_q, high_q = quantiles_for_column
+            # and let `_transform_pandas` propagate nulls, rather than failing
+            # here with an unpacking error.
+            if not quantiles_for_column:
+                return None
+            return quantiles_for_column[0]
 
-            self.stats_[f"low_quantile({col})"] = low_q
-            self.stats_[f"median({col})"] = med_q
-            self.stats_[f"high_quantile({col})"] = high_q
+        for stat_name, quantile in stat_quantiles:
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col, q=quantile, name=stat_name: (
+                    ApproximateQuantile(
+                        on=col,
+                        quantiles=[q],
+                        quantile_precision=self._quantile_precision,
+                        alias_name=f"{name}({col})",
+                    )
+                ),
+                post_process_fn=unpack_quantile,
+                columns=self._columns,
+            )
 
         return self
 
