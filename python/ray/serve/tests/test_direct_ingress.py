@@ -2605,6 +2605,8 @@ def test_get_serve_instance_details_json_serializable(
                                     "max_backoff_s": 0.5,
                                 },
                                 "rolling_update_percentage": 0.2,
+                                "prefer_local_node_routing": True,
+                                "prefer_local_az_routing": True,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
