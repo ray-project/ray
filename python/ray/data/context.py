@@ -219,6 +219,10 @@ DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
     env_integer("RAY_DATA_ENABLE_RICH_PROGRESS_BARS", 0)
 )
 
+DEFAULT_ENABLE_ASYNC_PROGRESS_BARS = bool(
+    env_integer("RAY_DATA_ENABLE_ASYNC_PROGRESS_BARS", 0)
+)
+
 DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
@@ -670,6 +674,11 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
+        TODO(async-progress 3/3): document `enable_async_progress_bars` here —
+            what it does (renders progress bars on a background thread so slow
+            terminal I/O cannot stall the scheduling loop), that it is off by
+            default, and that it is also settable via
+            ``RAY_DATA_ENABLE_ASYNC_PROGRESS_BARS``.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
@@ -993,6 +1002,7 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    enable_async_progress_bars: bool = DEFAULT_ENABLE_ASYNC_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )

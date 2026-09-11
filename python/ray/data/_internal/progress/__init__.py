@@ -13,6 +13,21 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# TODO(async-progress A): add a helper that takes a built progress manager and
+# returns either it or an async-wrapped version of it, based on the DataContext
+# flag added in context.py. Keeping this in one place avoids duplicating the
+# decision at each construction site below.
+#   - Import the wrapper lazily inside the function, matching how the manager
+#     classes are imported below.
+#   - IMPORTANT: only the tqdm and rich managers may be wrapped. The Noop and
+#     Logging managers do no blocking terminal I/O, so wrapping them would add a
+#     background thread for nothing.
+#   - Optional refinement to consider once the renderer exists: when the
+#     terminal is already wedged, a newly started dataset could be given a Noop
+#     manager instead, so the user sees no bar rather than a frozen one.
+#     Wrapping is non-blocking either way, so this is UX, not correctness.
+
+
 def get_progress_manager(
     ctx: "DataContext", dataset_id: str, topology: "Topology", verbose_progress: bool
 ) -> "BaseExecutionProgressManager":
@@ -72,6 +87,9 @@ def get_progress_manager(
                 "enable_rich_progress_bars = True` and `ray.data."
                 "DataContext.get_current().use_ray_tqdm = False`."
             )
+        # TODO(async-progress B): assign this to a local instead of returning it
+        # directly, then return it through the _maybe_wrap_async helper so the
+        # tqdm manager renders on the background thread when the flag is on.
         return TqdmExecutionProgressManager(
             dataset_id, topology, show_op_progress, verbose_progress
         )
@@ -81,6 +99,9 @@ def get_progress_manager(
                 RichExecutionProgressManager,
             )
 
+            # TODO(async-progress C): same as the tqdm branch — assign to a local
+            # and return it through _maybe_wrap_async. Note the ImportError
+            # fallback below returns a Noop manager, which must NOT be wrapped.
             return RichExecutionProgressManager(
                 dataset_id, topology, show_op_progress, verbose_progress
             )
