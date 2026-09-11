@@ -19,6 +19,7 @@ from ray.data._internal.execution.interfaces import ExecutionResources, Physical
 from ray.data._internal.gpu_shuffle.hash_aggregate import (
     GPUAggregateFn,
     GPUAggregationPlan,
+    GPUGlobalAggregateOperator,
     GPUHashAggregateActor,
     GPUHashAggregateOperator,
     build_gpu_aggregation_plan,
@@ -26,7 +27,7 @@ from ray.data._internal.gpu_shuffle.hash_aggregate import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Aggregate
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
-from ray.data.aggregate import AggregateFnV2, AsList, Count, Max, Mean, Min, Sum
+from ray.data.aggregate import AggregateFnV2, AsList, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 
@@ -89,6 +90,7 @@ class TestGPUHashAggregatePlanning:
                 Min("value"),
                 Max("value"),
                 Mean("value"),
+                Std("value"),
             ),
             input_schema=schema,
         )
@@ -101,6 +103,7 @@ class TestGPUHashAggregatePlanning:
             "min(value)",
             "max(value)",
             "mean(value)",
+            "std(value)",
         )
         assert tuple(type(agg).__name__ for agg in plan._gpu_aggregates) == (
             "GPUCount",
@@ -109,6 +112,7 @@ class TestGPUHashAggregatePlanning:
             "GPUMin",
             "GPUMax",
             "GPUMean",
+            "GPUStd",
         )
         for gpu_agg in plan._gpu_aggregates:
             assert not isinstance(gpu_agg, AggregateFnV2)
@@ -117,6 +121,15 @@ class TestGPUHashAggregatePlanning:
             assert not hasattr(gpu_agg, "finalize")
         assert "user_id" in plan.required_columns
         assert "value" in plan.required_columns
+
+    def test_builtin_aggregation_plan_does_not_enable_local_combine(self):
+        plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Count(), Sum("value")),
+            input_schema=pa.schema([("user_id", pa.int64()), ("value", pa.int64())]),
+        )
+        assert isinstance(plan, GPUAggregationPlan), plan
+        assert not plan.supports_local_combine
 
     def test_unsupported_aggregation_plan_rejected(self):
         schema = pa.schema([("user_id", pa.int64())])
@@ -289,6 +302,43 @@ class TestGPUHashAggregatePlanning:
         mock_build_plan.assert_called_once()
         assert op._aggregation_plan is built_plans[0]
 
+    def test_gpu_shuffle_routes_global_aggregate_to_global_operator(self):
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op(
+            [Count(), Sum("value")],
+            key=None,
+            input_schema=pa.schema([("value", pa.int64())]),
+        )
+        input_physical_op = _make_input_op_mock()
+
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, GPUGlobalAggregateOperator)
+        assert "GPUGlobalAggregate" in op.name
+        partial_op = op.input_dependencies[0]
+        assert isinstance(partial_op, PhysicalOperator)
+        assert "GPUGlobalAggregate" in partial_op.name
+
+    def test_gpu_shuffle_routes_standard_scaler_stats_to_global_operator(self):
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op(
+            [Mean("value"), Std("value", ddof=0)],
+            key=None,
+            input_schema=pa.schema([("value", pa.int64())]),
+        )
+        input_physical_op = _make_input_op_mock()
+
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, GPUGlobalAggregateOperator)
+        assert "GPUGlobalAggregate" in op.name
+
     def test_gpu_hash_aggregate_operator_uses_prebuilt_plan(self):
         ctx = DataContext()
         ctx.gpu_shuffle_num_actors = 4
@@ -314,6 +364,23 @@ class TestGPUHashAggregatePlanning:
         mock_default_pool.assert_not_called()
         assert op._aggregation_plan is aggregation_plan
         assert op._rank_pool.nranks == 4
+
+    def test_gpu_hash_aggregate_operator_rejects_global_plan(self):
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+        input_physical_op = _make_input_op_mock()
+        aggregation_plan = build_gpu_aggregation_plan(tuple(), (Count(), Sum("value")))
+        assert isinstance(aggregation_plan, GPUAggregationPlan), aggregation_plan
+
+        with pytest.raises(ValueError, match="only supports grouped"):
+            GPUHashAggregateOperator(
+                ctx,
+                input_physical_op,
+                key_columns=tuple(),
+                aggregation_plan=aggregation_plan,
+                num_partitions=None,
+            )
 
     def test_gpu_shuffle_unsupported_aggregate_falls_back_to_cpu_hash_aggregate(self):
         from ray.data._internal.execution.operators.hash_aggregate import (
@@ -577,7 +644,7 @@ class TestGPUAggregationPlanReal:
         )
         plan = build_gpu_aggregation_plan(
             ("user_id",),
-            (Count(), Sum("value"), Min("value"), Mean("value")),
+            (Count(), Sum("value"), Min("value"), Mean("value"), Std("value")),
             input_schema=schema,
         )
         assert isinstance(plan, GPUAggregationPlan), plan
@@ -591,6 +658,7 @@ class TestGPUAggregationPlanReal:
                 ("sum(value)", pa.int64()),
                 ("min(value)", pa.int64()),
                 ("mean(value)", pa.float64()),
+                ("std(value)", pa.float64()),
             ]
         )
         assert result_table.schema.equals(expected_schema, check_metadata=False)
@@ -830,6 +898,49 @@ class TestGPUAggregationPlanReal:
         assert str(normalized_int_partial[unknown_schema_acc_col].dtype) == "int64"
         assert str(normalized_double_partial[unknown_schema_acc_col].dtype) == "float64"
 
+    def test_std_edge_cases_real_gpu(self, ray_with_gpu):
+        import cudf
+
+        schema = pa.schema(
+            [
+                ("group", pa.int64()),
+                ("value", pa.float64()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("group",),
+            (
+                Std("value", ddof=0, alias_name="std0"),
+                Std("value", alias_name="std1"),
+                Std("value", ignore_nulls=False, alias_name="std_strict"),
+            ),
+            input_schema=schema,
+        )
+        assert isinstance(plan, GPUAggregationPlan), plan
+
+        df = cudf.DataFrame(
+            {
+                "group": [0, 0, 0, 1, 2],
+                "value": [1.0, 3.0, None, 2.0, None],
+            }
+        )
+        partial = plan.partial_aggregate(df, input_schema=schema)
+        result = (
+            plan.final_aggregate(partial, input_schema=schema)
+            .to_pandas()
+            .sort_values("group")
+            .reset_index(drop=True)
+        )
+
+        assert result["group"].tolist() == [0, 1, 2]
+        assert result["std0"].tolist()[:2] == pytest.approx([1.0, 0.0])
+        assert pd.isna(result.loc[2, "std0"])
+        assert result.loc[0, "std1"] == pytest.approx(2**0.5)
+        assert pd.isna(result.loc[1, "std1"])
+        assert pd.isna(result.loc[2, "std1"])
+        assert pd.isna(result.loc[0, "std_strict"])
+        assert pd.isna(result.loc[2, "std_strict"])
+
     def test_unsupported_cudf_dtype_cast_is_noop(self, monkeypatch):
         cudf = pytest.importorskip("cudf")
 
@@ -903,6 +1014,7 @@ class TestGPUHashAggregateActorReal:
                 Min("value"),
                 Max("value"),
                 Mean("value"),
+                Std("value"),
             ),
             input_schema=table.schema,
         )
@@ -924,6 +1036,10 @@ class TestGPUHashAggregateActorReal:
         assert result["min(value)"].tolist() == [1, 2, 10]
         assert result["max(value)"].tolist() == [1, 3, 10]
         assert result["mean(value)"].tolist() == pytest.approx([1.0, 2.5, 10.0])
+        std_values = result["std(value)"].tolist()
+        assert pd.isna(std_values[0])
+        assert std_values[1] == pytest.approx(0.5**0.5)
+        assert pd.isna(std_values[2])
 
     def test_grouped_aggregate_output_has_unique_join_keys(self, ray_with_gpu):
         import cudf
@@ -980,6 +1096,7 @@ class TestGPUHashAggregateActorReal:
                 Count("value", ignore_nulls=True),
                 Sum("value"),
                 Mean("value"),
+                Std("value"),
             ),
         )
         assert isinstance(plan, GPUAggregationPlan), plan
@@ -997,6 +1114,7 @@ class TestGPUHashAggregateActorReal:
             "count(value)",
             "sum(value)",
             "mean(value)",
+            "std(value)",
         ]
         assert len(result) == 1
         row = result.iloc[0].to_dict()
@@ -1004,6 +1122,7 @@ class TestGPUHashAggregateActorReal:
         assert row["count(value)"] == 3
         assert row["sum(value)"] == 8
         assert row["mean(value)"] == pytest.approx(8 / 3)
+        assert row["std(value)"] == pytest.approx(np.std([1, 2, 5], ddof=1))
 
 
 if __name__ == "__main__":

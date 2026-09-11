@@ -13,6 +13,10 @@ import pytest
 
 import ray
 from ray.data._internal.block_batching.block_batching import batch_blocks
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data.block import BlockAccessor
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 
@@ -104,6 +108,13 @@ class TestCudfTakeBatch:
 class TestCudfBatchBlocks:
     """Tests for batch_blocks with batch_format='cudf'."""
 
+    def test_batch_to_block_converts_cudf_to_arrow(self):
+        df = cudf.DataFrame({"foo": [1, 2, 3]})
+        block = BlockAccessor.batch_to_block(df)
+
+        assert isinstance(block, pa.Table)
+        assert block.to_pydict() == {"foo": [1, 2, 3]}
+
     def test_batch_blocks_cudf(self):
         blocks = block_generator(num_rows=3, num_blocks=2)
         batches = list(batch_blocks(blocks, batch_format="cudf"))
@@ -122,6 +133,27 @@ class TestCudfBatchBlocks:
 )
 class TestCudfMapBatches:
     """Tests for map_batches with various batch formats (cuDF in/out)."""
+
+    def test_map_batches_cudf_output_is_arrow_block(
+        self, ray_start_regular_shared, batch_format
+    ):
+        if batch_format != "cudf":
+            pytest.skip("This regression is specific to cuDF block conversion.")
+
+        ds = ray.data.range(5, override_num_blocks=1)
+        result = ds.map_batches(
+            lambda batch: batch,
+            batch_format="cudf",
+            batch_size=5,
+            num_gpus=0.001,
+        ).materialize()
+
+        blocks = ray.get(
+            _ref_bundles_iterator_to_block_refs_list(result.iter_internal_ref_bundles())
+        )
+        assert blocks
+        assert all(isinstance(block, pa.Table) for block in blocks)
+        assert result.take_all() == [{"id": i} for i in range(5)]
 
     def test_map_batches_cudf_receive_and_return(
         self, ray_start_regular_shared, batch_format
@@ -206,12 +238,12 @@ class TestCudfMapBatches:
     ],
 )
 class TestCudfFilterExpressions:
-    """Tests for filter with expressions on cuDF blocks."""
+    """Tests for expressions around cuDF batch transforms."""
 
     def test_filter_expr_after_map_batches_cudf(
         self, ray_start_regular_shared, predicate_expr, test_data, expected_ids
     ):
-        """filter(expr=...) works on cuDF blocks from map_batches(batch_format='cudf')."""
+        """filter(expr=...) works after a cuDF batch transform returns Arrow."""
         if test_data is not None:
             ds = ray.data.from_items(test_data)
             ds = ds.map_batches(

@@ -323,10 +323,10 @@ class TestGPUShuffleOperatorConstructor:
         op._rank_pool.shutdown(force=False)
         assert op.current_logical_usage().gpu == 0
 
-    def test_incremental_resource_usage_is_one_gpu(self):
+    def test_incremental_resource_usage_does_not_reacquire_actor_gpu(self):
         op = self._make_op()
         usage = op.incremental_resource_usage()
-        assert usage.gpu == 1
+        assert usage.gpu == 0
 
     def test_progress_bar_names(self):
         op = self._make_op()
@@ -404,6 +404,32 @@ class TestGPUShuffleOperatorInputRouting:
         op, actors = self._make_op_with_mock_pool(nranks=2)
         op._add_input_inner(_make_bundle(1), 0)
         assert len(op._insert_tasks) == 1
+
+    def test_backpressures_at_one_insert_per_rank(self):
+        op, _ = self._make_op_with_mock_pool(nranks=2)
+        assert op.can_add_input()
+
+        op._add_input_inner(_make_bundle(1), 0)
+        assert op.can_add_input()
+
+        op._add_input_inner(_make_bundle(1), 0)
+        assert not op.can_add_input()
+
+        list(op._insert_tasks.values())[0]._task_done_callback()
+        assert op.can_add_input()
+
+    def test_pending_insert_bytes_are_exposed_for_backpressure(self):
+        op, _ = self._make_op_with_mock_pool(nranks=2)
+        op._add_input_inner(_make_bundle(1), 0)
+
+        assert op.metrics is op._shuffle_metrics
+        assert op.metrics.obj_store_mem_pending_task_inputs == 100
+
+        list(op._insert_tasks.values())[0]._task_done_callback()
+
+        assert op.metrics.obj_store_mem_pending_task_inputs == 0
+        assert op.metrics.num_tasks_running == 0
+        assert op.metrics.num_tasks_finished == 1
 
     def test_insert_task_callback_removes_task(self):
         op, actors = self._make_op_with_mock_pool(nranks=2)
@@ -557,6 +583,19 @@ class TestGPUShuffleOperatorFinalization:
         assert insert_task in active
         assert extract_task in active
         assert len(active) == 2
+
+    def test_actor_info_reports_in_flight_insertions(self):
+        op, _ = self._make_op(nranks=4)
+        op._insert_tasks[0] = MagicMock()
+        op._insert_tasks[1] = MagicMock()
+
+        info = op.get_actor_info()
+
+        assert info.running == 4
+        assert info.active == 2
+        assert info.idle == 2
+        assert info.pool_utilization == 0.5
+        assert info.tasks_in_flight == 2
 
     def test_shutdown_clears_tasks_and_kills_actors(self):
         op, mock_actors = self._make_op(nranks=2)
