@@ -22,6 +22,9 @@ class ControllerHealthMetricsTracker:
     """Tracker for collecting controller health metrics over time."""
 
     controller_start_time: float = field(default_factory=time.time)
+    # Separate monotonic anchor: controller_start_time is an absolute timestamp
+    # reported in the schema, but a rate must not be measured off the wall clock.
+    mono_start_time: float = field(default_factory=time.monotonic)
 
     # Rolling history of loop durations
     loop_durations: Deque[float] = field(
@@ -86,7 +89,7 @@ class ControllerHealthMetricsTracker:
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
         # Sampled here, not on the ingest path, so the rate costs the fan-in nothing.
-        self.ingest_totals.append((time.time(), self.total_ingest_seconds))
+        self.ingest_totals.append((time.monotonic(), self.total_ingest_seconds))
 
     def record_handle_metrics_delay(self, delay_ms: float):
         self.handle_metrics_delays.append(delay_ms)
@@ -170,11 +173,14 @@ class ControllerHealthMetricsTracker:
             self.handle_reports_received + self.replica_reports_received
         )
         # Fraction of one event-loop core consumed by ingestion over the sampled
-        # window, falling back to uptime before the first loop sample lands.
-        ingest_span, ingest_seconds = uptime, self.total_ingest_seconds
+        # window, falling back to the whole run before the first loop sample lands.
+        # Monotonic end to end so an NTP step cannot distort the rate.
+        mono_now = time.monotonic()
+        ingest_span = mono_now - self.mono_start_time
+        ingest_seconds = self.total_ingest_seconds
         if self.ingest_totals:
             sampled_at, sampled_total = self.ingest_totals[0]
-            ingest_span = now - sampled_at
+            ingest_span = mono_now - sampled_at
             ingest_seconds = self.total_ingest_seconds - sampled_total
         ingest_cpu_fraction = ingest_seconds / ingest_span if ingest_span > 0 else 0.0
 

@@ -409,12 +409,12 @@ class ServeController:
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
-        ingest_start = time.time()
+        ingest_start = time.monotonic()
         if isinstance(replica_metric_report, bytes):
-            decompress_start = time.time()
+            decompress_start = time.monotonic()
             replica_metric_report = decompress_metric_report(replica_metric_report)
             self._health_metrics_tracker.record_decompress(
-                (time.time() - decompress_start) * 1000
+                (time.monotonic() - decompress_start) * 1000
             )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
@@ -428,18 +428,18 @@ class ServeController:
             replica_metric_report
         )
         self._health_metrics_tracker.record_replica_ingest(
-            (time.time() - ingest_start) * 1000
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
-        ingest_start = time.time()
+        ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
-            decompress_start = time.time()
+            decompress_start = time.monotonic()
             handle_metric_report = decompress_metric_report(handle_metric_report)
             self._health_metrics_tracker.record_decompress(
-                (time.time() - decompress_start) * 1000
+                (time.monotonic() - decompress_start) * 1000
             )
         # Decompression (above) always yields a HandleMetricReport.
         handle_metric_report = cast(HandleMetricReport, handle_metric_report)
@@ -453,7 +453,7 @@ class ServeController:
             handle_metric_report
         )
         self._health_metrics_tracker.record_handle_ingest(
-            (time.time() - ingest_start) * 1000
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_async_inference_task_queue(
