@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from ray.experimental.rdt.nixl_memory_pool import (
+    _MAX_ALIGNMENT,
     MemoryPoolManager,
     NixlOutOfMemoryError,
     TensorLayout,
@@ -453,6 +454,159 @@ class TestFreeObject:
         assert pool.free_object("o2")
         regions = pool.allocate_group("big", [t_big])
         assert regions[0].numel() == _nbytes(t_big)
+
+
+# ---------------------------------------------------------------------------
+# Receive side: allocate_regions / copy_out_and_free / free_blocks
+# ---------------------------------------------------------------------------
+
+
+class TestAllocateRegions:
+    def test_regions_are_exact_size_and_backed_by_pool(self):
+        pool = MemoryPoolManager(pool_size=128, device=torch.device("cpu"))
+        regions, blocks = pool.allocate_regions([10, 20])
+
+        assert [r.numel() for r in regions] == [10, 20]
+        assert len(blocks) == 2
+        for region in regions:
+            assert region.dtype == torch.uint8
+            assert (
+                region.untyped_storage().data_ptr()
+                == pool.get_pool_tensor().untyped_storage().data_ptr()
+            )
+
+    def test_blocks_are_aligned_for_any_dtype(self):
+        """Unaligned region sizes must still leave later blocks viewable."""
+        pool = MemoryPoolManager(pool_size=256, device=torch.device("cpu"))
+        _, blocks = pool.allocate_regions([1, 3, 7, 9])
+        for block in blocks:
+            assert block.offset % _MAX_ALIGNMENT == 0
+
+    def test_round_trips_a_sender_packed_group(self):
+        """A region sized like a sender descriptor decodes back to the tensors.
+
+        This is the wire contract the receive path relies on: the pool only
+        needs to hand back a correctly aligned region of the right length.
+        """
+        tensors = [
+            _make_tensor([1], dtype=torch.int8),
+            _make_tensor([2.0, 3.0, 4.0]),
+            _make_tensor([5.0, 6.0], dtype=torch.float64),
+        ]
+        layouts = _layout(tensors)
+        _, packed_nbytes = packed_offsets(layouts)
+
+        pool = MemoryPoolManager(pool_size=256, device=torch.device("cpu"))
+        # Occupy the front of the pool so the region is not trivially at
+        # offset 0, the way a receive into a used pool would land.
+        pool.allocate_regions([1])
+        regions, _ = pool.allocate_regions([packed_nbytes])
+
+        views = _unpack(regions, tensors)
+        for view, tensor in zip(views, tensors):
+            view.copy_(tensor)
+            assert torch.equal(view, tensor)
+
+    def test_atomic_allocation_failure(self):
+        pool = MemoryPoolManager(pool_size=16, device=torch.device("cpu"))
+        with pytest.raises(NixlOutOfMemoryError):
+            pool.allocate_regions([8, 12])
+        # Pool state unchanged: the whole pool is still allocatable.
+        regions, blocks = pool.allocate_regions([16])
+        assert regions[0].numel() == 16
+        pool.free_blocks(blocks)
+        assert sum(b.size for b in pool._free_blocks) == 16
+
+    def test_oom_on_fragmentation(self):
+        """A region must be contiguous, so split free space cannot serve it."""
+        pool = MemoryPoolManager(pool_size=48, device=torch.device("cpu"))
+        _, first = pool.allocate_regions([16])
+        _, middle = pool.allocate_regions([16])
+        _, last = pool.allocate_regions([16])
+        pool.free_blocks(first + last)
+
+        with pytest.raises(NixlOutOfMemoryError):
+            pool.allocate_regions([32])
+        assert sum(b.size for b in pool._free_blocks) == 32
+
+        pool.free_blocks(middle)
+        regions, _ = pool.allocate_regions([32])
+        assert regions[0].numel() == 32
+
+
+class TestCopyOutAndFree:
+    def test_copies_are_independent_of_pool(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        regions, blocks = pool.allocate_regions([12])
+        view = regions[0].view(torch.float32)
+        view.copy_(_make_tensor([1.0, 2.0, 3.0]))
+
+        copies = pool.copy_out_and_free([view], blocks)
+
+        assert torch.equal(copies[0], _make_tensor([1.0, 2.0, 3.0]))
+        assert (
+            copies[0].untyped_storage().data_ptr()
+            != pool.get_pool_tensor().untyped_storage().data_ptr()
+        )
+
+        # Reusing the block must not disturb the copy.
+        reused, _ = pool.allocate_regions([12])
+        reused[0].fill_(99)
+        assert torch.equal(copies[0], _make_tensor([1.0, 2.0, 3.0]))
+
+    def test_blocks_are_reusable_without_gc(self):
+        """Blocks come back immediately, so sequential receives can exceed the
+        pool size in aggregate."""
+        pool = MemoryPoolManager(pool_size=12, device=torch.device("cpu"))
+        for _ in range(3):
+            regions, blocks = pool.allocate_regions([12])
+            pool.copy_out_and_free([regions[0].view(torch.float32)], blocks)
+
+        assert sum(b.size for b in pool._free_blocks) == 12
+
+    def test_frees_blocks_even_if_copy_fails(self):
+        """A failed copy out must not strand the blocks it was handed."""
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        regions, blocks = pool.allocate_regions([16])
+
+        with pytest.raises(RuntimeError):
+            pool.copy_out_and_free(regions, blocks, target_device="not_a_device")
+
+        assert sum(b.size for b in pool._free_blocks) == 64
+
+    def test_syncs_before_freeing_when_a_copy_fails(self, monkeypatch):
+        """A failure partway through still has to wait for the queued copies.
+
+        Copies for earlier tensors are only ordered on the CUDA stream, so
+        freeing the block first would let the next NIXL transfer overwrite
+        memory they are still reading.
+        """
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        regions, blocks = pool.allocate_regions([16])
+        # Take the CUDA path without a GPU: the copy fails on the bad target
+        # device before any real device work is queued.
+        pool.device = torch.device("cuda")
+
+        order = []
+        free_blocks = pool.free_blocks
+
+        def record_free(freed):
+            order.append("free")
+            free_blocks(freed)
+
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda *_: order.append("sync"))
+        monkeypatch.setattr(pool, "free_blocks", record_free)
+
+        with pytest.raises(RuntimeError):
+            pool.copy_out_and_free(regions, blocks, target_device="not_a_device")
+
+        assert order == ["sync", "free"]
+        assert sum(b.size for b in pool._free_blocks) == 64
+
+    def test_free_blocks_is_noop_for_empty_list(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        pool.free_blocks([])
+        assert sum(b.size for b in pool._free_blocks) == 64
 
 
 if __name__ == "__main__":
