@@ -578,3 +578,321 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+@pytest.mark.parametrize(
+    "op_builder,expected_fused_name,expected_count",
+    [
+        # filter -> streaming_repartition (non-strict): fused, rows halved.
+        (
+            lambda ds: ds.filter(lambda r: r["id"] % 2 == 0),
+            "Filter(<lambda>)->StreamingRepartition",
+            500,
+        ),
+        # map_rows -> streaming_repartition (non-strict): fused, rows unchanged.
+        (
+            lambda ds: ds.map(lambda r: {"id": r["id"] + 1, "value": r["id"]}),
+            "Map(<lambda>)->StreamingRepartition",
+            1000,
+        ),
+        # flat_map -> streaming_repartition (non-strict): fused, rows doubled
+        # (each input row expands to two rows with distinct ids).
+        (
+            lambda ds: ds.flat_map(
+                lambda r: [
+                    {"id": r["id"], "value": r["id"] + 1},
+                    {"id": r["id"] + 1000, "value": r["id"]},
+                ]
+            ),
+            "FlatMap(<lambda>)->StreamingRepartition",
+            2000,
+        ),
+        # expression-based filter -> streaming_repartition (non-strict): fused.
+        (
+            lambda ds: ds.filter(expr="id >= 50"),
+            "Filter(col('id') >= 50)->StreamingRepartition",
+            950,
+        ),
+    ],
+    ids=["filter", "map_rows", "flat_map", "expression_filter"],
+)
+def test_streaming_repartition_non_mapbatches_fusion_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    op_builder,
+    expected_fused_name,
+    expected_count,
+):
+    """E2E test that Filter/MapRows/FlatMap/expression-Filter fuse with
+    StreamingRepartition in non-strict mode, and that data is preserved."""
+    num_rows = 1000
+    target = 20
+    ds = ray.data.range(num_rows, override_num_blocks=10).map(
+        lambda r: {"id": r["id"], "value": r["id"]}
+    )
+    ds = op_builder(ds).repartition(target_num_rows_per_block=target)
+
+    # Verify fusion in the optimized physical plan.
+    planner = create_planner()
+    physical_plan, _ = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert (
+        expected_fused_name in physical_op.name
+    ), f"Expected '{expected_fused_name}' in operator name, got: {physical_op.name}"
+
+    # Verify data correctness: no rows lost or duplicated.
+    assert (
+        ds.count() == expected_count
+    ), f"Expected {expected_count} rows, got {ds.count()}"
+    ids = sorted(row["id"] for row in ds.take_all())
+    assert (
+        len(ids) == expected_count
+    ), f"Expected {expected_count} rows from take_all, got {len(ids)}"
+    # No rows duplicated or lost across the fused boundary.
+    assert len(set(ids)) == expected_count, f"Duplicate rows after fusion: {ids}"
+
+
+def test_streaming_repartition_filter_all_rows_removed_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test that a filter removing all rows still fuses with
+    StreamingRepartition and yields an empty dataset."""
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .map(lambda r: {"id": r["id"], "value": r["id"]})
+        .filter(lambda r: False)
+        .repartition(target_num_rows_per_block=20)
+    )
+
+    assert ds.count() == 0
+    assert list(ds.iter_rows()) == []
+
+
+def test_streaming_repartition_filter_then_map_batches_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test of the original issue pipeline: filter -> repartition ->
+    map_batches. Filter must fuse into StreamingRepartition, while the
+    downstream map_batches stays separate by design (to preserve parallelism)."""
+    num_rows = 1000
+    target = 20
+    ds = (
+        ray.data.range(num_rows, override_num_blocks=10)
+        .map(lambda r: {"id": r["id"], "value": r["id"]})
+        .filter(lambda r: r["id"] % 2 == 0)
+        .repartition(target_num_rows_per_block=target)
+        .map_batches(lambda batch: batch, batch_size=16)
+    )
+
+    # Verify filter fused into streaming repartition. The downstream
+    # map_batches stays a separate operator on top of the DAG (by design), so
+    # search the DAG for the fused operator instead of only checking the root.
+    planner = create_planner()
+    physical_plan, _ = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+
+    def find_fused(op):
+        if "Filter(<lambda>)->StreamingRepartition" in op.name:
+            return op.name
+        for inp in op.input_dependencies:
+            found = find_fused(inp)
+            if found:
+                return found
+        return None
+
+    fused_name = find_fused(physical_plan.dag)
+    assert fused_name is not None, (
+        f"Expected Filter fused into StreamingRepartition, DAG root: "
+        f"{physical_plan.dag.name}"
+    )
+    # The downstream map_batches must NOT fuse into the repartition (this would
+    # reduce parallelism), so the fused operator name must not contain it.
+    assert "->MapBatches" not in fused_name, (
+        f"map_batches should stay separate after StreamingRepartition: " f"{fused_name}"
+    )
+
+    # Data correctness through the full pipeline.
+    assert ds.count() == num_rows // 2
+    ids = sorted(row["id"] for row in ds.take_all())
+    assert ids == list(range(0, num_rows, 2))
+
+
+def test_streaming_repartition_filter_partial_empty_blocks_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test that a filter emptying only some input blocks (while others
+    stay non-empty) still fuses with StreamingRepartition without hanging or
+    dropping rows. Regression-guards the mixed empty/non-empty bundle path
+    (see test_streaming_repartition_empty_dataset for the all-empty case)."""
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .filter(lambda r: r["id"] >= 75)  # blocks 0-2 fully filtered out
+        .repartition(target_num_rows_per_block=20)
+    )
+
+    assert ds.count() == 25
+    assert sorted(r["id"] for r in ds.take_all()) == list(range(75, 100))
+
+    stats = ds.stats()
+    assert "Filter(<lambda>)->StreamingRepartition" in stats, stats
+
+
+def test_streaming_repartition_fused_block_shapes_non_strict_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test that fusion preserves the non-strict mode block-shape
+    invariant: each input block is split independently with no cross-block
+    stitching, so no output block combines rows from different input blocks.
+
+    This mirrors test_streaming_repartition_non_strict_mode, but for the
+    fused (Filter -> StreamingRepartition) path."""
+    # Case 1: each input block (25 rows) keeps 10 rows; target 20 -> the 10-row
+    # blocks must NOT be stitched together into 20-row blocks.
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .filter(lambda r: r["id"] % 25 < 10)
+        .repartition(target_num_rows_per_block=20)
+        .materialize()
+    )
+    counts = sorted(
+        m.num_rows for b in ds.iter_internal_ref_bundles() for m in b.metadata
+    )
+    assert counts == [10, 10, 10, 10], f"cross-block stitching detected: {counts}"
+
+    # Case 2: each input block keeps all 25 rows; target 20 -> each input block
+    # yields [20, 5], i.e. at most one partial trailing block per input block.
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .filter(lambda r: r["id"] % 25 < 30)
+        .repartition(target_num_rows_per_block=20)
+        .materialize()
+    )
+    counts = sorted(
+        m.num_rows for b in ds.iter_internal_ref_bundles() for m in b.metadata
+    )
+    assert counts == [
+        5,
+        5,
+        5,
+        5,
+        20,
+        20,
+        20,
+        20,
+    ], f"unexpected block shape after fusion: {counts}"
+
+    stats = ds.stats()
+    assert "Filter(<lambda>)->StreamingRepartition" in stats, stats
+
+
+@pytest.mark.parametrize(
+    "target_num_rows_per_block,expected_block_counts",
+    [
+        # target=1: every surviving row becomes its own block.
+        (1, [1, 1, 1, 1, 1]),
+        # target >> total rows: blocks pass through unsplit (filter halves rows:
+        # 4 input blocks of 25 -> 4 blocks of 12/13).
+        (1000, [12, 12, 13, 13]),
+    ],
+    ids=["target_one", "target_large"],
+)
+def test_streaming_repartition_fused_target_boundaries_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_num_rows_per_block,
+    expected_block_counts,
+):
+    """E2E test of target_num_rows_per_block boundary values on the fused
+    Filter -> StreamingRepartition path."""
+    ds = (
+        ray.data.range(
+            10 if target_num_rows_per_block == 1 else 100, override_num_blocks=4
+        )
+        .filter(lambda r: r["id"] % 2 == 0)
+        .repartition(target_num_rows_per_block=target_num_rows_per_block)
+        .materialize()
+    )
+    counts = sorted(
+        m.num_rows for b in ds.iter_internal_ref_bundles() for m in b.metadata
+    )
+    assert counts == expected_block_counts, f"unexpected block counts: {counts}"
+
+
+def test_streaming_repartition_fused_single_input_block_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test with a single input block (override_num_blocks=1): the fused
+    operator runs one task and must still split correctly."""
+    ds = (
+        ray.data.range(100, override_num_blocks=1)
+        .filter(lambda r: r["id"] % 2 == 0)
+        .repartition(target_num_rows_per_block=20)
+        .materialize()
+    )
+    counts = sorted(
+        m.num_rows for b in ds.iter_internal_ref_bundles() for m in b.metadata
+    )
+    assert counts == [10, 20, 20], f"unexpected block counts: {counts}"
+    assert ds.count() == 50
+
+
+def test_streaming_repartition_fused_empty_input_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test of a zero-block input dataset (range(0)) fused with
+    StreamingRepartition: must not hang and must yield an empty dataset."""
+    ds = (
+        ray.data.range(0)
+        .filter(lambda r: True)
+        .repartition(target_num_rows_per_block=20)
+    )
+    assert ds.count() == 0
+    assert list(ds.iter_rows()) == []
+
+
+def test_streaming_repartition_expr_filter_after_pushdown_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test of the interaction between predicate pushdown and fusion: an
+    expression filter written AFTER repartition gets pushed before the
+    StreamingRepartition (PASSTHROUGH), after which the fusion rule fuses it
+    into a single operator. Data must be preserved."""
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .repartition(target_num_rows_per_block=20)
+        .filter(expr="id >= 50")
+    )
+
+    assert ds.count() == 50
+    ids = sorted(r["id"] for r in ds.take_all())
+    assert ids == list(range(50, 100))
+
+    stats = ds.stats()
+    assert "Filter(col('id') >= 50)->StreamingRepartition" in stats, stats
+
+
+def test_streaming_repartition_remote_args_fn_not_fused_e2e(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """E2E test that a filter with ray_remote_args_fn is NOT fused with
+    StreamingRepartition (are_op_remote_args_compatible rejects it), and the
+    pipeline still works."""
+    ds = (
+        ray.data.range(100, override_num_blocks=4)
+        .filter(lambda r: r["id"] % 2 == 0, ray_remote_args_fn=lambda: {})
+        .repartition(target_num_rows_per_block=20)
+    )
+
+    assert ds.count() == 50
+
+    stats = ds.stats()
+    assert "Filter(<lambda>)->StreamingRepartition" not in stats, stats
