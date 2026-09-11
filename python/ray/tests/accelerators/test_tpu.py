@@ -487,14 +487,14 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
         if len(tpu_chips) == 1:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[1]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 2:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[2]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)

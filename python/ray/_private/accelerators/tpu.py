@@ -65,9 +65,6 @@ TPU_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
 #
 # See: https://github.com/google/jax/issues/14977 for an example/more details.
 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = TPU_CHIPS_PER_PROCESS_BOUNDS[1]
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = TPU_CHIPS_PER_PROCESS_BOUNDS[2]
-
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
@@ -865,15 +862,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_tpu_chips])
-        if num_visible_tpu_chips == 1:
+        if num_visible_tpu_chips in (1, 2):
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 2:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            ] = TPU_CHIPS_PER_PROCESS_BOUNDS[num_visible_tpu_chips]
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
 
     @staticmethod
