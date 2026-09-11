@@ -164,11 +164,11 @@ def test_custom_checkpoint_callback(ray_start_6_cpus_2_gpus):
                 if trainer.current_epoch == 0:
                     checkpoint_path = os.path.join(tmpdir, "ckpt.pt")
                     trainer.save_checkpoint(checkpoint_path, weights_only=False)
-                    if ray.train.get_context().get_world_rank() == 0:
-                        checkpoint = Checkpoint.from_directory(tmpdir)
+                    checkpoint = Checkpoint.from_directory(tmpdir)
                 ray.train.report(
                     {"epoch": trainer.current_epoch}, checkpoint=checkpoint
                 )
+                trainer.strategy.barrier()
 
     def train_loop():
         trainer = pl.Trainer(
