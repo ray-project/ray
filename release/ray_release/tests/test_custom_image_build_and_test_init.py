@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -483,6 +483,60 @@ def test_custom_image_build_and_test_init_uploads_chunks(
     cmd = upload_calls[0].args[0]
     assert cmd[3].endswith("test_jobs_upload_0.json")
     assert upload_calls[0].kwargs.get("check") is True
+
+
+@pytest.mark.parametrize("flag", ["1", "0", ""], ids=["on", "off", "empty"])
+@patch.dict("os.environ", {"AUTOMATIC": "1"})
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+# The jailed check takes the repo handle as an argument, so it is built -- and
+# its token fetched from AWS -- before the patched method above is ever called.
+@patch(
+    "ray_release.buildkite.filter.TestStateMachine.get_ray_repo",
+    return_value=MagicMock(),
+)
+def test_custom_image_build_and_test_init_threads_the_obs_agent_flag(
+    mock_get_ray_repo, mock_is_jailed_with_open_issue, mock_update_from_s3, flag
+):
+    """Only a 1 reaches the steps; an unset variable behaves like the empty one."""
+    runner = CliRunner()
+    test_jobs_output_file = "test_jobs.json"
+    with patch.dict("os.environ", {"TRIGGER_OBSERVABILITY_AGENT": flag}):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_5_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--test-filters",
+                "prefix:hello_world",
+                "--custom-build-jobs-output-file",
+                "custom_build_jobs.yaml",
+                "--test-jobs-output-file",
+                test_jobs_output_file,
+            ],
+            catch_exceptions=False,
+        )
+
+    with open(
+        os.path.join(
+            _bazel_workspace_dir, f"{os.path.splitext(test_jobs_output_file)[0]}_0.json"
+        ),
+        "r",
+    ) as f:
+        steps = json.load(f)[0]["steps"]
+
+    for step in steps:
+        assert step["env"].get("TRIGGER_OBSERVABILITY_AGENT") == (
+            "1" if flag == "1" else None
+        )
+
+    assert result.exit_code == 0
 
 
 if __name__ == "__main__":

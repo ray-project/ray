@@ -20,6 +20,7 @@ from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
+from ray_release.reporter.observability_agent import ObservabilityAgentReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.result import Result
 
@@ -129,6 +130,16 @@ def main(
     # off quickly. We should remove this when the new db reporter is stable.
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
+
+    # Set for the automatic master runs only, in
+    # .buildkite/release/custom-image-build-and-test-init.sh: the agent costs a
+    # debug session and a minute or two per failure. Compared against "1" rather
+    # than tested for truthiness, so that setting it to 0 turns the agent off,
+    # which is the whole point of having a flag for it.
+    # Reported last, so that the agent's analysis of a failed test run shows up
+    # at the end of the buildkite step output, after the result was recorded.
+    if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
+        reporters.append(ObservabilityAgentReporter())
 
     try:
         result = run_release_test(
