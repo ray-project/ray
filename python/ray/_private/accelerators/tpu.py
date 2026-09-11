@@ -629,6 +629,8 @@ def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
         return s[4:]
     if s.startswith("tpu-"):
         return "v" + s[4:]
+    if s.startswith("tpuv"):
+        return s[3:]
     if s.startswith("tpu"):
         return "v" + s[3:]
     return s

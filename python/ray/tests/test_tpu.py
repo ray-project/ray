@@ -11,6 +11,7 @@ from ray._private.accelerators.tpu import (
     RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR,
     get_tpu_devices_per_chip,
     get_tpu_resource_per_chip,
+    normalize_tpu_accelerator_type,
 )
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
@@ -2854,8 +2855,10 @@ def test_get_tpu_devices_per_chip():
     assert get_tpu_devices_per_chip("v4") == 1
     assert get_tpu_devices_per_chip("v5p") == 1
     assert get_tpu_devices_per_chip("v6e") == 1
+    assert get_tpu_devices_per_chip("tpuv6e") == 1
     assert get_tpu_devices_per_chip("v7x") == 2
     assert get_tpu_devices_per_chip("tpu7x-16") == 2
+    assert get_tpu_devices_per_chip("tpuv7x-16") == 2
     assert get_tpu_devices_per_chip("v7x-32") == 2
 
 
@@ -2901,6 +2904,20 @@ def test_v7x_multi_host_and_multi_slice_resources_per_chip_2():
         )
         == 2
     )
+
+
+def test_normalize_tpu_accelerator_type():
+    """Test normalize_tpu_accelerator_type normalizes accelerator strings."""
+    assert normalize_tpu_accelerator_type("TPU-V6E") == "v6e"
+    assert normalize_tpu_accelerator_type("TPU-V5LITEPOD") == "v5litepod"
+    assert normalize_tpu_accelerator_type("tpu7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("tpu-v7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("tpuv7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("v4-8") == "v4-8"
+    assert normalize_tpu_accelerator_type("tpu7x") == "v7x"
+    assert normalize_tpu_accelerator_type("tpuv6e") == "v6e"
+    assert normalize_tpu_accelerator_type("") == ""
+    assert normalize_tpu_accelerator_type(None) == ""
 
 
 if __name__ == "__main__":
