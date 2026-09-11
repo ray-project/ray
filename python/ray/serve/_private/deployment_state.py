@@ -6543,7 +6543,7 @@ class DeploymentStateManager:
         draining_nodes: Mapping[
             str, float
         ] = self._cluster_node_info_cache.get_draining_nodes()
-        all_deployments_healthy = len(draining_nodes) == 0 and all(
+        all_deployments_healthy = all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
             # TODO(zcin): Make sure that status should never be healthy if
             # the number of running replicas at target version is not at
@@ -6560,7 +6560,8 @@ class DeploymentStateManager:
 
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
             allow_new_compaction = (
-                all_deployments_healthy
+                len(draining_nodes) == 0
+                and all_deployments_healthy
                 and self._last_became_stable_at is not None
                 and time.time() - self._last_became_stable_at
                 > RAY_SERVE_NODE_COMPACTION_DELAY_S
