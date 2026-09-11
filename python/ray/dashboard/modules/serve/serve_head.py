@@ -312,6 +312,24 @@ class ServeHead(SubprocessModule):
                     return self._controller
                 except ray.exceptions.RayActorError:
                     logger.info("Controller is dead")
+                except ray.exceptions.RayError as e:
+                    # The cached handle may reference a controller that is not
+                    # only dead but can no longer be (re)created -- e.g. its
+                    # runtime_env package was garbage-collected from the GCS
+                    # (RuntimeEnvSetupError), or it became unschedulable
+                    # (ActorUnschedulableError). These are RayErrors but not
+                    # RayActorError, so without this branch the exception
+                    # propagates and the Serve REST API keeps returning 500 even
+                    # after a healthy controller has been (re)started. Drop the
+                    # stale handle and fall through to re-resolve it by name.
+                    # Non-RayError exceptions are intentionally not caught so
+                    # unexpected bugs remain visible.
+                    logger.info(
+                        "Cached Serve controller handle is unusable (%s: %s); "
+                        "re-resolving by name.",
+                        type(e).__name__,
+                        e,
+                    )
                 self._controller = None
 
             # Try to connect to serve even when we detect the actor is dead
