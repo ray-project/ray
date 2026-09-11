@@ -907,3 +907,7 @@ Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexib
 [Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
 To integrate with Arize, add Arize client code directly into your Serve deployment code.
+
+## Exporting metrics into New Relic
+
+[New Relic](https://newrelic.com/) collects the Prometheus metrics that Ray exposes: add a [remote write](https://docs.newrelic.com/docs/infrastructure/prometheus-integrations/install-configure-remote-write/set-your-prometheus-remote-write-integration/) block pointing at New Relic to the Prometheus server that scrapes your Ray cluster. Applications instrumented with OpenTelemetry can also send traces and metrics to [New Relic's native OTLP endpoint](https://docs.newrelic.com/docs/opentelemetry/best-practices/opentelemetry-otlp/).
