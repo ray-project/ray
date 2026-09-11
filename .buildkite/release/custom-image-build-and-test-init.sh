@@ -48,6 +48,11 @@ UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 
 echo "--- Generate custom build steps"
 
+# [DO NOT MERGE] Exported unconditionally so that the observability agent runs
+# on this PR's release pipeline, where AUTOMATIC is 0 and the branch is not
+# master. Revert before merging; the real export is inside the block below.
+export TRIGGER_OBSERVABILITY_AGENT=1
+
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export REPORT_TO_RAY_TEST_DB=1
 
