@@ -700,10 +700,32 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
-        "test_deployment_scheduler.py",
         "test_deployment_scheduler_downscale.py",
         "test_gang_scheduling.py",
         "test_standalone_2.py",
+    ],
+    name_suffix = "_with_pack_scheduling",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Node compaction tests need a short compaction delay.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_SERVE_NODE_COMPACTION_DELAY_S": "1",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
+    files = [
+        "test_deployment_scheduler.py",
     ],
     name_suffix = "_with_pack_scheduling",
     tags = [
