@@ -58,6 +58,58 @@ print(ray.get(ref1))
 # __nixl_put__and_get_end__
 
 
+# __nixl_register_memory_start__
+import torch
+import ray
+from ray.experimental import deregister_nixl_memory, register_nixl_memory
+
+
+@ray.remote(num_gpus=1, enable_tensor_transport=True)
+class Trainer:
+    def __init__(self):
+        self.weight = torch.randn(1000, 1000, device="cuda")
+        register_nixl_memory(self.weight)
+
+    def get_weight_ref(self):
+        return ray.put(self.weight, _tensor_transport="nixl")
+
+    def get_weight_shard_refs(self):
+        return ray.put([self.weight[i] for i in range(1000)], _tensor_transport="nixl")
+
+    def close(self):
+        deregister_nixl_memory(self.weight)
+
+
+trainer = Trainer.remote()
+weight_ref = trainer.get_weight_ref.remote()
+ray.get(weight_ref)
+ray.get(trainer.close.remote())
+# __nixl_register_memory_end__
+
+
+# __nixl_memory_pool_start__
+import torch
+import ray
+from ray.experimental import register_nixl_memory_pool
+
+
+@ray.remote(num_gpus=1, enable_tensor_transport=True)
+class PoolActor:
+    def __init__(self):
+        register_nixl_memory_pool(1024 * 1024 * 1024, torch.device("cuda"))
+
+    @ray.method(tensor_transport="nixl")
+    def make_batch(self):
+        tensor = torch.randn(1024, 1024, device="cuda")
+        return {"full": tensor, "first_half": tensor[:512]}
+
+
+producer = PoolActor.remote()
+batch_ref = producer.make_batch.remote()
+ray.get(batch_ref)
+# __nixl_memory_pool_end__
+
+
 # __nixl_limitations_start__
 @ray.remote(num_gpus=1)
 class Actor:
