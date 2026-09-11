@@ -288,8 +288,10 @@ class RuntimeEnv(dict):
             ``RuntimeEnv`` is constructed. Disabling validation defers checks
             to the worker side.
         image_uri: URI to a container image. The Ray worker process runs
-            in a container with this image. This parameter only works alone,
-            or with the ``config`` or ``env_vars`` parameters.
+            in a container with this image. This parameter can be combined with
+            ``pip`` to install dependencies into an isolated, node-cached
+            environment using the image's Python interpreter. It also supports
+            the ``config`` and ``env_vars`` parameters.
         uv: Either a list of pip packages, or a Python dictionary that has one field:
             1) ``packages`` (required, List[str]).
         **kwargs: Additional runtime environment fields that are forwarded

@@ -75,8 +75,15 @@ class URICache:
 
     def add(self, uri: str, size_bytes: int, logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
+        if uri in self._used_uris:
+            logger.info(f"URI {uri} is already in the cache and marked used.")
+            return
         if uri in self._unused_uris:
             self._unused_uris.remove(uri)
+            self._used_uris.add(uri)
+            logger.info(f"URI {uri} is already in the cache and is now marked used.")
+            self._check_valid()
+            return
 
         self._used_uris.add(uri)
         self._total_size_bytes += size_bytes
