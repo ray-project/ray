@@ -1,43 +1,70 @@
 version: 2
 updates:
-  # ML Requirements.
+  # ML Requirements — the only directory with scheduled version updates.
+  # Deliberately low-churn: quarterly checks (roughly the SPEC 0 release
+  # cadence, https://scientific-python.org/specs/spec-0000/), a cooldown so we
+  # never pick up a release until it has baked, and a single grouped PR per
+  # run instead of one PR per package. Dependabot updates can still be
+  # manually triggered via GitHub at any time.
   - package-ecosystem: "pip"
-    # If we want to add more requirements here (Core, Serve, etc.), then we should
-    # make additional subdirectories for each one.
     directory: "/python/requirements/ml"
     schedule:
-      # Automatic upgrade checks Saturday at 12 AM.
-      # Dependabot updates can still be manually triggered via Github at any time.
-      interval: "weekly"
-      day: "saturday"
-      # 12 AM
+      interval: "quarterly"
       time: "00:00"
-      # Use Pacific Standard Time.
       timezone: "America/Los_Angeles"
+    # Minimum age of a release before dependabot proposes it (days, max 90).
+    cooldown:
+      default-days: 30
+      semver-major-days: 90
+      semver-minor-days: 60
+      semver-patch-days: 14
+    groups:
+      ml-requirements:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      # Batch advisory-driven PRs for this directory into one PR as well.
+      ml-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
     commit-message:
       prefix: "[air]"
       include: "scope"
-    # Only 5 upgrade PRs open at a time.
+    # Reviewer routing comes from CODEOWNERS; the old `reviewers` key was
+    # removed from the dependabot config schema in 2025.
     open-pull-requests-limit: 5
-    reviewers:
-      - "ray-project/ray-tune"
-  # Data Requirements.
+
+  # The entries below do NOT enable scheduled version updates
+  # (open-pull-requests-limit: 0). They exist only so that security updates —
+  # which ignore schedules and open a PR per advisory by default — get
+  # grouped into one PR per directory instead of flooding the repo.
   - package-ecosystem: "pip"
-    directory: "/python/requirements/data_processing"
+    directories:
+      - "/python"
+      - "/python/requirements"
+      - "/python/requirements/serve"
+      - "/release"
+      - "/doc"
+      - "/ci/raydepsets/tests/test_data"
+      - "/doc/source/templates/05_dreambooth_finetuning/dreambooth"
+      - "/doc/source/templates/testing/docker/03_serving_stable_diffusion"
     schedule:
-      # Automatic upgrade checks Saturday at 12 AM.
-      # Dependabot updates can still be manually triggered via Github at any time.
-      interval: "weekly"
-      day: "saturday"
-      # 12 AM
-      time: "00:00"
-      # Use Pacific Standard Time.
-      timezone: "America/Los_Angeles"
-    commit-message:
-      prefix: "[data]"
-      include: "scope"
-    # Only 5 upgrade PRs open at a time.
-    open-pull-requests-limit: 5
-    reviewers:
-      - "scv119"
-      - "clarkzinzow"
+      interval: "quarterly"
+    open-pull-requests-limit: 0
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/python/ray/dashboard/client"
+    schedule:
+      interval: "quarterly"
+    open-pull-requests-limit: 0
+    groups:
+      dashboard-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
