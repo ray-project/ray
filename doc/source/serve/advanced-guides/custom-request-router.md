@@ -97,8 +97,10 @@ Similar to the uniform request router, the custom request router can be defined 
 
 The router mixes in:
 
-- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) to support model multiplexing, first preferring replicas that have the requested model loaded.
+- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) to support model multiplexing.
 - [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
+
+For a multiplexed request, the router first round-robins among replicas already hosting the requested model with a cursor scoped to that model. If no host is known or those replicas have already been attempted, it falls back to the replicas with the fewest loaded models; after the matching timeout, it tries those replicas once more and then all replicas. Fallback tiers use the router's normal shared cursor, even if they overlap with the warm-model replicas.
 
 ### When to use
 Use the round-robin router when you want a predictable, even distribution across replicas and don't need load-aware or locality-aware decisions. It fits stateless workloads with roughly uniform per-request latency. Unlike the default power-of-two-choices router, the round-robin router doesn't compare replicas by their number of ongoing requests. It only skips a replica once it reaches `max_ongoing_requests`. Therefore, requests can pile up behind a slow replica before it falls back to the next one.
