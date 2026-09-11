@@ -276,7 +276,7 @@ class _TimedStep(Iterator[Any]):
     """Times one step, inclusive of everything upstream of it.
 
     Deliberately does not coordinate with the other steps: it starts a clock,
-    pulls, and adds the elapsed time to its own slot. Because the chain is
+    pulls, and adds the elapsed time to its own total. Because the chain is
     linear -- step ``k`` is only ever pulled by step ``k + 1`` -- all of a
     step's time lies inside its consumer's windows, so subtracting neighbouring
     totals at drain time recovers each step's own work. Doing that arithmetic
@@ -284,20 +284,17 @@ class _TimedStep(Iterator[Any]):
     through every ``__next__``.
     """
 
-    __slots__ = ("_apply", "_upstream", "_iter", "_totals", "_idx")
+    __slots__ = ("_apply", "_upstream", "_iter", "_elapsed")
 
     def __init__(
         self,
         apply: Callable[[Iterable[Any]], Iterable[Any]],
         upstream: Iterable[Any],
-        totals: List[float],
-        idx: int,
     ):
         self._apply = apply
         self._upstream = upstream
         self._iter: Optional[Iterator[Any]] = None
-        self._totals = totals
-        self._idx = idx
+        self._elapsed = 0.0
 
     def __iter__(self) -> "_TimedStep":
         return self
@@ -314,7 +311,12 @@ class _TimedStep(Iterator[Any]):
                 self._iter = iter(self._apply(self._upstream))
             return next(self._iter)
         finally:
-            self._totals[self._idx] += time.perf_counter() - start
+            self._elapsed += time.perf_counter() - start
+
+    def drain(self) -> float:
+        """Return this step's inclusive time since the last drain, and reset."""
+        elapsed, self._elapsed = self._elapsed, 0.0
+        return elapsed
 
 
 @dataclass(frozen=True)
@@ -350,16 +352,17 @@ class TransformClock:
     total would mix their timings and let one task's :meth:`drain` discard
     another's.
 
-    Holds one inclusive total per step. :meth:`drain` turns those into each
-    step's own time and groups them, so a step measures itself and nothing
-    else while data is flowing.
+    Each step times itself, inclusive of everything upstream of it.
+    :meth:`drain` collects those totals, turns them into each step's own time
+    and groups them, so a step measures itself and nothing else while data is
+    flowing.
     """
 
-    __slots__ = ("inclusive", "_steps")
+    __slots__ = ("_steps", "_timers")
 
     def __init__(self) -> None:
         self._steps: List["Step"] = []
-        self.inclusive: List[float] = []
+        self._timers: List[_TimedStep] = []
 
     def chain(self, steps: List["Step"], blocks: Iterable[Any]) -> Iterable[Any]:
         """Build the timed pipeline over ``blocks``.
@@ -375,13 +378,16 @@ class TransformClock:
         ``generate_collect_write_stats_fn`` both drain first for this reason.
         """
         self._steps = steps
-        self.inclusive = [0.0] * len(steps)
-        data = blocks
-        for idx, step in enumerate(steps):
-            data = _TimedStep(step.apply, data, self.inclusive, idx)
+        self._timers = []
+        data: Iterable[Any] = blocks
+        for step in steps:
+            timer = _TimedStep(step.apply, data)
+            self._timers.append(timer)
+            data = timer
         return data
 
-    def _self_times(self) -> List[float]:
+    @staticmethod
+    def _self_times(inclusive: List[float]) -> List[float]:
         """Each step's own time: its window less its upstream's.
 
         A step's window contains everything upstream of it, and step ``k`` is
@@ -390,13 +396,17 @@ class TransformClock:
         on that subtraction; the difference is otherwise non-negative.
         """
         return [
-            max(0.0, total - (self.inclusive[i - 1] if i else 0.0))
-            for i, total in enumerate(self.inclusive)
+            max(0.0, total - (inclusive[i - 1] if i else 0.0))
+            for i, total in enumerate(inclusive)
         ]
 
     def drain(self) -> "MapTransformPhaseTimes":
-        """Return the time accumulated since the last drain, and reset."""
-        own = self._self_times()
+        """Return the time accumulated since the last drain, and reset.
+
+        Draining a timer is what resets it, and the subtraction needs every
+        step's total, so collect them all before deriving anything.
+        """
+        own = self._self_times([timer.drain() for timer in self._timers])
         by_bucket: Dict[MapTransformPhase, float] = {}
         for step, seconds in zip(self._steps, own):
             if step.bucket is not None:
@@ -409,20 +419,13 @@ class TransformClock:
             # Measured. A phase this chain happens not to run really did take
             # no time, so report zero -- `None` is reserved for "not measured",
             # which a consumer has to be able to tell apart.
-            times = MapTransformPhaseTimes(
+            return MapTransformPhaseTimes(
                 total_s=sum(own),
                 input_prep_s=by_bucket.get(MapTransformPhase.INPUT_PREP, 0.0),
                 function_body_s=by_bucket.get(MapTransformPhase.FUNCTION_BODY, 0.0),
                 output_build_s=by_bucket.get(MapTransformPhase.OUTPUT_BUILD, 0.0),
             )
-        else:
-            times = MapTransformPhaseTimes(total_s=sum(own))
-        # Zero in place. Every `_TimedStep` in the chain holds a reference to
-        # this list, so rebinding it here would leave them adding to a list
-        # this clock no longer reads -- and `_map_task` drains after every
-        # output block, so only a task's first block would report any time.
-        self.inclusive[:] = [0.0] * len(self.inclusive)
-        return times
+        return MapTransformPhaseTimes(total_s=sum(own))
 
 
 def _coalesce_stage(steps: List["Step"], transform_fn: "MapTransformFn") -> "Step":
