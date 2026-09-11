@@ -15,6 +15,11 @@
 syntax = "proto3";
 package ray.rpc.syncer;
 
+// Both directions coalesce messages per (node_id, message_type): a newer version
+// replaces an older one that is not yet sent or applied, and on the hub (GCS) the
+// replaced version is not forwarded either. A channel must therefore survive losing
+// intermediate versions: full state per message (RESOURCE_VIEW) or idempotent messages
+// (COMMANDS only ever carries should_global_gc = true).
 enum MessageType {
   RESOURCE_VIEW = 0;
   COMMANDS = 1;

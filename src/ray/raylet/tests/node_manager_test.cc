@@ -59,7 +59,23 @@ using ::testing::Return;
 namespace {
 
 constexpr double kTestTotalCpuResource = 10.0;
+
 constexpr double kTestObjectStoreMemory = 1024 * 1024 * 1024;  // 1 GiB
+
+// Counts the scheduling passes so a test can assert how many times the node manager
+// re-ran scheduling; otherwise behaves like ClusterLeaseManager. Every pass is counted,
+// including the one QueueAndScheduleLease runs internally.
+class CountingClusterLeaseManager : public ClusterLeaseManager {
+ public:
+  using ClusterLeaseManager::ClusterLeaseManager;
+
+  void ScheduleAndGrantLeases() override {
+    ++num_schedule_and_grant_leases;
+    ClusterLeaseManager::ScheduleAndGrantLeases();
+  }
+
+  int num_schedule_and_grant_leases = 0;
+};
 
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
@@ -426,7 +442,7 @@ class NodeManagerTest : public ::testing::Test {
         scheduler_metrics,
         clock_);
 
-    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
+    cluster_lease_manager_ = std::make_unique<CountingClusterLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
@@ -482,7 +498,7 @@ class NodeManagerTest : public ::testing::Test {
   ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  std::unique_ptr<CountingClusterLeaseManager> cluster_lease_manager_;
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
   std::shared_ptr<FakeLocalObjectManager> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
@@ -783,7 +799,7 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
-TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
+TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
@@ -799,7 +815,8 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
   msg.set_sync_message(serialized);
 
-  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {std::make_shared<syncer::RaySyncMessage>(msg)});
 
   // Verify node resources and labels were updated.
   const auto &node_resources =
@@ -810,6 +827,54 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
             kTestTotalCpuResource);
   EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
             kTestTotalCpuResource);
+}
+
+TEST_F(NodeManagerTest, TestConsumeSyncMessagesSchedulesOncePerBatch) {
+  auto make_resource_view = [](const NodeID &node_id, bool with_gpu_and_label) {
+    syncer::ResourceViewSyncMessage payload;
+    payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+    payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+    if (with_gpu_and_label) {
+      payload.mutable_resources_total()->insert({"GPU", 1});
+      payload.mutable_labels()->insert({"label1", "value1"});
+    }
+    std::string serialized;
+    RAY_CHECK(payload.SerializeToString(&serialized));
+    auto msg = std::make_shared<syncer::RaySyncMessage>();
+    msg->set_node_id(node_id.Binary());
+    msg->set_message_type(syncer::MessageType::RESOURCE_VIEW);
+    msg->set_version(1);
+    msg->set_sync_message(serialized);
+    return msg;
+  };
+  const std::vector<NodeID> node_ids = {
+      NodeID::FromRandom(), NodeID::FromRandom(), NodeID::FromRandom()};
+
+  const int passes_before = cluster_lease_manager_->num_schedule_and_grant_leases;
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {make_resource_view(node_ids[0], true),
+                                      make_resource_view(node_ids[1], false),
+                                      make_resource_view(node_ids[2], false)});
+
+  // Every node in the batch is in the view, and scheduling ran once for all of them.
+  for (const auto &node_id : node_ids) {
+    const auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    ASSERT_TRUE(cluster_resource_manager.HasNode(scheduling::NodeID(node_id.Binary())));
+    const auto &node_resources =
+        cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
+    EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    // Only the first message carried a GPU and a label: the parse target is reused
+    // across the batch, and nothing from one message may leak into the next.
+    const bool first = node_id == node_ids[0];
+    EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("GPU")).Double(),
+              first ? 1 : 0);
+    EXPECT_EQ(node_resources.labels.count("label1"), first ? 1u : 0u);
+  }
+  EXPECT_EQ(passes_before + 1, cluster_lease_manager_->num_schedule_and_grant_leases);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {

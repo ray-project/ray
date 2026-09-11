@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #pragma once
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
@@ -38,8 +42,9 @@ namespace syncer {
 class MockReceiverInterface : public ReceiverInterface {
  public:
   MOCK_METHOD(void,
-              ConsumeSyncMessage,
-              (std::shared_ptr<const RaySyncMessage> message),
+              ConsumeSyncMessages,
+              (MessageType message_type,
+               std::vector<std::shared_ptr<const RaySyncMessage>> messages),
               (override));
 };
 

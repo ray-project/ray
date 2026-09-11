@@ -390,7 +390,7 @@ void NodeManager::RegisterGcs() {
     // the local Raylet's usage to broadcast to others (via the GCS). The updates are
     // versioned inside of `LocalResourceManager` to avoid unnecessary broadcasts.
     //
-    // NodeManager::ConsumeSyncMessage will be called when a sync message containing
+    // NodeManager::ConsumeSyncMessages will be called when a sync message containing
     // other Raylets' resource usage is received.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::RESOURCE_VIEW,
@@ -405,7 +405,7 @@ void NodeManager::RegisterGcs() {
     // Periodic collection is disabled, so this command is only broadcasted via
     // `BroadcastMessageIfNewVersion` (which will call NodeManager::CreateSyncMessage).
     //
-    // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
+    // NodeManager::ConsumeSyncMessages is called to execute the GC command from other
     // Raylets.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::COMMANDS,
@@ -947,9 +947,7 @@ void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
-    if (sync_msg) {
-      ConsumeSyncMessage(sync_msg);
-    }
+    ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW, {sync_msg});
   }
 }
 
@@ -3088,31 +3086,42 @@ void NodeManager::RecordMetrics() {
   lease_dependency_manager_.RecordMetrics();
 }
 
-void NodeManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+void NodeManager::ConsumeSyncMessages(
+    syncer::MessageType message_type,
+    std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) {
+  if (message_type == syncer::MessageType::RESOURCE_VIEW) {
+    // Reused across the batch; ParseFromString clears it first, so nothing from the
+    // previous message leaks into the next.
     syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
+    bool resource_view_updated = false;
+    for (const auto &message : messages) {
+      resource_view_sync_message.ParseFromString(message->sync_message());
+      NodeID node_id = NodeID::FromBinary(message->node_id());
+      // Set node labels when node added.
+      auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+      cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+          scheduling::NodeID(node_id.Binary()), std::move(node_labels));
+      ResourceRequest resources;
+      for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+        resources.Set(scheduling::ResourceID(resource_entry.first),
+                      FixedPoint(resource_entry.second));
+      }
+      const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+      const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+      resource_view_updated |= capacity_updated || usage_update;
     }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
+    // One scheduling pass after the whole batch is applied, so it sees every node's
+    // update.
+    if (resource_view_updated) {
       cluster_lease_manager_.ScheduleAndGrantLeases();
     }
-  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
+  } else if (message_type == syncer::MessageType::COMMANDS) {
     syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(message->sync_message());
-    if (commands_sync_message.should_global_gc()) {
-      local_gc_triggered_by_global_gc_ = true;
+    for (const auto &message : messages) {
+      commands_sync_message.ParseFromString(message->sync_message());
+      if (commands_sync_message.should_global_gc()) {
+        local_gc_triggered_by_global_gc_ = true;
+      }
     }
   }
 }
