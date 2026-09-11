@@ -151,13 +151,13 @@ class MapTransformFn(ABC):
             results, self._input_type, self._output_block_size_option
         )
 
-    def timed_steps(
+    def steps(
         self,
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn,
         stage_idx: int,
-    ) -> List["TimedStep"]:
-        """This transform as a flat list of timed pipeline steps.
+    ) -> List["Step"]:
+        """This transform as a flat list of pipeline steps.
 
         `_pre_process` and `_post_process` are already `Iterable -> Iterable`,
         so they are the step bodies as-is; only the wrapped fn needs a closure
@@ -165,19 +165,19 @@ class MapTransformFn(ABC):
         """
         name = repr(self)
         return [
-            TimedStep(
+            Step(
                 f"{name} input prep",
                 MapTransformPhase.INPUT_PREP,
                 stage_idx,
                 self._pre_process,
             ),
-            TimedStep(
+            Step(
                 f"{name} body",
                 MapTransformPhase.FUNCTION_BODY,
                 stage_idx,
                 lambda it: self._apply_transform(ctx, it, report_custom_op_stats),
             ),
-            TimedStep(
+            Step(
                 f"{name} output build",
                 MapTransformPhase.OUTPUT_BUILD,
                 stage_idx,
@@ -191,16 +191,18 @@ class MapTransformFn(ABC):
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
     ) -> Iterable[Block]:
-        """Apply this transform's steps in order, untimed.
+        """Compose this transform's steps and apply them to ``blocks``.
 
-        Timing belongs to the chain rather than to a transform:
-        :meth:`MapTransformer.apply_transform` wraps these same steps in a
-        :class:`TransformClock`. A caller driving one transform on its own --
+        A :class:`Step` is inert: it carries a body and the metadata a summary
+        groups by, and nothing here measures it. Timing is what
+        :meth:`TransformClock.chain` adds, and
+        :meth:`MapTransformer.apply_transform` is the caller that asks for it.
+        A caller driving one transform on its own --
         ``generate_collect_write_stats_fn``, and tests -- gets the plain
-        composition.
+        composition instead.
         """
         data: Iterable[Any] = blocks
-        for step in self.timed_steps(ctx, report_custom_op_stats, 0):
+        for step in self.steps(ctx, report_custom_op_stats, 0):
             data = step.apply(data)
         return data
 
@@ -251,7 +253,7 @@ class MapTransformPhase(Enum):
 
 
 @dataclass(frozen=True)
-class TimedStep:
+class Step:
     """One ``Iterable -> Iterable`` link in a map task's pipeline.
 
     A task's whole transform is a flat list of these. ``apply`` is the work;
@@ -322,9 +324,8 @@ class MapTransformPhaseTimes:
     ``total_s`` is the whole chain: forming batches or rows, the stage bodies,
     and building output blocks, for every stage of a (possibly fused) chain. It
     is deliberately not the time inside the functions the caller passed in --
-    that is the narrower ``function_body_s``. ``ds.stats()`` printed this figure as
-    "UDF time" before it was renamed, which said the opposite; hence the rename,
-    and hence the narrow figure getting its own "Function body" line.
+    that is the narrower ``function_body_s``, which ``ds.stats()`` reports on
+    its own "Function body" line.
 
     The three phase figures decompose ``total_s`` and sum back to it, saying
     where inside the chain the time went; they are all ``None`` when the chain
@@ -357,10 +358,10 @@ class TransformClock:
     __slots__ = ("inclusive", "_steps")
 
     def __init__(self) -> None:
-        self._steps: List["TimedStep"] = []
+        self._steps: List["Step"] = []
         self.inclusive: List[float] = []
 
-    def chain(self, steps: List["TimedStep"], blocks: Iterable[Any]) -> Iterable[Any]:
+    def chain(self, steps: List["Step"], blocks: Iterable[Any]) -> Iterable[Any]:
         """Build the timed pipeline over ``blocks``.
 
         Nothing runs until the result is pulled: each step calls its ``apply``
@@ -424,9 +425,7 @@ class TransformClock:
         return times
 
 
-def _coalesce_stage(
-    steps: List["TimedStep"], transform_fn: "MapTransformFn"
-) -> "TimedStep":
+def _coalesce_stage(steps: List["Step"], transform_fn: "MapTransformFn") -> "Step":
     """Fold a stage's three steps into one, timed as a unit."""
     applies = [step.apply for step in steps]
 
@@ -435,7 +434,7 @@ def _coalesce_stage(
             data = fn(data)
         return data
 
-    return TimedStep(
+    return Step(
         label=f"{transform_fn!r} stage",
         # Spans input prep, body and output build, so it belongs to no single
         # phase -- which is what makes the phase figures report as "not
@@ -509,14 +508,14 @@ class MapTransformer:
         """
         self._init_fn()
 
-    def get_timed_steps(
+    def get_steps(
         self,
         ctx: TaskContext,
         report_custom_op_stats: CustomOpStatsReportFn,
         *,
         decomposed: bool,
-    ) -> List["TimedStep"]:
-        """This task's whole transform, as a flat list of timed steps.
+    ) -> List["Step"]:
+        """This task's whole transform, as a flat list of steps.
 
         The answer to "what is getting timed?" is this list. It is ordinary
         data: printable, and assertable in a unit test.
@@ -525,11 +524,9 @@ class MapTransformer:
         is how a row transform pays one timer per stage instead of three -- a
         rewrite of the list rather than a second code path.
         """
-        steps: List[TimedStep] = []
+        steps: List[Step] = []
         for stage_idx, transform_fn in enumerate(self._transform_fns):
-            stage_steps = transform_fn.timed_steps(
-                ctx, report_custom_op_stats, stage_idx
-            )
+            stage_steps = transform_fn.steps(ctx, report_custom_op_stats, stage_idx)
             if not decomposed:
                 stage_steps = [_coalesce_stage(stage_steps, transform_fn)]
             steps.extend(stage_steps)
@@ -543,7 +540,7 @@ class MapTransformer:
         *,
         clock: "TransformClock",
     ) -> Iterable[Block]:
-        """Chain this task's timed steps over the input blocks.
+        """Chain this task's steps over the input blocks, timed by ``clock``.
 
         Args:
             input_blocks: The blocks to transform.
@@ -577,7 +574,7 @@ class MapTransformer:
         )
         decomposed = not per_row or DataContext.get_current().accurate_map_phase_timing
 
-        steps = self.get_timed_steps(ctx, report_custom_op_stats, decomposed=decomposed)
+        steps = self.get_steps(ctx, report_custom_op_stats, decomposed=decomposed)
         return clock.chain(steps, input_blocks)
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":

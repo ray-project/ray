@@ -283,9 +283,13 @@ def _generate_commit_checkpoint_transform(
     def commit_checkpoints(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
-        # Upstream is lazy: nothing runs until its output is pulled. Pulling it
-        # here is what makes the prepare stage run and leave the pending
-        # checkpoints on `ctx` for the loop below to commit.
+        # Drain upstream before reading `ctx`. Every stage of a fused chain
+        # runs its body on the first pull from it, and the chain is built
+        # outside-in, so this body starts before the prepare and write stages
+        # upstream have run at all. `prepare_checkpoint` is what leaves the
+        # pending checkpoints on `ctx`; reading `ctx.kwargs` without draining
+        # first finds an empty list and commits nothing, so the second phase of
+        # the 2PC silently never happens. See `TransformClock.chain`.
         blocks = list(blocks)
 
         # Get pending checkpoints written in pre-write phase

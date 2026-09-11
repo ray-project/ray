@@ -242,10 +242,9 @@ class BlockExecStats:
     end_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent in the map transform chain while generating this block. Named
-    # `udf_time_s` until it was renamed for accuracy: it covers the whole
-    # chain, not just the user's functions. The three fields below decompose it
-    # and sum back to it.
+    # Time spent in the map transform chain while generating this block: the
+    # whole chain, not just the user's functions. The three fields below
+    # decompose it and sum back to it.
     block_transform_time_s: Optional[float] = 0
     # Time spent turning input blocks into the batches or rows the transforms
     # consume.
