@@ -7,6 +7,4 @@ set -exo pipefail
 pip3 install -c "$HOME/requirements_compiled.txt" myst-parser myst-nb
 
 pip3 uninstall -y pytorch-lightning
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-pip3 install lightning==2.0.3
+pip3 install "lightning==2.4.0"
