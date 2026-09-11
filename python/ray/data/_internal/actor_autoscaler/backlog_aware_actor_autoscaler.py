@@ -48,7 +48,7 @@ class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
 
 def _estimate_expected_tasks(
     op_state: "OpState",
-) -> float:
+) -> int:
     # Each task consumes `average_num_inputs_per_task` input blocks on average,
     # so the total expected number of tasks:
     #
