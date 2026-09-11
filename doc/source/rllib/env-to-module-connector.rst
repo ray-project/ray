@@ -247,7 +247,7 @@ Note that because of the LSTM layer, the internal state of the module consists o
     You are free to design the internal states of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes
     however you like. You only need to override the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_initial_state` method and make sure
     you return a new state of any nested structure and shape from your `forward_..()` methods under the fixed ``state_out`` key.
-    See `here for an example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__
+    See `here for an example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__
     of an RLModule class with a custom LSTM layer in it.
 
 
@@ -479,7 +479,7 @@ through customizing your env-to-module pipeline:
    :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` API and
    override the same two methods, ``recompute_output_observation_space`` and ``preprocess``.
 
-   See here for a `2-agent observation preprocessor example <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__
+   See here for a `2-agent observation preprocessor example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/multi_agent_observation_preprocessor.py>`__
    showing how to enhance each agents' observations through adding information from the respective other agent to the observations.
 
    Use :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` whenever you need to

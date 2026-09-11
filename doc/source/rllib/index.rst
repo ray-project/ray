@@ -164,7 +164,7 @@ as well as, set up a separate config for the evaluation
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the ``config.evaluation()`` method.
 
 :ref:`See here <rllib-python-api>`, if you want to learn more about the RLlib training APIs.
-Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
+Also, `see here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py>`__
 for a simple example on how to write an action inference loop after training.
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
@@ -299,8 +299,8 @@ Why chose RLlib?
     **Ray.Data** has been integrated into RLlib, enabling **large-scale data ingestion** for offline RL and behavior
     cloning (BC) workloads.
 
-    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py>`__
-    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
+    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/cartpole_bc.py>`__
+    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
 
 .. dropdown:: **Support for External Env Clients**
     :animate: fade-in-slide-down
@@ -309,7 +309,7 @@ Why chose RLlib?
     from RLlib-owned, internal gymnasium envs to external, TCP-connected Envs that act independently and may even perform their own
     action inference, e.g. through ONNX.
 
-    See here for an example of `RLlib acting as a server with connecting external env TCP-clients <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
+    See here for an example of `RLlib acting as a server with connecting external env TCP-clients <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
 
 
 Learn More
@@ -385,9 +385,9 @@ RLlib provides powerful, yet easy to use APIs for customizing all aspects of you
 production training-workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
-provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
-write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__,
-or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
+provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
+write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__,
+or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
 .. figure:: images/rllib-new-api-stack-simple.svg
     :align: left

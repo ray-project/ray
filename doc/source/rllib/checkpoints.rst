@@ -159,7 +159,7 @@ file inside all checkpoint directories.
 Also starting from `Ray 2.40`, RLlib checkpoints are backward compatible. This means that
 a checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
 The Ray team ensures backward compatibility with
-`comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/blob/master/rllib/utils/tests/test_checkpointable.py>`__.
+`comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/tests/test_checkpointable.py>`__.
 
 
 .. _rllib-checkpoints-structure-of-checkpoint-dir:
@@ -242,7 +242,7 @@ RLlib obtains this state dict, when saving a checkpoint, through calling the obj
     the python version. At the time of loading from checkpoint, the user would have to provide the latter/architecture part
     of the checkpoint.
 
-    `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
+    `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
 
 .. _rllib-checkpoints-component-tree:
@@ -340,15 +340,15 @@ The following are two examples:
             )
             print(results)
 
-See this `example of how to run policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
-and this `example of how to run policy inference with an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__.
+See this `example of how to run policy inference after training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py>`__
+and this `example of how to run policy inference with an LSTM <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__.
 
 .. hint::
     Because your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is also a
     `PyTorch Module <https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module>`__,
     you can easily export your model to `ONNX <https://onnx.ai/>`__, `IREE <https://iree.dev/>`__,
     or other deployment-friendly formats.
-    See this `example script supporting ONNX <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__ for more details.
+    See this `example script supporting ONNX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py>`__ for more details.
 
 
 Restoring state from a checkpoint with `restore_from_path`
@@ -398,7 +398,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
         You can use :ref:`RLlib's callbacks APIs <rllib-callback-docs>` to inject custom code and solve for this.
 
         Also, see here for an
-        `example on how to continue training with a different config <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
+        `example on how to continue training with a different config <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
         .. testcode::
 

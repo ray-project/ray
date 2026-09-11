@@ -31,7 +31,7 @@ python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
 
 # === RLlib ===
 
-rllib/rllib.py: rllib rllib_gpu rllib_directly
+python/ray/rllib/rllib.py: rllib rllib_gpu rllib_directly
 
 # === Python Core ===
 

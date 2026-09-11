@@ -81,7 +81,7 @@ as its main RL environment interface for **single-agent** training
 (:ref:`see here for multi-agent <rllib-multi-agent-environments-doc>`).
 To implement custom logic with `gymnasium` and integrate it into an RLlib config, see
 this `SimpleCorridor example
-<https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
+<https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/custom_gym_env.py>`__.
 
 .. tip::
 
@@ -219,7 +219,7 @@ For example:
     algo.stop()
 
 For a complete example using a custom environment, see the
-`custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
+`custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/custom_gym_env.py>`__.
 
 .. warning::
 
