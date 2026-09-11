@@ -77,6 +77,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_NODE_COMPACTION_DELAY_S,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
@@ -5958,6 +5959,8 @@ class DeploymentStateManager:
         self._shutdown_tier_started_at: Optional[float] = None
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        self._all_deployments_healthy: bool = False
+        self._last_became_stable_at: Optional[float] = None
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
         # reconcile on it, skipping the O(replicas) pass on ticks with no change.
@@ -6540,7 +6543,7 @@ class DeploymentStateManager:
         draining_nodes: Mapping[
             str, float
         ] = self._cluster_node_info_cache.get_draining_nodes()
-        allow_new_compaction = len(draining_nodes) == 0 and all(
+        all_deployments_healthy = len(draining_nodes) == 0 and all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
             # TODO(zcin): Make sure that status should never be healthy if
             # the number of running replicas at target version is not at
@@ -6551,7 +6554,17 @@ class DeploymentStateManager:
             and ds._replicas.count() == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
+        if all_deployments_healthy and not self._all_deployments_healthy:
+            self._last_became_stable_at = time.time()
+        self._all_deployments_healthy = all_deployments_healthy
+
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
+            allow_new_compaction = (
+                all_deployments_healthy
+                and self._last_became_stable_at is not None
+                and time.time() - self._last_became_stable_at
+                > RAY_SERVE_NODE_COMPACTION_DELAY_S
+            )
             # Tuple of target node to compact, and its draining deadline
             node_info: Optional[
                 Tuple[str, float]
