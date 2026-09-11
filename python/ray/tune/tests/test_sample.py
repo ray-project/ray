@@ -1982,6 +1982,36 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual([t.evaluated_params["grid"] for t in trials], [1, 2, 3])
         self.assertEqual(len({t.experiment_tag for t in trials}), len(trials))
 
+    def testConstantGridSearchKeepsFirstPassVars(self):
+        """A variable sampled before the grid loop must survive a second resolution pass."""
+        # `dep` reads `grid`, so the first pass cannot resolve it and a second pass runs
+        # per grid value. That second pass only covers what is left to resolve, so `const`
+        # (the variable `constant_grid_search` exists to hold fixed) has to be carried over.
+        config = {
+            "grid": tune.grid_search([1, 2, 3]),
+            "const": tune.uniform(0, 1000),
+            "dep": tune.sample_from(lambda spec: spec.config.grid * 10),
+        }
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            self.assertEqual(len(variants), 3)
+            for resolved_vars, spec in variants:
+                reported = {path[0]: value for path, value in resolved_vars.items()}
+                self.assertEqual(
+                    sorted(reported),
+                    ["const", "dep", "grid"],
+                    f"constant_grid_search={constant_grid_search} lost a variable",
+                )
+                for key in ("grid", "const", "dep"):
+                    self.assertEqual(reported[key], spec[key])
+
+        # and the point of constant_grid_search still holds: one value across the grid
+        variants = list(generate_variants(config, constant_grid_search=True))
+        self.assertEqual(len({spec["const"] for _, spec in variants}), 1)
+
     @patch.object(logger, "warning")
     @pytest.mark.skipif(
         sys.version_info >= (3, 12),
