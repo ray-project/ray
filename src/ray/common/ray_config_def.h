@@ -414,10 +414,10 @@ RAY_CONFIG(bool, redis_namespace_cleanup_use_unlink, false)
 
 /// TCP keepalive probe interval for external Redis connections, in seconds.
 /// Idle GCS<->Redis flows can be silently removed by NAT, proxies, or managed
-/// service gateways; keepalive probes keep the flow entry alive and surface a
-/// dead peer instead of hanging on the next command. Keep this smaller than the
-/// shortest idle timeout on the network path. Set to 0 to disable TCP keepalive
-/// entirely. Valid values are 0 through 32767.
+/// service gateways. Keepalive detects idle, unresponsive connections and can
+/// preserve flows through devices that count probes as activity. Keep this
+/// smaller than the shortest idle timeout on the network path. Set to 0 to
+/// disable TCP keepalive entirely. Valid values are 0 through 32767.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 
 /// Number of unanswered TCP keepalive probes before an external Redis
@@ -430,9 +430,10 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 /// in-place Redis reconnect support, a connection declared dead escalates to a
 /// GCS crash once the request retry budget is exhausted. The default gives an
 /// idle, unresponsive connection roughly 2 minutes before detection.
-/// TODO: Reevaluate the detection window together with request and reconnect
-/// budgets after https://github.com/ray-project/ray/pull/65298. A 60-90 second
-/// window is a candidate to test, not a guaranteed recovery bound.
+/// TODO(https://github.com/ray-project/ray/issues/66074): Reevaluate the
+/// detection window together with request and reconnect budgets after in-place
+/// reconnect is available. A 60-90 second window is a candidate to test, not a
+/// guaranteed recovery bound.
 ///
 /// Linux (including musl) applies idle, interval, and count when the TCP socket
 /// options are available. macOS applies idle only; Windows uses a system-fixed

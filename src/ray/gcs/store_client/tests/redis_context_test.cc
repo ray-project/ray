@@ -18,6 +18,10 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #endif
 
 #include <cerrno>
@@ -62,17 +66,23 @@ class ScopedSetsockoptFailure {
 
 }  // namespace
 
-extern "C" int __real_setsockopt(
-    int fd, int level, int option, const void *value, socklen_t length);
-
-extern "C" int __wrap_setsockopt(
-    int fd, int level, int option, const void *value, socklen_t length) {
+#if defined(__GLIBC__)
+#define RAY_TEST_SOCKET_NOEXCEPT noexcept
+#else
+#define RAY_TEST_SOCKET_NOEXCEPT
+#endif
+extern "C" int setsockopt(int fd,
+                          int level,
+                          int option,
+                          const void *value,
+                          socklen_t length) RAY_TEST_SOCKET_NOEXCEPT {
   if (setsockopt_failure != nullptr && (*setsockopt_failure)(fd, level, option)) {
     errno = EPERM;
     return -1;
   }
-  return __real_setsockopt(fd, level, option, value, length);
+  return static_cast<int>(::syscall(SYS_setsockopt, fd, level, option, value, length));
 }
+#undef RAY_TEST_SOCKET_NOEXCEPT
 #endif
 
 namespace ray {
@@ -227,12 +237,14 @@ class RedisContextKeepaliveTest : public RedisContextConfigTest {
     freeReplyObject(reply);
 
     auto completed = std::make_shared<bool>(false);
-    context.RunArgvAsync({"ECHO", "keepalive"},
-                         [&, completed](std::shared_ptr<CallbackReply> response) {
-                           *completed = true;
-                           EXPECT_EQ(response->ReadAsString(), "keepalive");
-                           context.io_service().stop();
-                         });
+    context.RunArgvAsync(
+        {"ECHO", "keepalive"},
+        [&, completed](std::shared_ptr<CallbackReply> response) {
+          *completed = true;
+          EXPECT_EQ(response->ReadAsString(), "keepalive");
+          context.io_service().stop();
+        },
+        kNoTable);
     context.io_service().restart();
     context.io_service().run_for(std::chrono::seconds(5));
     EXPECT_TRUE(*completed);
