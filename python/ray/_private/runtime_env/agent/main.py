@@ -13,6 +13,7 @@ from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
+from ray._private.browser_request_middleware import get_browser_request_middleware
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import RUNTIME_ENV_AGENT_PORT_NAME, GcsClient, persist_port
 from ray.core.generated import (
@@ -215,7 +216,14 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
+    app = web.Application(
+        middlewares=[
+            get_token_auth_middleware(aiohttp),
+            # Block all browser requests - the runtime env agent is only
+            # accessed internally, same as the dashboard agent.
+            get_browser_request_middleware(aiohttp),
+        ]
+    )
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
