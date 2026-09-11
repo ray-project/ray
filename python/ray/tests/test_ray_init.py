@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import signal
 import subprocess
 import sys
@@ -372,6 +373,25 @@ def test_shutdown_wait_for_processes(shutdown_only):
 
     assert mock_kill.call_args.kwargs.get("wait") is True
     assert all(proc.poll() is not None for proc in procs)
+
+
+def test_ray_init_does_not_perturb_global_random_state(shutdown_only):
+    """Regression test for https://github.com/ray-project/ray/issues/10145.
+
+    ray.init() internally uses the `random` module to select free ports for
+    its subprocesses. It must not consume from (and thereby perturb) the
+    process's shared global `random` state, or else a user who seeds
+    `random` for reproducibility before calling ray.init() would get
+    different results depending on Ray's internal port selection.
+    """
+    random.seed(1234)
+    expected = [random.random() for _ in range(5)]
+
+    random.seed(1234)
+    ray.init()
+    actual = [random.random() for _ in range(5)]
+
+    assert actual == expected
 
 
 if __name__ == "__main__":

@@ -330,7 +330,16 @@ class FileSystemStorage(ExternalStorage):
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
-        self._current_directory_index = random.randrange(0, len(self._directory_paths))
+        #
+        # This storage is constructed as part of every ray.init() call (to
+        # set up the default spilling config), so we must not draw from the
+        # shared global `random` module here: doing so would silently
+        # perturb any reproducibility a user gets from seeding `random`
+        # themselves before calling ray.init(). See
+        # https://github.com/ray-project/ray/issues/10145.
+        self._current_directory_index = random.SystemRandom().randrange(
+            0, len(self._directory_paths)
+        )
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
