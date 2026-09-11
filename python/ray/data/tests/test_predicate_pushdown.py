@@ -523,15 +523,16 @@ class TestPredicatePushdownIntoRead:
     def parquet_ds(self, ray_start_regular_shared):
         return ray.data.read_parquet("example://iris.parquet")
 
-    def test_complex_pipeline_all_filters_push_to_read(self, parquet_ds):
-        """Complex pipeline: filters should push through all operators into Read.
+    def test_complex_pipeline_filters_stop_at_limit(self, parquet_ds):
+        """Only filters before the limit should be absorbed into Read.
 
         Pipeline: Read -> Filter -> Rename -> Filter -> Sort -> Repartition
                   -> Filter -> Limit -> Filter
 
-        All filters should fuse, push through all operators, rebind through rename,
-        and be absorbed into the Read operator.
+        Filters before the limit can rebind through rename and push into Read.
+        The final filter must stay after the limit to preserve which rows it sees.
         """
+        parquet_ds.context.execution_options.preserve_order = True
         ds = (
             parquet_ds.filter(expr=col("sepal.length") > 4.0)
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
@@ -549,27 +550,52 @@ class TestPredicatePushdownIntoRead:
                 expr=(col("sepal.length") > 4.0)
                 & (col("sepal.length") < 7.0)
                 & (col("sepal.width") > 2.5)
-                & (col("sepal.length") > 4.5)
             )
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
             .sort("len")
             .repartition(3)
             .limit(100)
+            .materialize()
+            .filter(expr=col("len") > 4.5)
         )
 
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        # Verify plan: all filters pushed into Read, passthrough ops remain
+        # Only the post-limit filter should remain outside the reader.
         optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
-        assert not plan_has_operator(
-            optimized_plan, Filter
-        ), "No Filter operators should remain after pushdown into Read"
+        assert len(get_operators_of_type(optimized_plan, Filter)) == 1
+        assert plan_operator_comes_before(optimized_plan, Limit, Filter)
+
+
+@pytest.mark.parametrize("source", ["range", "parquet"])
+@pytest.mark.parametrize("num_blocks", [1, 3])
+@pytest.mark.parametrize("threshold,expected_ids", [(1, [1, 2]), (3, [])])
+def test_filter_does_not_push_through_limit(
+    ray_start_regular_shared, tmp_path, source, num_blocks, threshold, expected_ids
+):
+    if source == "range":
+        ds = ray.data.range(10, override_num_blocks=num_blocks)
+    else:
+        path = tmp_path / "data.parquet"
+        pq.write_table(pa.table({"id": list(range(10))}), path)
+        ds = ray.data.read_parquet(str(path), override_num_blocks=num_blocks)
+    ds.context.execution_options.preserve_order = True
+
+    # Renaming is safe to push through, but the limit must still be a barrier.
+    filtered = (
+        ds.limit(3)
+        .rename_columns({"id": "value"})
+        .filter(expr=col("value") >= threshold)
+    )
+    assert filtered.take_all() == [{"value": i} for i in expected_ids]
+    optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
+    assert plan_operator_comes_before(optimized_plan, Limit, Filter)
 
 
 class TestPassthroughBehavior:
     """Tests for PASSTHROUGH behavior operators.
 
-    Operators: Sort, Repartition, RandomShuffle, Limit
+    Operators: Sort, Repartition, RandomShuffle
     Predicates pass through unchanged - operators don't affect filtering.
     """
 
@@ -587,9 +613,8 @@ class TestPassthroughBehavior:
                 "StreamingRepartition",
             ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
-            (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
@@ -611,7 +636,7 @@ class TestPassthroughBehavior:
 
     def test_filter_pushes_through_multiple_ops(self, base_ds):
         """Filter should push through multiple passthrough operators."""
-        ds = base_ds.sort("id").repartition(5).limit(50).filter(expr=col("id") < 10)
+        ds = base_ds.sort("id").repartition(5).filter(expr=col("id") < 10)
 
         # Verify correctness against expected result
         expected = base_ds.filter(expr=col("id") < 10)
@@ -624,7 +649,6 @@ class TestPassthroughBehavior:
         assert plan_has_operator(
             optimized_plan, Repartition
         ), "Repartition should remain"
-        assert plan_has_operator(optimized_plan, Limit), "Limit should remain"
 
     def test_multiple_filters_fuse_and_push_through(self, base_ds):
         """Multiple filters should fuse and push through passthrough operators."""
