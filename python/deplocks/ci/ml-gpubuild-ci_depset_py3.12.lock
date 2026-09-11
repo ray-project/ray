@@ -1577,6 +1577,7 @@ grpcio-reflection==1.75.0 \
     --hash=sha256:cef02b79eea9a1a5e379e13e503a5eaa32a4bc1ad2f1c24d3a6e28a95db5569f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   --override python/requirements/ml/py310_protobuf_overrides.txt
     #   ray
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \

@@ -1,0 +1,20 @@
+# uv override file for the py3.10 ML and RLlib CI deplocks (see
+# ci/raydepsets/configs/ci_ml.depsets.yaml and ci_rllib.depsets.yaml).
+#
+# Those images install their lock with --no-deps over the core CI image, which
+# carries wandb 0.26.0. wandb's protobuf-6 gencode is built with protobuf 6.32.1
+# and refuses any older 6.x runtime, while tensorflow-metadata 1.17.3 caps
+# protobuf<=6.32 on py<3.11. No protobuf 6 satisfies both, so this track stays on
+# protobuf 5, where wandb loads its protobuf-5 gencode instead.
+#
+# grpcio-reflection (a ray[serve] dependency) 1.72+ requires protobuf>=6.30. Hold
+# it to the last release that allows protobuf 5. requirements_compiled.txt
+# deliberately leaves it unpinned on py<3.11 (uv applies constraints even over
+# overrides). Only depsets without grpcio-tools can take this: grpcio-tools
+# 1.75.0 itself requires protobuf 6.
+#
+# An override replaces every requirement on the package, so it must also name
+# the package for py>=3.11 (unpinned, so the compiled constraint decides);
+# otherwise uv drops grpcio-reflection from the py3.12 locks entirely.
+grpcio-reflection<1.72; python_version < '3.11'
+grpcio-reflection; python_version >= '3.11'

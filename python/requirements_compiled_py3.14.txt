@@ -744,7 +744,9 @@ grpcio==1.76.0
     #   tensorboard
     #   tensorflow
 grpcio-reflection==1.76.0
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
 grpcio-status==1.76.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
