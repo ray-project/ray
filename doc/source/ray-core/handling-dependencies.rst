@@ -828,10 +828,23 @@ uploading a copy:
 The path must be absolute: ``local:///app``, not ``local://app``. On Windows, write the
 drive where the path goes: ``local://C:/app``.
 
-Ray uses the directory in place. Workers start in it and it is first on their
-``PYTHONPATH``, exactly as with a downloaded ``working_dir``. Nothing is packaged,
-uploaded, downloaded, or unpacked; the directory is never counted against Ray's URI
-cache or evicted from it, and Ray never deletes it.
+Ray uses the directory in place. Nothing is packaged, uploaded, downloaded, or
+unpacked; the directory is never counted against Ray's URI cache or evicted from it,
+and Ray never deletes it.
+
+For ``working_dir``, workers start in the directory and it is first on their
+``PYTHONPATH``, exactly as with a downloaded ``working_dir``.
+
+For ``py_modules``, a ``local://`` entry adds that directory to ``PYTHONPATH``, so the
+modules inside it are importable at the top level. Given ``/app/lib/foo.py``:
+
+.. code-block:: python
+
+  runtime_env = {"py_modules": ["local:///app/lib"]}  # import foo
+
+Note that this differs from passing a local directory path such as ``"/app/lib"``, which
+uploads the directory and makes the directory itself importable as a package
+(``import lib``).
 
 .. warning::
 
@@ -847,7 +860,9 @@ Other things to know:
 - The directory must exist on every node that runs your tasks or actors. If it doesn't,
   runtime environment setup fails with an error naming the missing path.
 - ``excludes`` has no effect, because nothing is packaged.
-- A ``local://`` entry in ``py_modules`` must be a directory, not a ``.whl`` file.
+- A ``local://`` URI must name a directory. Archives such as ``.zip``, ``.whl``,
+  ``.tar.gz``, ``.tgz``, or ``.tar.xz`` are rejected when the runtime environment is
+  validated, because nothing is unpacked.
 
 .. _remote-uris:
 

@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -713,6 +714,18 @@ def _local_uri(path) -> str:
     return f"local://{posix}" if posix.startswith("/") else f"local:///{posix}"
 
 
+def _expected_cd_prefix(local_dir) -> list:
+    """The command_prefix WorkingDirPlugin emits to enter `local_dir`.
+
+    On POSIX the prefix is joined into one `bash -c` string, so the path is shell
+    quoted. On Windows it is handed to `subprocess.Popen(shell=True)` as a list,
+    which applies its own quoting, so the raw path is expected.
+    """
+    if sys.platform == "win32":
+        return ["cd", "/d", str(local_dir), "&&"]
+    return ["cd", shlex.quote(str(local_dir)), "&&"]
+
+
 class TestLocalWorkingDir:
     """`local://` working_dirs: already on the node, used in place."""
 
@@ -787,10 +800,26 @@ class TestLocalWorkingDir:
 
         plugin.modify_context([uri], {"working_dir": uri}, context)
 
-        assert str(tmp_working_dir) in " ".join(context.command_prefix)
+        expected = _expected_cd_prefix(tmp_working_dir)
+        assert context.command_prefix[: len(expected)] == expected
         assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(
             tmp_working_dir
         )
+
+    @pytest.mark.asyncio
+    async def test_modify_context_quotes_whitespace_in_path(self, tmpdir):
+        """The cd runs through a shell, so a path with spaces must be quoted."""
+        local_dir = Path(tmpdir) / "my working dir"
+        local_dir.mkdir()
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(local_dir)
+        context = RuntimeEnvContext()
+
+        plugin.modify_context([uri], {"working_dir": uri}, context)
+
+        expected = _expected_cd_prefix(local_dir)
+        assert context.command_prefix[: len(expected)] == expected
+        assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(local_dir)
 
 
 if __name__ == "__main__":

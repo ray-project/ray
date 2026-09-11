@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from ray._common.runtime_env_package import (
     COMPOUND_ARCHIVE_EXTENSIONS,
+    PACKAGE_UPLOAD_EXTENSIONS,
     WHEEL_EXTENSION,
     get_package_extension,
 )
@@ -111,6 +112,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be '
                 "absolute. Write local:///path/in/image, or local://C:/path/in/image "
                 "on Windows."
+            )
+        archive_extension = get_package_extension(path, PACKAGE_UPLOAD_EXTENSIONS)
+        if archive_extension is not None:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be a '
+                f"directory, not a {archive_extension} archive. A local:// directory "
+                "is used in place and is never unpacked."
             )
         return (protocol, path)
 

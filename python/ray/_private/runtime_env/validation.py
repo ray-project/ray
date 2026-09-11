@@ -24,9 +24,9 @@ def validate_path(path: str) -> None:
 
 def validate_uri(uri: str, field: str):
     from ray._common.runtime_env_uri import Protocol, parse_uri
-    from ray._private.runtime_env.packaging import is_local_dir_uri_or_raise
+    from ray._private.runtime_env.packaging import get_local_dir_uri_path
 
-    if is_local_dir_uri_or_raise(uri):
+    if get_local_dir_uri_path(uri) is not None:
         return
 
     try:

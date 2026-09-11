@@ -9,9 +9,7 @@ from ray._common.runtime_env_uri import parse_uri
 from ray._private.ray_constants import get_runtime_env_default_excludes
 from ray._private.runtime_env.packaging import (
     _get_local_path,
-    get_path_from_local_dir_uri,
-    is_local_dir_uri,
-    is_local_dir_uri_or_raise,
+    get_local_dir_uri_path,
 )
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
@@ -41,31 +39,38 @@ class TestLocalDirURI:
     @pytest.mark.parametrize(
         "uri,expected",
         [
-            ("local:///app", True),
-            ("local:///app/subdir", True),
-            ("gcs://_ray_pkg_abc.zip", False),
-            ("s3://bucket/pkg.zip", False),
-            ("file:///tmp/pkg.zip", False),
-            ("/app", False),
-            ("", False),
+            ("local:///app", Path("/app")),
+            ("local:///a/b/c", Path("/a/b/c")),
+            ("LOCAL:///app", Path("/app")),
+            ("gcs://_ray_pkg_abc.zip", None),
+            ("s3://bucket/pkg.zip", None),
+            ("file:///tmp/pkg.zip", None),
+            ("/app", None),
+            ("", None),
         ],
     )
-    def test_is_local_dir_uri(self, uri, expected):
-        assert is_local_dir_uri(uri) is expected
+    def test_get_local_dir_uri_path(self, uri, expected):
+        assert get_local_dir_uri_path(uri) == expected
+
+    def test_get_local_dir_uri_path_rejects_malformed_local_uri(self):
+        with pytest.raises(ValueError, match="the path must be absolute"):
+            get_local_dir_uri_path("local://relative/path")
 
     @pytest.mark.parametrize(
-        "uri,expected", [("local:///app", True), ("s3://bucket/pkg.zip", False)]
+        "uri",
+        [
+            "local:///app/code.zip",
+            "local:///app/lib.whl",
+            "local:///app/code.tar.gz",
+            "local:///app/code.tgz",
+            "local:///app/code.tar.xz",
+            "local://C:/app/code.zip",
+        ],
     )
-    def test_is_local_dir_uri_or_raise(self, uri, expected):
-        assert is_local_dir_uri_or_raise(uri) is expected
-
-    def test_is_local_dir_uri_or_raise_rejects_malformed_local_uri(self):
-        with pytest.raises(ValueError, match="the path must be absolute"):
-            is_local_dir_uri_or_raise("local://relative/path")
-
-    def test_get_path_from_local_dir_uri(self):
-        assert get_path_from_local_dir_uri("local:///app") == Path("/app")
-        assert get_path_from_local_dir_uri("local:///a/b/c") == Path("/a/b/c")
+    def test_rejects_archives(self, uri):
+        """A local:// URI names a directory used in place, never an archive."""
+        with pytest.raises(ValueError, match="must be a directory"):
+            parse_uri(uri)
 
     @pytest.mark.parametrize(
         "uri,expected",
@@ -89,10 +94,6 @@ class TestLocalDirURI:
     def test_rejects_paths_without_a_root(self, uri):
         with pytest.raises(ValueError, match="the path must be absolute"):
             parse_uri(uri)
-
-    def test_get_path_from_local_dir_uri_rejects_other_protocols(self):
-        with pytest.raises(ValueError, match="Expected a 'local://' URI"):
-            get_path_from_local_dir_uri("gcs://_ray_pkg_abc.zip")
 
     def test_local_uri_has_no_ray_managed_package_path(self):
         """Nothing may compute a managed path for an in image dir."""

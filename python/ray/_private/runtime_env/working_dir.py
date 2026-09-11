@@ -19,11 +19,9 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
-    get_path_from_local_dir_uri,
+    get_local_dir_uri_path,
     get_uri_for_directory,
     get_uri_for_package,
-    is_local_dir_uri,
-    is_local_dir_uri_or_raise,
     raise_if_local_dir_uri_missing,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -70,7 +68,7 @@ def upload_working_dir_if_needed(
     if isinstance(working_dir, Path):
         working_dir = str(working_dir)
 
-    if is_local_dir_uri_or_raise(working_dir):
+    if get_local_dir_uri_path(working_dir) is not None:
         return runtime_env
 
     # working_dir is already a URI -- just pass it through.
@@ -195,13 +193,14 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         For `local://` URIs that is the path itself. For every other protocol
         it is the directory Ray downloaded and unpacked.
         """
-        if is_local_dir_uri(uri):
-            return get_path_from_local_dir_uri(uri)
+        local_dir = get_local_dir_uri_path(uri)
+        if local_dir is not None:
+            return local_dir
         return get_local_dir_from_uri(uri, self._resources_dir)
 
     @staticmethod
     def _raise_if_missing(local_dir: Path, uri: str) -> None:
-        if is_local_dir_uri(uri):
+        if get_local_dir_uri_path(uri) is not None:
             raise_if_local_dir_uri_missing(local_dir, uri, "working_dir")
             return
 
@@ -217,7 +216,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete working dir URI %s", uri)
-        if is_local_dir_uri(uri):
+        if get_local_dir_uri_path(uri) is not None:
             # Ray does not own this directory, it belongs to the image.
             logger.info(
                 "Skipping deletion of in place working dir URI %s: it is not "
@@ -248,10 +247,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        if uri is not None and is_local_dir_uri(uri):
+        local_dir = get_local_dir_uri_path(uri) if uri is not None else None
+        if local_dir is not None:
             # The directory is already on this node. Validate it eagerly so the
             # failure is reported early as a runtime_env setup error
-            local_dir = get_path_from_local_dir_uri(uri)
             self._raise_if_missing(local_dir, uri)
             logger.info("Using in place working dir '%s'.", local_dir)
             # This directory is not part of Ray's URI cache, so it

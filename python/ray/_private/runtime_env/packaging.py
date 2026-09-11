@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
@@ -469,28 +470,15 @@ def _store_package_in_gcs(
     return len(data)
 
 
-def is_local_dir_uri(pkg_uri: str) -> bool:
-    """Returns True if the URI refers to a directory already present on the node."""
-    try:
-        protocol, _ = _parse_uri(pkg_uri)
-    except ValueError:
-        return False
-    return protocol == Protocol.LOCAL
+def get_local_dir_uri_path(pkg_uri: str) -> Optional[Path]:
+    """Returns the on node path a `local://` URI points to.
 
-
-def is_local_dir_uri_or_raise(pkg_uri: str) -> bool:
-    """Returns whether the URI is a `local://` URI, raising if it is malformed."""
-    if not pkg_uri.startswith(f"{Protocol.LOCAL.value}://"):
-        return False
-    _parse_uri(pkg_uri)
-    return True
-
-
-def get_path_from_local_dir_uri(pkg_uri: str) -> Path:
-    """Returns the absolute on node path a `local://` URI points to."""
-    protocol, path = _parse_uri(pkg_uri)
-    if protocol != Protocol.LOCAL:
-        raise ValueError(f"Expected a 'local://' URI, got {pkg_uri}.")
+    Returns None for every other protocol, and for plain paths. Raises ValueError
+    for a `local://` URI that is malformed, such as one with a relative path.
+    """
+    if urlparse(pkg_uri).scheme != Protocol.LOCAL.value:
+        return None
+    _, path = _parse_uri(pkg_uri)
     return Path(path)
 
 

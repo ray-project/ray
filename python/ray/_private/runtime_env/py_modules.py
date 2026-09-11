@@ -12,13 +12,11 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
-    get_path_from_local_dir_uri,
+    get_local_dir_uri_path,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
     install_wheel_package,
-    is_local_dir_uri,
-    is_local_dir_uri_or_raise,
     is_whl_uri,
     package_exists,
     raise_if_local_dir_uri_missing,
@@ -35,7 +33,7 @@ default_logger = logging.getLogger(__name__)
 
 
 def _check_is_uri(s: str) -> bool:
-    if is_local_dir_uri_or_raise(s):
+    if get_local_dir_uri_path(s) is not None:
         return True
 
     try:
@@ -183,8 +181,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
-        if is_local_dir_uri(uri):
-            return get_path_from_local_dir_uri(uri)
+        local_dir = get_local_dir_uri_path(uri)
+        if local_dir is not None:
+            return local_dir
         return get_local_dir_from_uri(uri, self._resources_dir)
 
     def delete_uri(
@@ -192,7 +191,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pymodule URI %s", uri)
-        if is_local_dir_uri(uri):
+        if get_local_dir_uri_path(uri) is not None:
             # Ray does not own this directory; never delete it.
             logger.info(
                 "Skipping deletion of in-place py_module URI %s: it is not "
@@ -221,14 +220,8 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
 
-        if is_local_dir_uri(uri):
-            if is_whl_uri(uri):
-                raise ValueError(
-                    f"py_modules entry {uri} points to a wheel. A 'local://' "
-                    "py_module must be a directory that already exists on every "
-                    "node."
-                )
-            module_dir = get_path_from_local_dir_uri(uri)
+        module_dir = get_local_dir_uri_path(uri)
+        if module_dir is not None:
             raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
             logger.info("Using in place py_module '%s'.", module_dir)
             return 0
@@ -256,7 +249,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
-            if is_local_dir_uri(uri):
+            if get_local_dir_uri_path(uri) is not None:
                 raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
             elif not module_dir.exists():
                 raise ValueError(
