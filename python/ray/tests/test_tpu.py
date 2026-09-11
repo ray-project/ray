@@ -3116,6 +3116,9 @@ def test_get_torchtpu_env_vars(addresses, expected_addresses):
         assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in env
         assert "TPU_WORKER_HOSTNAMES" not in env
 
+    with pytest.raises(TypeError, match="must be an integer"):
+        get_torchtpu_env_vars(topology="2x4", worker_id="invalid")
+
 
 def test_get_torchtpu_env_vars_explicit_hostnames_and_deduplication():
     """Verify explicit worker_hostnames override and slicebuilder address de-duplication."""
@@ -3636,15 +3639,15 @@ def test_single_host_slice_placement_group_worker_id(ray_single_host_tpu_cluster
     assert spg.get_jax_runtime_env()["env_vars"]["TPU_WORKER_ID"] == "0"
     assert spg.get_torchtpu_runtime_env()["env_vars"]["TPU_WORKER_ID"] == "0"
 
-    # Explicit valid worker_id accepts int and str
+    # Explicit valid worker_id accepts int
     assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_torchtpu_env_vars(worker_id="0")["TPU_WORKER_ID"] == "0"
+    assert spg.get_torchtpu_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
 
     # Validation errors propagated
     for fn in (spg.get_jax_env_vars, spg.get_torchtpu_env_vars):
         with pytest.raises(ValueError, match="out of bounds"):
             fn(worker_id=1)
-        with pytest.raises(ValueError, match="must be an integer"):
+        with pytest.raises(TypeError, match="must be an integer"):
             fn(worker_id="invalid")
 
 
@@ -3664,14 +3667,12 @@ def test_multi_host_slice_placement_group_worker_id(ray_tpu_cluster):
 
     # Valid worker_ids for both JAX and TorchTPU
     assert spg.get_jax_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_jax_env_vars(worker_id="1")["TPU_WORKER_ID"] == "1"
-    assert spg.get_jax_runtime_env(worker_id="1")["env_vars"]["TPU_WORKER_ID"] == "1"
+    assert spg.get_jax_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
+    assert spg.get_jax_runtime_env(worker_id=1)["env_vars"]["TPU_WORKER_ID"] == "1"
 
     assert spg.get_torchtpu_env_vars(worker_id=0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_torchtpu_env_vars(worker_id="1")["TPU_WORKER_ID"] == "1"
-    assert (
-        spg.get_torchtpu_runtime_env(worker_id="1")["env_vars"]["TPU_WORKER_ID"] == "1"
-    )
+    assert spg.get_torchtpu_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
+    assert spg.get_torchtpu_runtime_env(worker_id=1)["env_vars"]["TPU_WORKER_ID"] == "1"
 
     # Automatic address resolution from placed bundle IPs when addresses are omitted
     torch_env = spg.get_torchtpu_env_vars(worker_id=0)
@@ -3685,7 +3686,7 @@ def test_multi_host_slice_placement_group_worker_id(ray_tpu_cluster):
     for fn in (spg.get_jax_env_vars, spg.get_torchtpu_env_vars):
         with pytest.raises(ValueError, match="out of bounds"):
             fn(worker_id=2)
-        with pytest.raises(ValueError, match="must be an integer"):
+        with pytest.raises(TypeError, match="must be an integer"):
             fn(worker_id="foo")
         with pytest.raises(ValueError, match="out of range"):
             fn(slice_index=99)
@@ -3789,7 +3790,7 @@ def test_subslice_placement_group_worker_id():
     ]:
         with pytest.raises(ValueError, match="out of bounds"):
             fn(worker_id=1, **kw)
-        with pytest.raises(ValueError, match="must be an integer"):
+        with pytest.raises(TypeError, match="must be an integer"):
             fn(worker_id="invalid", **kw)
 
     # Polymorphic property and slice_index parity
@@ -3841,14 +3842,14 @@ def test_subslice_placement_group_worker_id():
         == "0"
     )
     assert (
-        ss_multi.get_jax_env_vars(worker_id="1", worker_hostnames="10.0.0.1,10.0.0.2")[
+        ss_multi.get_jax_env_vars(worker_id=1, worker_hostnames="10.0.0.1,10.0.0.2")[
             "TPU_WORKER_ID"
         ]
         == "1"
     )
     assert (
         ss_multi.get_torchtpu_env_vars(
-            worker_id="1", slicebuilder_addresses="10.0.0.1:8471,10.0.0.2:8471"
+            worker_id=1, slicebuilder_addresses="10.0.0.1:8471,10.0.0.2:8471"
         )["TPU_WORKER_ID"]
         == "1"
     )
@@ -3863,7 +3864,7 @@ def test_subslice_placement_group_worker_id():
     ]:
         with pytest.raises(ValueError, match="out of bounds"):
             fn(worker_id=2, **kw)
-        with pytest.raises(ValueError, match="must be an integer"):
+        with pytest.raises(TypeError, match="must be an integer"):
             fn(worker_id="bar", **kw)
 
 

@@ -278,25 +278,35 @@ def get_tpu_coordinator_env_vars(
 
 
 def _validate_worker_id(
-    worker_id: Optional[Union[int, str]],
+    worker_id: Optional[int],
     num_hosts: int,
 ) -> Optional[int]:
-    """Validate worker_id against num_hosts, returning validated int or None."""
+    """Validate worker_id against num_hosts, returning validated int or None.
+
+    Args:
+        worker_id: Optional integer worker ID (0-indexed).
+        num_hosts: Total number of hosts in the slice.
+
+    Returns:
+        Validated integer worker ID, or None if omitted for multi-host slice.
+
+    Raises:
+        TypeError: If worker_id is not an integer.
+        ValueError: If worker_id is out of bounds.
+    """
     if worker_id is None and num_hosts == 1:
         return 0
     if worker_id is not None:
-        if isinstance(worker_id, bool):
-            raise ValueError(f"worker_id must be an integer, but got {worker_id!r}.")
-        try:
-            wid_int = int(worker_id)
-        except (ValueError, TypeError):
-            raise ValueError(f"worker_id must be an integer, but got {worker_id!r}.")
-        if wid_int < 0 or wid_int >= num_hosts:
+        if not isinstance(worker_id, int) or isinstance(worker_id, bool):
+            raise TypeError(
+                f"worker_id must be an integer, but got {type(worker_id).__name__}."
+            )
+        if not (0 <= worker_id < num_hosts):
             raise ValueError(
-                f"worker_id {wid_int} is out of bounds for placement group "
+                f"worker_id {worker_id} is out of bounds for placement group "
                 f"with {num_hosts} host(s) (expected 0 to {num_hosts - 1})."
             )
-        return wid_int
+        return worker_id
     return None
 
 
@@ -305,7 +315,7 @@ def get_torchtpu_env_vars(
     topology: str,
     slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
     tpu_resource_per_chip: int = 1,
-    worker_id: Optional[Union[int, str]] = None,
+    worker_id: Optional[int] = None,
     accelerator_type: Optional[str] = None,
     worker_hostnames: Optional[Union[str, List[str]]] = None,
 ) -> Dict[str, str]:
@@ -315,14 +325,23 @@ def get_torchtpu_env_vars(
         topology: The target TPU topology string (e.g. "4x4", "2x4", or "4,4,1").
         slicebuilder_addresses: Optional comma-separated string or list of address:port strings.
         tpu_resource_per_chip: Logical TPU resources per physical chip (defaults to 1).
-        worker_id: Optional integer or string ID of the worker (0-indexed).
+        worker_id: Optional integer ID of the worker (0-indexed).
         accelerator_type: Optional TPU accelerator version or type (e.g. "v6e", "v7x").
         worker_hostnames: Optional comma-separated string or list of host IP addresses or DNS hostnames.
             If omitted, hostnames are automatically inferred from slicebuilder_addresses if provided.
 
     Returns:
         A dictionary mapping PyTorch TPU environment variables to their values.
+
+    Raises:
+        TypeError: If worker_id is not an integer.
     """
+    if worker_id is not None:
+        if not isinstance(worker_id, int) or isinstance(worker_id, bool):
+            raise TypeError(
+                f"worker_id must be an integer, but got {type(worker_id).__name__}."
+            )
+
     normalized_topology = normalize_torchtpu_topology(
         topology,
         tpu_resource_per_chip=tpu_resource_per_chip,
@@ -376,7 +395,7 @@ def get_torchtpu_env_vars(
 @PublicAPI(stability="alpha")
 def get_jax_env_vars(
     worker_hostnames: Union[str, List[str]],
-    worker_id: Optional[Union[int, str]] = None,
+    worker_id: Optional[int] = None,
     process_bounds: Optional[str] = None,
     chips_per_process_bounds: Optional[str] = None,
 ) -> Dict[str, str]:
@@ -386,13 +405,22 @@ def get_jax_env_vars(
         worker_hostnames: Comma-separated string or list of host IP addresses or DNS hostnames.
             If port numbers (e.g. "10.0.0.1:8471" or "[2001:db8::1]:8471") or URI schemes are
             included, they are automatically stripped to conform to LibTPU requirements.
-        worker_id: Optional integer or string ID of the worker (0-indexed).
+        worker_id: Optional integer ID of the worker (0-indexed).
         process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
         chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
 
     Returns:
         A dictionary mapping JAX / libtpu environment variables to their values.
+
+    Raises:
+        TypeError: If worker_id is not an integer.
     """
+    if worker_id is not None:
+        if not isinstance(worker_id, int) or isinstance(worker_id, bool):
+            raise TypeError(
+                f"worker_id must be an integer, but got {type(worker_id).__name__}."
+            )
+
     if isinstance(worker_hostnames, str):
         raw_list = [h.strip() for h in worker_hostnames.split(",") if h.strip()]
     else:
@@ -1226,7 +1254,7 @@ class SlicePlacementGroup:
     def get_torchtpu_env_vars(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
@@ -1234,8 +1262,8 @@ class SlicePlacementGroup:
 
         Args:
             slice_index: The 0-based index of the TPU slice.
-            worker_id: Optional integer or string ID of the worker within the slice.
-                For single-host slices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the slice (0-indexed).
+                For single-host slices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this slice.
@@ -1246,8 +1274,8 @@ class SlicePlacementGroup:
             A dictionary mapping PyTorch TPU environment variables to their values.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If slicebuilder addresses cannot be resolved.
         """
         if slice_index is None:
@@ -1294,7 +1322,7 @@ class SlicePlacementGroup:
     def get_torchtpu_runtime_env(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
@@ -1302,8 +1330,8 @@ class SlicePlacementGroup:
 
         Args:
             slice_index: The 0-based index of the TPU slice.
-            worker_id: Optional integer or string ID of the worker within the slice.
-                For single-host slices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the slice (0-indexed).
+                For single-host slices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this slice.
@@ -1314,8 +1342,8 @@ class SlicePlacementGroup:
             A Ray RuntimeEnv populated with PyTorch TPU environment variables.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If slicebuilder addresses cannot be resolved.
         """
         env_vars = self.get_torchtpu_env_vars(
@@ -1387,15 +1415,15 @@ class SlicePlacementGroup:
     def get_jax_env_vars(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
         """Returns the JAX TPU environment variables for this slice.
 
         Args:
             slice_index: The 0-based index of the TPU slice.
-            worker_id: Optional integer or string ID of the worker within the slice.
-                For single-host slices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the slice (0-indexed).
+                For single-host slices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
@@ -1405,8 +1433,8 @@ class SlicePlacementGroup:
             A dictionary mapping JAX TPU environment variables to their values.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         if slice_index is None:
@@ -1445,15 +1473,15 @@ class SlicePlacementGroup:
     def get_jax_runtime_env(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
         """Returns a Ray RuntimeEnv populated with JAX TPU environment variables.
 
         Args:
             slice_index: The 0-based index of the TPU slice.
-            worker_id: Optional integer or string ID of the worker within the slice.
-                For single-host slices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the slice (0-indexed).
+                For single-host slices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
@@ -1463,8 +1491,8 @@ class SlicePlacementGroup:
             A Ray RuntimeEnv configured with JAX TPU environment variables.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         env_vars = self.get_jax_env_vars(
@@ -2724,7 +2752,7 @@ class SubslicePlacementGroup:
     def get_torchtpu_env_vars(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
@@ -2740,8 +2768,8 @@ class SubslicePlacementGroup:
 
         Args:
             slice_index: Optional slice index (must be 0 for a subslice).
-            worker_id: Optional integer or string ID of the worker within the sub-slice.
-                For single-host subslices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the sub-slice (0-indexed).
+                For single-host subslices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this sub-slice.
@@ -2752,8 +2780,8 @@ class SubslicePlacementGroup:
             A dictionary mapping PyTorch TPU environment variables to their values.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If slicebuilder addresses cannot be resolved.
         """
         if slice_index is None:
@@ -2829,7 +2857,7 @@ class SubslicePlacementGroup:
     def get_torchtpu_runtime_env(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
@@ -2837,8 +2865,8 @@ class SubslicePlacementGroup:
 
         Args:
             slice_index: Optional slice index (must be 0 for a subslice).
-            worker_id: Optional integer or string ID of the worker within the sub-slice.
-                For single-host subslices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the sub-slice (0-indexed).
+                For single-host subslices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this sub-slice.
@@ -2849,8 +2877,8 @@ class SubslicePlacementGroup:
             A Ray RuntimeEnv configured with sub-slice TorchTPU environment variables.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If slicebuilder addresses cannot be resolved.
         """
         env_vars = self.get_torchtpu_env_vars(
@@ -2905,7 +2933,7 @@ class SubslicePlacementGroup:
     def get_jax_env_vars(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
         """Returns the JAX TPU environment variables for this sub-slice.
@@ -2919,8 +2947,8 @@ class SubslicePlacementGroup:
 
         Args:
             slice_index: Optional slice index (must be 0 for a subslice).
-            worker_id: Optional integer or string ID of the worker within the sub-slice.
-                For single-host subslices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the sub-slice (0-indexed).
+                For single-host subslices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames for this sub-slice. If omitted, resolved
@@ -2930,8 +2958,8 @@ class SubslicePlacementGroup:
             A dictionary mapping JAX TPU environment variables to their values.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         if slice_index is None:
@@ -2985,15 +3013,15 @@ class SubslicePlacementGroup:
     def get_jax_runtime_env(
         self,
         slice_index: int = 0,
-        worker_id: Optional[Union[int, str]] = None,
+        worker_id: Optional[int] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
         """Returns a Ray RuntimeEnv populated with JAX TPU environment variables for this sub-slice.
 
         Args:
             slice_index: Optional slice index (must be 0 for a subslice).
-            worker_id: Optional integer or string ID of the worker within the sub-slice.
-                For single-host subslices, defaults to "0" if omitted. Must be between
+            worker_id: Optional integer ID of the worker within the sub-slice (0-indexed).
+                For single-host subslices, defaults to 0 if omitted. Must be between
                 0 and num_hosts - 1.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames for this sub-slice.
@@ -3002,8 +3030,8 @@ class SubslicePlacementGroup:
             A Ray RuntimeEnv configured with JAX TPU environment variables.
 
         Raises:
-            ValueError: If slice_index is out of range, worker_id is not an integer,
-                or worker_id is out of bounds.
+            TypeError: If worker_id is not an integer.
+            ValueError: If slice_index is out of range or worker_id is out of bounds.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         env_vars = self.get_jax_env_vars(
