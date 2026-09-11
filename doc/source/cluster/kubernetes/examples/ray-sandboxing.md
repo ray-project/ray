@@ -178,6 +178,147 @@ USER ray
 
 ---
 
+## (Optional) Use the Modal Python SDK
+
+The sandbox gRPC facade lets an external client use a subset of the Modal
+Sandbox API against a RayCluster. The client doesn't need Ray installed: the
+facade submits work to Ray, and the Ray workers run the sandboxes with `runsc`.
+
+:::{warning}
+This example requires the development implementation in
+[Ray PR #65839](https://github.com/ray-project/ray/pull/65839), including its
+dependency on [#65633](https://github.com/ray-project/ray/pull/65633).
+It is not available in the released Ray 2.58.0 image. The example was tested
+with facade commit `259c9a3dd654478bac4784ca01923049c7172846` and
+`modal==1.5.5`; this is not a claim of full Modal API compatibility.
+:::
+
+### Prepare the Ray image
+
+Prepare an image containing the Ray build under test, `ray[serve]`, `grpclib`,
+and `runsc`. See {ref}`building-ray` for building Ray from source, and the
+custom-image section above for installing `runsc`. Use the same Ray build in
+the head, worker, and facade containers. The worker Pods must be able to pull
+the sandbox image from Docker Hub, including its authentication and blob
+endpoints. The Ray container image and the sandbox image are separate images.
+
+Before deploying, verify your image, replacing the example image name with
+your own registry location:
+
+```bash
+export RAY_SANDBOX_IMAGE=your-registry/ray-sandbox-sdk:dev
+docker run --rm --entrypoint python "$RAY_SANDBOX_IMAGE" \
+  -c 'import ray.experimental.sandbox.http.grpc_facade'
+docker run --rm --entrypoint runsc "$RAY_SANDBOX_IMAGE" --version
+```
+
+### Deploy a persistent cluster and facade
+
+Use a persistent RayCluster for SDK clients, rather than a RayJob that can
+shut down its cluster after completion. Download
+{download}`ray-sandbox-sdk.yaml <../configs/ray-sandbox-sdk.yaml>` and replace
+the example image name in all three containers:
+
+```bash
+sed "s|ray-sandbox-sdk:dev|${RAY_SANDBOX_IMAGE}|g" ray-sandbox-sdk.yaml \
+  | kubectl apply -f -
+kubectl -n ray-sandbox-sdk wait --for=jsonpath='{.status.state}'=ready \
+  raycluster/sandbox-sdk --timeout=300s
+kubectl -n ray-sandbox-sdk wait --for=condition=Ready pod \
+  -l ray.io/cluster=sandbox-sdk,ray.io/node-type=head --timeout=300s
+```
+
+The manifest reserves the head for cluster management and gives one worker
+two logical CPUs. The facade runs as a sidecar in the head Pod, connects to
+`127.0.0.1:6379`, and shares `/tmp/ray` and the Pod's process namespace with
+the Ray head container. Native Ray drivers discover the local raylet process
+and use its sockets; pointing an ordinary standalone Pod at the GCS address
+alone isn't sufficient. The worker Pods run separately and don't share this
+process namespace.
+
+Run only one facade process per cluster because command state lives in that
+process. Restarting the facade can lose in-flight command state; replicas
+behind a load balancer aren't supported by this implementation.
+
+The facade in this example has no client authentication or TLS. Keep it on a
+trusted cluster network and use the following loopback-only port forward for
+local access. The REST service's token setting doesn't authenticate this
+gRPC endpoint. Don't expose it through a public load balancer.
+
+```bash
+kubectl -n ray-sandbox-sdk port-forward service/sandbox-grpc 50051:50051
+```
+
+Leave this command running. The facade's `--advertise-url` is the command
+router address returned to the SDK. It must be reachable **from the client**
+and route to the same facade process. The manifest uses
+`http://127.0.0.1:50051` for this port-forwarded example. For clients inside
+the cluster, set the client's `RAY_SANDBOX_GRPC_URL` and `--advertise-url` to
+`http://sandbox-grpc.ray-sandbox-sdk.svc.cluster.local:50051` instead.
+
+### Run the SDK client
+
+In another terminal, download
+{download}`ray_sandbox_sdk.py <ray_sandbox_sdk.py>`, create a virtual
+environment, and run the example:
+
+```bash
+python3 -m venv .venv-sandbox-sdk
+. .venv-sandbox-sdk/bin/activate
+python -m pip install 'modal==1.5.5'
+python ray_sandbox_sdk.py
+```
+
+The client uses `modal.Client.anonymous` to select the local facade; it doesn't
+require a Modal cloud account or token. It writes and executes a Python file,
+checks a file round trip, and terminates the sandbox in a `finally` block:
+
+```{literalinclude} ray_sandbox_sdk.py
+:language: python
+```
+
+Expected output:
+
+```text
+Hello from a Ray sandbox on KubeRay!
+File round trip succeeded.
+Sandbox terminated.
+```
+
+The first operation can wait for the image to download and extract.
+`Sandbox.create()` returning a handle doesn't mean the sandbox is ready.
+Time the first successful command when measuring readiness. The sandbox's
+`block_network=True` setting blocks the sandbox's own network access; it
+doesn't prevent the Ray worker from downloading its image.
+
+At the tested revision, use `sandbox.filesystem.write_text` and `read_text`,
+as shown above. The deprecated `sandbox.open()` path isn't implemented, and
+`filesystem.list_files()` returns a placeholder empty list. Avoid relying on
+these operations until the facade supports them.
+
+### Inspect and clean up
+
+If the client doesn't complete, inspect the facade logs and worker scheduling:
+
+```bash
+kubectl -n ray-sandbox-sdk logs -l ray.io/cluster=sandbox-sdk,ray.io/node-type=head -c facade
+kubectl -n ray-sandbox-sdk get pods
+kubectl -n ray-sandbox-sdk get events --sort-by=.lastTimestamp
+```
+
+Check image-pull errors in the worker logs, available Ray resources, and both
+the client URL and advertised router URL. The default sandbox image cache is
+`/tmp/ray/sandbox/images` inside each worker Pod. This manifest doesn't mount
+persistent storage there, so replacing a worker Pod loses its cache. A warm
+cache on one worker doesn't prewarm another worker.
+
+Stop the port forward with Ctrl+C, then remove the resources created by this
+example:
+
+```bash
+kubectl delete namespace ray-sandbox-sdk
+```
+
 ## Next steps
 
 * See {ref}`ray-core-sandboxes` for API details and custom actor patterns.
