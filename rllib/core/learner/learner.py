@@ -1454,8 +1454,11 @@ class Learner(Checkpointable):
         under `config.never_skip_update`; in multi-Learner setups it is a collective
         operation and must stay one.
 
-        The plans are combined as follows: the group skips if ANY Learner wants to;
-        the number of minibatches is the average of the Learners' proposals.
+        The plans are combined as follows: the group skips if ANY Learner wants to,
+        and steps through as many minibatches as the Learner with the most data
+        proposed. Taking the largest proposal means no Learner's shard is left
+        partly untrained; the price is that Learners with less data cycle theirs
+        more often, proportionally to how lopsided the shards are.
 
         Args:
             plan: This Learner's own proposal, derived from its own train batch.
