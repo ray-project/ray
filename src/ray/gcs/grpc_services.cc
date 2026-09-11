@@ -61,6 +61,7 @@ void NodeInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(
       NodeInfoGcsService, GetAllNodeAddressAndLiveness, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, CheckAlive, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, UpdateNodeLabels, max_active_rpcs_per_handler_)
 }
 
 void NodeResourceInfoGrpcService::InitServerCallFactories(

@@ -127,6 +127,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              UpdateRayletLabels,
+              ((google::protobuf::Map<std::string, std::string>)labels,
+               const rpc::ClientCallback<rpc::UpdateRayletLabelsReply> &callback),
+              (override));
   MOCK_METHOD(
       void,
       ResizeLocalResourceInstances,
