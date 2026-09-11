@@ -230,7 +230,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
     ).select_columns(["sepal.length", "variety"])
-    
+
     print(ds.schema())
 
 .. testoutput::

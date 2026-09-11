@@ -37,7 +37,7 @@ Ray Data seamlessly integrates with any `filesystem supported by Arrow
 
     # Load a CSV dataset directly from S3
     ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-    
+
     # Preview the first record
     ds.show(limit=1)
 
@@ -69,7 +69,7 @@ across your cluster for better performance.
 
     # Apply the transformation to our dataset
     transformed_ds = ds.map_batches(transform_batch, batch_size="auto")
-    
+
     # View the updated schema with the new column
     # .materialize() will execute all the lazy transformations and
     # materialize the dataset into object store memory
@@ -104,7 +104,7 @@ To explore more transformation capabilities, read :ref:`Transforming data <trans
 Consuming data
 --------------
 
-Access dataset contents through convenient methods like :meth:`~ray.data.Dataset.take_batch` and 
+Access dataset contents through convenient methods like :meth:`~ray.data.Dataset.take_batch` and
 :meth:`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray Tasks or Actors
 for distributed processing.
 
