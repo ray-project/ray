@@ -66,6 +66,32 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
     return raw
 
 
+def _columnar_peak_requests(entry: dict) -> float:
+    """Columnar form of HandleMetricReport.total_requests: peak per series, summed."""
+    series = [entry["q_val"], *(v for _, _, v in entry["running_segments"])]
+    return sum(float(s.max()) for s in series if s.size)
+
+
+def _log_dropped_handle(handle_id, actor_id, peak_requests, timeout_s, dead_actor):
+    """One copy of the operator-facing drop text, shared by the array and object stores.
+    peak_requests gates it so handles that never took traffic stay quiet."""
+    if peak_requests <= 0:
+        return
+    if dead_actor:
+        logger.debug(
+            f"Dropping metrics for handle '{handle_id}' because the Serve "
+            f"actor it was on ({actor_id}) is no longer "
+            f"alive. Its peak ongoing requests was {peak_requests}."
+        )
+    else:
+        actor_info = f"on actor '{actor_id}' " if actor_id else ""
+        logger.info(
+            f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
+            f"because no update was received for {timeout_s:.1f}s. "
+            f"Peak ongoing requests was: {peak_requests}."
+        )
+
+
 class DeploymentAutoscalingState:
     """Manages autoscaling for a single deployment."""
 
@@ -80,21 +106,12 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
-        # Columnar per-replica running-requests arrays (wire-detected; producers
-        # choose the format via should_encode_columnar).
-        # Non-running columnar metrics per replica (custom autoscaling metrics):
-        # replica_id -> {metric_name: (ts_arr, val_arr)}.
-        # Unified per-replica "last accepted report timestamp" across BOTH wire formats.
-        # Gates the object AND columnar ingest paths so a delayed report in either format
-        # can't overwrite fresher data the other wrote. Cleared only on replica stop --
-        # NOT on a cross-format dedup write.
-        self._replica_report_ts: Dict[ReplicaID, float] = dict()
         # Columnar per-handle arrays: metadata + per-replica running + queued
         # (filled whenever a columnar frame arrives).
         self._handle_arrays: Dict[str, dict] = dict()
-        # Unified per-handle "last accepted report timestamp" (both wire formats) -- same
-        # cross-format staleness guard as _replica_report_ts; pruned in
-        # drop_stale_handle_metrics.
+        # Last accepted report timestamp per handle, across BOTH wire formats, so a
+        # delayed report in either cannot overwrite fresher data the other wrote.
+        # Pruned in drop_stale_handle_metrics.
         self._handle_report_ts: Dict[str, float] = dict()
         # Async inference task queue length (from QueueMonitor).
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
@@ -206,7 +223,6 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
-        self._replica_report_ts.pop(replica_id, None)
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -274,15 +290,11 @@ class DeploymentAutoscalingState:
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
 
-        # Unified staleness gate across BOTH wire formats (see _replica_report_ts):
-        # reject a report older than the last one accepted in EITHER format, so a delayed
-        # cloudpickle report can't wipe fresher columnar data (or vice versa).
-        last_ts = self._replica_report_ts.get(replica_id)
-        if last_ts is None or send_timestamp > last_ts:
+        if (
+            replica_id not in self._replica_metrics
+            or send_timestamp > self._replica_metrics[replica_id].timestamp
+        ):
             self._replica_metrics[replica_id] = replica_metric_report
-            self._replica_report_ts[replica_id] = send_timestamp
-            # dedup-at-write: this source now reports via cloudpickle; drop any
-            # columnar entries so the stores never double-count it.
 
     def _columnar_aggregate_total_requests(self) -> float:
         """Total over the pure-columnar stores: handle running arrays plus queued, in
@@ -337,7 +349,7 @@ class DeploymentAutoscalingState:
         return autoscaling_metrics_merge.merge_and_aggregate_arrays(
             np.concatenate([t for t, _ in segments]),
             np.concatenate([v for _, v in segments]),
-            np.array(offs, dtype="<i8"),
+            np.array(offs, dtype=np.int64),
             time.time(),
             self._config.aggregation_function,
         )
@@ -421,15 +433,22 @@ class DeploymentAutoscalingState:
             2 * self._config.metrics_interval_s,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
-        for _hid, _hm in list(self._handle_arrays.items()):
-            if (
-                _hm["is_component"]
-                and _hm["actor_id"] is not None
-                and _hm["actor_id"] not in alive_serve_actor_ids
-            ):
-                del self._handle_arrays[_hid]
-            elif time.time() - _hm["timestamp"] >= timeout_s:
-                del self._handle_arrays[_hid]
+        now = time.time()
+        for hid, hm in list(self._handle_arrays.items()):
+            dead_actor = (
+                hm["is_component"]
+                and hm["actor_id"] is not None
+                and hm["actor_id"] not in alive_serve_actor_ids
+            )
+            if dead_actor or now - hm["timestamp"] >= timeout_s:
+                del self._handle_arrays[hid]
+                _log_dropped_handle(
+                    hid,
+                    hm["actor_id"],
+                    _columnar_peak_requests(hm),
+                    timeout_s,
+                    dead_actor,
+                )
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
@@ -439,27 +458,25 @@ class DeploymentAutoscalingState:
                 and handle_metric.actor_id not in alive_serve_actor_ids
             ):
                 del self._handle_requests[handle_id]
-                peak_requests = handle_metric.total_requests
-                if peak_requests > 0:
-                    logger.debug(
-                        f"Dropping metrics for handle '{handle_id}' because the Serve "
-                        f"actor it was on ({handle_metric.actor_id}) is no longer "
-                        f"alive. Its peak ongoing requests was {peak_requests}."
-                    )
+                _log_dropped_handle(
+                    handle_id,
+                    handle_metric.actor_id,
+                    handle_metric.total_requests,
+                    timeout_s,
+                    True,
+                )
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
-            elif time.time() - handle_metric.timestamp >= timeout_s:
+            elif now - handle_metric.timestamp >= timeout_s:
                 del self._handle_requests[handle_id]
-                peak_requests = handle_metric.total_requests
-                if peak_requests > 0:
-                    actor_id = handle_metric.actor_id
-                    actor_info = f"on actor '{actor_id}' " if actor_id else ""
-                    logger.info(
-                        f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
-                        f"because no update was received for {timeout_s:.1f}s. "
-                        f"Peak ongoing requests was: {peak_requests}."
-                    )
+                _log_dropped_handle(
+                    handle_id,
+                    handle_metric.actor_id,
+                    handle_metric.total_requests,
+                    timeout_s,
+                    False,
+                )
 
         # Prune the unified per-handle timestamp gate to handles still tracked in either
         # store (any dropped above no longer appear in _handle_arrays/_handle_requests).
@@ -823,7 +840,7 @@ class DeploymentAutoscalingState:
     def _aggregate_single_array(self, ts, val, now, agg) -> float:
         """Time-weighted aggregate of a single source's (ts, val) arrays."""
         return autoscaling_metrics_merge.merge_and_aggregate_arrays(
-            ts, val, np.array([0, ts.size], dtype="<i8"), now, agg
+            ts, val, np.array([0, ts.size], dtype=np.int64), now, agg
         )
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:

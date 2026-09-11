@@ -576,6 +576,26 @@ def test_drop_stale_handle_metrics_prunes_columnar_timeout(monkeypatch):
     assert "h1" not in st._handle_arrays
 
 
+def test_columnar_handle_drops_are_logged(monkeypatch):
+    """The array store is now the only thing that drops handles, so it has to emit the
+    operator-facing lines the object store did. Both reasons, both log levels."""
+    for dead_actor, level in ((True, "debug"), (False, "info")):
+        rep = _random_handle_report("h1", random.Random(1), 2)
+        st = _recorded_state(rep, monkeypatch)
+        # Guard against a vacuous pass: the log is gated on peak requests.
+        assert A._columnar_peak_requests(st._handle_arrays["h1"]) > 0
+        log = mock.Mock()
+        monkeypatch.setattr(A.logger, level, log)
+        if dead_actor:
+            st.drop_stale_handle_metrics(alive_serve_actor_ids=set())
+        else:
+            monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)
+            st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
+        assert "h1" not in st._handle_arrays
+        assert log.call_count == 1, (dead_actor, log.call_args_list)
+        assert "h1" in log.call_args[0][0]
+
+
 def test_stale_columnar_handle_report_rejected(monkeypatch):
     fresh = _random_handle_report("h1", random.Random(1), 2)
     st = _recorded_state(fresh, monkeypatch)
