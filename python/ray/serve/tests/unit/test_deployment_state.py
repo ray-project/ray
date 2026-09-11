@@ -10855,5 +10855,64 @@ def test_aggregation_function_reaches_builtin_metrics(aggregation_function, expe
     assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == expected
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_keeps_external_draining_nodes(mock_deployment_state_manager):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    node3 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+    cluster_node_info_cache.add_node(node3, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(num_replicas=4, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # node1: 2/3, node2: 1/3, node3: 1/3 -> node2 or node3 gets compacted.
+    dsm.update()
+    replicas = ds._replicas.get()
+    for replica, node in zip(replicas, [node1, node1, node2, node3]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
+    dsm.update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[
+            (ReplicaState.RUNNING, 3, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 1, None),
+        ],
+    )
+    compacting_node = dsm._deployment_scheduler._compacting_node.target_node_id
+    other_node = node3 if compacting_node == node2 else node2
+
+    # A real drain mid-compaction must still migrate the drained node's replica.
+    cluster_node_info_cache.draining_nodes = {other_node: 10**12}
+    dsm.update()
+    check_counts(
+        ds,
+        total=6,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 2, None),
+            (ReplicaState.STARTING, 2, None),
+        ],
+    )
+    assert {
+        r.actor_node_id for r in ds._replicas.get([ReplicaState.PENDING_MIGRATION])
+    } == {compacting_node, other_node}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
