@@ -573,7 +573,7 @@ This example persists the fitted preprocessor using the ``Trainer(metadata={...}
 Debugging data loading bottlenecks
 ----------------------------------
 
-When training throughput is lower than you expect, the first question to answer is whether the training loop is actually waiting on data. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer this: the **Data Ingestion** row tells you whether data loading is stalling training, and then narrows down which stage and if rank stragglers are responsible.
+When diagnosing bottlenecks leading to slow training throughput, the first question to answer is whether the training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer this: the **Data Ingestion** row tells you whether data loading is stalling training, and then narrows down which stage and if rank stragglers are responsible.
 
 To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in :ref:`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**; open it from Grafana's dashboard list and find the **Data Ingestion** section.
 
@@ -597,6 +597,23 @@ Ray Data prefetches batches on background threads while your training loop compu
 - **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
 - **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
 
+To corroborate a non-zero reading, cross-reference GPU utilization, which the **GPU Usage**
+panel reports in the same dashboard. A training loop whose accelerators stay fed holds
+utilization high and steady. One that stalls on data loading shows the opposite: utilization
+collapses every time the loop runs dry waiting for the next batch and recovers once it
+arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is
+often the first symptom users notice, and exposed data loading time is what explains it. A
+PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel
+launches while the loop waits.
+
+.. figure:: ../images/data_ingestion/spiky_gpu_utilization.png
+    :align: center
+    :alt: GPU utilization oscillating between roughly 10 and 85 percent on every rank, with no sustained plateau.
+
+    GPU utilization on a run bottlenecked by data loading. Every rank swings between roughly
+    10% and 85% and never holds a plateau, because the training loop repeatedly runs dry
+    waiting for the next batch.
+
 Step 2: Which data loading stage is responsible?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -619,9 +636,9 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
     * - Collate
       - Running your ``collate_fn``.
     * - Finalize
-      - Running your ``finalize_fn``, which for GPU training is typically the host-to-device transfer.
+      - Finalizing the batch. For GPU training this is the host-to-device transfer.
 
-The dominant band is where the time goes. For instance, a large **Production Wait** band means the upstream Ray Data pipeline can't produce data fast enough. A large band in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+Look for the stage that contributes the largest percentage of the data loading time breakdown. For instance, a large **Production Wait** percentage means the upstream Ray Data pipeline can't produce data fast enough. A large percentage in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
 
 .. figure:: ../images/data_ingestion/data_loading_by_stage.png
     :align: center
@@ -667,8 +684,6 @@ Two more panels sit alongside the drill-down as general health metrics rather th
     same run. Aggregate ingest across the four ranks tracks production closely,
     at roughly 4.4K rows/s, so production and consumption are balanced.
 
-Comparing the two is worthwhile. If production throughput consistently runs ahead of aggregate ingest throughput, the pipeline is producing faster than training consumes, and the excess accumulates in the object store. See :ref:`balancing-data-production-consumption`.
-
 Choosing a fix
 ~~~~~~~~~~~~~~
 
@@ -684,8 +699,6 @@ Choosing a fix
       - :ref:`prefetching-batches`
     * - Production Wait dominates the breakdown
       - :ref:`adding-cpu-only-nodes` and :ref:`dataset_cache_performance`
-    * - Production throughput consistently exceeds ingest throughput
-      - :ref:`balancing-data-production-consumption`
     * - A single rank straggles
       - :ref:`isolating-ray-data-worker-processes`
     * - Batching dominates and you use a large local shuffle buffer
@@ -854,35 +867,6 @@ where data tasks can actually run. It requires adding labels to your worker node
     and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
     shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
     need for node isolation entirely.
-
-.. _balancing-data-production-consumption:
-
-Balancing data production and consumption
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ideally, data production (dataset processing) and data consumption (training ingestion) happen at
-the same rate. When production outpaces consumption, excess data is written to the
-:ref:`object store <object-spilling-internals>`, which can spill to disk, which in turn decreases
-Ray Data throughput and leads to out of disk errors. Ray Data's backpressure system automatically
-balances production and consumption, but if you are still running into issues, you can try
-tuning the following:
-
-* **Use fewer CPUs for data production**: If you are using :func:`~ray.data.Dataset.map_batches`,
-  you can set the number of workers with ``compute`` and the number of CPUs per worker with ``num_cpus``.
-* **Limit object store usage per dataset**: Set a per-dataset object store memory limit using
-  each dataset's execution options. Ray Data's backpressure system will slow down production
-  once the object store memory limit is reached.
-
-  .. code-block:: python
-
-      train_ds = ray.data.read_parquet("s3://bucket/train")
-      val_ds = ray.data.read_parquet("s3://bucket/val")
-
-      train_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
-          object_store_memory=50 * 1024**3,
-      )
-      val_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
-          object_store_memory=50 * 1024**3,
-      )
 
 See :ref:`data_performance_tips` for more info on how to tune Ray Data.
 
