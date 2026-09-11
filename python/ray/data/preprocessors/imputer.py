@@ -110,6 +110,8 @@ class SimpleImputer(SerializablePreprocessorBase):
 
     _valid_strategies = ["mean", "most_frequent", "constant"]
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
