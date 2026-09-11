@@ -17,6 +17,8 @@ srcs:
   - python/ray/includes/
   - java/BUILD.bazel
   - java/dependencies.bzl
+  - go/BUILD.bazel
+  - go/dependencies.bzl
   - release/BUILD.bazel
   - release/requirements.txt
   - release/requirements_py310.txt

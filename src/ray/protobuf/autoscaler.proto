@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc.autoscaler;
 
+option go_package = "github.com/ray-project/ray/go/proto";
+
 import "src/ray/protobuf/common.proto";
 
 // ============= Cluster Resources ====================

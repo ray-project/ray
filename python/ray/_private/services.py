@@ -72,6 +72,26 @@ JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
+
+def _resolve_raygo_executable() -> str:
+    env_override = os.environ.get("RAYGO_EXECUTABLE")
+    if env_override:
+        return env_override
+
+    packaged = os.path.join(RAY_PATH, "go", "cmd", "raygo" + EXE_SUFFIX)
+    if os.path.exists(packaged):
+        return packaged
+
+    discovered = shutil.which("raygo")
+    if discovered:
+        return discovered
+
+    return packaged
+
+
+# Location of the Go raygo executable for log monitor.
+RAYGO_EXECUTABLE = _resolve_raygo_executable()
+
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
@@ -1807,6 +1827,20 @@ def start_raylet(
     else:
         cpp_worker_command = []
 
+    go_worker_command = []
+    if ray_constants.ENABLE_GO_SETUP_WORKER:
+        go_worker_command = build_go_worker_command(
+            gcs_address,
+            plasma_store_name,
+            raylet_name,
+            redis_username,
+            redis_password,
+            session_dir,
+            node_ip_address,
+            cluster_id,
+            log_dir,
+        )
+
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
@@ -1972,6 +2006,7 @@ def start_raylet(
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--go_worker_command={subprocess.list2cmdline(go_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -2175,6 +2210,58 @@ def build_cpp_worker_command(
         f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
+    return command
+
+
+def build_go_worker_command(
+    gcs_address: str,
+    plasma_store_name: str,
+    raylet_name: str,
+    redis_username: str,
+    redis_password: str,
+    session_dir: str,
+    node_ip_address: str,
+    cluster_id: str,
+    log_dir: str,
+):
+    """This method assembles the command used to start a Go worker.
+
+    Args:
+        gcs_address: The address of the GCS server.
+        plasma_store_name: The name of the plasma store socket.
+        raylet_name: The name of the raylet socket.
+        redis_username: The username to use when connecting to Redis.
+        redis_password: The password to use when connecting to Redis.
+        session_dir: The path of this session.
+        node_ip_address: The IP address for this node.
+        cluster_id: The cluster ID of the Ray cluster.
+        log_dir: The path of the log directory.
+
+    Returns:
+        The command string for starting Go worker.
+    """
+    command = [
+        RAYGO_EXECUTABLE,
+        ray_constants.RAYGO_AVAILABLE_COMMAND_SETUP_WORKER,
+        ray_constants.RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER,
+        "--language=GO",
+        "--serialized-runtime-env-context={}",
+        f"--node-ip-address={node_ip_address}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--plasma-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--redis-username={redis_username}",
+        f"--redis-password={redis_password}",
+        f"--gcs-address={gcs_address}",
+        f"--session-dir={session_dir}",
+        f"--cluster-id={cluster_id}",
+        f"--logs-dir={log_dir}",
+    ]
+
+    # Add placeholder for dynamic options (e.g., --code-search-path)
+    # This matches the behavior of Python's start_worker_command
+    command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
     return command
 
