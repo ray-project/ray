@@ -27,6 +27,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
+    get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
 )
 from ray._private import utils
@@ -34,6 +35,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
+    env_bool,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -178,6 +180,24 @@ METRICS_GAUGES = {
         "node_mem_total_host",
         "Total host memory on a ray node",
         "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_used": Gauge(
+        "node_swap_used",
+        "Swap usage on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_total": Gauge(
+        "node_swap_total",
+        "Total swap on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_utilization": Gauge(
+        "node_swap_utilization",
+        "Swap utilization on a ray node",
+        "percentage",
         NODE_TAG_KEYS,
     ),
     "node_cgroup_mem_used": Gauge(
@@ -545,6 +565,11 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        # One worker preserves OTLP report order without blocking the event loop.
+        self._otlp_ingest_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reporter_agent_otlp_ingest",
+        )
         self._gcs_pid = None
         self._gcs_proc = None
 
@@ -754,6 +779,18 @@ class ReporterAgent(
                 data_point.as_double,
             )
 
+    def _ingest_exported_metrics(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+    ) -> None:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -765,13 +802,11 @@ class ReporterAgent(
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
-        for resource_metrics in request.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+        await get_or_create_event_loop().run_in_executor(
+            self._otlp_ingest_executor,
+            self._ingest_exported_metrics,
+            request,
+        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
@@ -947,12 +982,47 @@ class ReporterAgent(
         return sent, recv
 
     @staticmethod
-    def _get_mem_usage():
+    def _get_mem_usage() -> Tuple[int, int, float, int]:
+        """Return (total, available, percent, used) RAM bytes for the node.
+
+        RAM-only by design: swap (when RAY_count_swap_in_memory_monitor=1) is
+        reported separately via _get_swap_usage so swap activity, which signals
+        performance degradation, stays visible instead of being folded into the
+        Node Memory graph.
+        """
         total = get_system_memory()
         used = utils.get_used_memory()
+        used = max(0, min(used, total))
         available = total - used
-        percent = round(used / total, 3) * 100
+        percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
+
+    @staticmethod
+    def _get_swap_usage() -> Optional[Tuple[int, int, float]]:
+        """Return (swap_total_bytes, swap_used_bytes, swap_percent), or None.
+
+        Returns None when RAY_count_swap_in_memory_monitor is off or swap can't
+        be read — there is no swap information to report. The OOM killer and
+        scheduler `memory` resource still account for swap when the flag is on;
+        only the dashboard graph is split out so swap activity (which signals
+        perf degradation) is visible distinctly from RAM pressure.
+        """
+        if not env_bool("RAY_count_swap_in_memory_monitor", False):
+            return None
+        try:
+            swap_total, swap_used = get_cgroup_aware_swap_memory()
+        except Exception as e:
+            # Periodic loop, not startup — log and continue rather than take
+            # down the metrics path.
+            logger.warning(
+                "Failed to retrieve swap memory info for dashboard: %s",
+                e,
+                exc_info=True,
+            )
+            return None
+        swap_used = max(0, min(swap_used, swap_total))
+        percent = round(swap_used / swap_total, 3) * 100 if swap_total > 0 else 0.0
+        return swap_total, swap_used, percent
 
     @staticmethod
     def _get_host_mem_usage():
@@ -1208,6 +1278,7 @@ class ReporterAgent(
             "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
+            "swap": self._get_swap_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
             "host_mem": self._get_host_mem_usage(),
@@ -1630,6 +1701,32 @@ class ReporterAgent(
                 ),
             ]
         )
+
+        # Emit swap gauges only when there's swap to report (flag on and swap
+        # configured) — otherwise they'd be constant zeros and add noise to
+        # dashboards / Prometheus storage.
+        swap = stats["swap"]
+        if swap is not None and swap[0] > 0:
+            swap_total, swap_used, swap_percent = swap
+            records_reported.extend(
+                [
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_used"],
+                        value=swap_used,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_total"],
+                        value=swap_total,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_utilization"],
+                        value=swap_percent,
+                        tags=node_tags,
+                    ),
+                ]
+            )
 
         cgroup_stats = stats["cgroup_mem"]
         if cgroup_stats is not None:

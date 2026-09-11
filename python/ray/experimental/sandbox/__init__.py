@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
 from ray.experimental.sandbox.backend.base import (
@@ -8,7 +8,11 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import parse_memory_bytes
+from ray.experimental.sandbox.config import (
+    DEFAULT_PUBLIC_DNS,
+    DOCKER_DEFAULT_CAPABILITIES,
+    parse_memory_bytes,
+)
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -23,38 +27,60 @@ from ray.experimental.sandbox.image_manager import (
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 def create(
     image: str,
     cpu: Optional[float] = None,
     memory: Optional[Union[str, int, float]] = None,
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
-    ttl_seconds: Optional[int] = 3600,
+    ttl_seconds: Optional[int] = None,
     timeout_seconds: float = 30.0,
     rootless: bool = True,
     network: str = "none",
+    dns: Optional[List[str]] = None,
+    capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
     **kwargs,
 ) -> ActorHandle:
-    """Create a sandbox environment.
+    """Create a remote sandbox environment managed by a Ray actor.
+
+    Spawns a :class:`~ray.experimental.sandbox.Sandbox` actor on the Ray cluster to manage
+    the sandbox lifecycle and returns an :class:`~ray.actor.ActorHandle`. For low-level local
+    sandbox management on the current node (e.g., inside custom worker actors), use
+    :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead.
 
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. Note that the
-            working directory is the only writable path in the sandbox. If not provided,
-            the container's WORKDIR is used.
-        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        workdir: Working directory for commands; None uses the image's
+            WORKDIR. On a readonly rootfs an explicit workdir is also the
+            sandbox's only writable path; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        ttl_seconds: Optional time-to-live in seconds, wall-clock from
+            creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
-        network: Network mode for runsc.
+        network: Network mode ("none", "public", "host", "sandbox"); see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`. "public"
+            is the recommended internet-access mode.
+        dns: Optional nameserver IPs for the generated /etc/resolv.conf
+            (public resolvers by default for "public").
+        capabilities: Linux capabilities, written exactly (None keeps the
+            runtime default; ``[]`` means none). Use
+            ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
         resources: Custom logical resource requirements.
-        readonly: If True, mount container image rootfs in read-only mode (default: True).
+        readonly: If True (default), mount container image rootfs in read-only mode
+            such that only ``workdir`` is writable. If False, the entire root filesystem
+            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+            filesystem, ensuring multiple sandboxes running the same container image do
+            not interfere with each other or modify the base image.
         **kwargs: Additional options.
 
     Returns:
@@ -81,6 +107,8 @@ def create(
         timeout_seconds=timeout_seconds,
         rootless=rootless,
         network=network,
+        dns=dns,
+        capabilities=capabilities,
         readonly=readonly,
         **kwargs,
     )
@@ -88,6 +116,8 @@ def create(
 
 __all__ = [
     "create",
+    "DEFAULT_PUBLIC_DNS",
+    "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
     "SandboxRuntime",
     "BaseImageManager",

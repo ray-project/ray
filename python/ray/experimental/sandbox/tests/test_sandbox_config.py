@@ -15,10 +15,11 @@ def test_default_sandbox_config():
     assert config.cpu == 0.0
     assert config.memory == 0
     assert config.workdir is None
-    assert config.ttl_seconds == 3600
+    assert config.ttl_seconds is None
     assert config.rootless is True
     assert config.network == "none"
     assert config.readonly is True
+    assert config.shell == "/bin/bash"
     assert config._ignore_cgroups is False
 
     # SandboxConfig requires image
@@ -47,6 +48,52 @@ def test_gvisor_sandbox_config():
     assert config.env == {"TEST_VAR": "value"}
     assert config.readonly is False
     assert config._ignore_cgroups is True
+
+
+def test_capabilities_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.capabilities is None
+
+    config = SandboxConfig(
+        image="python:3.10-slim", capabilities=["CAP_CHOWN", "CAP_SETUID"]
+    )
+    assert config.capabilities == ["CAP_CHOWN", "CAP_SETUID"]
+
+
+def test_invalid_network_mode_rejected():
+    with pytest.raises(ValueError, match="network mode"):
+        SandboxConfig(image="python:3.10-slim", network="bridge")
+
+    for mode in ("none", "public", "host"):
+        assert SandboxConfig(image="python:3.10-slim", network=mode).network == mode
+    # "sandbox" additionally requires rootless=False (see the test below).
+    config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
+    assert config.network == "sandbox"
+
+
+def test_dns_only_valid_with_host_side_networking():
+    for mode in ("public", "host"):
+        config = SandboxConfig(image="python:3.10-slim", network=mode, dns=["10.0.0.2"])
+        assert config.dns == ["10.0.0.2"]
+
+    with pytest.raises(ValueError, match="dns"):
+        SandboxConfig(image="python:3.10-slim", dns=["8.8.8.8"])
+
+    with pytest.raises(ValueError, match="dns"):
+        SandboxConfig(
+            image="python:3.10-slim",
+            network="sandbox",
+            rootless=False,
+            dns=["8.8.8.8"],
+        )
+
+
+def test_sandbox_network_requires_rootful():
+    with pytest.raises(ValueError, match="rootless"):
+        SandboxConfig(image="python:3.10-slim", network="sandbox")
+
+    config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
+    assert config.network == "sandbox"
 
 
 def test_parse_memory_bytes():

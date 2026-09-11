@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//bazel:python.bzl", "doctest", "py_test_module_list")
+load("@rules_python//python:defs.bzl", "py_library")
+load(":test.bzl", "doctest", "py_test", "py_test_module_list")
 
 # Export pytest plugin so it can be used in the documentation tests.
 exports_files(
@@ -618,6 +618,20 @@ py_test(
 )
 
 py_test(
+    name = "test_databricks_uc_datasource",
+    size = "medium",
+    srcs = ["tests/datasource/test_databricks_uc_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_datasink",
     size = "small",
     srcs = ["tests/datasource/test_datasink.py"],
@@ -776,6 +790,48 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_external_runtime",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_smoke",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_smoke.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_repartition",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_repartition.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -837,6 +893,34 @@ py_test(
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lineage_tracker_fan_out",
+    size = "small",
+    srcs = ["tests/unit/test_lineage_tracker_fan_out.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lineage_tracker_linear",
+    size = "small",
+    srcs = ["tests/unit/test_lineage_tracker_linear.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -1058,7 +1142,7 @@ py_test(
 
 py_test(
     name = "test_predicate_pushdown",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
@@ -1128,7 +1212,7 @@ py_test(
 
 py_test(
     name = "test_tensor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensor.py"],
     tags = [
         "exclusive",

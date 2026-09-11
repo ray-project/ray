@@ -461,6 +461,47 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
+    @pytest.mark.parametrize(
+        "external_bytes, expected_pressure, expected_can_add_input",
+        [
+            # 1000 buffered / 100 consumer capacity - 1 = 9, above the 2.0 threshold.
+            pytest.param(100, 9.0, False, id="with_external_consumer"),
+            # No consumer, so nothing to pace against (e.g. write pipelines).
+            pytest.param(0, 0, True, id="without_external_consumer"),
+        ],
+    )
+    def test_terminal_op_paces_against_external_consumer(
+        self, external_bytes, expected_pressure, expected_can_add_input
+    ):
+        """Terminal operators pace against the external consumer's buffer.
+
+        A terminal operator has no output dependencies, so its downstream
+        capacity comes from the external consumer (iter_batches /
+        streaming_split) rather than from a downstream operator's pending
+        task inputs. Without that, the ratio is hard-zero and this policy is
+        silently disabled for every iterator-consumed pipeline.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        op.output_dependencies = []  # terminal: consumed by an iterator
+        topology = {op: op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=external_bytes)
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        rm.get_mem_op_outputs.return_value = 1000
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        # Capacity comes from the external consumer, not a downstream op.
+        assert policy._get_downstream_capacity_size_bytes(op) == external_bytes
+        assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
+        assert policy.can_add_input(op) is expected_can_add_input
+
     def test_max_bytes_returns_none_when_backpressure_disabled(self):
         """Test max_task_output_bytes_to_read returns None when disabled."""
         op, op_state = self._mock_operator()

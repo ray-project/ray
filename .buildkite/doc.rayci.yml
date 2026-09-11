@@ -1,3 +1,21 @@
+# Documentation pipeline. The steps below, in order:
+#
+#   docbuild / docgpubuild  Build the container images the steps below run in.
+#   doc: build              Build the HTML site (make html) and, on postmerge
+#                           master builds only, upload the artifacts as a cache.
+#                           Tagged skip-on-premerge, so it does not gate PRs.
+#   doc: check API ...      The two API-reference guards. They compare Ray's
+#                           annotated public surface against what the reference
+#                           pages document. See the comment above them for why
+#                           they carry no `if:` guard.
+#   doc: test llms.txt      Self-test for an in-repo Sphinx extension.
+#   doc: linkcheck          Sphinx linkcheck over the built site. Both
+#                           skip-on-premerge and soft_fail, so it reports
+#                           without ever blocking.
+#
+# Which of these run on a given pull request is decided by tags, not by
+# anything in this file; the file-to-tag rules live in .buildkite/test.rules.txt.
+# Read the docs build itself is a separate system and is not configured here.
 group: doc
 steps:
   - name: docbuild
@@ -103,10 +121,130 @@ steps:
     key: doc_linkcheck
     instance_type: medium
     commands:
-      - make -C doc/ linkcheck_all
+      # `|| true` so a broken link doesn't stop the report step below. The step
+      # stays soft_fail, and the report script owns turning the output into a
+      # Slack alert. linkcheck_all writes _build/linkcheck/output.json.
+      - make -C doc/ linkcheck_all || true
+      # Re-checks reported-broken external links and posts the confirmed ones to
+      # Slack. It reads the webhook from DOCS_LINKCHECK_SLACK_WEBHOOK and, when
+      # that env var is unset, prints the confirmed list and skips the alert, so
+      # this is safe to land before the secret is provisioned. Wiring the secret
+      # (via ci/env/setup_credentials.py) is the remaining follow-up.
+      - python ci/ray_ci/doc/linkcheck_report.py doc/_build/linkcheck/output.json
     depends_on: docbuild
     job_env: docbuild-py3.11
     tags:
       - oss
       - skip-on-premerge
     soft_fail: true
+
+  # Credential-free PR-time gate for doc/redirects/*.yaml, which nothing validated
+  # before: redirect YAML matched no tag rule, so a redirect-only PR triggered no
+  # documentation step at all. Selected by the `doc_redirects` tag (see
+  # .buildkite/test.rules.txt), which routes redirect YAML here and nowhere else, so
+  # this is the only step a redirect-only PR runs. It needs neither the doc image nor
+  # a compiled Ray: it runs in forge, installs the pinned PyPI package, and uses no
+  # RtD token, so it's safe on fork PRs.
+  - label: ":book: doc: validate redirects"
+    key: doc_redirects
+    depends_on: forge
+    tags:
+      - oss
+      - doc_redirects
+    commands:
+      - uv tool install anyscale-rtd-redirects==0.2.0
+      # The doc_redirects tag selects on doc/redirects/*.yaml, but the commands below
+      # name current.yaml: multiple files compose in the order given, which a glob
+      # can't express. Fail closed if another redirect file appears, so it can't select
+      # this step and then go unvalidated. To add one, name it in both commands below in
+      # compose order, then update this guard.
+      #
+      # The guard recurses rather than globbing a single level, because the tag rule
+      # matches with fnmatch, whose `*` crosses `/`: doc/redirects/nested/foo.yaml
+      # selects this step, and a one-level glob wouldn't see it.
+      - >
+        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
+        { echo "doc/redirects/ holds a .yaml file this check doesn't validate; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
+      # diff-file resolves the base with `git show <ref>:<path>`. Fetch the PR's base
+      # branch (master on non-PR builds) and diff against FETCH_HEAD, the same pattern
+      # doc/test_no_new_rst.py uses: a clone with a restricted refspec may never create
+      # a local origin/<base>.
+      - git fetch -q origin "$${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+      - rtd-redirects validate doc/redirects/current.yaml
+      - rtd-redirects diff-file --file doc/redirects/current.yaml --base FETCH_HEAD --head HEAD --repo .
+
+  # Merge-time sync: reconcile doc/redirects/current.yaml into the live
+  # anyscale-ray Read the Docs project. This is the only mutating step and the
+  # only one that holds an RtD token. It replaces the manual post-merge
+  # `rtd-redirects apply` a maintainer runs today (see doc/redirects/README.md).
+  #
+  # DISABLED pending the manual-apply phase. The `disabled` tag makes rayci skip
+  # this step in both premerge and postmerge, so it's safe to land now and turn on
+  # later, the same way doc: linkcheck landed before its Slack webhook secret.
+  # The bot token is already wired: REEF provisioned it at Secrets Manager
+  # secret-id `oss-ci/rtd-api-token`, read inline below. Enabling is then a
+  # one-line flip: remove the `disabled` tag below. The step stays disabled until
+  # the local-first manual-apply phase finishes reconciling the live project, so
+  # the first automated run doesn't hard-reconcile a drifted project (see the
+  # "Drift and deletion" note below).
+  #
+  # Postmerge-only by construction. `skip-on-premerge` removes it from every PR
+  # build (premerge skips that tag), so no PR event, fork or not, ever runs the
+  # token-bearing step. It runs only on push to master.
+  #
+  # Self-gated on the diff. rayci evaluates file-based tag rules on premerge
+  # only; master builds are run-all (see the note in .buildkite/always.rules.txt),
+  # so this step is scheduled on *every* master merge, not just redirect ones.
+  # The first command exits early when the merge didn't touch doc/redirects/, so
+  # the token and the RtD API are used only when a redirect actually changed. The
+  # gate is best-effort: if the parent commit can't be resolved (a shallow
+  # checkout), it falls through to apply rather than risk skipping a real change.
+  #
+  # Drift and deletion. `apply` converges the project to the file: a live
+  # redirect absent from current.yaml is deleted. That's the intended one-write-
+  # path behavior reinforced by the dashboard-edit freeze, but 0.2.0 has no
+  # --no-delete or --accept-drift guard, so a drifted project reconciles hard on
+  # the first automated run. The local-first manual-apply phase exists to shake
+  # that out before this turns on. On failure the step fails but master is not
+  # blocked (the docs already merged); an operator reruns after fixing the cause.
+  - label: ":book: doc: apply redirects"
+    key: doc_redirects_apply
+    depends_on: forge
+    tags:
+      - oss
+      - skip-on-premerge
+      - disabled
+    commands:
+      # Exit early unless this master commit changed doc/redirects/. Ray squash-
+      # merges, so HEAD~1..HEAD is exactly the merged change set. `git diff
+      # --quiet` exits 0 for no change (skip), 1 for a change (apply), and a
+      # different non-zero on git error, so a shallow checkout or a git failure
+      # falls through to apply rather than silently skip a real redirect change.
+      # (A `git diff | grep -q .` pipe would mask the diff's exit status and skip
+      # on error, the opposite of what we want here.)
+      - |
+        if git rev-parse -q --verify HEAD~1 >/dev/null; then
+          if git diff --quiet HEAD~1 HEAD -- doc/redirects/; then
+            echo "no doc/redirects/ change in this merge; nothing to apply"
+            exit 0
+          fi
+        fi
+      # Same fail-closed guard as the validate step: current.yaml is the only file
+      # the compose order below names. To add another, name it here and in the
+      # apply command in compose order, then update this guard.
+      - >
+        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
+        { echo "doc/redirects/ holds a .yaml file this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
+      - uv tool install anyscale-rtd-redirects==0.2.0
+      # Dedicated, least-privilege secret: `oss-ci/rtd-api-token` holds only the
+      # anyscale-ray RtD bot token, is read by no other step, and grants no access
+      # beyond that one project. Do not fold the token into ci/env/setup_credentials.py's
+      # shared ray-air-test-secrets bucket, which ml/data test steps read.
+      #
+      # Fetch with shell tracing off so an xtrace-enabled agent can't echo the
+      # expanded token into the Buildkite log. `set +x` persists to `apply` below,
+      # which carries no secret, so leaving tracing off there is harmless.
+      - |
+        set +x
+        export RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/rtd-api-token --query SecretString --output text)"
+      - rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --yes --strict

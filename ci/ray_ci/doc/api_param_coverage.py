@@ -18,10 +18,6 @@ appears in an ``Args:`` / ``Arguments:`` block (or, for ``__init__``, in the
 class docstring, matching Ray's default ``autoclass_content="class"``); the
 description prose is not inspected. Empty-description detection is out of scope
 (it needs ``numpydoc.validate`` or a custom rule).
-
-The parsing and docstring-inheritance logic mirrors the standing-gap audit in
-anyscale/docs (``strategy/doc-infra-backlog/scripts/typeless-param-audit.py``);
-this is its forward-looking, diff-scoped counterpart.
 """
 import ast
 import re

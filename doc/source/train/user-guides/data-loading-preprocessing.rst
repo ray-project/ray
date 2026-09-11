@@ -696,7 +696,7 @@ where data tasks can actually run. It requires adding labels to your worker node
     with ray.data.DataContext.current(ctx):
         train_dataset = ray.data.read_parquet(...)
 
-    # (2) Pin per-worker ingest — Train replaces ds.context options
+    # (2) Pin per-worker ingest. Train replaces ds.context options
     # wholesale, so the selector must be restated here.
     trainer = TorchTrainer(
         ...,

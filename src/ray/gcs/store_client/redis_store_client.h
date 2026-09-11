@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -36,6 +37,8 @@ namespace gcs {
 // Typed key to avoid forgetting to prepend external_storage_namespace.
 struct RedisKey {
   const std::string external_storage_namespace;
+  // This becomes a TableName metric label. Keep it in the fixed GCS table-name
+  // domain and never put user-controlled data here.
   const std::string table_name;
   std::string ToString() const;
 };
@@ -130,9 +133,15 @@ class RedisStoreClient : public StoreClient {
   ///
   /// \param io_service The event loop for this client. Must be single threaded.
   /// \param options The options for connecting to Redis.
+  /// \param metrics Payload byte metrics for the commands this client issues,
+  /// or nullopt to record none. Ignored (treated as nullopt) when
+  /// RAY_gcs_redis_payload_metrics_enabled is false, so the config is read once
+  /// here rather than at every recording site. Ownership moves to the
+  /// RedisContext, which can outlive this client.
   explicit RedisStoreClient(instrumented_io_context &io_service,
                             const RedisClientOptions &options,
-                            ClockInterface &clock);
+                            ClockInterface &clock,
+                            std::optional<RedisMetrics> metrics = std::nullopt);
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -306,7 +315,22 @@ class RedisStoreClient : public StoreClient {
   FRIEND_TEST(RedisStoreClientTest, Random);
 };
 
-// Helper function used by Python to delete all redis HASHes with a given prefix.
+/**
+ * @brief Delete all Redis hashes in an external storage namespace.
+ *
+ * Uses DEL by default. When `redis_namespace_cleanup_use_unlink` is enabled, the Redis
+ * server must support UNLINK and the configured user must have permission to run it.
+ * Ray does not probe for support or fall back to DEL. Keys that are already absent count
+ * as success, so cleanup is idempotent.
+ *
+ * @param host Redis server host.
+ * @param port Redis server port.
+ * @param username Redis username.
+ * @param password Redis password.
+ * @param use_ssl Whether to use TLS for the Redis connection.
+ * @param external_storage_namespace Namespace whose hashes should be deleted.
+ * @return true after all discovered keys have been removed or were already absent.
+ */
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
                            const std::string &username,
