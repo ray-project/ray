@@ -144,10 +144,12 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 ```{list-table}
 :header-rows: 1
 
-* - Windows (beta)
+* - Windows
 * - [Windows Python 3.10 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl)
 * - [Windows Python 3.11 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-win_amd64.whl)
 * - [Windows Python 3.12 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-win_amd64.whl)
+* - [Windows Python 3.13 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-win_amd64.whl)
+* - [Windows Python 3.14 (amd64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp314-cp314-win_amd64.whl) (experimental)
 ```
 ::::
 
