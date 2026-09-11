@@ -622,6 +622,12 @@ class Worker:
     @property
     def job_logging_config(self):
         """Get the job's logging config for this worker"""
+
+        # Defend against teardown C++ memory access violations on Windows (Issue #62442)
+        is_finalizing = getattr(sys, "is_finalizing", lambda: False)
+        if sys.platform == "win32" and (is_finalizing() or not self.connected):
+            return None
+
         if not hasattr(self, "core_worker"):
             return None
         job_config = self.core_worker.get_job_config()
