@@ -67,10 +67,10 @@ class ServeControllerClient:
         # Fixed for the controller's lifetime, so fetched once, in one batch.
         configs = ray.get(
             [
-                controller.get_http_config.remote(),
-                controller.get_grpc_config.remote(),
-                controller.get_requested_proxy_location.remote(),
-                controller.get_root_url.remote(),
+                self._controller.get_http_config.remote(),
+                self._controller.get_grpc_config.remote(),
+                self._controller.get_requested_proxy_location.remote(),
+                self._controller.get_root_url.remote(),
             ]
         )
         self._http_config: HTTPOptions = configs[0]
