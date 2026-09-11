@@ -1,4 +1,6 @@
 import json
+import os
+import time
 from types import SimpleNamespace
 from typing import Optional, Tuple
 
@@ -13,6 +15,42 @@ from ray.serve.handle import DeploymentHandle
 logger = get_logger(__name__)
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
+
+# ---------------------------------------------------------------------------
+# Benchmark-only diagnostics for the direct-streaming ingress router.
+#
+# This deployment is pinned to num_replicas=1 (see
+# _build_openai_ingress_request_router), so EVERY request in the deployment
+# funnels its routing decision through this one actor's event loop. At high
+# client concurrency that makes this replica a serialization point that no
+# instrumentation inside request_router.py can observe -- the queue-based
+# diagnostics there are on the `_reserve=True` path, which direct streaming
+# never takes.
+#
+# `inflight` is the count of /internal/route calls concurrently inside the
+# handler when this one entered. If it climbs with client concurrency while
+# pick_replica_ms stays flat, requests are waiting on THIS replica rather than
+# on replica selection, and widening this deployment (or removing the hop) is
+# the lever -- not anything in the routing-task pool.
+_PD_TRACE_ENABLED = bool(os.environ.get("RAY_PD_TRACE"))
+_pd_inflight = 0
+
+
+def _pd_route_log_sample(
+    total_s: float,
+    pick_replica_s: float,
+    body_parse_s: float,
+    inflight_on_entry: int,
+    body_len: int,
+) -> None:
+    if _PD_TRACE_ENABLED:
+        logger.info(
+            f"[pd_ingress_route] total_ms={total_s * 1000:.3f} "
+            f"pick_replica_ms={pick_replica_s * 1000:.3f} "
+            f"body_parse_ms={body_parse_s * 1000:.3f} "
+            f"inflight={inflight_on_entry} body_len={body_len}"
+        )
+
 
 # A request body routes on one of these fields. Body-aware routers read it off
 # the namespace; a body without any of them degrades to load-balancing. Extend
@@ -104,9 +142,31 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
+        # Keep this as ONE method with the original signature: @serve.ingress /
+        # FastAPI introspect the decorated function, so splitting it into a
+        # wrapper + impl would change what they see. Diagnostics ride inside a
+        # try/finally instead.
+        global _pd_inflight
+        _pd_t0 = time.monotonic()
+        # Sampled BEFORE incrementing so it reads "how many were already in
+        # here when I arrived" -- the queue this request actually waited behind.
+        _pd_inflight_on_entry = _pd_inflight
+        _pd_inflight += 1
+        try:
+            return await self._route_inner(request, _pd_t0, _pd_inflight_on_entry)
+        finally:
+            _pd_inflight -= 1
+
+    async def _route_inner(
+        self,
+        request: Request,
+        _pd_t0: float,
+        _pd_inflight_on_entry: int,
+    ):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         routing_payload = _parse_routing_payload(body)
+        _pd_t_parsed = time.monotonic()
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
@@ -129,6 +189,7 @@ class LLMRouter:
         handle = (
             self._handle.options(session_id=session_id) if session_id else self._handle
         )
+        _pd_t_pick_start = time.monotonic()
         try:
             host, port, replica_id = await self._pick_replica(
                 handle=handle,
@@ -136,6 +197,14 @@ class LLMRouter:
             )
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
+        _pd_t_end = time.monotonic()
+        _pd_route_log_sample(
+            total_s=_pd_t_end - _pd_t0,
+            pick_replica_s=_pd_t_end - _pd_t_pick_start,
+            body_parse_s=_pd_t_parsed - _pd_t0,
+            inflight_on_entry=_pd_inflight_on_entry,
+            body_len=len(body),
+        )
         return {"host": host, "port": port, "replica_id": replica_id}
 
     @router_app.get("/health")

@@ -100,6 +100,54 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# ---------------------------------------------------------------------------
+# Benchmark-only diagnostics for the direct-streaming (`_reserve=False`) path.
+#
+# WHY THIS EXISTS SEPARATELY FROM THE request_router.py DIAGNOSTICS:
+# request_router.py instruments `_choose_replica_for_request`, the queue +
+# routing-task-pool path. Direct streaming NEVER REACHES IT. `choose_replica`
+# below pops `_reserve` and, when False, takes the fast path that calls
+# `request_router.choose_replicas()` directly -- bypassing
+# `_pending_requests_to_fulfill`, the routing tasks, reserve_slot, and the
+# rejection/retry loop. The LLM ingress router passes `_reserve=False`
+# (llm/_internal/serve/core/ingress/router.py), so in a direct-streaming PD
+# deployment every request takes the fast path and the queue instrumentation
+# records nothing. Measured: a 200-request c=256 decode-heavy sweep produced
+# zero [pd_queue_split] lines for exactly this reason.
+#
+# So the routing cost in direct streaming is whatever `choose_replicas()`
+# itself costs, plus arg resolution, plus time spent waiting behind other
+# requests on the single pinned LLMRouter replica's event loop -- none of
+# which the queue-based instrumentation can see.
+try:
+    from bench.pd_trace import ENABLED as _PD_TRACE_ENABLED
+except ImportError:
+    _PD_TRACE_ENABLED = False
+
+
+def _pd_fastpath_log_sample(
+    resolve_args_s: float,
+    choose_replicas_s: float,
+    total_s: float,
+    num_replicas: int,
+    num_ranks: int,
+) -> None:
+    """One sample per request on the `_reserve=False` direct-streaming path.
+
+    `choose_replicas_ms` is the actual replica-selection cost on this path.
+    `resolve_args_ms` is argument resolution, which happens before it and can
+    block on upstream DeploymentResponses. `total_ms` covers both plus the
+    surrounding bookkeeping, so total - (resolve + choose) is the unattributed
+    remainder inside this function.
+    """
+    if _PD_TRACE_ENABLED:
+        logger.info(
+            f"[pd_fastpath] resolve_args_ms={resolve_args_s * 1000:.3f} "
+            f"choose_replicas_ms={choose_replicas_s * 1000:.3f} "
+            f"total_ms={total_s * 1000:.3f} "
+            f"num_replicas={num_replicas} num_ranks={num_ranks}"
+        )
+
 
 class RouterMetricsManager:
     """Manages metrics for the router."""
@@ -1281,10 +1329,12 @@ class AsyncioRouter:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
+            _pd_t0 = time.monotonic()
             try:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
+            _pd_t_resolved = time.monotonic()
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
@@ -1298,12 +1348,23 @@ class AsyncioRouter:
                     candidate_replicas=self.request_router._replicas_list,
                     pending_request=pr,
                 )
+                _pd_t_chosen = time.monotonic()
                 replica = next((r for rank in ranks for r in rank), None)
                 if replica is None:
                     raise RuntimeError(
                         f"no replicas available for {self.deployment_id}"
                     )
                 slot_token = None
+                # This is the ONLY routing measurement that exists on the
+                # direct-streaming path; the request_router.py queue samples
+                # never fire here. See the _pd_fastpath_log_sample docstring.
+                _pd_fastpath_log_sample(
+                    resolve_args_s=_pd_t_resolved - _pd_t0,
+                    choose_replicas_s=_pd_t_chosen - _pd_t_resolved,
+                    total_s=_pd_t_chosen - _pd_t0,
+                    num_replicas=len(self.request_router._replicas_list),
+                    num_ranks=len(ranks),
+                )
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
