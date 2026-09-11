@@ -838,6 +838,70 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   rc->RemoveLocalReference(obj3, nullptr);
 }
 
+// Tests that location updates are skipped until a raylet subscribes.
+TEST_F(ReferenceCountTest, TestSkipsLocationPublishUntilSubscribed) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->PublishObjectLocationSnapshot(obj);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// Tests that the ref-removed failure is only published for objects that had a subscriber.
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscription) {
+  auto unwatched = ObjectID::FromRandom();
+  auto watched = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(unwatched,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->AddOwnedObject(watched,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unwatched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unwatched));
+
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->PublishObjectLocationSnapshot(watched);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  EXPECT_CALL(
+      *publisher_,
+      PublishFailure(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, watched.Binary()))
+      .Times(1);
+  rc->RemoveLocalReference(watched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(watched));
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.
