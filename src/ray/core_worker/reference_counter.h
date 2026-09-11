@@ -211,6 +211,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool HasReference(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
+  bool IsObjectOutOfScope(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
           &pinned_objects,

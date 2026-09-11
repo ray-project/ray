@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <future>
 #include <memory>
 #include <string>
@@ -66,7 +67,7 @@ using ::testing::Return;
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest()
+  explicit CoreWorkerTest(bool lineage_pinning_enabled = false)
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
         object_freed_callback_service_work_(
@@ -161,7 +162,7 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
-        false);
+        lineage_pinning_enabled);
 
     // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
@@ -886,6 +887,74 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectOutOfScope) {
   // Not calling io_service_.run_one() because the callback is called on the main thread
   ASSERT_TRUE(future2.get().ok());
   EXPECT_EQ(reply2.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
+}
+
+// Lineage pinning is off in the fixture above, and with it off an object that goes out of
+// scope always takes its Reference with it, so the state the next test needs cannot be
+// built there.
+class CoreWorkerLineagePinningTest : public CoreWorkerTest {
+ public:
+  CoreWorkerLineagePinningTest() : CoreWorkerTest(/*lineage_pinning_enabled=*/true) {}
+};
+
+// A borrower asking about an object that is out of scope with its Reference still alive
+// has to get an answer: the value is gone, the borrower has no deadline, and only a retry
+// of a task that depends on the object would put a value back.
+TEST_F(CoreWorkerLineagePinningTest, HandleGetObjectStatusOutOfScopeObject) {
+  auto object_id = ObjectID::FromRandom();
+  auto consumer_return_id = ObjectID::FromRandom();
+  auto ray_object = MakeRayObject("test_data", "meta");
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true);
+  memory_store_->Put(*ray_object, object_id, reference_counter_->HasReference(object_id));
+
+  // A task took the object by reference and finished without releasing its lineage, which
+  // is what a retryable consumer leaves behind.
+  reference_counter_->UpdateSubmittedTaskReferences({consumer_return_id}, {object_id});
+  std::vector<ObjectID> deleted;
+  reference_counter_->UpdateFinishedTaskReferences({consumer_return_id},
+                                                   {object_id},
+                                                   /*release_lineage=*/false,
+                                                   rpc::Address(),
+                                                   {},
+                                                   &deleted);
+
+  // The last in-scope reference goes away. This is CoreWorker::RemoveLocalReference: the
+  // object is out of scope, so its value is deleted, but the Reference stays.
+  reference_counter_->RemoveLocalReference(object_id, &deleted);
+  memory_store_->Delete(deleted);
+  ASSERT_TRUE(reference_counter_->HasReference(object_id));
+  ASSERT_TRUE(reference_counter_->IsObjectOutOfScope(object_id));
+
+  rpc::GetObjectStatusRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
+
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  rpc::GetObjectStatusReply reply;
+
+  core_worker_->HandleGetObjectStatus(
+      request,
+      &reply,
+      [&promise](Status s, std::function<void()>, std::function<void()>) {
+        promise.set_value(s);
+      });
+
+  // A bounded wait rather than get(): without the check above the handler leaves the
+  // callback in the store and never replies, and that should fail here instead of
+  // hanging.
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  ASSERT_TRUE(future.get().ok());
+  EXPECT_EQ(reply.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 }
 
 namespace {
