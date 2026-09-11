@@ -1647,13 +1647,14 @@ def test_clip_disabled_leaves_aggregate_unchanged(monkeypatch):
     assert wide == full
 
 
-def test_clip_keeps_last_sample_under_max_aggregation():
-    """MAX/MIN hard-filter on window_start with no carry-forward, so if every sample is
-    older than the clip window (a metrics gap), the clip must keep the last sample
-    instead of dropping all -> None -> 0.0, a spurious scale-down."""
+def test_clip_skipped_when_window_misses_every_sample():
+    """MAX/MIN hard-filter on window_start with no carry-forward, so a clip window
+    sitting entirely past the data (a metrics gap) must not narrow it at all: clipping
+    to the last sample reads 40 and dropping every sample reads 0.0, both spurious
+    scale-downs. Ordered high-then-low so those two outcomes stay distinguishable."""
     state = _clip_state(aggregation_function=AggregationFunction.MAX)
     now = time.time()
-    series = [TimeStampedValue(now - 30, 40.0), TimeStampedValue(now - 25, 50.0)]
+    series = [TimeStampedValue(now - 30, 50.0), TimeStampedValue(now - 25, 40.0)]
     clipped = state._merge_and_aggregate_timeseries([series], clip_window_s=5.0)
     assert clipped == 50.0
 

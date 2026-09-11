@@ -73,13 +73,15 @@ def _clip_window_start(
     """Cap window_start to the most recent clip_window_s of [.., end_ts], dropping a
     stale ramp transient from the aggregated request total. Apply only to the
     scale-driving total; callers feeding custom policies pass 0 to keep the full window.
-    clip_window_s <= 0, or wider than the data, returns window_start unchanged (no-op).
-    Never clip past last_ts, or MAX/MIN (which hard-filter with no carry-forward)
-    would drop every sample and read 0 -- a false scale-down.
+    A no-op when clip_window_s <= 0, when the window is wider than the data, or when it
+    sits entirely past last_ts (stalled metrics) -- clipping there would leave MAX/MIN
+    (which hard-filter with no carry-forward) one sample or none, a false scale-down.
     """
     if clip_window_s <= 0:
         return window_start
-    clip_limit = min(end_ts - clip_window_s, last_ts)
+    clip_limit = end_ts - clip_window_s
+    if clip_limit >= last_ts:
+        return window_start
     if window_start is None:
         return clip_limit if clip_limit > first_ts else None
     return max(window_start, clip_limit)

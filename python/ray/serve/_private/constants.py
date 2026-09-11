@@ -477,8 +477,8 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
 )
 
 # Clip the scale-driving request total's aggregation window to the most recent N s,
-# dropping a stale ramp transient (delays settling). Aggregate-mode only (no-op in the
-# default config); floored at 2x the metric record cadence. Default 12 s; 0 disables.
+# dropping a stale ramp transient (delays settling); floored at 2x the metric record
+# cadence. Default 12 s; 0 disables.
 RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S = get_env_float_non_negative(
     "RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S", 12.0
 )
