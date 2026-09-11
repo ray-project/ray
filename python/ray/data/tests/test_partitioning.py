@@ -212,7 +212,6 @@ class TestReadHivePartitionedFiles:
             ["year=1970/country=fr/data.csv", "year=1971/data.csv"],
         ],
     )
-    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
@@ -223,7 +222,11 @@ class TestReadHivePartitionedFiles:
             write_csv({"number": [0, 0, 0]}, path)
 
         with pytest.raises(ValueError):
-            read_csv(paths, partitioning=Partitioning("hive"), block_type=block_type)
+            read_csv(
+                paths,
+                partitioning=Partitioning("hive", field_names=["year", "country"]),
+                block_type=block_type,
+            ).take_all()
 
     def test_read_files_with_conflicting_key(
         self, tmp_path, block_type, ray_start_regular_shared
@@ -279,7 +282,6 @@ class TestReadUnpartitionedFiles:
             ["1970/fr/data.csv", "1971/data.csv"],
         ],
     )
-    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
@@ -287,10 +289,10 @@ class TestReadUnpartitionedFiles:
             os.path.join(tmp_path, relative_path) for relative_path in relative_paths
         ]
         for path in paths:
-            write_csv({"number": [0, 0, 0]})
+            write_csv({"number": [0, 0, 0]}, path)
 
         # `read_csv` shouldn't raise an error if `partitioning` is set to `None`.
-        read_csv(paths, partitioning=None, block_type=block_type)
+        read_csv(paths, partitioning=None, block_type=block_type).take_all()
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
