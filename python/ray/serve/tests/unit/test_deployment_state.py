@@ -39,6 +39,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -10693,6 +10694,158 @@ class TestRankConsistencyMembershipGate:
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
         assert ds._rank_manager.consistency_calls == 0
+
+
+def _rconfig(**config_opts):
+    return ReplicaConfig.create(lambda x: x, **config_opts)
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compact_node(mock_deployment_state_manager):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    node3 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 9})
+    cluster_node_info_cache.add_node(node2, {"CPU": 4})
+    cluster_node_info_cache.add_node(node3, {"CPU": 5})
+
+    dsm: DeploymentStateManager = create_dsm()
+    dA = DeploymentID("a", "app")
+    dB = DeploymentID("b", "app")
+    dC = DeploymentID("c", "app")
+
+    infoA, _ = deployment_info(
+        num_replicas=2, replica_config=_rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    infoB, _ = deployment_info(
+        num_replicas=1, replica_config=_rconfig(ray_actor_options={"num_cpus": 2})
+    )
+    infoC, _ = deployment_info(
+        num_replicas=2, replica_config=_rconfig(ray_actor_options={"num_cpus": 3})
+    )
+    dsm.deploy(dA, infoA)
+    dsm.deploy(dB, infoB)
+    dsm.deploy(dC, infoC)
+    dsA = dsm._deployment_states[dA]
+    dsB = dsm._deployment_states[dB]
+    dsC = dsm._deployment_states[dC]
+
+    # node1: C3 C3 (6/9), node2: A1 A1 (2/4), node3: B2 (2/5) -> compact node3
+    dsm.update()
+    for replica in dsA._replicas.get():
+        replica._actor.set_node_id(node2)
+        replica._actor.set_ready()
+    dsB._replicas.get()[0]._actor.set_node_id(node3)
+    dsB._replicas.get()[0]._actor.set_ready()
+    for replica in dsC._replicas.get():
+        replica._actor.set_node_id(node1)
+        replica._actor.set_ready()
+
+    dsm.update()
+    assert dsA.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsB.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsC.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
+    dsm.update()
+    check_counts(dsA, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    check_counts(dsC, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    check_counts(
+        dsB,
+        total=2,
+        by_state=[
+            (ReplicaState.STARTING, 1, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+        ],
+    )
+
+    dsB._replicas.get([ReplicaState.STARTING])[0]._actor.set_node_id(node2)
+    dsB._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.update()
+    check_counts(
+        dsB,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1, None), (ReplicaState.STOPPING, 1, None)],
+    )
+
+    dsB._replicas.get([ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    for _ in range(4):
+        dsm.update()
+        check_counts(dsA, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        check_counts(dsB, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+        check_counts(dsC, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+
+    assert dsA.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsB.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsC.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_cancelled(mock_deployment_state_manager):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info1, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # node1: 2/3 CPUs, node2: 1/3 CPUs -> compact node2
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_node_id(node1)
+    ds._replicas.get()[0]._actor.set_ready()
+    ds._replicas.get()[1]._actor.set_node_id(node1)
+    ds._replicas.get()[1]._actor.set_ready()
+    ds._replicas.get()[2]._actor.set_node_id(node2)
+    ds._replicas.get()[2]._actor.set_ready()
+
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
+    dsm.update()
+    check_counts(
+        ds,
+        total=4,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 1, None),
+        ],
+    )
+
+    info2, _ = deployment_info(num_replicas=4, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 2, None),
+        ],
+    )
+
+    # node1 is full, so the 4th replica lands on node2 and cancels the compaction.
+    ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_node_id(node2)
+    ds._replicas.get([ReplicaState.STARTING])[0]._actor.set_ready()
+    dsm.update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[(ReplicaState.RUNNING, 4, None), (ReplicaState.STOPPING, 1, None)],
+    )
 
 
 if __name__ == "__main__":
