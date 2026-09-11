@@ -1,5 +1,6 @@
 import copy
 import itertools
+import logging
 from functools import partial
 from typing import (
     TYPE_CHECKING,
@@ -53,6 +54,12 @@ from ray.util.metrics import Histogram
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.util.placement_group import PlacementGroup
+
+logger = logging.getLogger(__name__)
+
+# Seconds to wait for remote Learners to release their resources (stop background
+# threads, etc.) before tearing down their torch process group and actors.
+LEARNER_SHUTDOWN_TIMEOUT_S = 30
 
 
 def _get_backend_config(learner_class: Type[Learner]) -> str:
@@ -705,6 +712,16 @@ class LearnerGroup(Checkpointable):
         if self.is_local and self._learner is not None:
             self._learner.shutdown()
         if self.is_remote and hasattr(self, "_backend_executor"):
+            # Give the remote Learners a chance to release their resources (for
+            # example, IMPALA's learner thread, which runs collectives) BEFORE the
+            # backend executor destroys the torch process group and kills the actors.
+            try:
+                ray.get(
+                    [worker.shutdown.remote() for worker in self._workers],
+                    timeout=LEARNER_SHUTDOWN_TIMEOUT_S,
+                )
+            except (ray.exceptions.RayError, TimeoutError) as e:
+                logger.warning(f"Learner shutdown failed or timed out: {e}")
             self._backend_executor.shutdown(graceful_termination=True)
         self._is_shut_down = True
 

@@ -1,5 +1,7 @@
+import os
 import tempfile
 import unittest
+from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
@@ -541,6 +543,48 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 iter_i += 1
             learner_group.shutdown()
             self.assertLess(loss, 0.57)
+
+
+class _ShutdownRecordingLearner(BCTorchLearner):
+    """Records `shutdown()` calls on disk (checkable after the actor is gone)."""
+
+    def shutdown(self):
+        super().shutdown()
+        marker_dir = Path(self.config.learner_config_dict["shutdown_marker_dir"])
+        marker_dir.joinpath(f"shutdown-{os.getpid()}").touch()
+
+
+class TestLearnerGroupShutdown(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_shutdown_shuts_down_remote_learners(self):
+        """`LearnerGroup.shutdown()` must also shut down remote Learners.
+
+        Remote Learners may hold resources that have to be released before their
+        torch process group and actors are torn down (for example IMPALA's learner
+        thread, which runs torch collectives).
+        """
+        with tempfile.TemporaryDirectory() as marker_dir:
+            config = (
+                BaseTestingAlgorithmConfig()
+                .update_from_dict(REMOTE_CONFIGS["multi-cpu-ddp"])
+                .training(
+                    learner_class=_ShutdownRecordingLearner,
+                    learner_config_dict={"shutdown_marker_dir": marker_dir},
+                )
+            )
+            learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+            self.assertEqual(len(learner_group._workers), 2)
+
+            learner_group.shutdown()
+
+            self.assertEqual(len(list(Path(marker_dir).iterdir())), 2)
 
 
 def _check_multi_worker_weights(learner_group, results):
