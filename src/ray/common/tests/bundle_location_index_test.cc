@@ -93,4 +93,23 @@ TEST_F(BundleLocationIndexTest, BesicTest) {
   ASSERT_EQ(*(pg_location_index.GetBundleLocation(bundle_1)), node_1);
 }
 
+TEST_F(BundleLocationIndexTest, EraseNodeRemovesEmptyPlacementGroupEntry) {
+  BundleLocationIndex pg_location_index;
+
+  auto bundle_locations = std::make_shared<BundleLocations>();
+  (*bundle_locations)[bundle_0] = std::make_pair(node_0, nullptr);
+  (*bundle_locations)[bundle_1] = std::make_pair(node_0, nullptr);
+  pg_location_index.AddOrUpdateBundleLocations(bundle_locations);
+
+  auto pg_bundles_location = pg_location_index.GetBundleLocations(pg_1);
+  ASSERT_TRUE(pg_bundles_location);
+  ASSERT_EQ((*pg_bundles_location)->size(), 2);
+
+  ASSERT_TRUE(pg_location_index.Erase(node_0));
+  ASSERT_FALSE(pg_location_index.GetBundleLocation(bundle_0));
+  ASSERT_FALSE(pg_location_index.GetBundleLocation(bundle_1));
+  ASSERT_FALSE(pg_location_index.GetBundleLocationsOnNode(node_0));
+  ASSERT_FALSE(pg_location_index.GetBundleLocations(pg_1));
+}
+
 }  // namespace ray
