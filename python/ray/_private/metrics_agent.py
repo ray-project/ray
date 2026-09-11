@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from typing import Any, Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.metrics.export.value import ValueDouble
@@ -40,6 +40,7 @@ from ray._private.telemetry.metric_cardinality import (
     WORKER_ID_TAG_KEY,
     MetricCardinality,
 )
+from ray._private.telemetry.metric_exclusion import MetricsExclusionConfig
 from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray.util.metrics import _is_invalid_metric_name
@@ -229,11 +230,16 @@ class OpencensusProxyMetric:
 
 
 class Component:
-    def __init__(self, id: str):
+    def __init__(
+        self,
+        id: str,
+        exclusion_config: Optional[MetricsExclusionConfig] = None,
+    ):
         """Represent a component that requests to proxy export metrics
 
         Args:
             id: Id of this component.
+            exclusion_config: Configuration for excluding metric families.
         """
         self.id = id
         # -- The time this component reported its metrics last time --
@@ -242,6 +248,7 @@ class Component:
         # -- Metrics requested to proxy export from this component --
         # metrics_name (str) -> metric (OpencensusProxyMetric)
         self._metrics = {}
+        self._exclusion_config = exclusion_config or MetricsExclusionConfig()
 
     @property
     def metrics(self) -> Dict[str, OpencensusProxyMetric]:
@@ -265,6 +272,8 @@ class Component:
             fix_grpc_metric(metric)
             descriptor = metric.metric_descriptor
             name = descriptor.name
+            if self._exclusion_config.is_excluded(name):
+                continue
             label_keys = [label_key.key for label_key in descriptor.label_keys]
 
             if name not in self._metrics:
@@ -275,7 +284,12 @@ class Component:
 
 
 class OpenCensusProxyCollector:
-    def __init__(self, namespace: str, component_timeout_s: int = 60):
+    def __init__(
+        self,
+        namespace: str,
+        component_timeout_s: int = 60,
+        exclusion_config: Optional[MetricsExclusionConfig] = None,
+    ):
         """Prometheus collector implementation for opencensus proxy export.
 
         Prometheus collector requires to implement `collect` which is
@@ -288,6 +302,7 @@ class OpenCensusProxyCollector:
             component_timeout_s: Number of seconds after which a component
                 without new reports is considered stale and its metrics are
                 no longer exported.
+            exclusion_config: Configuration for excluding metric families.
         """
         # -- Protect `self._components` --
         self._components_lock = threading.Lock()
@@ -297,6 +312,7 @@ class OpenCensusProxyCollector:
         self._component_timeout_s = component_timeout_s
         # -- Prometheus namespace --
         self._namespace = namespace
+        self._exclusion_config = exclusion_config or MetricsExclusionConfig()
         # -- Component that requests to proxy export metrics --
         # Component means core worker, raylet, and GCS.
         # component_id -> Components
@@ -320,7 +336,9 @@ class OpenCensusProxyCollector:
         key = GLOBAL_COMPONENT_KEY if not worker_id_hex else worker_id_hex
         with self._components_lock:
             if key not in self._components:
-                self._components[key] = Component(key)
+                self._components[key] = Component(
+                    key, exclusion_config=self._exclusion_config
+                )
             self._components[key].record(metrics)
 
     def clean_stale_components(self):
@@ -633,6 +651,7 @@ class MetricsAgent:
         view_manager: ViewManager,
         stats_recorder: StatsRecorder,
         stats_exporter: StatsExporter = None,
+        exclusion_config: Optional[MetricsExclusionConfig] = None,
     ):
         """A class to record and export metrics.
 
@@ -646,6 +665,7 @@ class MetricsAgent:
         # Lock required because gRPC server uses
         # multiple threads to process requests.
         self._lock = threading.Lock()
+        self._exclusion_config = exclusion_config or MetricsExclusionConfig()
 
         #
         # Opencensus components to record metrics.
@@ -672,6 +692,7 @@ class MetricsAgent:
             self.proxy_exporter_collector = OpenCensusProxyCollector(
                 self.stats_exporter.options.namespace,
                 component_timeout_s=int(os.getenv(RAY_WORKER_TIMEOUT_S, 120)),
+                exclusion_config=self._exclusion_config,
             )
 
         # Registered view names.
@@ -686,6 +707,8 @@ class MetricsAgent:
 
             for record in records:
                 gauge = record.gauge
+                if self._exclusion_config.is_excluded(gauge.name):
+                    continue
                 value = record.value
                 tags = record.tags
                 try:
