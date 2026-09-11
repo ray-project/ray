@@ -224,14 +224,10 @@ ray_cc_test(
         "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
         "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
     },
-    # Wrap calls from both Ray and hiredis to exercise connection setup failures.
+    # Export the test interposer so calls from dynamic Ray libraries resolve to it.
     linkopts = select({
-        "@platforms//os:linux": ["-Wl,--wrap=setsockopt"],
+        "@platforms//os:linux": ["-Wl,--export-dynamic-symbol=setsockopt"],
         "//conditions:default": [],
-    }),
-    linkstatic = select({
-        "@platforms//os:linux": True,
-        "//conditions:default": False,
     }),
     tags = ["team:core"],
     deps = [
