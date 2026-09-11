@@ -8,14 +8,7 @@ myst:
 
 # External Environments and Applications
 
-In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib.
-For example, if you train a policy inside a complex simulator that operates its own execution loop,
-like a game engine or a robotics simulation. A natural and user friendly approach is to flip this setup around
-and - instead of RLlib "stepping" the env - allow the agents in the simulation to fully control
-their own stepping. An external RLlib-powered service would be available for either querying
-individual actions or for accepting batched sample data. The service would cover the task
-of training the policies, but wouldn't pose any restrictions on when and how often per second the simulation
-should step.
+In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib. For example, if you train a policy inside a complex simulator that operates its own execution loop, like a game engine or a robotics simulation. A natural and user friendly approach is to flip this setup around and - instead of RLlib "stepping" the env - allow the agents in the simulation to fully control their own stepping. An external RLlib-powered service would be available for either querying individual actions or for accepting batched sample data. The service would cover the task of training the policies, but wouldn't pose any restrictions on when and how often per second the simulation should step.
 
 ```{figure} images/envs/external_env_setup_client_inference.svg
 :align: left
@@ -27,28 +20,17 @@ The simulator sends batches of data from time to time to the server and in turn 
 For better performance, actions are computed locally on the client side.
 ```
 
-RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py)
-called {ref}`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class
-toward communicating through {ref}`RLlink <rllink-protocol-docs>` with one or more clients.
-An example, [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
-It also contains a dummy (CartPole) client that can be used for testing and as a template for how your external application or simulator should
-utilize the {ref}`RLlink <rllink-protocol-docs>` protocol.
+RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py) called {ref}`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class toward communicating through {ref}`RLlink <rllink-protocol-docs>` with one or more clients. An example, [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py). It also contains a dummy (CartPole) client that can be used for testing and as a template for how your external application or simulator should utilize the {ref}`RLlink <rllink-protocol-docs>` protocol.
 
 :::{note}
-External application support is still work-in-progress on RLlib's new API stack. The Ray team
-is working on more examples for custom EnvRunner implementations (besides
-[the already available tcp-based one](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py))
-as well as various client-side, non-python RLlib-adapters, for example for popular game engines and other
-simulation software.
+External application support is still work-in-progress on RLlib's new API stack. The Ray team is working on more examples for custom EnvRunner implementations (besides [the already available tcp-based one](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py)) as well as various client-side, non-python RLlib-adapters, for example for popular game engines and other simulation software.
 :::
 
 (rllink-protocol-docs)=
 
 ## The RLlink Protocol
 
-RLlink is a simple, stateful protocol designed for communication between a reinforcement learning (RL) server (ex., RLlib) and an
-external client acting as an environment simulator. The protocol enables seamless exchange of RL-specific data such as episodes,
-configuration, and model weights, while also facilitating on-policy training workflows.
+RLlink is a simple, stateful protocol designed for communication between a reinforcement learning (RL) server (ex., RLlib) and an external client acting as an environment simulator. The protocol enables seamless exchange of RL-specific data such as episodes, configuration, and model weights, while also facilitating on-policy training workflows.
 
 ### Key Features
 
@@ -67,22 +49,19 @@ RLlink messages consist of a header and a body:
 
 #### Example Messages: PING and EPISODES_AND_GET_STATE
 
-Here is a complete simple example message for the `PING` message. Note the 8-byte header
-encoding the size of the following body to be of length `16`, followed by the message body with the mandatory "type" field.
+Here is a complete simple example message for the `PING` message. Note the 8-byte header encoding the size of the following body to be of length `16`, followed by the message body with the mandatory "type" field.
 
 ```
 00000016{"type": "PING"}
 ```
 
-The `PING` message should be sent by the client after initiation of a new connection. The server
-then responds with:
+The `PING` message should be sent by the client after initiation of a new connection. The server then responds with:
 
 ```
 00000016{"type": "PONG"}
 ```
 
-Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to the server and carrying
-a batch of sampling data. With the same message, the client asks the server to send back the updated model weights.
+Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to the server and carrying a batch of sampling data. With the same message, the client asks the server to send back the updated model weights.
 
 (example-rllink-episode-and-get-state-msg)=
 
@@ -171,17 +150,11 @@ a batch of sampling data. With the same message, the client asks the server to s
 2. Server processes the episodes and responds with `SET_STATE`.
 
 :::{note}
-This protocol is an initial draft of the attempt to develop a widely adapted protocol for communication between an external
-client and a remote RL-service. Expect many changes, enhancements, and upgrades as it moves toward maturity, including
-adding a safety layer and compression.
-For now, however, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL
-frameworks.
+This protocol is an initial draft of the attempt to develop a widely adapted protocol for communication between an external client and a remote RL-service. Expect many changes, enhancements, and upgrades as it moves toward maturity, including adding a safety layer and compression. For now, however, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL frameworks.
 :::
 
 ## Example: External client connecting to tcp-based EnvRunner
 
-An example [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py).
-See [here for the full end-to-end example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
+An example [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py). See [here for the full end-to-end example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
 
-Feel free to alter the underlying logic of your custom EnvRunner, for example, you could implement a shared memory based
-communication layer (instead of the tcp-based one).
+Feel free to alter the underlying logic of your custom EnvRunner, for example, you could implement a shared memory based communication layer (instead of the tcp-based one).

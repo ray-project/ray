@@ -51,10 +51,7 @@ env-to-module-connector
 learner-connector
 ```
 
-RLlib stores and transports all trajectory data in the form of {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
-or {py:class}`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects.
-**Connector pipelines** are the components that translate this episode data into tensor batches
-readable by neural network models right before the model forward pass.
+RLlib stores and transports all trajectory data in the form of {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` or {py:class}`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` objects. **Connector pipelines** are the components that translate this episode data into tensor batches readable by neural network models right before the model forward pass.
 
 ```{figure} images/connector_v2/generic_connector_pipeline.svg
 :width: 1000
@@ -71,12 +68,7 @@ The pipeline then returns the output batch of the last piece.
 ```
 
 :::{note}
-Note that the batch output of the pipeline lives only as long as the succeeding
-{py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass or `Env.step()` call. RLlib discards the data afterwards.
-The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from an episode,
-mutates that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see the changed observation.
-Also, the Learner pipeline operates on the same episodes that have already passed through both env-to-module and module-to-env pipelines
-and thus might have undergone changes.
+Note that the batch output of the pipeline lives only as long as the succeeding {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` forward pass or `Env.step()` call. RLlib discards the data afterwards. The list of episodes, however, may persist longer. For example, if a env-to-module pipeline reads an observation from an episode, mutates that observation, and then writes it back into the episode, the subsequent module-to-env pipeline is able to see the changed observation. Also, the Learner pipeline operates on the same episodes that have already passed through both env-to-module and module-to-env pipelines and thus might have undergone changes.
 :::
 
 
@@ -88,10 +80,7 @@ There are three different types of connector pipelines in RLlib:
 2) Module-to-env pipeline (documentation pending), which translates a model's output into RL environment actions.
 3) {ref}`Learner connector pipeline <learner-pipeline-docs>`, which creates the train batch for a model update.
 
-The {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for
-customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling
-the episode data collected from your RL environments or your offline RL input files as well as controlling the exact
-nature and shape of the tensor batches that RLlib feeds into your models for computing actions or losses.
+The {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` API is an extremely powerful tool for customizing your RLlib experiments and algorithms. It allows you to take full control over accessing, changing, and re-assembling the episode data collected from your RL environments or your offline RL input files as well as controlling the exact nature and shape of the tensor batches that RLlib feeds into your models for computing actions or losses.
 
 ```{figure} images/connector_v2/location_of_connector_pipelines_in_rllib.svg
 :width: 900
@@ -119,9 +108,7 @@ The succeeding pages discuss the three pipeline types in more detail, however, a
 
 ## Batch construction phases and formats
 
-When you push a list of input episodes through a connector pipeline, the pipeline constructs a batch from the given data.
-This batch always starts as an empty python dictionary and undergoes different formats and phases while passing through the different
-pieces of the pipeline.
+When you push a list of input episodes through a connector pipeline, the pipeline constructs a batch from the given data. This batch always starts as an empty python dictionary and undergoes different formats and phases while passing through the different pieces of the pipeline.
 
 The following applies to all {ref}`env-to-module <env-to-module-pipeline-docs>` and learner connector pipelines (documentation in progress).
 
@@ -142,9 +129,7 @@ out of the python lists, thereby batching all data (right).
 ```
 
 
-For multi-agent setups, where there are more than one ModuleIDs the
-{py:class}`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping` default connector piece makes sure that
-the constructed output batch maps module IDs to the respective module's forward batch:
+For multi-agent setups, where there are more than one ModuleIDs the {py:class}`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping` default connector piece makes sure that the constructed output batch maps module IDs to the respective module's forward batch:
 
 ```{figure} images/connector_v2/pipeline_batch_phases_multi_agent.svg
 :width: 1100
@@ -156,14 +141,9 @@ connector piece reorganizes the batch by `ModuleID`, then column names, such tha
 for the forward pass.
 ```
 
-RLlib's {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can split up the forward passes into
-individual submodules' forward passes using the individual batches under the respective `ModuleIDs`.
-See {ref}`here for how to write your own multi-module or multi-agent forward logic <implementing-custom-multi-rl-modules>`
-and override this default behavior of {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.
+RLlib's {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` can split up the forward passes into individual submodules' forward passes using the individual batches under the respective `ModuleIDs`. See {ref}`here for how to write your own multi-module or multi-agent forward logic <implementing-custom-multi-rl-modules>` and override this default behavior of {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.
 
-Finally, if you have a stateful {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional
-default connector pieces to the pipeline, {py:class}`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`
-and {py:class}`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`:
+Finally, if you have a stateful {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, for example an LSTM, RLlib adds two additional default connector pieces to the pipeline, {py:class}`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad` and {py:class}`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`:
 
 ```{figure} images/connector_v2/pipeline_batch_phases_single_agent_w_states.svg
 :width: 900
@@ -182,8 +162,7 @@ RLlib only adds the `state_in` values for the first timestep in each sequence an
 
 :::{note}
 
-To change the zero-padded sequence length for the {py:class}`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`
-connector, set in your config for custom models:
+To change the zero-padded sequence length for the {py:class}`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad` connector, set in your config for custom models:
 
 ```python
 config.rl_module(model_config={"max_seq_len": ...})
@@ -199,16 +178,12 @@ config.rl_module(model_config=DefaultModelConfig(max_seq_len=...))
 :::
 
 
-% Debugging ConnectorV2 Pipelines
-% ===============================
+% Debugging ConnectorV2 Pipelines % ===============================
 
 % TODO (sven): Move the following to the "how to contribute to RLlib" page and rename that page "how to develop, debug and contribute to RLlib?"
 
 % You can debug your custom ConnectorV2 pipelines (and any RLlib component in general) through the following simple steps:
 
-% Run without any remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.env_runners(num_env_runners=0)`.
-% Run without any remote :py:class:`~ray.rllib.core.learner.learner.Learner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.learners(num_learners=0)`.
-% Switch off Ray Tune, if applicable. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `algo = config.build()`, then `while True: algo.train()`.
-% Set a breakpoint in the ConnectorV2 piece (or any other RLlib component) you would like to debug and start the experiment script in your favorite IDE in debugging mode.
+% Run without any remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.env_runners(num_env_runners=0)`. % Run without any remote :py:class:`~ray.rllib.core.learner.learner.Learner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.learners(num_learners=0)`. % Switch off Ray Tune, if applicable. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `algo = config.build()`, then `while True: algo.train()`. % Set a breakpoint in the ConnectorV2 piece (or any other RLlib component) you would like to debug and start the experiment script in your favorite IDE in debugging mode.
 
 % .. figure:: images/debugging_rllib_in_ide.png
