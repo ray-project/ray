@@ -16,6 +16,10 @@ from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
 from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
     ArrowFileScanner,
 )
+from ray.data.checkpoint.generated_id import (
+    GENERATED_ID_COLUMN_TYPE,
+    get_generated_id_column_name,
+)
 from ray.util.annotations import DeveloperAPI
 
 
@@ -62,6 +66,10 @@ class ParquetScanner(ArrowFileScanner):
             if schema.get_field_index(name) != -1:
                 continue
             schema = schema.append(pa.field(name, dtype))
+
+        generated_id = get_generated_id_column_name()
+        if generated_id and schema.get_field_index(generated_id) == -1:
+            schema = schema.append(pa.field(generated_id, GENERATED_ID_COLUMN_TYPE))
 
         check_for_legacy_tensor_type(schema)
         return schema
