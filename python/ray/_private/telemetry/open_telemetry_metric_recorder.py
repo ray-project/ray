@@ -21,30 +21,6 @@ logger = logging.getLogger(__name__)
 NAMESPACE = "ray"
 
 
-def _compute_bucket_midpoints(buckets: List[float]) -> List[float]:
-    """
-    Return one representative value per bucket, including the implicit +Inf bucket.
-
-    The result has len(buckets) + 1 entries, matching the length of an OTLP
-    histogram data point's bucket_counts.
-    """
-    if not buckets:
-        # A histogram without explicit bounds has a single (-Inf, +Inf) bucket.
-        return [0.0]
-
-    midpoints = []
-    for i in range(len(buckets)):
-        if i == 0:
-            lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
-            midpoints.append((lower_bound + buckets[0]) / 2.0)
-        else:
-            midpoints.append((buckets[i] + buckets[i - 1]) / 2.0)
-    # Approximated mid point for Inf+ bucket. Inf+ bucket is an implicit bucket
-    # that is not part of buckets.
-    midpoints.append(1.0 if buckets[-1] <= 0 else buckets[-1] * 2.0)
-    return midpoints
-
-
 def _get_service_name(default_name: str) -> str:
     otel_service_name = os.environ.get("OTEL_SERVICE_NAME")
     if otel_service_name:
@@ -341,7 +317,16 @@ class OpenTelemetryMetricRecorder:
 
             # calculate the bucket midpoints; this is used for converting histogram
             # internal representation to approximated histogram data points.
-            midpoints = _compute_bucket_midpoints(buckets)
+            midpoints = []
+            for i in range(len(buckets)):
+                if i == 0:
+                    lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
+                    midpoints.append((lower_bound + buckets[0]) / 2.0)
+                else:
+                    midpoints.append((buckets[i] + buckets[i - 1]) / 2.0)
+            # Approximated mid point for Inf+ bucket. Inf+ bucket is an implicit bucket
+            # that is not part of buckets.
+            midpoints.append(1.0 if buckets[-1] <= 0 else buckets[-1] * 2.0)
 
             with self._lock:
                 self._registered_instruments[name] = instrument
@@ -417,18 +402,13 @@ class OpenTelemetryMetricRecorder:
         observations using bucket midpoints. It acquires the lock once and performs
         all record() calls for ALL data points, minimizing lock contention.
 
-        Each data point may carry its own bucket_boundaries, i.e. the bounds its
-        bucket_counts were binned with. They may differ from the bounds the
-        instrument was registered with, because a metric name is registered once per
-        node but can be emitted by several processes that chose different bounds for
-        it (e.g. two vLLM engines configured with different max_model_len).
-
-        Reconstructing from the reporter's bounds keeps those emitters from being
-        dropped, the values are then re-binned by the instrument's registered bounds.
-
-        Rebinning costs resolution above the registered bounds' range: counts and
-        rates stay correct, quantiles beyond it do not. Exact pass-through of
-        bucket_counts/sum which fixes this is tracked in
+        A metric name is registered once per node, but several processes may emit it
+        with different bucket bounds (e.g. two vLLM engines configured with different
+        max_model_len). Data points whose bucket count disagrees with the registered
+        bounds cannot be reconstructed, so they are skipped rather than raising, which
+        would otherwise abort ingestion for the rest of the reporting component's
+        metrics. Exact pass-through of bucket_counts/sum, which would let such
+        emitters through, is tracked in
         https://github.com/ray-project/ray/issues/64852.
 
         Note: The histogram sum value will be an approximation since we use bucket midpoints instead of actual values.
@@ -441,6 +421,7 @@ class OpenTelemetryMetricRecorder:
                 )
                 return
 
+            bucket_midpoints = self._histogram_bucket_midpoints[name]
             high_cardinality_labels = (
                 MetricCardinality.get_high_cardinality_labels_to_drop(name)
             )
@@ -448,13 +429,6 @@ class OpenTelemetryMetricRecorder:
             for dp in data_points:
                 tags = dp["tags"]
                 bucket_counts = dp["bucket_counts"]
-                bucket_boundaries = dp.get("bucket_boundaries")
-                if bucket_boundaries is None:
-                    bucket_midpoints = self._histogram_bucket_midpoints[name]
-                else:
-                    bucket_midpoints = _compute_bucket_midpoints(bucket_boundaries)
-                # Unreachable when a caller supplies the bounds its counts were binned
-                # with, but the registered-bounds fallback can trip it.
                 if len(bucket_counts) != len(bucket_midpoints):
                     if name not in self._histogram_bucket_mismatch_warned:
                         self._histogram_bucket_mismatch_warned.add(name)

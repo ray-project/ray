@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
     )
@@ -375,6 +376,7 @@ class ReadFiles(
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
         from ray.data._internal.datasource.parquet_datasource import (
             _split_predicate_by_columns,
+            combine_predicates,
         )
         from ray.data._internal.datasource_v2.logical_optimizers import (
             SupportsFilterPushdown,
@@ -391,9 +393,17 @@ class ReadFiles(
         )
 
         if not partition_cols:
-            new_scanner, _residual = self.scanner.push_filters(predicate_expr)
-            return replace(self, scanner=new_scanner)
+            new_scanner, residual_unpushed = self.scanner.push_filters(predicate_expr)
+            new_op = replace(self, scanner=new_scanner)
+            if residual_unpushed is None:
+                return new_op
+            # Our caller replaces the whole ``Filter`` -> ``ReadFiles`` subtree
+            # with what we return, so the leftover needs a ``Filter`` of its own
+            # or it never runs.
+            return Filter(predicate_expr=residual_unpushed, input_dependencies=[new_op])
 
+        # Cuts the top-level ``AND`` chain into three buckets by referenced
+        # columns: partition-only, data-only, and mixed (bindable by neither).
         split = _split_predicate_by_columns(predicate_expr, partition_cols)
 
         if split.data_predicate is None and split.partition_predicate is None:
@@ -403,14 +413,22 @@ class ReadFiles(
             return self
 
         new_scanner = self.scanner
+        # Only an ``AND`` chain is splittable: each conjunct must hold on its
+        # own, so where each one is applied doesn't change the result.
+        residual_unpushed = split.residual_predicate
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
         if split.data_predicate is not None:
-            new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
+            # ``push_filters`` may decline part of what it was offered; that
+            # leftover is a conjunct of the same chain, so ``&`` rebuilds it.
+            new_scanner, residual_declined = new_scanner.push_filters(
+                split.data_predicate
+            )
+            residual_unpushed = combine_predicates(residual_unpushed, residual_declined)
 
         new_op = replace(self, scanner=new_scanner)
 
-        if split.residual_predicate is None:
+        if residual_unpushed is None:
             return new_op
 
         # Residual conjuncts can't be pushed through either ``push_filters``
@@ -419,9 +437,7 @@ class ReadFiles(
         # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
         # the splittable parts and silently drop the residual — letting
         # rows through that the original predicate would have rejected.
-        return Filter(
-            predicate_expr=split.residual_predicate, input_dependencies=[new_op]
-        )
+        return Filter(predicate_expr=residual_unpushed, input_dependencies=[new_op])
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -459,6 +475,9 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
+    # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
+    # blind to partition columns), this is what makes ``limit`` safe here.
+    partition_pruner: Optional["FilePruner"] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

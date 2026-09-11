@@ -566,6 +566,11 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        # One worker preserves OTLP report order without blocking the event loop.
+        self._otlp_ingest_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reporter_agent_otlp_ingest",
+        )
         self._gcs_pid = None
         self._gcs_proc = None
 
@@ -713,7 +718,7 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder.register_histogram_metric(
             metric.name,
             metric.description,
-            list(data_points[0].explicit_bounds),
+            data_points[0].explicit_bounds,
         )
         # Collect all data points and record using a single call
         batch_data_points = []
@@ -726,7 +731,6 @@ class ReporterAgent(
                 {
                     "tags": tags,
                     "bucket_counts": list(data_point.bucket_counts),
-                    "bucket_boundaries": list(data_point.explicit_bounds),
                 }
             )
 
@@ -776,23 +780,15 @@ class ReporterAgent(
                 data_point.as_double,
             )
 
-    async def Export(
+    def _ingest_exported_metrics(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
-        context: ServicerContext,
-    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
-        """
-        GRPC method that receives the open telemetry metrics exported from other Ray
-        components running in the same node (e.g., raylet, worker, etc.). This method
-        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
-        which is the default open-telemetry metrics service interface.
-        """
+    ) -> None:
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    # Isolate failures per metric: a single bad metric must not
-                    # discard the rest of the batch, which would silently drop all
-                    # of the reporting component's remaining metrics.
+                    # Isolate failures per metric: one bad metric must not discard
+                    # the reporting component's remaining metrics.
                     try:
                         if metric.WhichOneof("data") == "histogram":
                             self._export_histogram_data(metric)
@@ -808,6 +804,23 @@ class ReporterAgent(
                                 metric.name,
                                 e,
                             )
+
+    async def Export(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+        context: ServicerContext,
+    ) -> metrics_service_pb2.ExportMetricsServiceResponse:
+        """
+        GRPC method that receives the open telemetry metrics exported from other Ray
+        components running in the same node (e.g., raylet, worker, etc.). This method
+        implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
+        which is the default open-telemetry metrics service interface.
+        """
+        await get_or_create_event_loop().run_in_executor(
+            self._otlp_ingest_executor,
+            self._ingest_exported_metrics,
+            request,
+        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 

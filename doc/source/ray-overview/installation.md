@@ -61,7 +61,7 @@ pip install -U "ray[default]"
 * - `pip install -U "ray"`
   - Core
 * - `pip install -U "ray[default]"`
-  - Core, Dashboard, Cluster Launcher
+  - Core, Ray dashboard, Cluster Launcher
 * - `pip install -U "ray[data]"`
   - Core, Data
 * - `pip install -U "ray[train]"`
@@ -69,17 +69,17 @@ pip install -U "ray[default]"
 * - `pip install -U "ray[tune]"`
   - Core, Tune
 * - `pip install -U "ray[serve]"`
-  - Core, Dashboard, Cluster Launcher, Serve
+  - Core, Ray dashboard, Cluster Launcher, Serve
 * - `pip install -U "ray[serve-grpc]"`
-  - Core, Dashboard, Cluster Launcher, Serve with gRPC support
+  - Core, Ray dashboard, Cluster Launcher, Serve with gRPC support
 * - `pip install -U "ray[rllib]"`
   - Core, Tune, RLlib
 * - `pip install -U "ray[all]"`
-  - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib. This option isn't recommended. Specify the extras you need as shown below instead.
+  - Core, Ray dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib. This option isn't recommended. Specify the extras you need as shown below instead.
 ```
 
 :::{tip}
-You can combine installation extras. For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
+You can combine installation extras. For example, to install Ray with the Ray dashboard, Cluster Launcher, and Train support, you can run:
 
 ```shell
 pip install -U "ray[default,train]"
@@ -181,30 +181,6 @@ There are minor variations to the format of the wheel filename; it's best to mat
 
 * For MacOS x86_64, commits predating August 7, 2021 will have `macosx_10_13` in the filename instead of `macosx_10_15`.
 * For MacOS x86_64, commits predating June 1, 2025 will have `macosx_10_15` in the filename instead of `macosx_12_0`.
-
-(apple-silicon-support)=
-
-## M1 Mac (Apple Silicon) Support
-
-Ray supports machines running Apple Silicon (such as M1 macs). Multi-node clusters are untested. To get started with local Ray development:
-
-1. Install [miniforge](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh).
-
-   * `wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh`
-
-   * `bash Miniforge3-MacOSX-arm64.sh`
-
-   * `rm Miniforge3-MacOSX-arm64.sh # Cleanup.`
-
-2. Ensure you're using the miniforge environment (you should see (base) in your terminal).
-
-   * `source ~/.bash_profile`
-
-   * `conda activate`
-
-3. Install Ray as you normally would.
-
-   * `pip install ray`
 
 (windows-support)=
 

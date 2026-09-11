@@ -16,7 +16,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray Dashboard
+## Ray dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states. This includes details such as:
 * the number of deployment replicas currently running
