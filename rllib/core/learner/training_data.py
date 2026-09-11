@@ -47,24 +47,24 @@ class TrainingData:
         self,
         num_shards: int,
         len_lookback_buffer: Optional[int] = None,
-        **kwargs,
-    ):
+    ) -> List["TrainingData"]:
+        """Splits this training data into `num_shards` shards, one per Learner."""
         # Single batch -> Split into n smaller batches.
         if self.batch is not None:
             return [
-                (TrainingData(batch=b), {})
+                TrainingData(batch=b)
                 for b in ShardBatchIterator(self.batch, num_shards=num_shards)
             ]
 
         # TODO (sven): Do we need a more sohpisticated shard mechanism for this case?
         elif self.batches is not None:
             assert num_shards == len(self.batches)
-            return [(TrainingData(batch=b), {}) for b in self.batches]
+            return [TrainingData(batch=b) for b in self.batches]
 
         # List of batch refs.
         elif self.batch_refs is not None:
             return [
-                (TrainingData(batch_refs=b), {})
+                TrainingData(batch_refs=b)
                 for b in ShardObjectRefIterator(self.batch_refs, num_shards=num_shards)
             ]
 
@@ -72,7 +72,7 @@ class TrainingData:
         # of the episodes).
         elif self.episodes is not None:
             return [
-                (TrainingData(episodes=e), {})
+                TrainingData(episodes=e)
                 for e in ShardEpisodesIterator(
                     self.episodes,
                     num_shards=num_shards,
@@ -82,15 +82,13 @@ class TrainingData:
         # List of episodes refs.
         elif self.episodes_refs is not None:
             return [
-                (TrainingData(episodes_refs=e), {})
+                TrainingData(episodes_refs=e)
                 for e in ShardObjectRefIterator(self.episodes_refs, num_shards)
             ]
         # List of data iterators.
         else:
             assert self.data_iterators and len(self.data_iterators) == num_shards
-            return [
-                (TrainingData(data_iterators=[di]), {}) for di in self.data_iterators
-            ]
+            return [TrainingData(data_iterators=[di]) for di in self.data_iterators]
 
     def solve_refs(self):
         # Batch references.
