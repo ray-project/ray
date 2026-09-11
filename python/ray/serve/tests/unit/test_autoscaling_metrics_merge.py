@@ -21,26 +21,6 @@ from ray.serve._private.metrics_utils import (
 )
 from ray.serve.config import AggregationFunction, AutoscalingConfig
 
-DEP = DeploymentID("D", "default")
-
-
-NOW = 1000.0
-
-
-def _cfg(agg=AggregationFunction.MEAN):
-    return AutoscalingConfig(
-        min_replicas=1,
-        max_replicas=1000,
-        target_ongoing_requests=1,
-        aggregation_function=agg,
-    )
-
-
-def _state(agg=AggregationFunction.MEAN):
-    st = DeploymentAutoscalingState(DEP)
-    st._config = _cfg(agg)
-    return st
-
 
 def _to_arrays(tl):
     ts, val, offs = [], [], [0]

@@ -19,7 +19,7 @@ Pinned semantics of merge_instantaneous_total_cython (verified 8000/8000):
 """
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -43,9 +43,11 @@ def merge_instantaneous_total_arrays(
         return np.zeros(0), np.zeros(0)
     if n_active == 1:
         # Pass through unrounded: the object path returns the lone series as-is.
+        # copy=False so this stays a view; every consumer below only reads.
         i = int(np.argmax(nonempty))
-        return ts[starts[i] : ends[i]].astype(float), val[starts[i] : ends[i]].astype(
-            float
+        return (
+            ts[starts[i] : ends[i]].astype(np.float64, copy=False),
+            val[starts[i] : ends[i]].astype(np.float64, copy=False),
         )
 
     # One pass over the flat arrays -- sources are already contiguous, so a per-source
@@ -58,13 +60,16 @@ def merge_instantaneous_total_arrays(
     prev[starts[nonempty]] = 0.0
     delta = val - prev
     changed = delta != 0
-    uts, inv = np.unique(_round_10ms(ts)[changed], return_inverse=True)
+    uts, inv = np.unique(_round_10ms(ts[changed]), return_inverse=True)
     summed = np.bincount(inv, weights=delta[changed], minlength=len(uts))
     return uts, np.cumsum(summed)
 
 
 def time_weighted_average_arrays(
-    mts: np.ndarray, mtot: np.ndarray, window_start, last_window_s: float
+    mts: np.ndarray,
+    mtot: np.ndarray,
+    window_start: Optional[float],
+    last_window_s: float,
 ) -> float:
     """Columnar form of time_weighted_average (MEAN), right-continuous/LOCF.
 
@@ -89,7 +94,13 @@ def time_weighted_average_arrays(
     return float(np.dot(active, durs) / durs.sum())
 
 
-def aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s) -> float:
+def aggregate_arrays(
+    mts: np.ndarray,
+    mtot: np.ndarray,
+    agg_function: str,
+    window_start: Optional[float],
+    last_window_s: float,
+) -> float:
     """Columnar form of aggregate_timeseries. agg_function is AggregationFunction
     (str enum: 'mean'|'max'|'min')."""
     if mts.size == 0:
@@ -109,7 +120,11 @@ def aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s) -> fl
 
 
 def merge_and_aggregate_arrays(
-    ts, val, offsets, now: float, agg_function="mean"
+    ts: np.ndarray,
+    val: np.ndarray,
+    offsets: np.ndarray,
+    now: float,
+    agg_function: str = "mean",
 ) -> float:
     """Columnar form of DeploymentAutoscalingState._merge_and_aggregate_timeseries."""
     mts, mtot = merge_instantaneous_total_arrays(ts, val, offsets)
