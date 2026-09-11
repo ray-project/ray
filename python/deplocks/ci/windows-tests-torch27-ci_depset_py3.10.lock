@@ -4126,6 +4126,7 @@ pygments==2.18.0 \
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   ipython
     #   knack
+    #   pytest
     #   rich
 pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
@@ -4276,9 +4277,9 @@ pysocks==1.7.1 \
 pyspark==3.4.1 \
     --hash=sha256:72cd66ab8cf61a75854e5a753f75bea35ee075c3a96f9de4e2a66d02ec7fc652
     # via -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
-pytest==7.4.4 \
-    --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
-    --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
+pytest==9.0.3 \
+    --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9 \
+    --hash=sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c
     # via
     #   -r python/deplocks/ci/relaxed_windows-tests-ci_depset_py3.10.lock
     #   pytest-aiohttp

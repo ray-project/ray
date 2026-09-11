@@ -1814,7 +1814,7 @@ pyspark==3.4.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   raydp
-pytest==8.3.3
+pytest==9.0.3
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
