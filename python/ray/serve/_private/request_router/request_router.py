@@ -93,6 +93,68 @@ def _pd_queue_wait_log_sample(elapsed_s: float) -> None:
         logger.info(f"[pd_queue_diag] wait_ms={elapsed_s * 1000:.2f}")
 
 
+# The split-wait sample below exists because the single `wait_ms` number above
+# is CONFLATED and cannot distinguish two very different costs.
+#
+# `wait_ms` is measured in _choose_replica_for_request as
+# (time after `await pending_request.future`) - (time before it). That span
+# covers BOTH:
+#
+#   enqueue -> resolve : the request sitting in _pending_requests_to_fulfill
+#                        until a routing task calls future.set_result(). This
+#                        is genuine queueing/head-of-line time.
+#
+#   resolve -> resume  : set_result() only SCHEDULES the waiter; the awaiting
+#                        coroutine does not run until the router's event loop
+#                        reaches it via call_soon. The router has its own loop
+#                        on its own thread (router.py, asyncio.new_event_loop),
+#                        so this segment is event-loop scheduling delay behind
+#                        every other callback queued on that single thread.
+#
+# Attributing the whole span to "queueing" assumes resolve->resume is
+# negligible. That assumption is untested, and it is exactly what decides
+# whether widening the routing-task pool could help at all: pool width cannot
+# affect resolve->resume by construction.
+#
+# `resolved_at` is stashed on the future object rather than added as a
+# PendingRequest field because PendingRequest is @PublicAPI and re-created by
+# reset_future() on the retry path; attaching to the future keeps the stamp and
+# the object it describes on the same lifecycle, and keeps this patch
+# diagnostic-only.
+def _pd_queue_wait_split_log_sample(
+    enqueue_to_resolve_s: float,
+    resolve_to_resume_s: float,
+    depth_on_arrival: int,
+    num_routing_tasks: int,
+    max_routing_tasks: int,
+) -> None:
+    if _PD_TRACE_ENABLED:
+        logger.info(
+            f"[pd_queue_split] enq_to_resolve_ms={enqueue_to_resolve_s * 1000:.3f} "
+            f"resolve_to_resume_ms={resolve_to_resume_s * 1000:.3f} "
+            f"depth={depth_on_arrival} ntasks={num_routing_tasks} "
+            f"maxtasks={max_routing_tasks}"
+        )
+
+
+def _pd_slot_utilization_log_sample(
+    num_routing_tasks: int,
+    max_routing_tasks: int,
+    num_pending: int,
+) -> None:
+    """Sampled at each routing-task loop iteration.
+
+    The pool-exhaustion theory predicts ntasks pins at maxtasks under load. If
+    ntasks stays below maxtasks while num_pending is large, the pool is NOT the
+    binding constraint and widening it is inert.
+    """
+    if _PD_TRACE_ENABLED:
+        logger.info(
+            f"[pd_slot_util] ntasks={num_routing_tasks} "
+            f"maxtasks={max_routing_tasks} pending={num_pending}"
+        )
+
+
 def _pd_probe_log_sample(elapsed_s: float, num_replicas: int) -> None:
     if _PD_TRACE_ENABLED:
         logger.info(
@@ -1155,6 +1217,17 @@ class RequestRouter(ABC):
         """Records the time a request spent in the queue."""
         queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
         self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+        # Diagnostic: stamp the moment the future is about to be resolved, so the
+        # awaiting side can split its total wait into enqueue->resolve (queueing)
+        # and resolve->resume (event-loop scheduling). Called immediately before
+        # every future.set_result() site, so it is the correct seam. No-op unless
+        # the benchmark trace is enabled.
+        if _PD_TRACE_ENABLED:
+            try:
+                pending_request.future._pd_resolved_at = time.monotonic()
+            except AttributeError:
+                # Future may be a type that disallows attribute assignment.
+                pass
 
     def _fulfill_next_pending_request(
         self,
@@ -1270,6 +1343,14 @@ class RequestRouter(ABC):
         """
         try:
             while len(self._routing_tasks) <= self.target_num_routing_tasks:
+                # Diagnostic: sample pool occupancy against its ceiling at the top
+                # of each iteration. If ntasks stays below maxtasks while pending is
+                # large, the pool is not the binding constraint.
+                _pd_slot_utilization_log_sample(
+                    num_routing_tasks=self.curr_num_routing_tasks,
+                    max_routing_tasks=self.max_num_routing_tasks,
+                    num_pending=self.num_pending_requests,
+                )
                 start_time = time.time()
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
@@ -1373,11 +1454,33 @@ class RequestRouter(ABC):
                 )
 
             self._add_pending_request_to_indices(pending_request)
+            # Snapshot queue depth and pool state at ARRIVAL (before the
+            # dispatcher runs), so the sample pairs this request's wait with the
+            # backlog it actually arrived into.
+            _depth_on_arrival = len(self._pending_requests_to_fulfill)
+            _ntasks_on_arrival = self.curr_num_routing_tasks
+            _maxtasks_on_arrival = self.max_num_routing_tasks
             # background dispatcher
             self._maybe_start_routing_tasks()
             _queue_wait_start = time.monotonic()
             replica = await pending_request.future
-            _pd_queue_wait_log_sample(time.monotonic() - _queue_wait_start)
+            _queue_wait_end = time.monotonic()
+            _pd_queue_wait_log_sample(_queue_wait_end - _queue_wait_start)
+            # Split the total wait at the set_result() boundary. _record_queue_wait_time
+            # stamps _pd_resolved_at on the future immediately before resolving it.
+            # Falling back to _queue_wait_end (rather than skipping the sample) keeps
+            # the resolve->resume term at 0 instead of silently dropping the row, so
+            # the emitted counts stay comparable to the unsplit wait_ms series.
+            _resolved_at = getattr(
+                pending_request.future, "_pd_resolved_at", _queue_wait_end
+            )
+            _pd_queue_wait_split_log_sample(
+                enqueue_to_resolve_s=max(0.0, _resolved_at - _queue_wait_start),
+                resolve_to_resume_s=max(0.0, _queue_wait_end - _resolved_at),
+                depth_on_arrival=_depth_on_arrival,
+                num_routing_tasks=_ntasks_on_arrival,
+                max_routing_tasks=_maxtasks_on_arrival,
+            )
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._remove_pending_request_from_indices(pending_request)
