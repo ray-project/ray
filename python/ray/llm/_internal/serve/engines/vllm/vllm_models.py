@@ -6,15 +6,7 @@ from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_vali
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
-from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.placement import PlacementGroupConfig
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
-from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.constants import (
-    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
-    ENV_VARS_TO_PROPAGATE,
-)
-from ray.llm._internal.serve.core.configs.accelerators import (
+from ray.llm._internal.common.accelerators import (
     AcceleratorBackend,
     AnyAcceleratorConfig,
     CPUAccelerator,
@@ -23,6 +15,14 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
     format_ray_accelerator_resource,
+)
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.placement import PlacementGroupConfig
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
+from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.constants import (
+    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
+    ENV_VARS_TO_PROPAGATE,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
