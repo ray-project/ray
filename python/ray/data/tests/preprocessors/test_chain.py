@@ -459,21 +459,24 @@ def test_fittable_member_depending_on_non_fittable_output(deferred_fit_enabled):
 def test_unmarked_member_uses_sequential_fit(deferred_fit_enabled):
     """A chain containing a member that doesn't support deferred fitting falls
     back to the eager sequential path for the whole chain."""
-    from ray.data.preprocessors import MinMaxScaler
+    from ray.data.preprocessors import CountVectorizer
 
-    ds = ray.data.from_pandas(pd.DataFrame({"A": [0.0, 2.0], "B": [1.0, 3.0]}))
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"A": [0.0, 2.0], "text": ["hello world", "hello ray"]})
+    )
 
     scaler = StandardScaler(["A"])
-    minmax = MinMaxScaler(["B"])
-    chain = Chain(scaler, minmax)
+    vectorizer = CountVectorizer(["text"])
+    assert not vectorizer._supports_deferred_fit
+    chain = Chain(scaler, vectorizer)
     chain.fit(ds)
 
     # Eager sequential path: stats exist right after fit.
     assert scaler.has_stats()
-    assert minmax.has_stats()
+    assert vectorizer.has_stats()
 
     out_df = chain.transform(ds).to_pandas()
-    assert list(out_df["B"]) == [0.0, 1.0]
+    assert list(out_df["A"]) == [-1.0, 1.0]
 
 
 def _make_callable_stat_scaler(columns) -> StandardScaler:
@@ -603,15 +606,61 @@ def test_transform_batch_materializes_deferred_stats(deferred_fit_enabled):
 
 def test_flag_off_preserves_eager_fit():
     ctx = ray.data.DataContext.get_current()
-    assert not ctx.enable_aggregation_based_preprocessors, "default must be off"
+    original = ctx.enable_aggregation_based_preprocessors
+    ctx.enable_aggregation_based_preprocessors = False
+    try:
+        ds = _example_dataset()
+        chain, (scaler, imputer, encoder) = _example_chain()
+        chain.fit(ds)
 
-    ds = _example_dataset()
-    chain, (scaler, imputer, encoder) = _example_chain()
+        assert scaler.has_stats()
+        assert imputer.has_stats()
+        assert encoder.has_stats()
+    finally:
+        ctx.enable_aggregation_based_preprocessors = original
+
+
+def test_all_scalers_defer_in_chain(deferred_fit_enabled, counted_aggregations):
+    """Every scaler fits via the stat computation plan, so a chain of scalers
+    on disjoint columns fits in one aggregation query."""
+    from ray.data.preprocessors import MaxAbsScaler, MinMaxScaler, RobustScaler
+
+    ds = ray.data.from_pandas(
+        pd.DataFrame(
+            {
+                "A": [0.0, 2.0],
+                "B": [1.0, 3.0],
+                "C": [-4.0, 2.0],
+                "D": [0.0, 10.0],
+            }
+        )
+    )
+    minmax = MinMaxScaler(["A"], output_columns=["A_s"])
+    maxabs = MaxAbsScaler(["B"], output_columns=["B_s"])
+    robust = RobustScaler(["C"], output_columns=["C_s"])
+    standard = StandardScaler(["D"], output_columns=["D_s"])
+    chain = Chain(minmax, maxabs, robust, standard)
     chain.fit(ds)
 
-    assert scaler.has_stats()
-    assert imputer.has_stats()
-    assert encoder.has_stats()
+    assert not minmax.has_stats(), "scalers should defer inside a chain"
+    assert not maxabs.has_stats()
+    assert not robust.has_stats()
+
+    out_df = chain.transform(ds).to_pandas()
+
+    assert len(counted_aggregations) == 1, counted_aggregations
+    # min/max + abs_max + 3 quantiles + mean/std = 8 aggregations, one query.
+    assert counted_aggregations[0] == 8
+
+    assert minmax.stats_ == {"min(A)": 0.0, "max(A)": 2.0}
+    assert maxabs.stats_ == {"abs_max(B)": 3.0}
+    assert robust.stats_["low_quantile(C)"] == -4.0
+    assert robust.stats_["high_quantile(C)"] == 2.0
+    # The sketch's median of two values is one of them.
+    assert robust.stats_["median(C)"] in (-4.0, 2.0)
+    assert list(out_df["A_s"]) == [0.0, 1.0]
+    assert list(out_df["B_s"]) == [pytest.approx(1 / 3), 1.0]
+    assert list(out_df["D_s"]) == [-1.0, 1.0]
 
 
 def test_dag_structure(deferred_fit_enabled):
