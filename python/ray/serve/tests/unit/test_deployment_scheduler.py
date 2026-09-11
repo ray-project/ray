@@ -2859,5 +2859,40 @@ def test_active_compaction_can_schedule_upscale_to_source_node():
     assert scheduling_strategy.node_id == node_id_1
 
 
+def test_get_node_to_compact_skips_gang_deployments():
+    gang_dep_id = DeploymentID(name="gang")
+    filler_dep_id = DeploymentID(name="filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 4})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(gang_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        gang_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), is_gang=True
+    )
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 3})
+    )
+    scheduler.on_replica_running(ReplicaID("g0", gang_dep_id), "node1")
+    scheduler.on_replica_running(ReplicaID("f0", filler_dep_id), "node2")
+
+    assert (
+        scheduler._get_deployment_placement_candidates(
+            scheduler._deployments[gang_dep_id]
+        )
+        is None
+    )
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    scheduler.on_deployment_deployed(
+        gang_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), is_gang=False
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node1"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

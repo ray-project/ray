@@ -3206,6 +3206,8 @@ class DeploymentState:
         self._deployment_scheduler.on_deployment_deployed(
             self._id,
             self._deployed_info.replica_config,
+            is_gang=self._deployed_info.deployment_config.gang_scheduling_config
+            is not None,
         )
         if self._deployed_info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
@@ -3738,7 +3740,10 @@ class DeploymentState:
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
         self._deployment_scheduler.on_deployment_deployed(
-            self._id, deployment_info.replica_config
+            self._id,
+            deployment_info.replica_config,
+            is_gang=deployment_info.deployment_config.gang_scheduling_config
+            is not None,
         )
 
         # Determine if the updated target state simply scales the current state.

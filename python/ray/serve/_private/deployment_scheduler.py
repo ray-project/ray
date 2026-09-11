@@ -304,6 +304,7 @@ class DeploymentSchedulingInfo:
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
+    is_gang: bool = False
 
     @property
     def required_resources(self) -> RequestedResources:
@@ -449,10 +450,12 @@ class DeploymentScheduler(ABC):
         self,
         deployment_id: DeploymentID,
         replica_config: ReplicaConfig,
+        is_gang: bool = False,
     ) -> None:
         assert deployment_id in self._deployments
 
         info = self._deployments[deployment_id]
+        info.is_gang = is_gang
         info.actor_resources = RequestedResources(replica_config.resource_dict)
         info.label_selector = replica_config.ray_actor_options.get("label_selector")
         info.bundle_label_selector = (
@@ -1475,7 +1478,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _get_deployment_placement_candidates(
         self, deployment: DeploymentSchedulingInfo
     ) -> Optional[List[Tuple[RequestedResources, List[Dict[str, str]]]]]:
-        if deployment.is_non_strict_pack_pg():
+        if deployment.is_gang or deployment.is_non_strict_pack_pg():
             return None
 
         actor_options: Dict[str, Any] = {}
