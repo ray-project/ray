@@ -1346,8 +1346,15 @@ grpcio==1.75.0 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
+grpcio-reflection==1.75.0 \
+    --hash=sha256:60bb9865f5411ad589420eadcdd7e0c338c0aabedf5d4cd07363d5bf7da9c972 \
+    --hash=sha256:cef02b79eea9a1a5e379e13e503a5eaa32a4bc1ad2f1c24d3a6e28a95db5569f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
+    #   -r python/deplocks/ray_img/ray_img_cu130_py311.lock
 grpcio-status==1.75.0 \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
@@ -2714,6 +2721,7 @@ protobuf==6.33.6 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

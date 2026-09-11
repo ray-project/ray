@@ -1732,8 +1732,15 @@ grpcio==1.75.0 \
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
+    #   grpcio-reflection
     #   grpcio-tools
     #   opentelemetry-exporter-otlp-proto-grpc
+grpcio-reflection==1.75.0 \
+    --hash=sha256:60bb9865f5411ad589420eadcdd7e0c338c0aabedf5d4cd07363d5bf7da9c972 \
+    --hash=sha256:cef02b79eea9a1a5e379e13e503a5eaa32a4bc1ad2f1c24d3a6e28a95db5569f
+    # via
+    #   -c python/deplocks/llm/ray_test_py312_cu130.lock
+    #   -r python/requirements.txt
 grpcio-tools==1.75.0 \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
@@ -4140,6 +4147,7 @@ protobuf==6.33.6 \
     #   -r python/requirements.txt
     #   google-api-core
     #   googleapis-common-protos
+    #   grpcio-reflection
     #   grpcio-tools
     #   nvidia-cutlass-dsl-libs-base
     #   nvidia-cutlass-dsl-libs-core
