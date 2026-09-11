@@ -7,6 +7,7 @@ predicate ``ListFiles`` prunes by but the reader never evaluates drops rows
 with no error. These tests pin that invariant, including for plan shapes no
 current rule produces but a future one could.
 """
+
 from dataclasses import replace
 from pathlib import Path
 from typing import List
@@ -15,6 +16,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+import ray
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
@@ -39,6 +41,8 @@ from ray.data._internal.logical.rules.derive_list_files_pushdown import (
 )
 from ray.data.context import DataContext
 from ray.data.expressions import col
+from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 def _mk_read_files(tmp_path: Path) -> ReadFiles:
@@ -240,6 +244,101 @@ def test_optimizer_keeps_list_files_in_sync_with_the_scanner(tmp_path):
     ]
     assert scanner_predicate is not None
     assert _list_files_of(optimized).predicate is scanner_predicate
+
+
+# ---------------------------------------------------------------------------
+# count_ships_whole_manifest: the count rewrite keeps its path pruner
+# ---------------------------------------------------------------------------
+
+
+def _hive_tree(root: Path, sizes) -> str:
+    """One file per ``year=<key>`` directory, ``sizes[key]`` rows each.
+
+    Sizes differ on purpose: a pruning bug that sums the files it should have
+    dropped still returns the right total when the partitions are equal.
+    """
+    for year, num_rows in sizes.items():
+        part = root / f"year={year}"
+        part.mkdir(parents=True, exist_ok=True)
+        pq.write_table(pa.table({"v": list(range(num_rows))}), part / "data.parquet")
+    return str(root)
+
+
+def _count_plan(ds):
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import Project
+
+    source = ds._logical_plan.dag
+    count = Count(input_dependencies=[Project(exprs=[], input_dependencies=[source])])
+    return LogicalOptimizer().optimize(LogicalPlan(count, ds.context))
+
+
+def walk_children(op):
+    yield op
+    for child in op.input_dependencies:
+        yield from walk_children(child)
+
+
+def test_count_rewrite_keeps_the_partition_pruner(ray_start_regular_shared, tmp_path):
+    """Listing must still drop files by path after the ``ReadFiles`` is gone.
+
+    ``PushdownCountFiles`` deletes the ``ReadFiles``, and this rule clears
+    every constraint when the consumer is not one. That is right by default --
+    it cannot know an arbitrary ``MapBatches`` drops the same files. The count
+    rewrite is the exception: its ``count_rows`` calls ``prune_manifest``
+    itself.
+    """
+    from ray.data.expressions import col
+
+    root = _hive_tree(tmp_path, {"2023": 10, "2024": 20})
+    ds = ray.data.read_parquet(root).filter(expr=col("year") == "2023")
+
+    plan = _count_plan(ds)
+    list_files = next(op for op in walk_children(plan.dag) if isinstance(op, ListFiles))
+    assert list_files.partition_pruner is not None
+
+
+def test_count_rewrite_without_a_filter_has_no_pruner(
+    ray_start_regular_shared, tmp_path
+):
+    """Nothing to prune by, so nothing is set -- the marker is not a blanket."""
+    root = _hive_tree(tmp_path, {"2023": 10, "2024": 20})
+    ds = ray.data.read_parquet(root)
+
+    plan = _count_plan(ds)
+    list_files = next(op for op in walk_children(plan.dag) if isinstance(op, ListFiles))
+    assert list_files.partition_pruner is None
+
+
+def test_plain_map_batches_over_listing_still_loses_everything(
+    ray_start_regular_shared, tmp_path
+):
+    """The exception is the marker class, not ``MapBatches`` in general.
+
+    A hand-built ``MapBatches`` over a ``ListFiles`` carrying a pruner must
+    still have it cleared: nothing downstream applies it.
+    """
+    from ray.data._internal.datasource_v2.listing.file_pruners import (
+        PartitionPredicatePruner,
+    )
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    root = _hive_tree(tmp_path, {"2023": 10, "2024": 20})
+    ds = ray.data.read_parquet(root)
+    list_files = next(
+        op for op in walk_children(ds._logical_plan.dag) if isinstance(op, ListFiles)
+    )
+    pruner = PartitionPredicatePruner(
+        Partitioning(PartitionStyle.HIVE), col("year") == "2023"
+    )
+    list_files = replace(list_files, partition_pruner=pruner)
+
+    node = MapBatches(fn=lambda b: b, input_dependencies=[list_files])
+    result = DeriveListFilesPushdown().apply(LogicalPlan(node, ds.context))
+
+    rebuilt = next(op for op in walk_children(result.dag) if isinstance(op, ListFiles))
+    assert rebuilt.partition_pruner is None
 
 
 if __name__ == "__main__":
