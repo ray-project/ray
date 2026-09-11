@@ -1644,11 +1644,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 if n != target_node_id and len(node_to_running_replicas[n]) > 0
             }
             replicas_on_target = sorted(
-                self._running_replicas_on_node_id(target_node_id),
+                node_to_running_replicas[target_node_id],
                 key=lambda r: self._deployments[r.deployment_id].required_resources,
                 reverse=True,
             )
-            node_to_simulated_replicas = self._get_node_to_running_replicas()
+            node_to_simulated_replicas: DefaultDict[str, Set[ReplicaID]] = defaultdict(
+                set, {n: set(r) for n, r in node_to_running_replicas.items()}
+            )
             assignment: Optional[Dict[ReplicaID, str]] = {}
             for replica_id in replicas_on_target:
                 placement_candidates = self._get_deployment_placement_candidates(
