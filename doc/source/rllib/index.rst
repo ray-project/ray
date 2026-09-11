@@ -50,11 +50,11 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
     getting-started
     key-concepts
-    rllib-env
+    env
     algorithm-config
-    rllib-algorithms
+    algorithms
     user-guides
-    rllib-examples
+    examples
     new-api-stack-migration-guide
 
 
@@ -238,7 +238,7 @@ click the dropdowns below:
     +-------------------------------------------------------------------------------------------+
     | **RLlib Multi-Agent**                                                                     |
     +-------------------------------------------------------------------------------------------+
-    | `RLlib's MultiAgentEnv API <rllib-env.html#multi-agent-and-hierarchical>`__ |multi_agent| |
+    | `RLlib's MultiAgentEnv API <env.html#multi-agent-and-hierarchical>`__ |multi_agent|       |
     |                                                                                           |
     | .. code-block:: python                                                                    |
     |                                                                                           |
@@ -383,7 +383,7 @@ Customizing RLlib
 
 RLlib provides powerful, yet easy to use APIs for customizing all aspects of your experimental- and
 production training-workflows.
-For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
+For example, you may code your own `environments <env.html#configuring-environments>`__
 in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
 provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
 write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__,

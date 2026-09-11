@@ -659,7 +659,7 @@ passing it the outputs of the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLMo
 
 
 See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
-Losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html>`__.
+Losses can be defined over either policy evaluation inputs, or data read from `offline storage <offline.html>`__.
 Note that you may want to set the :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to ``True`` in your custom
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case to make sure your
@@ -736,7 +736,7 @@ You implement the main action sampling logic in the ``_forward_...()`` methods:
 .. TODO: Move this parametric paragraph back in here, once we have the example translated to the new API stack
   Variable-length / Parametric Action Spaces
   ++++++++++++++++++++++++++++++++++++++++++
-  Custom models can be used to work with environments where (1) the set of valid actions `varies per step <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five>`__, and/or (2) the number of valid actions is `very large <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
+  Custom models can be used to work with environments where (1) the set of valid actions `varies per step <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five>`__, and/or (2) the number of valid actions is `very large <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <env.html>`__ and can be implemented as follows:
   1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
   .. code-block:: python
    class MyParamActionEnv(gym.Env):
@@ -785,7 +785,7 @@ You implement the main action sampling logic in the ``_forward_...()`` methods:
   .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
   .. |both| replace:: **both**
   .. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/parametric_actions_model.py
-  Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
+  Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <algorithms.html#available-algorithms-overview>`__.
 
 
 

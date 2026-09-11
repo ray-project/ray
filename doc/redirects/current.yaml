@@ -156,7 +156,7 @@ redirects:
   to: /rllib/rl-modules.html
   type: page
 - from: /rllib-sample-collection.html
-  to: /rllib/rllib-examples.html
+  to: /rllib/examples.html
   type: page
 - from: /rllib-concepts.html
   to: /rllib/key-concepts.html
@@ -261,7 +261,7 @@ redirects:
   to: /ray-contribute/development.html
   type: page
 - from: /rllib-env.html
-  to: /rllib/rllib-env.html
+  to: /rllib/env.html
   type: page
 - from: /fault-tolerance.html
   to: /ray-core/fault-tolerance.html
@@ -345,16 +345,16 @@ redirects:
   to: /ray-core/walkthrough.html
   type: page
 - from: /rllib-offline.html
-  to: /rllib/rllib-offline.html
+  to: /rllib/offline.html
   type: page
 - from: /package-ref.html
   to: /ray-core/api/index.html
   type: page
 - from: /rllib-dev.html
-  to: /rllib/rllib-dev.html
+  to: /rllib/dev.html
   type: page
 - from: /rllib-algorithms.html
-  to: /rllib/rllib-algorithms.html
+  to: /rllib/algorithms.html
   type: page
 - from: /ray-libraries.html
   to: /ray-overview/ray-libraries.html
@@ -387,7 +387,7 @@ redirects:
   to: /tune/index.html
   type: page
 - from: /rllib-examples.html
-  to: /rllib/rllib-examples.html
+  to: /rllib/examples.html
   type: page
 - from: /iter.html
   to: /index.html
@@ -526,6 +526,36 @@ redirects:
   type: page
 - from: /rllib/rllib-models.html
   to: /rllib/rl-modules.html
+  type: page
+- from: /rllib/rllib-advanced-api.html
+  to: /rllib/advanced-api.html
+  type: page
+- from: /rllib/rllib-algorithms.html
+  to: /rllib/algorithms.html
+  type: page
+- from: /rllib/rllib-callback.html
+  to: /rllib/callback.html
+  type: page
+- from: /rllib/rllib-dev.html
+  to: /rllib/dev.html
+  type: page
+- from: /rllib/rllib-env.html
+  to: /rllib/env.html
+  type: page
+- from: /rllib/rllib-examples.html
+  to: /rllib/examples.html
+  type: page
+- from: /rllib/rllib-fault-tolerance.html
+  to: /rllib/fault-tolerance.html
+  type: page
+- from: /rllib/rllib-learner.html
+  to: /rllib/learner.html
+  type: page
+- from: /rllib/rllib-offline.html
+  to: /rllib/offline.html
+  type: page
+- from: /rllib/rllib-replay-buffers.html
+  to: /rllib/replay-buffers.html
   type: page
 - from: /rllib/rllib-*
   to: /rllib/index.html
