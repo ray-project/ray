@@ -226,7 +226,61 @@ In this example:
 
 ## Concurrency and reliability
 
- Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
+Set `max_ongoing_requests` on the consumer deployment to cap how many tasks each replica processes simultaneously. The default Celery adapter uses late acknowledgement and requeues tasks on worker loss. Delivery behavior depends on the broker and its configuration. Write handlers that tolerate duplicate execution.
+
+By default, the Celery adapter uses `max_retries` for retries of application exceptions. After those retries are exhausted, it routes the failed task to the configured DLQ. Broker redelivery after a process dies can occur without advancing this application retry count. If a job needs a limit across worker losses or re-enqueueing, track admitted attempts or a deadline in application-owned durable state.
+
+(serve-async-inference-checkpoints)=
+### Resume work from checkpoints
+
+To resume inference between pages, video segments, or batches, store checkpoints in your application. The task consumer API doesn't provide durable checkpoints or resumable progress. `get_task_status_sync(task_id)` reads the adapter's task status and result. It doesn't restore partially completed inference.
+
+The following example separates task delivery, execution attempts, and committed job state:
+
+```{literalinclude} doc_code/async_inference_checkpoint_contract.py
+:language: python
+:start-after: __records_begin__
+:end-before: __records_end__
+```
+
+Use these fields to identify work and recover committed state:
+
+| Field | Contract |
+| --- | --- |
+| `job_id` | Stable application job ID. Pass it in the task payload and reuse it across submission retries and re-enqueueing. |
+| `fingerprint` | Immutable input revision, model and pipeline versions, and relevant parameters. A mutable URL alone doesn't identify an input revision. |
+| `task_id` | Adapter task ID for status and diagnostics. Retries may retain it, while re-enqueueing may create a different ID for the same job. |
+| `attempt_id`, `fence` | Fresh execution ID and a monotonically increasing token that identifies the job's owner. |
+| `checkpoint_ref`, `next_unit` | Immutable checkpoint reference and the next unit to process. Progress counts committed work. |
+| `result_ref` | Immutable result reference. Its presence marks the job complete. |
+
+Implement three transitions in the handler:
+
+1. Claim the job or return its result. Reject a mismatched fingerprint before checking for completion. If the job is complete, return `result_ref` without recomputing it. Otherwise, atomically acquire an application-owned lease and fencing token for a fresh `attempt_id`. Duplicate deliveries must not take over a live lease. After expiry, another attempt can take over even if the old worker still runs.
+1. Resume from the committed checkpoint. Restore all completed units `[0, next_unit)` from the checkpoint or its manifest, then process the next unit. Write each checkpoint artifact durably before atomically committing its reference and progress. Reject backwards progress. Make retries of the same commit idempotent.
+1. Publish the result before returning. Write the final artifact durably, then atomically commit `result_ref` and the terminal state. Only then return from the handler so the adapter can acknowledge the task. If publication times out, read back the record before retrying. The task API doesn't provide a transaction spanning this record and queue acknowledgement.
+
+For every checkpoint and result commit, atomically check the attempt's ownership token with the write. An old attempt must not overwrite state after takeover. With object storage, publish immutable artifact references through a transactional record and clean up unreferenced artifacts later. Poll committed application state by `job_id` instead of combining progress events from different attempts.
+
+Retain the job record, fencing generation, and referenced artifacts for as long as attempts can write or tasks can be redelivered. Deleting and recreating state or reusing a `job_id` during that period resets fencing and result deduplication. Checkpointing doesn't make external effects exactly once. Use idempotency keys or a transaction for those effects, and expect computation since the last checkpoint to repeat.
+
+Verify these three failure cases:
+
+| Failure window | Expected recovery |
+| --- | --- |
+| A worker dies after committing a checkpoint | The replacement loads that checkpoint and resumes at the next uncommitted unit with a new token. |
+| A worker dies after committing the result but before acknowledgement | The redelivered task returns the same result, even if its `task_id` differs. |
+| An old attempt keeps running after lease takeover | Its token cannot publish checkpoints or results. Only the new owner can commit, and completed state stays immutable. |
+
+Download the {download}`checkpoint example <doc_code/async_inference_checkpoint_contract.py>` and run its tests with the Python standard library. From the Ray repository root, run:
+
+```bash
+python doc/source/serve/doc_code/async_inference_checkpoint_contract.py -v
+```
+
+:::{note}
+The example models atomic storage transitions with in-memory records. Each claim assumes lease admission has succeeded. Tests interleave attempts to check recovery, identity, and commit rules. They don't implement leases, durable storage, inference, or a broker. Test those components separately with your storage and adapter.
+:::
 
 (serve-async-inference-autoscaling)=
 ## Autoscaling
@@ -301,4 +355,3 @@ Recommendations:
 :::{note}
 The APIs in this guide reflect the alpha interfaces in `ray.serve.schema` and `ray.serve.task_consumer`.
 :::
-
