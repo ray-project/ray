@@ -114,6 +114,7 @@ def test_gpu_ids_config():
         ["0", ""],
         ["0", 1],
         [None],
+        ["0", "0"],
     ],
 )
 def test_invalid_gpu_ids_rejected(gpu_ids):
