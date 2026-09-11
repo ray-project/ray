@@ -619,7 +619,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                        << argument_id;
-      return;
+      continue;
     }
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
