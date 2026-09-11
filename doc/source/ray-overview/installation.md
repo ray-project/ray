@@ -121,8 +121,8 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
   - [Linux Python 3.11 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_aarch64.whl)
 * - [Linux Python 3.12 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_x86_64.whl)
   - [Linux Python 3.12 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_aarch64.whl)
-* - [Linux Python 3.13 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_x86_64.whl) (beta)
-  - [Linux Python 3.13 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_aarch64.whl) (beta)
+* - [Linux Python 3.13 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_x86_64.whl)
+  - [Linux Python 3.13 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_aarch64.whl)
 * - [Linux Python 3.14 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp314-cp314-manylinux2014_x86_64.whl) (experimental)
   - [Linux Python 3.14 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp314-cp314-manylinux2014_aarch64.whl) (experimental)
 ```
@@ -137,7 +137,7 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 * - [MacOS Python 3.10 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.11 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.12 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-macosx_12_0_arm64.whl)
-* - [MacOS Python 3.13 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-macosx_12_0_arm64.whl) (beta)
+* - [MacOS Python 3.13 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-macosx_12_0_arm64.whl)
 * - [MacOS Python 3.14 (arm64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp314-cp314-macosx_12_0_arm64.whl) (experimental)
 ```
 ::::
