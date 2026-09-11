@@ -433,6 +433,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Set once a raylet subscribes to this object's locations, never cleared.
+    /// The publisher's subscription index is the source of truth, this flag lets
+    /// us skip building a message when nobody has ever asked for this object's
+    /// locations, without taking the publisher's lock.
+    bool has_ever_had_location_subscriber = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before

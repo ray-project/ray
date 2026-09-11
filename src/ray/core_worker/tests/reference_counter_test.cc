@@ -73,6 +73,18 @@ class ReferenceCountTest : public ::testing::Test {
 
   void AssertNoLeaks() { ASSERT_EQ(rc->NumObjectIDsInScope(), 0); }
 
+  void OwnObject(const ObjectID &object_id) {
+    rpc::Address address;
+    address.set_ip_address("1.2.3.4");
+    rc->AddOwnedObject(object_id,
+                       {},
+                       address,
+                       "file.py:42",
+                       100,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                       /*add_local_ref=*/true);
+  }
+
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
 };
@@ -836,6 +848,74 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   rc->RemoveLocalReference(obj1, nullptr);
   rc->RemoveLocalReference(obj2, nullptr);
   rc->RemoveLocalReference(obj3, nullptr);
+}
+
+// Location updates for an object no raylet has subscribed to build and publish
+// nothing; the first subscribe turns publishing on for good.
+TEST_F(ReferenceCountTest, TestSkipsLocationPublishUntilSubscribed) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  OwnObject(obj);
+
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // The subscribe publishes the snapshot, then updates publish again.
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->PublishObjectLocationSnapshot(obj);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// The skip is per object: an object nobody subscribed to is skipped while
+// another object has a subscriber.
+TEST_F(ReferenceCountTest, TestLocationPublishSkipIsPerObject) {
+  auto watched = ObjectID::FromRandom();
+  auto ignored = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  OwnObject(watched);
+  OwnObject(ignored);
+
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->PublishObjectLocationSnapshot(watched);
+  rc->AddObjectLocation(watched, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(ignored, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(watched, nullptr);
+  rc->RemoveLocalReference(ignored, nullptr);
+}
+
+// The failure published when a reference is erased is skipped for an object no
+// raylet ever subscribed to and still delivered otherwise.
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscription) {
+  auto unwatched = ObjectID::FromRandom();
+  auto watched = ObjectID::FromRandom();
+  OwnObject(unwatched);
+  OwnObject(watched);
+
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unwatched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unwatched));
+
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->PublishObjectLocationSnapshot(watched);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  EXPECT_CALL(
+      *publisher_,
+      PublishFailure(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, watched.Binary()))
+      .Times(1);
+  rc->RemoveLocalReference(watched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(watched));
 }
 
 // Tests that we can get the owner address correctly for objects that we own,

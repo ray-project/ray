@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include <future>
 #include <list>
 #include <memory>
 #include <string>
@@ -329,6 +330,14 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   object_directory_->SetLocations(object_id, {address});
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(raylet_client_->Flush(), 1);
+  // The pin completes the first recovery through a callback on the memory
+  // store's thread. Wait for it, or the recovery after the copy is lost again
+  // is treated as a duplicate of the first (see #64694).
+  std::promise<void> first_recovery_completed;
+  io_context_.GetIoService().post(
+      [&first_recovery_completed]() { first_recovery_completed.set_value(); },
+      "TestReconstructionSuppression.WaitForFirstRecovery");
+  first_recovery_completed.get_future().wait();
 
   // The object has been marked as failed but it is still pinned on the new
   // node. Another attempt to recover the object will not trigger any

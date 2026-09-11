@@ -1322,8 +1322,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      object_size,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
-  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
-  // bumps the sequence id by 1
+  // No raylet has subscribed to this object yet, so this update is skipped and
+  // consumes no sequence id; the subscriber below gets the registration-time snapshot.
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -1387,11 +1387,12 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    // The pre-subscribe update consumed no sequence id, so the two subscribe
+    // snapshots are seq 1 and 2; the second replaced the first in the mailbox.
     EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
-  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/1);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/2);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
