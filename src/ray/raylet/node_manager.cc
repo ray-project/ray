@@ -2009,6 +2009,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
       request.runtime_env_info(),
       /*runtime_env_hash=*/
       CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
+      /*worker_resource_limits=*/rpc::WorkerResourceLimits(),
       /*options=*/std::vector<std::string>{},
       absl::Seconds(request.keep_alive_duration_secs()),
       /*callback=*/

@@ -30,6 +30,7 @@
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/observability/fake_metric.h"
@@ -50,6 +51,13 @@ class MockWorkerPool : public WorkerPoolInterface {
     num_pops++;
     const int runtime_env_hash = lease_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
+  }
+
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &worker_resource_limits,
+                 const PopWorkerCallback &callback) override {
+    last_worker_resource_limits = worker_resource_limits;
+    PopWorker(lease_spec, callback);
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
@@ -246,6 +254,7 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
   absl::flat_hash_map<int, std::list<PopWorkerCallback>> callbacks;
+  rpc::WorkerResourceLimits last_worker_resource_limits;
   int num_pops;
 };
 
@@ -276,7 +285,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 
 RayLease CreateLease(const std::unordered_map<std::string, double> &required_resources,
                      const std::string &task_name = "default",
-                     const std::vector<std::unique_ptr<TaskArg>> &args = {}) {
+                     const std::vector<std::unique_ptr<TaskArg>> &args = {},
+                     const std::string &serialized_runtime_env = "") {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -313,6 +323,8 @@ RayLease CreateLease(const std::unordered_map<std::string, double> &required_res
   TaskSpecification spec = std::move(spec_builder).ConsumeAndBuild();
   LeaseSpecification lease_spec(spec.GetMessage());
   lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
+  lease_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
+      serialized_runtime_env);
   return RayLease(std::move(lease_spec));
 }
 
@@ -364,10 +376,15 @@ class LocalLeaseManagerTest : public ::testing::Test {
             /*clock=*/clock_)) {}
 
   void SetUp() override {
+    RayConfig::instance().initialize(R"({"worker_resource_limits_enabled": false})");
     static rpc::GcsNodeAddressAndLiveness node_info;
     ON_CALL(*gcs_client_->mock_node_accessor,
             GetNodeAddressAndLiveness(::testing::_, ::testing::_))
         .WillByDefault(::testing::Return(node_info));
+  }
+
+  void TearDown() override {
+    RayConfig::instance().initialize(R"({"worker_resource_limits_enabled": false})");
   }
 
   RayObject *MakeDummyArg() {
@@ -519,6 +536,29 @@ TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   auto leases_to_grant_ = local_lease_manager_->GetLeasesToGrant();
   // Out of the leases in the second batch, only lease g is granted due to fair scheduling
   ASSERT_EQ(leases_to_grant_.size(), 1);
+}
+
+TEST_F(LocalLeaseManagerTest, PassesAllocatedResourcesAsWorkerLimits) {
+  RayConfig::instance().initialize(R"({"worker_resource_limits_enabled": true})");
+  auto lease = CreateLease({{kCPU_ResourceLabel, 0.5}},
+                           "limited_worker",
+                           {},
+                           R"({"image_uri":"podman://ray:latest"})");
+  rpc::RequestWorkerLeaseReply reply;
+  auto empty_callback =
+      [](Status status, std::function<void()> success, std::function<void()> failure) {};
+  local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(empty_callback, &reply)},
+      internal::WorkStatus::WAITING));
+
+  ASSERT_EQ(pool_.num_pops, 1);
+  EXPECT_EQ(pool_.last_worker_resource_limits.cpu_period_us(), 100000);
+  EXPECT_EQ(pool_.last_worker_resource_limits.cpu_quota_us(), 50000);
+  EXPECT_EQ(pool_.last_worker_resource_limits.memory_bytes(), 0);
 }
 
 TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {

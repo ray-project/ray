@@ -59,6 +59,12 @@ class MockWorkerPool : public WorkerPoolInterface {
     callbacks[runtime_env_hash].push_back(callback);
   }
 
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &worker_resource_limits,
+                 const PopWorkerCallback &callback) override {
+    PopWorker(lease_spec, callback);
+  }
+
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     workers.push_front(worker);
   }

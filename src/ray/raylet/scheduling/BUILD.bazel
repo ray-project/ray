@@ -95,6 +95,7 @@ ray_cc_library(
         "//src/ray/raylet:metrics",
         "//src/ray/raylet:worker_interface",
         "//src/ray/raylet:worker_pool",
+        "//src/ray/raylet:worker_resource_limits",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:local_lease_manager_interface",
         "//src/ray/raylet/scheduling:scheduler_internal",

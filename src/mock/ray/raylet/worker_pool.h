@@ -24,6 +24,11 @@ class MockWorkerPool : public WorkerPoolInterface {
               PopWorker,
               (const LeaseSpecification &lease_spec, const PopWorkerCallback &callback),
               (override));
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &,
+                 const PopWorkerCallback &callback) override {
+    PopWorker(lease_spec, callback);
+  }
   MOCK_METHOD(void,
               PushWorker,
               (const std::shared_ptr<WorkerInterface> &worker),
