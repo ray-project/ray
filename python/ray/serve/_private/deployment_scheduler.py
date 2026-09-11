@@ -1489,7 +1489,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id=ReplicaID(
                     unique_id="", deployment_id=deployment.deployment_id
                 ),
-                actor_def=None,
+                actor_def=None,  # type: ignore[arg-type]
                 actor_resources=dict(deployment.actor_resources or {}),
                 actor_options=actor_options,
                 actor_init_args=(),
@@ -1537,6 +1537,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     def _update_compacting_node_info(self):
         info = self._compacting_node
+        assert info is not None
         target_node = info.target_node_id
         current_replicas = self._running_replicas_on_node_id(
             target_node
@@ -1640,8 +1641,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             for node_id in self._cluster_node_info_cache.get_active_node_ids()
         }
 
-        best_node = None
-        best_assignment = None
+        best: Optional[Tuple[str, Dict[ReplicaID, str]]] = None
         for target_node_id in available_resources_per_node:
             if target_node_id == self._head_node_id:
                 continue
@@ -1660,13 +1660,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             node_to_simulated_replicas: DefaultDict[str, Set[ReplicaID]] = defaultdict(
                 set, {n: set(r) for n, r in node_to_running_replicas.items()}
             )
-            assignment: Optional[Dict[ReplicaID, str]] = {}
+            assignment: Dict[ReplicaID, str] = {}
             for replica_id in replicas_on_target:
                 placement_candidates = self._get_deployment_placement_candidates(
                     self._deployments[replica_id.deployment_id]
                 )
                 if placement_candidates is None:
-                    assignment = None
+                    assignment.clear()
                     break
 
                 chosen_node = None
@@ -1681,7 +1681,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     if chosen_node:
                         break
                 if not chosen_node:
-                    assignment = None
+                    assignment.clear()
                     break
 
                 assignment[replica_id] = chosen_node
@@ -1692,32 +1692,32 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 continue
 
             # Prefer the largest compactable node, then the fewest migrations.
-            if best_node is None:
+            if best is None:
                 take = True
             else:
                 current_total = total_resources_per_node.get(
                     target_node_id, AvailableNodeResources()
                 )
                 best_total = total_resources_per_node.get(
-                    best_node, AvailableNodeResources()
+                    best[0], AvailableNodeResources()
                 )
                 take = current_total > best_total or (
-                    current_total == best_total
-                    and len(assignment) < len(best_assignment)
+                    current_total == best_total and len(assignment) < len(best[1])
                 )
             if take:
-                best_node = target_node_id
-                best_assignment = assignment
+                best = (target_node_id, assignment)
 
-        if best_node:
-            node_to_assigned: Dict[str, List[ReplicaID]] = defaultdict(list)
-            for replica_id, node_id in best_assignment.items():
-                node_to_assigned[node_id].append(replica_id)
-            plan = ", ".join(
-                f"{replicas} -> {node_id}"
-                for node_id, replicas in node_to_assigned.items()
-            )
-            logger.info(
-                f"Found compactable node '{best_node}' with migration plan: {{{plan}}}."
-            )
+        if best is None:
+            return None
+
+        best_node, best_assignment = best
+        node_to_assigned: Dict[str, List[ReplicaID]] = defaultdict(list)
+        for replica_id, node_id in best_assignment.items():
+            node_to_assigned[node_id].append(replica_id)
+        plan = ", ".join(
+            f"{replicas} -> {node_id}" for node_id, replicas in node_to_assigned.items()
+        )
+        logger.info(
+            f"Found compactable node '{best_node}' with migration plan: {{{plan}}}."
+        )
         return best_node
