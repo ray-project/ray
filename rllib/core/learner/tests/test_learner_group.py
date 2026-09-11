@@ -129,6 +129,27 @@ FAKE_MA_EPISODES_WO_P1 = [
 ]
 FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 
+# What an AggregatorActor hands to one Learner: a ready-made train batch. The batch
+# whose EnvRunners were all lost carries no data for any module.
+NO_DATA = MultiAgentBatch(policy_batches={}, env_steps=0)
+
+
+def fake_batch(num_timesteps, seed):
+    rng = np.random.default_rng(seed)
+    return MultiAgentBatch(
+        {
+            DEFAULT_MODULE_ID: SampleBatch(
+                {
+                    Columns.OBS: rng.standard_normal(
+                        (num_timesteps, 4), dtype=np.float32
+                    ),
+                    Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
+                }
+            )
+        },
+        env_steps=num_timesteps,
+    )
+
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
     @classmethod
@@ -288,22 +309,6 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         )
         learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
 
-        def batch(num_timesteps, seed):
-            rng = np.random.default_rng(seed)
-            return MultiAgentBatch(
-                {
-                    DEFAULT_MODULE_ID: SampleBatch(
-                        {
-                            Columns.OBS: rng.standard_normal(
-                                (num_timesteps, 4), dtype=np.float32
-                            ),
-                            Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
-                        }
-                    )
-                },
-                env_steps=num_timesteps,
-            )
-
         def weights():
             """The module weights of each Learner in the group."""
             return [
@@ -315,63 +320,55 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 )
             ]
 
-        def update(**kwargs):
-            """Runs one group update; returns each Learner's results as plain values.
-
-            `LearnerGroup.update()` hands back one `Stats`-valued dict per Learner.
-            """
-            return MetricsLogger.peek_results(learner_group.update(**kwargs))
-
-        def steps_trained(results):
-            """The timesteps each Learner trained on, i.e. minibatches x their size."""
-            return [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results]
-
-        def total(results, metric):
-            return sum(result[ALL_MODULES].get(metric, 0) for result in results)
-
         try:
-            # One Learner's shard is empty: both skip, so neither trains, and the
-            # skip is attributed per Learner -- one had no data, the other had to
-            # drop the data it did have.
+            # The EnvRunners feeding the second Learner were lost, so it is handed a
+            # batch without any data while its peer has a full one. Both must skip:
+            # nobody trains, and each Learner reports why it skipped.
             before = weights()
-            results = update(
-                batches=[
-                    batch(128, seed=0),
-                    MultiAgentBatch(policy_batches={}, env_steps=0),
-                ]
+            with_data, starved = MetricsLogger.peek_results(
+                learner_group.update(batches=[fake_batch(128, seed=0), NO_DATA])
             )
             check(before, weights())
             self.assertEqual(
-                1, total(results, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME)
+                1, starved[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
             )
             self.assertEqual(
-                1, total(results, LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME)
+                1, with_data[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
             )
             self.assertEqual(
-                128, total(results, LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME)
+                128, with_data[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME]
             )
 
-            # Unequal shards: both Learners still step through the same number of
-            # minibatches (the group's, not their own), and stay in sync.
-            results = update(
-                batches=[batch(256, seed=1), batch(64, seed=2)],
-                minibatch_size=32,
-                num_epochs=1,
+            # Both Learners have data, but unequal amounts of it. On their own they
+            # would step through ceil(256/32) = 8 and ceil(64/32) = 2 minibatches;
+            # the group settles on the average, 5, and stays in sync.
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256, seed=1), fake_batch(64, seed=2)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
             )
-            # On their own the two shards would yield ceil(256/32) = 8 and
-            # ceil(64/32) = 2 minibatches; the group settles on the average, 5.
-            self.assertEqual([5 * 32, 5 * 32], steps_trained(results))
+            self.assertEqual(
+                [5 * 32, 5 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
             learner_0_weights, learner_1_weights = weights()
             check(learner_0_weights, learner_1_weights)
 
             # A minibatch count passed in by the caller is used by both as-is.
-            results = update(
-                batches=[batch(256, seed=3), batch(64, seed=4)],
-                minibatch_size=32,
-                num_epochs=1,
-                num_total_minibatches=3,
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256, seed=3), fake_batch(64, seed=4)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                    num_total_minibatches=3,
+                )
             )
-            self.assertEqual([3 * 32, 3 * 32], steps_trained(results))
+            self.assertEqual(
+                [3 * 32, 3 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
         finally:
             learner_group.shutdown()
 
