@@ -110,6 +110,7 @@ The metrics recorded include:
 * Freed memory in object store
 * Spilled memory in object store
 * Time spent generating blocks
+* Time spent transforming data, and its breakdown into input prep, function body, and output block build
 * Time spent in task submission backpressure
 * Time spent to initialize iteration.
 * Time user code is blocked during iteration.

@@ -476,6 +476,44 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     stack=False,
 )
 
+BLOCK_TRANSFORM_TIME_PANEL = Panel(
+    id=126,
+    title="Block Transform Time",
+    description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. It excludes scheduling and the object store write: the Block Generation Time panel covers the block's full wall time, and the ray_data_block_serialization_time_s metric covers the object store write.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_block_transform_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Block Transform Time: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL = Panel(
+    id=127,
+    title="Block Transform Time by Phase",
+    description="The Block Transform Time panel broken into the three phases that sum to it, averaged per output block over a recent 5-minute window. Input prep is turning input blocks into the batches or rows your functions receive; Function body is the stage bodies themselves, both yours and the ones Ray Data supplies; Output block build is assembling what they return back into blocks. This panel is empty for row-based transforms such as map and filter unless DataContext.accurate_map_phase_timing is set, because timing each row individually costs more than the breakdown reports; the Block Transform Time panel still plots the total.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_input_prep_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Input Prep: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_function_body_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Function Body: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_output_build_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Output Block Build: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=10,
+    stack=True,
+)
+
 TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     id=37,
     title="Task Submission Backpressure Time",
@@ -1477,6 +1515,8 @@ DATA_GRAFANA_ROWS = [
             AVERAGE_BYTES_PER_BLOCK_PANEL,
             AVERAGE_BLOCKS_PER_TASK_PANEL,
             BLOCK_GENERATION_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL,
         ],
         collapsed=True,
     ),
