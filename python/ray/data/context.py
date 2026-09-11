@@ -390,6 +390,11 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     1,
 )
 
+DEFAULT_ENABLE_NODE_AWARE_ACTOR_POOL: bool = env_bool(
+    "RAY_DATA_ENABLE_NODE_AWARE_ACTOR_POOL",
+    False,
+)
+
 
 # Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
@@ -747,6 +752,10 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
+        enable_node_aware_actor_pool: If ``True``, actor pools stop dispatching
+            tasks to actors on draining nodes, refresh actor locations after a
+            restart, and report actors held by lineage reconstruction as extra
+            resource usage. Defaults to ``False``.
         retried_io_errors: A list of patterns to match against error messages that should
             trigger a retry when reading or writing files. Each pattern is first checked
             as a substring, then as a regex. This is useful for handling
@@ -1010,6 +1019,7 @@ class DataContext:
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     # This setting serves as a global override
     max_tasks_in_flight_per_actor: Optional[int] = None
+    enable_node_aware_actor_pool: bool = DEFAULT_ENABLE_NODE_AWARE_ACTOR_POOL
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )

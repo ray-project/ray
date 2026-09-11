@@ -221,7 +221,7 @@ class ResourceManager:
             )
 
             if isinstance(op, ReportsExtraResourceUsage):
-                op_usage.add(op.extra_resource_usage())
+                op_usage = op_usage.add(op.extra_resource_usage())
 
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
