@@ -224,13 +224,13 @@ def get_jax_chips_per_process_bounds(
 
 
 def _strip_endpoint_port(endpoint: Optional[str]) -> str:
-    """Strips port and URI scheme from an endpoint (IPv4, IPv6, hostname, or URL).
+    """Strips the port from a network endpoint (e.g. "10.0.0.1:8471" or "[::1]:8471").
 
     Args:
-        endpoint: Raw endpoint string, URL, or IP address.
+        endpoint: Raw host or host:port endpoint string.
 
     Returns:
-        Cleaned host IP or hostname without port or scheme. Returns empty string
+        Cleaned host IP or hostname without port. Returns empty string
         if endpoint is empty or None.
     """
     if not endpoint:
@@ -238,10 +238,6 @@ def _strip_endpoint_port(endpoint: Optional[str]) -> str:
     s = endpoint.strip()
     if not s:
         return ""
-    if "://" in s:
-        s = s.split("://", 1)[1]
-    if "/" in s:
-        s = s.split("/", 1)[0]
     parsed = parse_address(s)
     if parsed is not None:
         return parsed[0]

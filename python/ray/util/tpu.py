@@ -321,8 +321,8 @@ def get_jax_env_vars(
 
     Args:
         worker_hostnames: Comma-separated string or list of host IP addresses or DNS hostnames.
-            If port numbers (e.g. "10.0.0.1:8471" or "[2001:db8::1]:8471") or URI schemes are
-            included, they are automatically stripped to conform to LibTPU requirements.
+            If port numbers (e.g. "10.0.0.1:8471" or "[2001:db8::1]:8471") are included,
+            they are automatically stripped to conform to LibTPU requirements.
         worker_id: Optional integer or string ID of the worker (0-indexed).
         process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
         chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").

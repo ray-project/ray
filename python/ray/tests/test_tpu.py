@@ -2911,9 +2911,9 @@ def test_slice_placement_group_multi_slice_addresses(ray_tpu_cluster):
             {},
             {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
         ),
-        # URIs with schemes and DNS hostnames
+        # DNS hostnames with ports
         (
-            "http://node-0.cluster.local:8471, https://node-1.cluster.local:8471",
+            "node-0.cluster.local:8471, node-1.cluster.local:8471",
             0,
             {},
             {
