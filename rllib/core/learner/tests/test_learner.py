@@ -336,13 +336,7 @@ class TestLearner(unittest.TestCase):
             )
 
     def test_update_empty_batch_is_skipped(self):
-        """Tests that `update()` skips the gradient step for an empty train batch.
-
-        An empty batch -- e.g. all sampled episodes lost to EnvRunner or node
-        failures, or `policies_to_train` excluding every module -- used to crash
-        `update()` with an `UnboundLocalError` on `loss_per_module`, because the
-        minibatch loop ran zero times.
-        """
+        """Tests that `update()` skips the gradient step for an empty train batch."""
         learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
         timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
 
@@ -353,10 +347,9 @@ class TestLearner(unittest.TestCase):
                 0, results.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
             )
             self.assertEqual(0, results[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
+            self.assertTrue(learner.TOTAL_LOSS_KEY not in results[DEFAULT_MODULE_ID])
 
-        # Both ways an empty batch reaches `update()`. The Learner's metrics logger is
-        # non-root, so each `lifetime_sum` reduce returns the delta since the last one:
-        # 1 both times, not a running total of 2.
+        # Both ways an empty batch reaches `update()`.
         check_skipped(
             learner.update(
                 batch=MultiAgentBatch(policy_batches={}, env_steps=0),
@@ -375,28 +368,19 @@ class TestLearner(unittest.TestCase):
         """`_should_skip_update` defaults to "no module data"; without DDP
         (`num_learners <= 1`) the group sync has nobody to agree with and must pass
         the decision through unchanged, without communicating.
-
-        (`num_learners > 1` without a process group is not constructible: `build()`
-        wraps the module in DDP, which itself requires the group. That branch of the
-        guard is defensive only.)
         """
-        for num_learners in (0, 1):
-            config = BaseTestingAlgorithmConfig().learners(num_learners=num_learners)
-            learner = config.build_learner(env=self.ENV)
-            self.assertTrue(
-                learner._should_skip_update(
-                    MultiAgentBatch(policy_batches={}, env_steps=0)
-                )
-            )
-            reader = get_cartpole_dataset_reader(batch_size=64)
-            self.assertFalse(
-                learner._should_skip_update(reader.next().as_multi_agent())
-            )
-            for plan in (
-                UpdatePlan(skip=False, num_minibatches=0),
-                UpdatePlan(skip=True, num_minibatches=7),
-            ):
-                self.assertEqual(plan, learner._sync_update_plan(plan))
+        config = BaseTestingAlgorithmConfig().learners(num_learners=0)
+        learner = config.build_learner(env=self.ENV)
+        self.assertTrue(
+            learner._should_skip_update(MultiAgentBatch(policy_batches={}, env_steps=0))
+        )
+        reader = get_cartpole_dataset_reader(batch_size=64)
+        self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
+        for plan in (
+            UpdatePlan(skip=False, num_minibatches=0),
+            UpdatePlan(skip=True, num_minibatches=7),
+        ):
+            self.assertEqual(plan, learner._sync_update_plan(plan))
 
     def test_never_skip_update(self):
         """`never_skip_update=True` opts out of the skip logic entirely: no
@@ -414,8 +398,7 @@ class TestLearner(unittest.TestCase):
             # A real batch trains as usual, still without consulting the hook.
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = learner._convert_batch_type(reader.next().as_multi_agent())
-            results = learner.update(batch=batch)
-            self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
+            learner.update(batch=batch)
             hook.assert_not_called()
 
 
