@@ -33,6 +33,7 @@ ray_cc_library(
         "//src/ray/core_worker:core_worker_context",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_prod",
     ],
