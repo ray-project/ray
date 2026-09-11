@@ -30,7 +30,7 @@ const createCompletedJobTimeRange = (startTime: number, endTime: number) => {
   const duration = endTime - startTime;
   const padding = Math.max(0, (MIN_METRICS_RANGE_MS - duration) / 2);
 
-  return { from: Math.max(0, startTime - padding), to: endTime + padding };
+  return { from: startTime - padding, to: endTime + padding };
 };
 
 export const createJobMetricsTimeRange = (
@@ -44,7 +44,7 @@ export const createJobMetricsTimeRange = (
     return createCompletedJobTimeRange(startTime, endTime);
   }
   return {
-    from: Math.max(0, startTime - MIN_METRICS_RANGE_MS),
+    from: startTime - MIN_METRICS_RANGE_MS,
     to: "now",
   };
 };
