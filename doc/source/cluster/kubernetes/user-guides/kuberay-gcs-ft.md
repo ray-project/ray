@@ -324,6 +324,464 @@ For the old GCS fault tolerance configurations, including the `ray.io/ft-enabled
               key: password
     ```
 
+#### Connect to Redis over TLS
+
+Use the `rediss://` URI scheme in `redisAddress` to enable TLS. The
+`redisPassword` field configures Redis authentication; it doesn't enable TLS.
+
+Ray validates the Redis server certificate with hiredis. Set
+`RAY_REDIS_CA_CERT` in the head container to a PEM CA certificate or CA bundle
+that trusts the Redis server certificate. Set `RAY_REDIS_SERVER_NAME` to the DNS
+name in the server certificate when the Redis provider requires SNI.
+
+For a managed Redis service whose certificate chains to a public CA trusted by
+the Ray image, use the image's CA bundle:
+
+```yaml
+spec:
+  gcsFaultToleranceOptions:
+    redisAddress: "rediss://redis.example.com:6379"
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          env:
+          - name: RAY_REDIS_CA_CERT
+            value: /etc/ssl/certs/ca-certificates.crt
+          - name: RAY_REDIS_SERVER_NAME
+            value: redis.example.com
+```
+
+Verify the CA bundle path in custom Ray images. For a private CA, mount only its
+public certificate in the Ray head Pod. Keep the CA private key and Redis server
+private key outside the RayCluster manifest.
+
+##### End-to-end example with a private CA
+
+The following example creates a TLS-only Redis service and a RayCluster in the
+`ray-redis-tls` namespace. It requires the KubeRay operator and its CRDs,
+`kubectl`, and OpenSSL. The certificate bootstrap runs on your workstation; it
+doesn't put private keys in a ConfigMap or in the manifest.
+
+Run the complete bootstrap below in one Bash shell. It generates a demonstration
+CA, Redis server certificate, optional Ray client certificate, and random Redis
+password, creates the Kubernetes objects that hold them, and then removes the
+local working directory. The Redis certificate includes every in-cluster DNS
+name used by the example.
+
+```shell
+set -euo pipefail
+export REDIS_TLS_NAMESPACE=ray-redis-tls
+umask 077
+TLS_WORK_DIR="$(mktemp -d)"
+trap 'test -n "${TLS_WORK_DIR:-}" && rm -rf -- "$TLS_WORK_DIR"' EXIT
+
+kubectl create namespace "$REDIS_TLS_NAMESPACE" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 365 \
+  -subj "/CN=ray-redis-demo-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -keyout "$TLS_WORK_DIR/ca.key" \
+  -out "$TLS_WORK_DIR/ca.crt"
+
+openssl req -newkey rsa:2048 -nodes -sha256 \
+  -subj "/CN=redis.ray-redis-tls.svc.cluster.local" \
+  -keyout "$TLS_WORK_DIR/redis-server.key" \
+  -out "$TLS_WORK_DIR/redis-server.csr"
+
+cat > "$TLS_WORK_DIR/redis-server.ext" <<'EOF'
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = redis
+DNS.2 = redis.ray-redis-tls
+DNS.3 = redis.ray-redis-tls.svc
+DNS.4 = redis.ray-redis-tls.svc.cluster.local
+EOF
+
+openssl x509 -req -sha256 -days 365 \
+  -in "$TLS_WORK_DIR/redis-server.csr" \
+  -CA "$TLS_WORK_DIR/ca.crt" \
+  -CAkey "$TLS_WORK_DIR/ca.key" \
+  -CAcreateserial \
+  -extfile "$TLS_WORK_DIR/redis-server.ext" \
+  -out "$TLS_WORK_DIR/redis-server.crt"
+
+openssl req -newkey rsa:2048 -nodes -sha256 \
+  -subj "/CN=ray-gcs" \
+  -keyout "$TLS_WORK_DIR/ray-client.key" \
+  -out "$TLS_WORK_DIR/ray-client.csr"
+
+cat > "$TLS_WORK_DIR/ray-client.ext" <<'EOF'
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = clientAuth
+EOF
+
+openssl x509 -req -sha256 -days 365 \
+  -in "$TLS_WORK_DIR/ray-client.csr" \
+  -CA "$TLS_WORK_DIR/ca.crt" \
+  -CAkey "$TLS_WORK_DIR/ca.key" \
+  -CAcreateserial \
+  -extfile "$TLS_WORK_DIR/ray-client.ext" \
+  -out "$TLS_WORK_DIR/ray-client.crt"
+
+openssl verify \
+  -CAfile "$TLS_WORK_DIR/ca.crt" \
+  -verify_hostname redis.ray-redis-tls.svc.cluster.local \
+  "$TLS_WORK_DIR/redis-server.crt"
+openssl verify \
+  -CAfile "$TLS_WORK_DIR/ca.crt" \
+  -purpose sslclient \
+  "$TLS_WORK_DIR/ray-client.crt"
+
+REDIS_PASSWORD="$(openssl rand -hex 32)"
+printf '%s' "$REDIS_PASSWORD" > "$TLS_WORK_DIR/password"
+printf 'user default on >%s ~* &* +@all\n' "$REDIS_PASSWORD" \
+  > "$TLS_WORK_DIR/users.acl"
+unset REDIS_PASSWORD
+
+kubectl -n "$REDIS_TLS_NAMESPACE" create secret generic redis-server-tls \
+  --from-file=tls.crt="$TLS_WORK_DIR/redis-server.crt" \
+  --from-file=tls.key="$TLS_WORK_DIR/redis-server.key" \
+  --from-file=ca.crt="$TLS_WORK_DIR/ca.crt" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n "$REDIS_TLS_NAMESPACE" create secret generic redis-auth \
+  --from-file=password="$TLS_WORK_DIR/password" \
+  --from-file=users.acl="$TLS_WORK_DIR/users.acl" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n "$REDIS_TLS_NAMESPACE" create configmap redis-ca \
+  --from-file=ca.crt="$TLS_WORK_DIR/ca.crt" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n "$REDIS_TLS_NAMESPACE" create secret generic ray-redis-client-tls \
+  --from-file=tls.crt="$TLS_WORK_DIR/ray-client.crt" \
+  --from-file=tls.key="$TLS_WORK_DIR/ray-client.key" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+rm -rf -- "$TLS_WORK_DIR"
+trap - EXIT
+unset TLS_WORK_DIR
+```
+
+The bootstrap stores private material in Kubernetes Secrets and only the public
+CA certificate in a ConfigMap. Its `--dry-run=client` pipelines avoid writing
+Secret manifests to disk.
+
+Save the following manifest as `redis-tls-raycluster.yaml`, and apply it with
+`kubectl apply -f redis-tls-raycluster.yaml`. Redis disables its plaintext port,
+serves only TLS on port 6379, and reads its password from an ACL file. The
+RayCluster mounts the public CA certificate and uses the server's DNS name for
+certificate verification and SNI.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: ray-redis-tls
+spec:
+  selector:
+    app: redis-tls
+  ports:
+  - name: redis-tls
+    port: 6379
+    targetPort: redis-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: ray-redis-tls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-tls
+  template:
+    metadata:
+      labels:
+        app: redis-tls
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: redis
+        image: redis:7.4.0
+        args:
+        - redis-server
+        - --port
+        - "0"
+        - --tls-port
+        - "6379"
+        - --tls-cert-file
+        - /etc/redis-tls/tls.crt
+        - --tls-key-file
+        - /etc/redis-tls/tls.key
+        - --tls-ca-cert-file
+        - /etc/redis-tls/ca.crt
+        - --tls-auth-clients
+        - "no"
+        - --aclfile
+        - /etc/redis-auth/users.acl
+        - --appendonly
+        - "yes"
+        ports:
+        - name: redis-tls
+          containerPort: 6379
+        readinessProbe:
+          tcpSocket:
+            port: redis-tls
+          initialDelaySeconds: 2
+          periodSeconds: 2
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: redis-server-tls
+          mountPath: /etc/redis-tls
+          readOnly: true
+        - name: redis-auth
+          mountPath: /etc/redis-auth
+          readOnly: true
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-server-tls
+        secret:
+          secretName: redis-server-tls
+          defaultMode: 288  # 0440
+      - name: redis-auth
+        secret:
+          secretName: redis-auth
+          defaultMode: 288  # 0440
+      - name: redis-data
+        emptyDir: {}
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-redis-tls
+  namespace: ray-redis-tls
+spec:
+  rayVersion: "2.52.0"
+  gcsFaultToleranceOptions:
+    redisAddress: "rediss://redis.ray-redis-tls.svc.cluster.local:6379"
+    redisPassword:
+      valueFrom:
+        secretKeyRef:
+          name: redis-auth
+          key: password
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: "0"
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.52.0
+          env:
+          - name: RAY_REDIS_CA_CERT
+            value: /etc/redis-tls/ca.crt
+          - name: RAY_REDIS_SERVER_NAME
+            value: redis.ray-redis-tls.svc.cluster.local
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+          - name: redis-ca
+            mountPath: /etc/redis-tls
+            readOnly: true
+        volumes:
+        - name: redis-ca
+          configMap:
+            name: redis-ca
+            defaultMode: 292  # 0444
+  workerGroupSpecs:
+  - groupName: workers
+    replicas: 1
+    minReplicas: 1
+    maxReplicas: 1
+    rayStartParams: {}
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: rayproject/ray:2.52.0
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-tls-check
+  namespace: ray-redis-tls
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: redis-tls-check
+        image: redis:7.4.0
+        command:
+        - /bin/sh
+        - -c
+        args:
+        - |
+          set -eu
+          attempts=0
+          until [ "$(redis-cli -t 5 --tls \
+            --cacert /etc/redis-tls/ca.crt \
+            --sni redis.ray-redis-tls.svc.cluster.local \
+            -h redis.ray-redis-tls.svc.cluster.local \
+            -p 6379 PING 2>/dev/null)" = "PONG" ]; do
+            attempts=$((attempts + 1))
+            if [ "$attempts" -ge 60 ]; then
+              echo "TLS connection did not become ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          if redis-cli -t 5 \
+            -h redis.ray-redis-tls.svc.cluster.local \
+            -p 6379 PING >/tmp/plaintext-check.log 2>&1; then
+            echo "Plaintext Redis unexpectedly succeeded" >&2
+            cat /tmp/plaintext-check.log >&2
+            exit 1
+          fi
+          echo "TLS validation succeeded and plaintext Redis was rejected"
+        env:
+        - name: REDISCLI_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: redis-auth
+              key: password
+        volumeMounts:
+        - name: redis-ca
+          mountPath: /etc/redis-tls
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: redis-ca
+        configMap:
+          name: redis-ca
+          defaultMode: 292  # 0444
+```
+
+Verify the TLS check Job and Ray head:
+
+```shell
+kubectl -n "$REDIS_TLS_NAMESPACE" wait \
+  --for=condition=complete job/redis-tls-check --timeout=5m
+kubectl -n "$REDIS_TLS_NAMESPACE" logs job/redis-tls-check
+
+kubectl -n "$REDIS_TLS_NAMESPACE" wait \
+  --for=condition=Ready pod -l ray.io/node-type=head --timeout=5m
+HEAD_POD="$(kubectl -n "$REDIS_TLS_NAMESPACE" get pods \
+  -l ray.io/node-type=head \
+  -o jsonpath='{.items[0].metadata.name}')"
+kubectl -n "$REDIS_TLS_NAMESPACE" exec "$HEAD_POD" -- ray status
+```
+
+The check Job succeeds only if a CA-verified TLS connection works and a
+plaintext connection to the same Service fails. Because Redis runs with
+`--port 0` and exposes only `--tls-port 6379`, a ready Ray head and successful
+`ray status` show that the GCS connection also uses TLS.
+
+KubeRay creates the Redis cleanup Job from the head Pod template. The Job
+inherits `RAY_REDIS_CA_CERT`, `RAY_REDIS_SERVER_NAME`, and the CA volume mount,
+so it can use the same TLS trust configuration when deleting the external
+storage namespace.
+
+##### Require mutual TLS
+
+The example generates `ray-redis-client-tls` but doesn't use it by default. To
+require client authentication, change Redis's `--tls-auth-clients` value to
+`"yes"`. Then mount the client Secret in the Ray head container and point the
+Ray variables to the mounted certificate and private-key files:
+
+```yaml
+spec:
+  headGroupSpec:
+    template:
+      spec:
+        securityContext:
+          fsGroup: 100
+          fsGroupChangePolicy: OnRootMismatch
+        containers:
+        - name: ray-head
+          env:
+          - name: RAY_REDIS_CLIENT_CERT
+            value: /etc/redis-client-tls/tls.crt
+          - name: RAY_REDIS_CLIENT_KEY
+            value: /etc/redis-client-tls/tls.key
+          volumeMounts:
+          - name: redis-client-tls
+            mountPath: /etc/redis-client-tls
+            readOnly: true
+        volumes:
+        - name: redis-client-tls
+          secret:
+            secretName: ray-redis-client-tls
+            defaultMode: 288  # 0440
+```
+
+The `rayproject/ray:2.52.0` image uses group ID 100. The `fsGroup` setting makes
+the `0440` client key readable by Ray without making it world-readable. Use the
+Ray user's group ID instead when you use a custom image.
+
+Also mount `ray-redis-client-tls` in the check Job and add
+`--cert /etc/redis-client-tls/tls.crt` and
+`--key /etc/redis-client-tls/tls.key` to its TLS `redis-cli` command. KubeRay's
+cleanup Job inherits the client certificate variables and Secret mount from the
+head Pod template.
+
+This certificate generation is for a disposable example. In production, use
+your organization's certificate issuer and secret-management policy, enable
+Kubernetes Secret encryption at rest, rotate certificates and passwords, and
+never commit generated private keys.
+
 
 (kuberay-external-storage-namespace)=
 ### 3. Use an external storage namespace
