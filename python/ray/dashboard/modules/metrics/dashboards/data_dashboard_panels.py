@@ -479,7 +479,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
 BLOCK_TRANSFORM_TIME_PANEL = Panel(
     id=126,
     title="Block Transform Time",
-    description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. It excludes scheduling and the object store write: the Block Generation Time panel covers the block's full wall time, and the ray_data_block_serialization_time_s metric covers the object store write.",
+    description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. Block Generation Time measures the same blocks as wall clock over everything between them, so it is always the larger of the two and the gap is Ray Data's own per-block work rather than yours. Neither includes the object store write, which ray_data_block_serialization_time_s reports. Only map, read, and write operators report this; shuffles and aggregations don't.",
     unit="s",
     targets=[
         Target(

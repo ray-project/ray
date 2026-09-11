@@ -552,7 +552,10 @@ class MapTransformer:
                 its :class:`CustomOpStats`.
             clock: Where this task's timings accumulate. Keyword-only on
                 purpose: a caller that silently skipped it would report zero
-                rather than fail.
+                rather than fail. The shuffle and repartition tasks pass a
+                throwaway and never drain it -- they build their own
+                :class:`BlockExecStats` and have nowhere to put the result --
+                so those operators report no transform time at all.
 
         Returns:
             An iterable of the transformed output blocks.
