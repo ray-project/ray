@@ -126,6 +126,156 @@ class TestMinibatchUtils(unittest.TestCase):
                     check(iteration_counter, expected_iteration_counter)
                 print(f"iteration_counter: {iteration_counter}")
 
+    def test_minibatch_cyclic_iterator_num_minibatches(self):
+        """The iterator terminates purely by count. Without an explicit count it
+        derives the one that covers every module's data `num_epochs` times:
+        ceil(num_epochs * rows / minibatch_size), governed by the largest module.
+        The expected values below are independent of that formula."""
+
+        def mab(**rows_per_module):
+            return MultiAgentBatch(
+                {
+                    mid: SampleBatch({"obs": np.zeros((n, 2), dtype=np.float32)})
+                    for mid, n in rows_per_module.items()
+                },
+                env_steps=max(rows_per_module.values()),
+            )
+
+        cases = [  # (rows per module, minibatch_size, num_epochs, expected count)
+            (dict(p0=512), 128, 1, 4),
+            (dict(p0=96), 16, 2, 12),
+            (dict(p0=32), 16, 2, 4),
+            (dict(p0=100), 32, 3, 10),  # not a multiple -> ceil
+            (dict(p0=32), 128, 1, 1),  # batch smaller than a minibatch -> 1
+            (dict(p0=128, p1=64), 32, 2, 8),  # the largest module governs
+        ]
+        for rows, minibatch_size, num_epochs, expected in cases:
+            batch = mab(**rows)
+            self.assertEqual(
+                expected,
+                MiniBatchCyclicIterator.num_minibatches(
+                    batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+                ),
+                (rows, minibatch_size, num_epochs),
+            )
+            minibatches = list(
+                MiniBatchCyclicIterator(
+                    batch,
+                    num_epochs=num_epochs,
+                    minibatch_size=minibatch_size,
+                    shuffle_batch_per_epoch=False,
+                )
+            )
+            self.assertEqual(expected, len(minibatches), (rows, minibatch_size))
+            # Every minibatch is full, and the total covers the largest module at
+            # least `num_epochs` times but not a whole extra minibatch more.
+            for minibatch in minibatches:
+                for mid in rows:
+                    self.assertEqual(minibatch_size, len(minibatch[mid]))
+            n_max = max(rows.values())
+            self.assertGreaterEqual(expected * minibatch_size, num_epochs * n_max)
+            self.assertLess((expected - 1) * minibatch_size, num_epochs * n_max)
+
+        # An explicit count wins over the derived one.
+        self.assertEqual(
+            3,
+            len(
+                list(
+                    MiniBatchCyclicIterator(
+                        mab(p0=512),
+                        num_epochs=1,
+                        minibatch_size=128,
+                        shuffle_batch_per_epoch=False,
+                        num_total_minibatches=3,
+                    )
+                )
+            ),
+        )
+
+    def test_minibatch_coverage_across_unequal_shards(self):
+        """Proves no timestep goes untrained, however lopsided the Learners' shards.
+
+        Learners in a group step through the same number of minibatches, so they have
+        to agree on one count. RLlib takes the largest of their proposals, which is
+        what guarantees that every Learner completes its `num_epochs` passes over its
+        own shard. The average of the proposals would not: a Learner holding much
+        more data than its peers then walks a prefix of its shard and never reaches
+        the end -- the same rows on every update, since the iterator starts over at
+        row 0 each time. The rows it never reaches are the tail of its shard, which is
+        where the ends of the longest trajectories sit.
+
+        This test assumes the `max` rule; `TestLearnerGroupUpdatePlan` is the half
+        that pins a real group of Learners to it.
+        """
+
+        def shard(num_rows):
+            """A shard whose rows carry their own index, so visits can be counted."""
+            return MultiAgentBatch(
+                {"p0": SampleBatch({"idx": np.arange(num_rows, dtype=np.int64)})},
+                env_steps=num_rows,
+            )
+
+        def visits(num_rows, num_total_minibatches, minibatch_size, num_epochs):
+            """How often each row of a `num_rows`-row shard lands in a minibatch."""
+            counts = np.zeros(num_rows, dtype=np.int64)
+            for minibatch in MiniBatchCyclicIterator(
+                shard(num_rows),
+                num_epochs=num_epochs,
+                minibatch_size=minibatch_size,
+                shuffle_batch_per_epoch=False,
+                num_total_minibatches=num_total_minibatches,
+            ):
+                np.add.at(counts, minibatch["p0"]["idx"], 1)
+            return counts
+
+        scenarios = [
+            # (num_epochs, minibatch_size, shard sizes, the Learners' own counts)
+            # Several epochs over moderately uneven shards.
+            (2, 32, [256, 96, 64], [16, 6, 4]),
+            # A single epoch, and one Learner holding far longer trajectories than
+            # its peers.
+            (1, 32, [1024, 64, 64], [32, 2, 2]),
+        ]
+        for num_epochs, minibatch_size, shard_sizes, expected_proposals in scenarios:
+            proposals = [
+                MiniBatchCyclicIterator.num_minibatches(
+                    shard(n), minibatch_size=minibatch_size, num_epochs=num_epochs
+                )
+                for n in shard_sizes
+            ]
+            self.assertEqual(expected_proposals, proposals)
+
+            agreed = max(proposals)
+            for num_rows in shard_sizes:
+                counts = visits(num_rows, agreed, minibatch_size, num_epochs)
+                # Every Learner draws the same number of rows -- lockstep, in data
+                # terms -- spread as evenly over its shard as cycling allows, ...
+                self.assertEqual(agreed * minibatch_size, counts.sum())
+                self.assertLessEqual(counts.max() - counts.min(), 1)
+                # ... so the visits per row follow from the shard's size alone, ...
+                self.assertEqual(agreed * minibatch_size // num_rows, counts.min())
+                # ... every row is trained on at least `num_epochs` times, ...
+                self.assertGreaterEqual(counts.min(), num_epochs)
+                # ... and in particular the shard's last timestep is trained on.
+                self.assertGreater(counts[-1], 0)
+
+            # Averaging the proposals instead would leave the largest shard short of
+            # the epochs it was configured for.
+            averaged = sum(proposals) // len(proposals)
+            counts = visits(max(shard_sizes), averaged, minibatch_size, num_epochs)
+            self.assertLess(counts.min(), num_epochs)
+
+        # In the second scenario that shortfall is data never trained on at all. The
+        # Learner with the long trajectories proposed 32 minibatches; averaging the
+        # group's proposals (32, 2, 2) gives 12, so it draws 12 x 32 = 384 of its
+        # 1024 timesteps and the remaining 640 -- its tail, ending in the final
+        # timestep of its longest trajectory -- are never trained on. Being a prefix
+        # walk from row 0, it is the same 640 on every update.
+        counts = visits(1024, num_total_minibatches=12, minibatch_size=32, num_epochs=1)
+        self.assertEqual(640, (counts == 0).sum())
+        self.assertEqual(0, counts[-1])
+        self.assertTrue(np.all(counts[:384] == 1))
+
     def test_shard_episodes_iterator(self):
         class DummyEpisode:
             def __init__(self, length):
