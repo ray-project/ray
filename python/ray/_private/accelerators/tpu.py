@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
-GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
-GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
-GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
-GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
-TPU_WORKER_ID_ENV_VAR = GKE_TPU_WORKER_ID_ENV_VAR
+# Environment variables set by GKE / Cloud TPU VM platforms.
+TPU_NAME_ENV_VAR = "TPU_NAME"
+TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
+TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 
 # Environment variables for LibTPU / JAX mesh configuration.
 TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
@@ -885,8 +885,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             v4-16.
 
         """
-        # Start with GKE-based check
-        accelerator_type = os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+        accelerator_type = os.getenv(TPU_ACCELERATOR_TYPE_ENV_VAR, "")
         if not accelerator_type:
             # GCE-based VM check
             accelerator_type = _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
@@ -913,8 +912,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         """
         try:
-            # Start with GKE-based check
-            tpu_name = os.getenv(GKE_TPU_NAME_ENV_VAR, None)
+            tpu_name = os.getenv(TPU_NAME_ENV_VAR, None)
             if not tpu_name:
                 # GCE-based VM check
                 tpu_name = _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
@@ -997,8 +995,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             if hardware_id is not None:
                 return hardware_id
 
-            # Start with GKE-based check
-            worker_id = os.getenv(GKE_TPU_WORKER_ID_ENV_VAR, None)
+            worker_id = os.getenv(TPU_WORKER_ID_ENV_VAR, None)
             if not worker_id:
                 # GCE-based VM check
                 worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
@@ -1031,8 +1028,7 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_tpu_topology() -> Optional[str]:
         try:
-            # Attempt GKE based lookup first
-            if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
+            if topology := os.environ.get(TPU_TOPOLOGY_ENV_VAR):
                 return topology.strip().lower()
             # GCE-based VM check using TPU env string.
             tpu_env = _get_tpu_metadata(key=GCE_TPU_ENV_KEY)
