@@ -1765,7 +1765,7 @@ pylance==4.0.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/py313/data-requirements.txt
-pymongo==4.3.2
+pymongo==4.6.3
     # via -r python/requirements/py313/test-requirements.txt
 pymoo==0.6.1.6
     # via botorch
