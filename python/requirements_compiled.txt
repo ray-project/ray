@@ -1345,8 +1345,6 @@ numpy==2.2.6
     #   xgboost
     #   zarr
     #   zoopt
-nvidia-ml-py==13.610.43
-    # via deepspeed
 nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
