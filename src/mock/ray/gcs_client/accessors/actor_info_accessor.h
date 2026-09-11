@@ -63,6 +63,11 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
                           int64_t = -1) override {
     async_register_actor_callback_ = callback;
   }
+  void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                               const rpc::StatusCallback &callback,
+                               int64_t = -1) override {
+    async_register_actor_batch_callback_ = callback;
+  }
   void AsyncRestartActorForLineageReconstruction(const ActorID &,
                                                  uint64_t,
                                                  const rpc::StatusCallback &,
@@ -134,6 +139,7 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
   // Callbacks for AsyncCreateActor and AsyncRegisterActor
   rpc::ClientCallback<rpc::CreateActorReply> async_create_actor_callback_;
   rpc::StatusCallback async_register_actor_callback_;
+  rpc::StatusCallback async_register_actor_batch_callback_;
   Status sync_register_actor_status_ = Status::OK();
 };
 

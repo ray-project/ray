@@ -155,6 +155,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string &extension_data,
             c_string call_site,
             CActorID *actor_id)
+        void EnterActorBatch()
+        void ExitActorBatch()
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)

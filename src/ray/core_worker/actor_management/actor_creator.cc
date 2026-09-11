@@ -49,6 +49,38 @@ void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
   });
 }
 
+void ActorCreator::AsyncRegisterActorBatch(
+    const std::vector<TaskSpecification> &task_specs, rpc::StatusCallback callback) {
+  if (task_specs.empty()) {
+    if (callback != nullptr) {
+      callback(Status::OK());
+    }
+    return;
+  }
+  for (const auto &task_spec : task_specs) {
+    auto actor_id = task_spec.ActorCreationId();
+    (*registering_actors_)[actor_id] = {};
+  }
+  actor_client_.AsyncRegisterActorBatch(
+      task_specs, [task_specs, callback = std::move(callback), this](Status status) {
+        for (const auto &task_spec : task_specs) {
+          auto actor_id = task_spec.ActorCreationId();
+          std::vector<rpc::StatusCallback> cbs;
+          auto it = registering_actors_->find(actor_id);
+          if (it != registering_actors_->end()) {
+            cbs = std::move(it->second);
+            registering_actors_->erase(it);
+          }
+          for (auto &cb : cbs) {
+            cb(status);
+          }
+        }
+        if (callback != nullptr) {
+          callback(status);
+        }
+      });
+}
+
 void ActorCreator::AsyncRestartActorForLineageReconstruction(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstructions,
