@@ -84,7 +84,8 @@ class GcsServerTest : public ::testing::Test {
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config, fake_metrics_, io_service_);
+    gcs_server_ = std::make_unique<gcs::GcsServer>(
+        config, fake_metrics_, io_service_, metric_context_);
     gcs_server_->Start();
 
     StartMainIOServiceThread();
@@ -304,6 +305,7 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
+  boost::asio::io_context metric_context_;
 
   // Client-related fields.
   std::unique_ptr<rpc::GcsRpcClient> client_;

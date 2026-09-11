@@ -32,10 +32,12 @@ class ObservableStoreClientTest : public StoreClientTestBase {
         std::make_unique<InMemoryStoreClient>(),
         fake_storage_operation_latency_in_ms_histogram_,
         fake_storage_operation_count_counter_,
-        clock_);
+        clock_,
+        metric_context_);
   }
 
   void TestMetrics() override {
+    metric_context_.run();
     auto counter_tag_to_value = fake_storage_operation_count_counter_.GetTagToValue();
     // 3 operations: Put, Get, Delete
     // Get operations include both Get() and GetEmpty() calls, so they're grouped together
@@ -59,6 +61,8 @@ class ObservableStoreClientTest : public StoreClientTestBase {
                                    "5000 from GetEmpty())";
       }
     }
+
+    metric_context_.run();
 
     auto latency_tag_to_value =
         fake_storage_operation_latency_in_ms_histogram_.GetTagToValue();

@@ -85,6 +85,8 @@ std::string WriteSpilledObject(const std::string &data,
 
 class ObjectManagerTest : public ::testing::Test {
  protected:
+  boost::asio::io_context metric_context_;
+
   ObjectManagerTest()
       : io_work_(boost::asio::make_work_guard(io_context_.get_executor())),
         rpc_work_(boost::asio::make_work_guard(rpc_context_.get_executor())) {
@@ -129,7 +131,8 @@ class ObjectManagerTest : public ::testing::Test {
           return std::make_shared<ray::rpc::FakeObjectManagerClient>(
               address, port, client_call_manager);
         },
-        rpc_context_);
+        rpc_context_,
+        metric_context_);
   }
 
   void InstallPullPlaceholder(const ObjectID &object_id, int64_t size) {

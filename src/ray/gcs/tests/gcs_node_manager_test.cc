@@ -57,7 +57,8 @@ class GcsNodeManagerTest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_shared<gcs::InMemoryStoreClient>());
-    io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
+    io_context_ = std::make_unique<instrumented_io_context>(
+        true, false, "GcsNodeManagerTest", metric_context_);
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
         std::make_unique<pubsub::FakePublisher>());
@@ -68,6 +69,7 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
+  boost::asio::io_context metric_context_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   Clock clock_;
