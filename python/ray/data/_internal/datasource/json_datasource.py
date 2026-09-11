@@ -209,8 +209,8 @@ class PandasJSONDatasource(FileBasedDatasource):
         if not f.seekable():
             return self._DEFAULT_CHUNK_SIZE
 
-        # ``_read_stream`` can be recreated on the same file handle when
-        # ``FileBasedDatasource`` retries a transient read error.
+        # Defensive: `FileBasedDatasource` opens a fresh handle for every read
+        # attempt, but a caller may still hand us an advanced one.
         f.seek(0)
 
         if self._target_output_size_bytes is None:
@@ -235,8 +235,8 @@ class PandasJSONDatasource(FileBasedDatasource):
 
             return chunksize
         finally:
-            # Reset file pointer to the beginning for the actual read and for any
-            # subsequent retry that reuses the same file handle.
+            # Sampling consumed part of the file. Rewind so the actual read in
+            # `_read_stream` starts at the first row.
             f.seek(0)
 
     def _open_input_source(

@@ -23,6 +23,8 @@ from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+WAIT_TIMEOUT_S = 60
+
 
 def _get_running_replicas(deployment_id: DeploymentID):
     """Return RUNNING replicas for a deployment from controller state."""
@@ -64,8 +66,7 @@ class TestGangScheduling:
 
         handle = serve.run(GangDeployment.bind(), name="gang_app_success")
         wait_for_condition(
-            check_apps_running,
-            apps=["gang_app_success"],
+            check_apps_running, apps=["gang_app_success"], timeout=WAIT_TIMEOUT_S
         )
 
         # Verify all replicas are running and responding
@@ -98,8 +99,7 @@ class TestGangScheduling:
 
         handle = serve.run(app, name="gang_app_options")
         wait_for_condition(
-            check_apps_running,
-            apps=["gang_app_options"],
+            check_apps_running, apps=["gang_app_options"], timeout=WAIT_TIMEOUT_S
         )
 
         # Verify all replicas are running and responding
@@ -153,7 +153,9 @@ class TestGangScheduling:
             except KeyError:
                 return False
 
-        wait_for_condition(check_replicas_running, expected_count=8, timeout=60)
+        wait_for_condition(
+            check_replicas_running, expected_count=8, timeout=WAIT_TIMEOUT_S
+        )
 
         # Verify the running replicas can serve traffic.
         results = set()
@@ -173,7 +175,7 @@ class TestGangScheduling:
         wait_for_condition(
             check_apps_running,
             apps=["gang_partial_app"],
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         # Verify all 12 replicas are running across 3 nodes (controller state,
@@ -228,7 +230,9 @@ class TestGangScheduling:
             except KeyError:
                 return False
 
-        wait_for_condition(check_replicas_running, expected_count=8, timeout=60)
+        wait_for_condition(
+            check_replicas_running, expected_count=8, timeout=WAIT_TIMEOUT_S
+        )
 
         # Deployment should still be DEPLOYING (not RUNNING, not DEPLOY_FAILED).
         app_status = serve.status().applications["atomic_gang_app"]
@@ -245,7 +249,9 @@ class TestGangScheduling:
         cluster.wait_for_nodes()
 
         # The deployment should become RUNNING with all 12 replicas.
-        wait_for_condition(check_apps_running, apps=["atomic_gang_app"], timeout=60)
+        wait_for_condition(
+            check_apps_running, apps=["atomic_gang_app"], timeout=WAIT_TIMEOUT_S
+        )
 
         # All 12 replicas should now serve traffic.
         app_status = serve.status().applications["atomic_gang_app"]
@@ -282,7 +288,9 @@ class TestGangScheduling:
         ).bind()
 
         handle = serve.run(app, name="gang_pack_app")
-        wait_for_condition(check_apps_running, apps=["gang_pack_app"])
+        wait_for_condition(
+            check_apps_running, apps=["gang_pack_app"], timeout=WAIT_TIMEOUT_S
+        )
 
         # Query multiple times to hit all replicas and collect node IDs.
         # Intentionally handle-based: the assertion is that all replicas share
@@ -326,7 +334,9 @@ class TestGangScheduling:
         ).bind()
 
         serve.run(app, name="gang_spread_app")
-        wait_for_condition(check_apps_running, apps=["gang_spread_app"])
+        wait_for_condition(
+            check_apps_running, apps=["gang_spread_app"], timeout=WAIT_TIMEOUT_S
+        )
 
         # With SPREAD strategy, 2 replicas should be on 2 different nodes.
         dep_id = DeploymentID(name="SpreadDeployment", app_name="gang_spread_app")
@@ -357,7 +367,9 @@ class TestGangScheduling:
         ).bind()
 
         serve.run(app, name="gang_context_app")
-        wait_for_condition(check_apps_running, apps=["gang_context_app"])
+        wait_for_condition(
+            check_apps_running, apps=["gang_context_app"], timeout=WAIT_TIMEOUT_S
+        )
 
         # Read gang context from controller replica state instead of handle
         # routing (which may only hit local replicas under locality-aware
@@ -426,14 +438,14 @@ class TestGangScheduling:
         pg_name_prefix = f"{GANG_PG_NAME_PREFIX}{app_name}_{deployment_name}_"
 
         serve.run(GangDeleteCleanupDeployment.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         wait_for_condition(
             lambda: any(
                 name.startswith(pg_name_prefix)
                 for name in get_all_live_placement_group_names()
             ),
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         serve.delete(app_name)
@@ -442,7 +454,7 @@ class TestGangScheduling:
                 name.startswith(pg_name_prefix)
                 for name in get_all_live_placement_group_names()
             ),
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
         serve.shutdown()
 
@@ -478,7 +490,7 @@ class TestGangScheduling:
 
         app_name = "multi_gang_app"
         serve.run(GangA.bind(GangB.bind()), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         app_status = serve.status().applications[app_name]
         assert app_status.deployments["GangA"].replica_states.get("RUNNING", 0) == 4
@@ -571,8 +583,7 @@ class TestGangResourceReservation:
         app = GangDeployment.bind()
         handle = serve.run(app, name="gang_reservation_app")
         wait_for_condition(
-            check_apps_running,
-            apps=["gang_reservation_app"],
+            check_apps_running, apps=["gang_reservation_app"], timeout=WAIT_TIMEOUT_S
         )
 
         # Intentionally handle-based: each response is a self-contained
@@ -642,8 +653,7 @@ class TestGangResourceReservation:
         app = LabeledGangDeployment.bind()
         handle = serve.run(app, name="label_selector_app")
         wait_for_condition(
-            check_apps_running,
-            apps=["label_selector_app"],
+            check_apps_running, apps=["label_selector_app"], timeout=WAIT_TIMEOUT_S
         )
 
         labeled_node_id = None
@@ -845,7 +855,7 @@ class TestGangFailureRecovery:
                 .replica_states.get("RUNNING", 0)
                 == 2
             ),
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         # The 2 running replicas must belong to the SAME gang,
@@ -866,7 +876,7 @@ class TestGangFailureRecovery:
         ray.get(recovery_signal.send.remote())
 
         # After retry, all 4 replicas should be RUNNING.
-        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
         app_status = serve.status().applications[app_name]
         dep_status = app_status.deployments[deployment_name]
         assert dep_status.replica_states.get("RUNNING", 0) == 4
@@ -910,7 +920,7 @@ class TestGangFailureRecovery:
         app_name = "gang_health_failure_app"
         deployment_name = "HealthFailureDeployment"
         handle = serve.run(HealthFailureDeployment.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         # Discover all 4 replica contexts. Intentionally handle-based: this is
         # a single-node cluster (ray.init(num_cpus=1)), so every replica is
@@ -963,7 +973,7 @@ class TestGangFailureRecovery:
             )
 
         wait_for_condition(check_target_gang_restarted, timeout=90)
-        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
         serve.delete(app_name)
         serve.shutdown()
 
@@ -1016,7 +1026,7 @@ class TestGangChildSpawnPlacementGroup:
 
         app_name = "gang_child_app"
         handle = serve.run(GangWithChild.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         for _ in range(20):
             result = handle.test_child_in_pg.remote().result()
@@ -1060,7 +1070,7 @@ class TestGangChildSpawnPlacementGroup:
 
         app_name = "gang_bundles_child_app"
         handle = serve.run(GangWithBundlesAndChild.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         # Verify resource limits are enforced within the gang PG bundle slice.
         for _ in range(4):
@@ -1103,7 +1113,7 @@ class TestGangChildSpawnPlacementGroup:
 
         app_name = "gang_escaped_child_app"
         handle = serve.run(GangWithEscapedChild.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         for _ in range(20):
             result = handle.get_child_outside_pg.remote().result()
@@ -1156,7 +1166,7 @@ class TestGangControllerRecovery:
         serve.run(Gang1.bind(), name="gang_app1", route_prefix="/gang1")
         serve.run(Gang2.bind(), name="gang_app2", route_prefix="/gang2")
         serve.run(NoGang.bind(), name="no_gang_app", route_prefix="/no_gang")
-        wait_for_condition(check_apps_running, apps=app_names)
+        wait_for_condition(check_apps_running, apps=app_names, timeout=WAIT_TIMEOUT_S)
 
         gang_deployment_ids = [
             DeploymentID(name="Gang1", app_name="gang_app1"),
@@ -1185,7 +1195,7 @@ class TestGangControllerRecovery:
 
         # Kill the controller and wait for recovery of all apps
         ray.kill(controller, no_restart=False)
-        wait_for_condition(check_apps_running, apps=app_names, timeout=60)
+        wait_for_condition(check_apps_running, apps=app_names, timeout=WAIT_TIMEOUT_S)
 
         new_controller = serve.context._get_global_client()._controller
 
@@ -1212,7 +1222,7 @@ class TestGangControllerRecovery:
 
             return True
 
-        wait_for_condition(all_states_recovered, timeout=60)
+        wait_for_condition(all_states_recovered, timeout=WAIT_TIMEOUT_S)
 
         # Verify application and deployment statuses after recovery
         status = serve.status()
@@ -1252,7 +1262,7 @@ class TestGangControllerRecovery:
         app_name = "gang_crash_app"
         dep_id = DeploymentID(name="GangApp", app_name=app_name)
         serve.run(GangApp.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         controller = serve.context._get_global_client()._controller
 
@@ -1296,8 +1306,8 @@ class TestGangControllerRecovery:
             except Exception:
                 return False
 
-        wait_for_condition(controller_restarted, timeout=60)
-        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        wait_for_condition(controller_restarted, timeout=WAIT_TIMEOUT_S)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         new_controller = serve.context._get_global_client()._controller
 
@@ -1316,7 +1326,7 @@ class TestGangControllerRecovery:
                 r.gang_context is not None for r in running
             )
 
-        wait_for_condition(recovered_without_victims, timeout=60)
+        wait_for_condition(recovered_without_victims, timeout=WAIT_TIMEOUT_S)
 
         serve.delete(app_name)
         serve.shutdown()
@@ -1361,7 +1371,7 @@ class TestGangNodeFailure:
         app_name = "node_kill_app"
         dep_id = DeploymentID(name="GangApp", app_name=app_name)
         handle = serve.run(GangApp.bind(), name=app_name)
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         controller = serve.context._get_global_client()._controller
         replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
@@ -1443,7 +1453,7 @@ class TestGangNodeFailure:
                 return False
             return True
 
-        wait_for_condition(fully_recovered, timeout=60)
+        wait_for_condition(fully_recovered, timeout=WAIT_TIMEOUT_S)
         recovered.set()
 
         # Wait for at least one post-recovery success
@@ -1462,7 +1472,7 @@ class TestGangNodeFailure:
         assert len(errors_after_recovery) == 0
         assert len(successes) > 0
 
-        wait_for_condition(check_apps_running, apps=[app_name])
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
 
         serve.delete(app_name)
         serve.shutdown()
@@ -1503,7 +1513,7 @@ class TestGangScaling:
 
         D = D.options(_internal=True, version="v1")
         handle = serve.run(D.bind(), name="app")
-        wait_for_condition(check_apps_running, apps=["app"])
+        wait_for_condition(check_apps_running, apps=["app"], timeout=WAIT_TIMEOUT_S)
 
         initial_num_gangs = initial_num_replicas // GANG_SIZE
         deployment_id = DeploymentID(name="D", app_name="app")
@@ -1533,7 +1543,7 @@ class TestGangScaling:
         handle = serve.run(
             D.options(num_replicas=final_num_replicas).bind(), name="app"
         )
-        wait_for_condition(check_apps_running, apps=["app"])
+        wait_for_condition(check_apps_running, apps=["app"], timeout=WAIT_TIMEOUT_S)
 
         deployment = list(serve.status().applications["app"].deployments.values())[0]
         assert deployment.replica_states.get("RUNNING", 0) == final_num_replicas
@@ -1586,7 +1596,7 @@ class TestGangRollingUpdate:
                 return "v1"
 
         handle = serve.run(V1.bind(), name="app")
-        wait_for_condition(check_apps_running, apps=["app"])
+        wait_for_condition(check_apps_running, apps=["app"], timeout=WAIT_TIMEOUT_S)
         assert handle.remote().result() == "v1"
 
         client = _get_global_client()
@@ -1672,7 +1682,7 @@ class TestGangRollingUpdate:
             }
             return current_gang_ids and not (current_gang_ids & initial_gang_ids)
 
-        wait_for_condition(update_complete, timeout=60)
+        wait_for_condition(update_complete, timeout=WAIT_TIMEOUT_S)
 
         # Confirm all replicas serve the new version.
         for _ in range(20):
@@ -1715,7 +1725,9 @@ class TestGangAutoscaling:
                 return os.getpid()
 
         handle = serve.run(GangAutoscale.bind(), name="gang_autoscale_app")
-        wait_for_condition(check_apps_running, apps=["gang_autoscale_app"])
+        wait_for_condition(
+            check_apps_running, apps=["gang_autoscale_app"], timeout=WAIT_TIMEOUT_S
+        )
 
         deployment_id = DeploymentID(
             name="GangAutoscale", app_name="gang_autoscale_app"
@@ -1729,7 +1741,7 @@ class TestGangAutoscaling:
             assert replicas.count() == 0
             return True
 
-        wait_for_condition(no_replicas)
+        wait_for_condition(no_replicas, timeout=WAIT_TIMEOUT_S)
 
         # Send enough requests to trigger upscaling.
         results = [handle.remote() for _ in range(20)]
@@ -1740,7 +1752,7 @@ class TestGangAutoscaling:
             name="GangAutoscale",
             target=8,
             app_name="gang_autoscale_app",
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
             use_controller=True,
         )
 
@@ -1759,7 +1771,7 @@ class TestGangAutoscaling:
             res.result()
 
         # As the queue is drained, all gang members should stop.
-        wait_for_condition(no_replicas, timeout=60)
+        wait_for_condition(no_replicas, timeout=WAIT_TIMEOUT_S)
 
         # A second burst must recreate all four gangs from zero.
         results = [handle.remote() for _ in range(20)]
@@ -1768,7 +1780,7 @@ class TestGangAutoscaling:
             name="GangAutoscale",
             target=8,
             app_name="gang_autoscale_app",
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
             use_controller=True,
         )
 
@@ -1810,13 +1822,16 @@ class TestGangAutoscaling:
                 return os.getpid()
 
         handle = serve.run(UnalignedUpscale.bind(), name="unaligned_upscale_app")
-        wait_for_condition(check_apps_running, apps=["unaligned_upscale_app"])
+        wait_for_condition(
+            check_apps_running, apps=["unaligned_upscale_app"], timeout=WAIT_TIMEOUT_S
+        )
         wait_for_condition(
             check_num_replicas_eq,
             name="UnalignedUpscale",
             target=3,
             app_name="unaligned_upscale_app",
             use_controller=True,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         # Send 9 blocking requests. With target_ongoing_requests=2:
@@ -1834,7 +1849,7 @@ class TestGangAutoscaling:
             assert running == 6
             return True
 
-        wait_for_condition(upscaled_and_aligned, timeout=60)
+        wait_for_condition(upscaled_and_aligned, timeout=WAIT_TIMEOUT_S)
 
         # Release all requests so the queue drains.
         signal.send.remote()
@@ -1847,7 +1862,7 @@ class TestGangAutoscaling:
             name="UnalignedUpscale",
             target=3,
             app_name="unaligned_upscale_app",
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
             use_controller=True,
         )
 
@@ -1888,14 +1903,16 @@ class TestGangAutoscaling:
                 return os.getpid()
 
         handle = serve.run(UnalignedDownscale.bind(), name="unaligned_downscale_app")
-        wait_for_condition(check_apps_running, apps=["unaligned_downscale_app"])
+        wait_for_condition(
+            check_apps_running, apps=["unaligned_downscale_app"], timeout=WAIT_TIMEOUT_S
+        )
         wait_for_condition(
             check_num_replicas_eq,
             name="UnalignedDownscale",
             target=9,
             app_name="unaligned_downscale_app",
             use_controller=True,
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
 
         # Send 10 blocking requests. With target_ongoing_requests=2:
@@ -1914,7 +1931,7 @@ class TestGangAutoscaling:
             assert running == 6
             return True
 
-        wait_for_condition(downscaled_and_aligned, timeout=60)
+        wait_for_condition(downscaled_and_aligned, timeout=WAIT_TIMEOUT_S)
 
         # Release all requests so the queue drains.
         signal.send.remote()
@@ -1953,7 +1970,7 @@ class TestGangMigration:
 
         D = D.options(_internal=True, version="v1")
         serve.run(D.bind(), name="app")
-        wait_for_condition(check_apps_running, apps=["app"])
+        wait_for_condition(check_apps_running, apps=["app"], timeout=WAIT_TIMEOUT_S)
 
         deployment_id = DeploymentID(name="D", app_name="app")
         running = _get_running_replicas(deployment_id)
@@ -1978,7 +1995,7 @@ class TestGangMigration:
             assert len(gang_ids) == 2
             return True
 
-        wait_for_condition(check_complete_gangs, timeout=60)
+        wait_for_condition(check_complete_gangs, timeout=WAIT_TIMEOUT_S)
 
         serve.delete("app")
         serve.shutdown()
