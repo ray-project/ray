@@ -5,7 +5,7 @@ import time
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set
+from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set, Tuple
 
 import aiohttp.web
 import grpc
@@ -605,7 +605,7 @@ class NodeHead(SubprocessModule):
                 for (
                     actor_id,
                     updated_actor_table,
-                ) in updated_actor_table_entries.items():
+                ) in updated_actor_table_entries:
                     self._process_updated_actor_table(actor_id, updated_actor_table)
 
                 # TODO emit metrics
@@ -619,23 +619,24 @@ class NodeHead(SubprocessModule):
 
     async def _poll_updated_actor_table_data(
         self, actor_channel_subscriber: GcsAioActorSubscriber
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> List[Tuple[str, Dict[str, Any]]]:
         # TODO make batch size configurable
         batch = await actor_channel_subscriber.poll(batch_size=200)
 
         # NOTE: We're offloading conversion to a TPE to make sure we're not
         #       blocking the event-loop for prolonged period of time irrespective
         #       of the batch size
-        def _convert_to_dict():
-            return {
-                actor_id_bytes.hex(): _actor_table_data_to_dict(
-                    actor_table_data_message
+        def _convert_to_list():
+            return [
+                (
+                    actor_id_bytes.hex(),
+                    _actor_table_data_to_dict(actor_table_data_message),
                 )
                 for actor_id_bytes, actor_table_data_message in batch
                 if actor_id_bytes is not None
-            }
+            ]
 
-        return await self._loop.run_in_executor(self._actor_executor, _convert_to_dict)
+        return await self._loop.run_in_executor(self._actor_executor, _convert_to_list)
 
     def _process_updated_actor_table(
         self, actor_id: str, actor_table_data: Dict[str, Any]
