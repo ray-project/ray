@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import uuid as builtin_uuid
 from abc import ABC, abstractmethod
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
@@ -115,6 +116,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, UnnestExpr):
+            return self.visit_unnest(expr)
         elif isinstance(expr, MonotonicallyIncreasingIdExpr):
             return self.visit_monotonically_increasing_id(expr)
         elif isinstance(expr, RandomExpr):
@@ -151,6 +154,22 @@ class _ExprVisitor(ABC, Generic[T]):
     @abstractmethod
     def visit_star(self, expr: "StarExpr") -> T:
         pass
+
+    def visit_unnest(self, expr: "UnnestExpr") -> T:
+        """Handle an ``UnnestExpr``.
+
+        Concrete, unlike the other ``visit_*`` methods: ``UnnestExpr`` is a
+        plan-time marker that ``Project.__post_init__`` desugars away, so no
+        visitor running during planning or evaluation can encounter one. Only
+        the visitors reachable from user code before ``with_columns`` override
+        this; the rest inherit an error that names the real constraint instead
+        of the generic "unsupported expression type" from ``visit``.
+        """
+        raise TypeError(
+            "unnest() expands to multiple columns, so it has no single value "
+            "to evaluate. Pass it directly to `with_columns`; it cannot be "
+            "composed into another expression."
+        )
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
@@ -301,6 +320,9 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         return False
 
     def visit_star(self, expr: "StarExpr") -> bool:
+        return False
+
+    def visit_unnest(self, expr: "UnnestExpr") -> bool:
         return False
 
     def visit_monotonically_increasing_id(
@@ -967,6 +989,26 @@ class Expr(ABC):
         if name is None:
             return None
         return pyarrow.field(name, data_type, nullable=self.nullable(input_schema))
+
+    def expand_projection(
+        self, input_schema: Optional["pyarrow.Schema"]
+    ) -> List["Expr"]:
+        """Return the projection-list entries this expression stands for.
+
+        Almost every expression denotes exactly one output column and so
+        returns ``[self]``. An expression that denotes *several* columns —
+        ``UnnestExpr`` today, a regex column selector tomorrow — overrides
+        this to expand itself into ordinary named expressions.
+
+        ``Project.__post_init__`` applies this once, when the plan is built,
+        so optimizer rules and the evaluation engine only ever see
+        single-column expressions. ``input_schema`` is the schema of the
+        operator's input, or ``None`` when it is not known at plan time
+        (e.g. downstream of an opaque ``map_batches``); an implementation
+        that cannot expand without it should raise rather than defer to
+        runtime.
+        """
+        return [self]
 
 
 @DeveloperAPI(stability="alpha")
@@ -1846,6 +1888,127 @@ class StarExpr(Expr):
         # expands it inline rather than calling ``to_field`` on it.
         return None
 
+    def expand_projection(
+        self, input_schema: Optional["pyarrow.Schema"]
+    ) -> List["Expr"]:
+        # Deliberately not on this hook. Unlike an unnest, expanding a star
+        # rewrites *sibling* entries: a rename ``AliasExpr`` elsewhere in the
+        # projection list is substituted at its source column's position and
+        # its trailing copy dropped. A per-expression method cannot reach its
+        # siblings, so ``expand_star_exprs`` rewrites the whole list instead,
+        # and runs before this hook.
+        return [self]
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class UnnestExpr(Expr):
+    """Expression that expands a struct-typed expression into one output
+    column per struct field.
+
+    This is a plan-time marker, analogous to ``StarExpr``: it never survives
+    into the optimizer or the evaluation engine. ``Project.__post_init__``
+    eagerly desugars it (via ``expand_projection``) into one
+    ``expr.struct.field_by_index(i).alias(field_name)`` projection entry per
+    struct field, so downstream code only ever sees ordinary named
+    expressions. The struct field names and order come from the expression's
+    resolved PyArrow struct type; ``CommonSubExprElimination`` then
+    deduplicates the shared inner subtree so it is evaluated once per block.
+
+    Because desugaring needs the struct type at plan time, the wrapped
+    expression must either carry a declared struct ``return_dtype`` (UDFs) or
+    reference a struct column resolvable from the input schema. Otherwise
+    ``Project`` construction raises.
+
+    See :func:`unnest` for the public constructor.
+    """
+
+    #: The wrapped expression; must resolve to a PyArrow struct type.
+    expr: Expr
+
+    # Like ``StarExpr``, an unnest has no single output type.
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UnnestExpr) and self.expr.structurally_equals(
+            other.expr
+        )
+
+    def alias(self, name: str) -> "Expr":
+        raise TypeError(
+            "unnest() cannot be aliased: it produces one output column per "
+            "struct field, named after the fields themselves. Pass it "
+            "positionally to with_columns(), e.g. "
+            "ds.with_columns(unnest(expr))."
+        )
+
+    def to_field(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.Field"]:
+        # ``UnnestExpr`` represents many columns, not one. It is desugared by
+        # ``expand_projection`` before any schema resolution happens.
+        return None
+
+    def expand_projection(
+        self, input_schema: Optional["pyarrow.Schema"]
+    ) -> List["Expr"]:
+        """Desugar into one aliased struct-field access per struct field.
+
+        ``unnest(expr)`` where ``expr`` resolves to
+        ``struct<f0: t0, f1: t1, ...>`` expands to::
+
+            expr.struct.field_by_index(0).alias("f0"),
+            expr.struct.field_by_index(1).alias("f1"),
+            ...
+
+        Fields are accessed by index (never by name) so the expansion is
+        unambiguous even for structs with duplicate field names — though such
+        structs are rejected below, since both fields would target the same
+        output column and one would silently win. The N entries share the
+        single inner ``Expr`` subtree, so ``CommonSubExprElimination`` hoists
+        it into a temp column evaluated once per block.
+
+        The struct type is resolved via ``Expr.get_type``: self-typed
+        expressions (a UDF with a declared ``return_dtype``) resolve without a
+        schema; schema-dependent expressions (``col("s")``) need
+        ``input_schema``. If the type cannot be resolved when the plan is
+        built — e.g. ``unnest(col("s"))`` downstream of an opaque
+        ``map_batches`` — this raises rather than deferring to runtime.
+        """
+        try:
+            resolved_type = self.expr.get_type(input_schema)
+        except AttributeError:
+            # Schema-dependent inner expression, but ``input_schema`` is None.
+            resolved_type = None
+        if resolved_type is None:
+            raise ValueError(
+                "unnest() requires the struct type of the wrapped expression "
+                "to be known when the plan is built, but it could not be "
+                "resolved. Either wrap an expression with a declared struct "
+                "return_dtype (e.g. @udf(return_dtype=DataType.struct(...))), "
+                "or ensure the input dataset's schema is known (upstream "
+                "map/map_batches calls make it unavailable)."
+            )
+        if not pyarrow.types.is_struct(resolved_type):
+            raise TypeError(
+                f"unnest() requires a struct-typed expression, but the "
+                f"wrapped expression resolves to {resolved_type}."
+            )
+
+        field_names = [
+            resolved_type.field(i).name for i in range(resolved_type.num_fields)
+        ]
+        duplicates = {name for name, n in Counter(field_names).items() if n > 1}
+        if duplicates:
+            raise ValueError(
+                f"unnest() cannot expand a struct with duplicate field names "
+                f"{sorted(duplicates)}: the expanded columns would overwrite "
+                f"each other."
+            )
+
+        return [
+            self.expr.struct.field_by_index(i).alias(field_name)
+            for i, field_name in enumerate(field_names)
+        ]
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
@@ -1969,6 +2132,33 @@ def expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List
             continue
         else:
             expanded.append(expr)
+    return expanded
+
+
+@DeveloperAPI(stability="alpha")
+def expand_projection_exprs(
+    exprs: List[Expr], input_schema: Optional["pyarrow.Schema"]
+) -> List[Expr]:
+    """Expand every multi-column expression in ``exprs`` in place, via
+    :meth:`Expr.expand_projection`.
+
+    Most expressions denote a single output column and pass through
+    unchanged. ``UnnestExpr`` desugars into one aliased struct-field access
+    per field of its struct type. Any future multi-column expression — a
+    regex column selector, say — joins in by overriding
+    ``Expr.expand_projection``; neither this driver nor its caller in
+    ``Project.__post_init__`` needs to change.
+
+    ``StarExpr`` is the one exception: star expansion rewrites sibling
+    entries, so it gets its own whole-list pass in ``expand_star_exprs``,
+    which runs first.
+
+    Called eagerly from ``Project.__post_init__``, so no multi-column marker
+    ever reaches optimizer rules or ``eval_projection``.
+    """
+    expanded: List[Expr] = []
+    for expr in exprs:
+        expanded.extend(expr.expand_projection(input_schema))
     return expanded
 
 
@@ -2112,6 +2302,67 @@ def star() -> StarExpr:
         A StarExpr that represents all input columns.
     """
     return StarExpr()
+
+
+@PublicAPI(stability="alpha")
+def unnest(expr: Expr) -> UnnestExpr:
+    """
+    Expand a struct-typed expression into one output column per struct field.
+
+    Use this with :meth:`Dataset.with_columns
+    <ray.data.Dataset.with_columns>` to let a single expression — typically
+    a UDF that computes several related values and returns them bundled as
+    a struct — produce multiple output columns. The output column names and
+    order come from the struct's fields. The wrapped expression is
+    evaluated once per block, not once per field.
+
+    The struct type must be known when the plan is built: either the
+    wrapped expression declares it (a UDF's ``return_dtype``), or it is a
+    reference to a struct column of a dataset whose schema is known.
+
+    Expansion is one level deep: a field that is itself a struct comes out
+    as a single struct-typed column, not flattened further. Chaining a
+    second ``with_columns(unnest(col(...)))`` flattens it, provided the
+    intermediate schema is known at plan time: it is when the struct type
+    came from a declared ``return_dtype``; for a plain struct column, call
+    ``materialize()`` between the two steps. ``unnest()`` cannot wrap
+    another ``unnest()`` — the inner one already denotes multiple columns,
+    so there is no single struct value left to expand — and raises
+    ``TypeError`` if you try.
+
+    Args:
+        expr: An expression that resolves to a PyArrow struct type.
+
+    Returns:
+        An UnnestExpr suitable for passing positionally to
+        :meth:`Dataset.with_columns <ray.data.Dataset.with_columns>`.
+
+    Example:
+        >>> import pyarrow as pa
+        >>> import pyarrow.compute as pc
+        >>> import ray
+        >>> from ray.data.datatype import DataType
+        >>> from ray.data.expressions import col, udf, unnest
+        >>>
+        >>> @udf(return_dtype=DataType.struct([
+        ...     ("sum_ab", DataType.int64()),
+        ...     ("product_ab", DataType.int64()),
+        ... ]))
+        ... def make_features(a: pa.Array, b: pa.Array) -> pa.StructArray:
+        ...     return pa.StructArray.from_arrays(
+        ...         [pc.add(a, b).combine_chunks(), pc.multiply(a, b).combine_chunks()],
+        ...         names=["sum_ab", "product_ab"],
+        ...     )
+        >>>
+        >>> ds = ray.data.from_items([{"a": 2, "b": 10}, {"a": 3, "b": 20}])
+        >>> ds.with_columns(unnest(make_features(col("a"), col("b")))).show(1)
+        {'a': 2, 'b': 10, 'sum_ab': 12, 'product_ab': 20}
+    """
+    if isinstance(expr, UnnestExpr):
+        raise TypeError("unnest() cannot be nested inside another unnest().")
+    if not isinstance(expr, Expr):
+        raise TypeError(f"unnest() expects an expression, got {type(expr).__name__}.")
+    return UnnestExpr(expr=expr)
 
 
 @PublicAPI(stability="alpha")
@@ -2297,6 +2548,7 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "UnnestExpr",
     "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",
     "udf",
@@ -2306,6 +2558,7 @@ __all__ = [
     "monotonically_increasing_id",
     "random",
     "star",
+    "unnest",
     "uuid",
     "_ArrayNamespace",
     "_ListNamespace",

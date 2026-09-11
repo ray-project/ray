@@ -7,6 +7,10 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.file_pruners import (
+    FilePruner,
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
@@ -58,6 +62,22 @@ class ArrowFileScanner(
         if self.partitioning is None:
             return set()
         return set(self.partitioning.field_names or [])
+
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """``True`` when no row-reducing pushdown is set on this scanner.
+
+        A Parquet footer's ``num_rows`` is the file's total, with nothing in it
+        to say how many rows survive a filter, so for this scanner the question
+        collapses to "is anything reducing rows?". Column projection is
+        deliberately not consulted: it changes the width of the output, never
+        the row count.
+        """
+        return (
+            self.predicate is None
+            and self.partition_predicate is None
+            and self.limit is None
+        )
 
     def read_schema(self) -> pa.Schema:
         """Return the logical schema after column pruning.
@@ -173,6 +193,17 @@ class ArrowFileScanner(
             combined = predicate
 
         return replace(self, partition_predicate=combined)
+
+    @override
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        return self.partition_predicate
+
+    @override
+    def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        if self.partition_predicate is None or self.partitioning is None:
+            # No spec, no partition values -- same guard as ``prune_manifest``.
+            return None
+        return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 
     @override
     def prune_manifest(self, manifest: FileManifest) -> FileManifest:

@@ -812,9 +812,12 @@ autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 # environment (doc/requirements-doc.lock.txt). Mocking an installed library
 # shadows the real module: an eager import in a documented class body then hits
 # the mock and aborts the whole package import as a misleading error. numpy and
-# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
-# direct requirements-doc entry), but importing it for real breaks the autodoc
-# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
+# pyarrow are installed, so they are not mocked. Heavy ML libraries (tensorflow,
+# torch, ...) are not installed in the docbuild environment and stay mocked here;
+# documented modules that use them import them lazily or under TYPE_CHECKING, so
+# the mock is enough to render their API. The doctest environment
+# (doctest_depset, fed by python/requirements/ml/*) installs them for real to run
+# the executable examples, but that is a separate depset from this build.
 # The mock list is shared with api_autogen.py and the API/doc consistency check
 # (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
 # the check see the same API surface this render produces. THIRD_PARTY_MOCK
