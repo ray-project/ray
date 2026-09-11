@@ -32,9 +32,16 @@ class Write(AbstractMap, LogicalOperatorPreservesSchema):
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if isinstance(self.datasink_or_legacy_datasource, Datasink):
-            min_rows_per_bundled_input = (
-                self.datasink_or_legacy_datasource.min_rows_per_write
-            )
+            datasink = self.datasink_or_legacy_datasource
+            min_rows_per_bundled_input = datasink.min_rows_per_write
+            if (
+                min_rows_per_bundled_input is not None
+                and datasink.min_bytes_per_write is not None
+            ):
+                raise ValueError(
+                    "Datasink cannot specify both min_rows_per_write and "
+                    "min_bytes_per_write. Set only one write bundling target."
+                )
         else:
             min_rows_per_bundled_input = None
         if self.compute is None:

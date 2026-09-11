@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
+    EstimateBytes,
     EstimateSize,
     ExactMultipleSize,
     RebundleQueue,
@@ -289,7 +290,7 @@ def test_add_updates_metrics():
 
 
 # =============================================================================
-# Tests for EstimateSize strategy
+# Tests for EstimateSize and EstimateBytes strategies
 # =============================================================================
 
 
@@ -451,6 +452,23 @@ def test_estimate_size_bundler_uniform(
         for i in list(block_data_map[block_ref]["id"])
     ]
     assert flat_out == list(range(n))
+
+
+def test_estimate_bytes_bundler():
+    bundles, _ = _make_ref_bundles_for_unit_test([[[1]], [[2]], [[3]]])
+    first_two_bytes = bundles[0].size_bytes() + bundles[1].size_bytes()
+    bundler = RebundleQueue(EstimateBytes(first_two_bytes))
+
+    bundler.add(bundles[0])
+    assert not bundler.has_next()
+
+    bundler.add(bundles[1])
+    assert bundler.has_next()
+    assert bundler.get_next().num_rows() == 2
+
+    bundler.add(bundles[2])
+    bundler.finalize()
+    assert bundler.get_next().num_rows() == 1
 
 
 def test_estimate_size_peek_next():
