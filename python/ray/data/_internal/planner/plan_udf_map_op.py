@@ -79,6 +79,18 @@ DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY", 4
 )
 
+# Controls how many outputs could be buffered for a *single* in-flight async UDF
+# invocation.
+#
+# NOTE: Async UDFs are unrolled inside the task (to maintain requested concurrency
+#       level), hence this buffer has to be bounded to prevent peak memory
+#       utilization from scaling with the number of objects yielded by a single
+#       UDF invocation (instead it's bounded by `target_max_block_size` applied
+#       by the downstream block-shaping stage).
+DEFAULT_ASYNC_UDF_MAX_BUFFERED_OUTPUTS = env_integer(
+    "RAY_DATA_DEFAULT_ASYNC_UDF_MAX_BUFFERED_OUTPUTS", 1
+)
+
 
 @dataclass
 class UDFSpec:
@@ -778,22 +790,39 @@ def _generate_transform_fn_for_async_map(
     *,
     max_concurrency: int,
     is_flat_map: bool = False,
+    max_buffered_udf_outputs: int = DEFAULT_ASYNC_UDF_MAX_BUFFERED_OUTPUTS,
 ) -> MapTransformCallable:
     assert max_concurrency > 0, "Max concurrency must be positive"
+    assert (
+        max_buffered_udf_outputs > 0
+    ), "Max number of buffered UDF outputs must be positive"
 
     if inspect.isasyncgenfunction(fn):
 
-        async def _apply_udf(item: T) -> List[U]:
+        async def _apply_udf(item: T, udf_output_queue: asyncio.Queue) -> None:
             gen = fn(item)
-            # NOTE: Async generator is unrolled inside the task to maintain
-            #       requested concurrency level (`max_concurrent_batches`)
-            return [out async for out in gen]
+            try:
+                # NOTE: Async generator is unrolled inside the task to maintain
+                #       requested concurrency level (`max_concurrency`).
+                #
+                #       Outputs are, however, streamed into a *bounded* queue (rather
+                #       than accumulated in a list) so that unrolling gets
+                #       back-pressured, and peak memory utilization doesn't scale
+                #       with the number of objects yielded by a single invocation.
+                async for out in gen:
+                    await udf_output_queue.put(out)
+            finally:
+                await udf_output_queue.put(_SENTINEL)
 
     elif inspect.iscoroutinefunction(fn):
 
-        async def _apply_udf(item: T) -> List[U]:
-            res = await fn(item)
-            return res if is_flat_map else [res]
+        async def _apply_udf(item: T, udf_output_queue: asyncio.Queue) -> None:
+            try:
+                res = await fn(item)
+                for out in res if is_flat_map else [res]:
+                    await udf_output_queue.put(out)
+            finally:
+                await udf_output_queue.put(_SENTINEL)
 
     else:
         raise ValueError(f"Expected a coroutine function, got {fn}")
@@ -809,25 +838,37 @@ def _generate_transform_fn_for_async_map(
     #   - Order of the items (rows/batches) produced by this method
     #     *must be* deterministic (though is not guaranteed to be specified
     #     if max_concurrency > 1)
+    #   - Peak memory utilization *must not* scale with the number of objects
+    #     produced by an individual UDF invocation (ie an async generator yielding
+    #     N blocks should not require N blocks to be held in memory)
     #
     # To achieve that, algorithm applying async UDF to elements of the provided sequence
     # is structured like following:
     #
-    #   - Task scheduling and subsequent results re-ordering are performed as
-    #     different stages (inside `_schedule` and `_report` methods respectively)
+    #   - Task scheduling and subsequent results reporting are performed as
+    #     different stages (inside `_execute_transform` and `_report` respectively)
     #
     #   - Scheduling stage aim to schedule and run no more than `max_concurrency` tasks
     #     at any given moment
     #
-    #   - Once task completes it's added into task completion queue for its results to be
-    #     subsequently reported with deterministic ordering). Task completion queue is
-    #     capped at `maxsize=max_concurrency` elements to make sure scheduling stage is
-    #     throttled (and task completion queue isn't growing unbounded) in case when
-    #     reporting stage isn't able to keep up.
+    #   - Every scheduled task is handed its own output queue that it streams its
+    #     outputs into. This queue is capped at `max_buffered_udf_outputs` (+1 slot
+    #     for the terminating sentinel), so that a task producing multiple outputs
+    #     (ie an async generator) gets back-pressured instead of buffering all of
+    #     them at once.
     #
-    #   - Reporting stage dequeues completed tasks from completion queue, reorders
-    #     them (to *always* produce deterministic ordering) and adds its results into
-    #     output queue.
+    #   - Scheduled tasks are added into the scheduled tasks queue (in the order of the
+    #     input sequence), for their outputs to be subsequently reported. Since tasks
+    #     are both scheduled and reported in the order of the input sequence, resulting
+    #     ordering is *always* deterministic (no reordering stage is necessary).
+    #
+    #   - Number of the tasks that have been scheduled, but not yet reported is
+    #     capped at `2 * max_concurrency` to make sure scheduling stage is throttled
+    #     (and buffered outputs aren't growing unbounded) in case when reporting
+    #     stage isn't able to keep up.
+    #
+    #   - Reporting stage dequeues scheduled tasks (in order) and drains their
+    #     respective output queues into the output queue.
     #
     #   - Output queue is capped at `maxsize=max_concurrency` elements to make sure that
     #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
@@ -836,110 +877,158 @@ def _generate_transform_fn_for_async_map(
     async def _execute_transform(it: Iterator[T], output_queue: queue.Queue) -> None:
         loop = asyncio.get_running_loop()
 
-        # NOTE: Individual tasks could complete in arbitrary order.
-        #       To make sure that the ordering produced by this transformation
-        #       is deterministic we utilize subsequent reordering stage to
-        #       to keep the output ordering the same as that one of the input
-        #       iterator.
-        completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+        # NOTE: Tasks are enqueued here upon being *scheduled* (as opposed to upon
+        #       completion): a task streaming into a bounded output queue might only
+        #       be able to complete once its outputs have been drained by the
+        #       reporting stage.
+        #
+        #       This queue doesn't need to be capped: its size is bounded by
+        #       `unreported_tasks_sema` (keeping it uncapped avoids scheduling stage
+        #       blocking on it in case reporting stage terminated early).
+        scheduled_tasks_queue = asyncio.Queue()
+        # NOTE: Caps the number of tasks that have been scheduled, but haven't been
+        #       reported yet (ie are either still running, or have already completed
+        #       with their outputs still buffered).
+        #
+        #       This allows tasks completing out of order to release their
+        #       concurrency slots *without* waiting to be reported, while still
+        #       bounding the amount of the outputs buffered in between the stages.
+        unreported_tasks_sema = asyncio.Semaphore(2 * max_concurrency)
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
-        async def _reorder() -> None:
-            completed_task_map: Dict[int, asyncio.Task] = dict()
-            next_idx = 0
-            completed_scheduling = False
-
+        async def _report() -> None:
             try:
-                while not completed_scheduling:
-                    task, idx = await completed_tasks_queue.get()
+                while True:
+                    task, udf_output_queue = await scheduled_tasks_queue.get()
 
-                    if isinstance(task, Exception):
+                    # NOTE: Scheduling stage captures `BaseException` (not just
+                    #       `Exception`), hence the sentinel it hands over could be
+                    #       one as well (for ex, `asyncio.CancelledError`). Matching
+                    #       on `Exception` only would let it fall through into
+                    #       draining a `None` output queue, masking the original
+                    #       failure with an `AttributeError`.
+                    if isinstance(task, BaseException):
                         raise task
                     elif task is _SENTINEL:
-                        completed_scheduling = True
-                    else:
-                        completed_task_map[idx] = task
+                        break
 
-                    while next_idx in completed_task_map:
-                        next_task = completed_task_map.pop(next_idx)
+                    while True:
+                        out = await udf_output_queue.get()
+                        if out is _SENTINEL:
+                            break
 
                         # NOTE: Once output queue fills up, this will block
-                        #       therefore serving as back-pressure for scheduling tasks
-                        #       preventing it from scheduling new tasks.
+                        #       therefore serving as back-pressure for the UDF
+                        #       task producing into `udf_output_queue`, and
+                        #       transitively for the scheduling stage.
                         # NOTE: This will block the whole event-loop not just this task
-                        output_queue.put(await next_task)
+                        output_queue.put(out)
 
-                        next_idx += 1
+                    # NOTE: Task is awaited to surface any exception it might have
+                    #       raised (it's already completed at this point, since it
+                    #       terminated its output queue)
+                    await task
 
-                assert (
-                    len(completed_task_map) == 0
-                ), f"{next_idx=}, {completed_task_map.keys()=}"
+                    unreported_tasks_sema.release()
+
                 sentinel = _SENTINEL
 
             except BaseException as e:
                 sentinel = e
             finally:
+                # NOTE: Scheduling stage could be awaiting on the semaphore, hence
+                #       it has to be released (unconditionally) to avoid it getting
+                #       stuck in case reporting stage terminated early
+                for _ in range(2 * max_concurrency):
+                    unreported_tasks_sema.release()
+
                 output_queue.put(sentinel)
 
-        # NOTE: Reordering is an async process. Keep a strong reference to
+        # NOTE: Reporting is an async process. Keep a strong reference to
         # the created task: ``loop.create_task`` only registers a weak
         # reference with the event loop, so without a strong reference the
-        # task could be garbage collected mid-execution and the reordering
+        # task could be garbage collected mid-execution and the reporting
         # would silently stop.
-        reorder_task = loop.create_task(_reorder())
+        report_task = loop.create_task(_report())
 
-        cur_task_map: Dict[asyncio.Task, int] = dict()
+        cur_task_map: Dict[asyncio.Task, asyncio.Queue] = dict()
         consumed = False
 
         sentinel = _SENTINEL
-        enumerated_it = enumerate(it)
 
         try:
             while True:
                 while len(cur_task_map) < max_concurrency and not consumed:
                     try:
-                        idx, item = next(enumerated_it)
-                        # Launch async task while keeping track of its
-                        # index in the enumerated sequence
-                        task = loop.create_task(_apply_udf(item))
-                        cur_task_map[task] = idx
+                        item = next(it)
                     except StopIteration:
                         consumed = True
                         break
+
+                    # NOTE: Once the number of tasks awaiting to be reported reaches
+                    #       the cap, this will block therefore serving as
+                    #       back-pressure for scheduling stage
+                    await unreported_tasks_sema.acquire()
+
+                    # Launch async task providing it with a bounded queue to
+                    # stream its outputs into
+                    #
+                    # NOTE: Extra slot is reserved for the terminating sentinel, so
+                    #       that tasks producing no more than
+                    #       `max_buffered_udf_outputs` outputs (in particular, plain
+                    #       coroutine UDFs) could complete (and therefore release
+                    #       their concurrency slots) w/o waiting to be reported
+                    udf_output_queue = asyncio.Queue(
+                        maxsize=max_buffered_udf_outputs + 1
+                    )
+                    task = loop.create_task(_apply_udf(item, udf_output_queue))
+                    cur_task_map[task] = udf_output_queue
+
+                    # NOTE: Scheduled tasks are reported in the order of the input
+                    #       sequence, hence produced ordering is deterministic
+                    scheduled_tasks_queue.put_nowait((task, udf_output_queue))
 
                 # Check if any running tasks remaining
                 if not cur_task_map:
                     break
 
-                done, pending = await asyncio.wait(
-                    cur_task_map.keys(), return_when=asyncio.FIRST_COMPLETED
+                # NOTE: Reporting task is awaited alongside the UDF ones to make
+                #       sure scheduling stage isn't stuck indefinitely in case
+                #       reporting stage terminated early (for ex, upon UDF failing),
+                #       and therefore won't be draining tasks' output queues anymore
+                done, _ = await asyncio.wait(
+                    cur_task_map.keys() | {report_task},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
 
-                for task in done:
-                    # Report completed tasks along w/ its corresponding
-                    # index in the input sequence
-                    #
-                    # NOTE: Once completed tasks queue fills up, this will block
-                    #       therefore serving as back-pressure for scheduling tasks
-                    #       preventing it from scheduling new tasks
-                    await completed_tasks_queue.put((task, cur_task_map[task]))
+                if report_task in done:
+                    break
 
+                for task in done:
                     cur_task_map.pop(task)
 
         except BaseException as e:
-            for cur_task in cur_task_map:
-                if not cur_task.done():
-                    cur_task.cancel()
-
             sentinel = e
         finally:
-            assert len(cur_task_map) == 0, f"{cur_task_map}"
-            await completed_tasks_queue.put((sentinel, None))
-            # Wait for the reorder task to finish draining ``completed_tasks_queue``
+            if report_task.done():
+                # Reporting stage is not going to drain remaining tasks' output
+                # queues, hence these tasks have to be cancelled.
+                #
+                # NOTE: Buffered outputs are dropped as well, to make sure cancelled
+                #       tasks aren't blocked (indefinitely) putting into a full queue
+                for cur_task, udf_output_queue in cur_task_map.items():
+                    if not cur_task.done():
+                        cur_task.cancel()
+
+                    while not udf_output_queue.empty():
+                        udf_output_queue.get_nowait()
+
+            scheduled_tasks_queue.put_nowait((sentinel, None))
+            # Wait for the reporting task to finish draining ``scheduled_tasks_queue``
             # and pushing remaining results to the output queue. This both keeps a
             # strong reference to the task alive until completion (preventing GC)
-            # and surfaces any unexpected exception raised inside ``_reorder``.
-            await reorder_task
+            # and surfaces any unexpected exception raised inside ``_report``.
+            await report_task
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)
@@ -951,20 +1040,16 @@ def _generate_transform_fn_for_async_map(
         )
 
         while True:
-            items = output_queue.get()
-            if items is _SENTINEL:
+            item = output_queue.get()
+            if item is _SENTINEL:
                 break
-            elif isinstance(items, Exception):
-                raise items
+            # NOTE: Reporting stage captures `BaseException`, hence the sentinel it
+            #       hands over could be one as well (see `_report`)
+            elif isinstance(item, BaseException):
+                raise item
             else:
-                # NOTE: Sequences from individual UDFs are combined into a single
-                #       sequence here, as compared to letting individual UDFs to
-                #       add into the output queue to guarantee *deterministic* ordering
-                #       (necessary for Ray Data to be able to guarantee task retries
-                #       producing the same results)
-                for item in items:
-                    validate_fn(item)
-                    yield item
+                validate_fn(item)
+                yield item
 
     return _transform
 

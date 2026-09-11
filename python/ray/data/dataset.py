@@ -733,6 +733,12 @@ class Dataset:
                     .map_batches(map_fn_with_large_output, batch_size="auto")
                 )
 
+            Yielding in chunks bounds peak memory utilization for async generator
+            UDFs as well: their outputs are streamed out of the UDF as they're
+            produced (rather than buffered in full). Note that async UDFs have to
+            be provided as callable classes with an ``async def __call__`` method,
+            since they require an actor to run in.
+
             If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
