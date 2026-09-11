@@ -92,3 +92,34 @@ To configure job-level checkpointing, specify a
         checkpoint_path="s3://my-bucket/ray-data-checkpoints",  # Must be accessible by all nodes
         delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
     ) 
+
+**Automatically generated row IDs**
+
+Checkpointing requires a way to identify each input row. If your dataset has a
+unique ID column, pass it as ``id_column``. If it doesn't, set
+``generated_id_column`` instead and Ray Data derives a stable ID for every row
+from the Parquet file layout (file, row group, and row position):
+
+.. code-block:: python
+
+    ctx.checkpoint_config = CheckpointConfig(
+        generated_id_column="__row_id",
+        checkpoint_path="s3://my-bucket/ray-data-checkpoints",
+    )
+
+On resume, Ray Data skips committed work at the source: fully processed files
+are dropped at listing time, fully processed row groups are never scanned, and
+partially processed row groups are filtered row by row.
+
+Note the following about generated row IDs:
+
+* Only Parquet data sources are supported, and only with the V2 datasource
+  path (the default). Other formats raise an error at execution time; use
+  ``id_column`` for them.
+* Checkpointing targets pipelines where one input row produces one output row
+  (for example ``map``-style batch inference ending in a file write). Resume
+  guarantees are at-least-once per input row; there are no guarantees about
+  intermediate join or aggregation state.
+* The pipeline must be identical across the original run and the resumed run,
+  including any filters.
+* The generated ID column appears in the written output files.
