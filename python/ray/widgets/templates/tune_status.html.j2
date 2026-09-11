@@ -20,10 +20,21 @@
 <style>
 .tuneStatus {
   color: var(--jp-ui-font-color1);
+  background-color: var(--jp-layout-color1);
 }
 .tuneStatus .systemInfo {
   display: flex;
   flex-direction: column;
+}
+.tuneStatus table,
+.tuneStatus th,
+.tuneStatus td {
+  color: var(--jp-ui-font-color1);
+  background-color: var(--jp-layout-color1);
+  border-color: var(--jp-border-color0);
+}
+.tuneStatus table {
+  border-collapse: collapse;
 }
 .tuneStatus td {
   white-space: nowrap;
