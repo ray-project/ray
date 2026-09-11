@@ -539,20 +539,19 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
-        summed = torch.tensor(
+        # Both halves of the plan reduce with MAX: skip if ANY Learner wants to, and
+        # step as many minibatches as the Learner with the most data needs. The
+        # latter is what keeps every Learner's data fully trained on -- a smaller
+        # count would leave the larger shards partly unvisited (see
+        # `test_minibatch_coverage_across_unequal_shards`).
+        plan_tensor = torch.tensor(
             [int(plan.skip), plan.num_minibatches],
             dtype=torch.int64,
             device=self._device,
         )
-        torch.distributed.all_reduce(summed)
-        num_skipping, total_minibatches = summed.tolist()
-        # Skip if anyone wants to. Steps: the average proposal. Every non-empty
-        # Learner proposes at least 1 when minibatching, so the floor is >= 1 then;
-        # without minibatching all propose 0, and 0 ("uncapped") is the right answer.
-        return UpdatePlan(
-            skip=num_skipping > 0,
-            num_minibatches=total_minibatches // torch.distributed.get_world_size(),
-        )
+        torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
+        skip, num_minibatches = plan_tensor.tolist()
+        return UpdatePlan(skip=bool(skip), num_minibatches=num_minibatches)
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:

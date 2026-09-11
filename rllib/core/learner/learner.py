@@ -1280,8 +1280,9 @@ class Learner(Checkpointable):
                 # the number of minibatches `MiniBatchCyclicIterator` derives from a
                 # shard would then differ per Learner -- a DDP desync just like a lone
                 # skip. Unless the caller fixed `num_total_minibatches`, each Learner
-                # proposes its own count and the group settles on one. (Without
-                # `minibatch_size` the count is `num_epochs` or 1 on every Learner.)
+                # proposes the count its own shard needs and the group settles on one.
+                # (Without `minibatch_size` the count is `num_epochs` or 1 on every
+                # Learner, so there is nothing to settle.)
                 if (
                     not num_total_minibatches
                     and self.config.num_learners > 1
@@ -1398,8 +1399,11 @@ class Learner(Checkpointable):
         right after `_should_skip_update`; in multi-Learner setups it is a collective
         operation and must stay one.
 
-        The plans are combined as follows: the group skips if ANY Learner wants to;
-        the number of minibatches is the average of the Learners' proposals.
+        The plans are combined as follows: the group skips if ANY Learner wants to,
+        and steps through as many minibatches as the Learner with the most data
+        proposed. Taking the largest proposal means no Learner's shard is left
+        partly untrained; the price is that Learners with less data cycle theirs
+        more often, proportionally to how lopsided the shards are.
 
         Args:
             plan: This Learner's own proposal, derived from its own train batch.
