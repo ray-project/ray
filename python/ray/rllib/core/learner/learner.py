@@ -1479,8 +1479,11 @@ class Learner(Checkpointable):
         operation and must stay one.
 
         The plans are combined as follows: the group skips if ANY Learner wants to,
-        and aborts if ANY Learner must; the number of minibatches is the average of
-        the Learners' proposals.
+        aborts if ANY Learner must, and steps through as many minibatches as the
+        Learner with the most data proposed. Taking the largest proposal means no
+        Learner's shard is left partly untrained; the price is that Learners with
+        less data cycle theirs more often, proportionally to how lopsided the shards
+        are.
 
         Args:
             plan: This Learner's own proposal, derived from its own train batch.
