@@ -600,5 +600,27 @@ def test_the_attempt_number_matches_the_buildkite_label():
     assert "attempt 1 (BUILDKITE_RETRY_COUNT=0)" in calls[0][-1]
 
 
+def test_the_annotation_escapes_what_the_agent_sent():
+    """The summary and the thread url are the agent's data, not ours."""
+    query_response = {
+        "result": {
+            "analysis": {"summary": 'a <script>alert("x")</script> summary'},
+            "metadata": {"slack_thread": 'https://x" onmouseover="alert(1)'},
+        }
+    }
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+    )
+
+    body = calls[0][-1]
+    # Nothing the agent sent can open a tag or close an attribute.
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body
+    assert 'href="https://x&quot; onmouseover=&quot;alert(1)"' in body
+    # Our own markup is still markup.
+    assert "<strong>" in body and "<br/>" in body
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

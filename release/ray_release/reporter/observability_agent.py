@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import subprocess
@@ -223,21 +224,29 @@ class ObservabilityAgentReporter(Reporter):
             attempt = str(int(retry_count) + 1)
         except ValueError:
             attempt = "?"
+        # Buildkite renders the body as markup, and everything interpolated
+        # below either comes from the agent's response or is a name this
+        # reporter does not control, so all of it is escaped. The summary
+        # matters most: it is free-form prose, and an unescaped `<` in it would
+        # be rendered rather than shown.
+        def esc(value: str) -> str:
+            return html.escape(str(value), quote=True)
+
         lines = [
-            f"<strong>{test.get_name()}</strong> — attempt {attempt} "
-            f"(BUILDKITE_RETRY_COUNT={retry_count}) — "
-            f"<a href={anyscale_job_url(job_id)!r}>{job_id}</a>",
+            f"<strong>{esc(test.get_name())}</strong> — attempt {attempt} "
+            f"(BUILDKITE_RETRY_COUNT={esc(retry_count)}) — "
+            f'<a href="{esc(anyscale_job_url(job_id))}">{esc(job_id)}</a>',
             "",
-            summary or "The agent returned no summary for this job.",
+            esc(summary) if summary else "The agent returned no summary for this job.",
         ]
         if slack_thread:
             lines += [
                 "",
-                f"<a href={slack_thread!r}>Full report and feedback</a> — rate it "
-                "with the 'All good' or 'Needs correction' buttons in the thread.",
+                f'<a href="{esc(slack_thread)}">Full report and feedback</a> — rate '
+                "it with the 'All good' or 'Needs correction' buttons in the thread.",
             ]
         else:
-            lines += ["", f"No slack thread; debug session {debug_session_id}."]
+            lines += ["", f"No slack thread; debug session {esc(debug_session_id)}."]
         lines.append("<br/>")
 
         command = [
