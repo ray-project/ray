@@ -35,12 +35,7 @@ BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 # per-run rather than one global name every harness on the host shares.
 RELEASE_TEST_OBS_AGENT_FILE=${RELEASE_TEST_OBS_AGENT_FILE:-${RELEASE_RESULTS_DIR}/obs_agent_analysis.txt}
 
-# TEMPORARY -- DO NOT MERGE. Serves a canned analysis so that iterating on the
-# buildkite annotation does not create a debug session and a slack thread on
-# every run. Remove this, and the file it points at, before merging.
-RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE=${RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE:-$PWD/obs_agent_fake_response.json}
-
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE
 
 if [[ -n "${RAY_COMMIT_OF_WHEEL-}" ]]; then
   git config --global --add safe.directory /workdir
