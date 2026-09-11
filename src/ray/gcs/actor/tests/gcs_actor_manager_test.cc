@@ -282,6 +282,17 @@ class GcsActorManagerTest : public ::testing::Test {
                                                               : nullptr;
   }
 
+  size_t DestroyedActorObservabilityCount(
+      const gcs::GcsActorManager &actor_manager) const {
+    return actor_manager.destroyed_actor_observability_data_.size();
+  }
+
+  // Mirrors what HandleGetActorInfo returns to clients.
+  const rpc::ActorTableData *GetActorInfo(const gcs::GcsActorManager &actor_manager,
+                                          const ActorID &actor_id) const {
+    return actor_manager.GetActorTableData(actor_id);
+  }
+
   /**
    * Helper function to perform the complete cycle of named actor creation.
    * 1. Register the actor
@@ -2828,6 +2839,63 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeIsolatesActorWithMissingTaskSpec) {
+  // Crash-consistency regression test: a non-DEAD actor whose task spec row is
+  // missing (e.g. a torn write across the actor and actor task spec tables, or a
+  // head crash during actor teardown when GCS uses external Redis) must NOT abort
+  // GCS startup. Before the fix, GcsActorManager::Initialize called
+  // map_find_or_die() on the missing spec and crashed the whole GCS with
+  // "Key ... doesn't exist", taking down the entire cluster. Initialize must
+  // instead mark the actor dead so GCS starts and any client still waiting on
+  // the actor sees it as dead instead of hanging.
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  // The owner job is still alive: a client could be waiting on this actor.
+  job_data.set_is_dead(false);
+
+  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  // A non-DEAD state is what reaches the task-spec lookup during Initialize.
+  actor_table_data.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  actor_table_data.set_class_name("MissingSpecActor");
+  auto *owner_address = actor_table_data.mutable_owner_address();
+  owner_address->set_node_id(NodeID::FromRandom().Binary());
+  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+
+  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
+  job_data_map[job_id] = job_data;
+  gcs_init_data.SetJobTableData(job_data_map);
+
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  actor_data[actor_id] = actor_table_data;
+  gcs_init_data.SetActorTableData(actor_data);
+
+  // Intentionally leave the actor task spec table empty for this actor.
+  gcs_init_data.SetActorTaskSpecTableData({});
+
+  auto test_gcs_actor_manager = CreateActorManagerForInitializeTest();
+
+  // Must not FATAL on the missing task spec.
+  test_gcs_actor_manager->Initialize(gcs_init_data);
+
+  // The bad actor is not loaded as a live actor ...
+  ASSERT_EQ(RegisteredActorCount(*test_gcs_actor_manager), 0u);
+  ASSERT_EQ(GetRegisteredActor(*test_gcs_actor_manager, actor_id), nullptr);
+  ASSERT_EQ(DestroyedActorObservabilityCount(*test_gcs_actor_manager), 1u);
+
+  // ... and, crucially, clients querying it now see it DEAD (not stuck in its
+  // original non-DEAD state) with a death cause explaining why.
+  const auto *actor_info = GetActorInfo(*test_gcs_actor_manager, actor_id);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor_info->has_death_cause());
+  ASSERT_TRUE(actor_info->death_cause().has_actor_died_error_context());
 }
 
 }  // namespace gcs
