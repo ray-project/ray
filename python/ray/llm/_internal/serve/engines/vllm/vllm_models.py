@@ -107,6 +107,22 @@ class VLLMEngineConfig(BaseModelExtended):
                 "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
             )
 
+        # Raise when accelerator_type is set but placement_group_config bundles have no GPUs.
+        # This catches the case where bundles are explicitly CPU-only (no GPU key or GPU=0)
+        # but accelerator_type would still be silently ignored by placement_bundles.
+        if self.accelerator_type and self.placement_group_config:
+            pg_cfg = self.placement_group_config
+            bundle_per_worker = pg_cfg.get("bundle_per_worker") or {}
+            explicit_bundles = pg_cfg.get("bundles") or []
+            all_bundles = [bundle_per_worker] + explicit_bundles
+            has_gpu = any(b.get("GPU", 0) > 0 for b in all_bundles)
+            if not has_gpu:
+                raise ValueError(
+                    f"accelerator_type='{self.accelerator_type}' is set, but the "
+                    "placement_group_config bundles contain no GPU resources. "
+                    "Either add GPU resources to the bundles, or remove accelerator_type."
+                )
+
         # LLMConfig has already resolved and validated accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
@@ -273,7 +289,11 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles = []
                 for _ in range(self.num_devices):
                     bundle = bundle_per_worker.copy()
-                    if self.accelerator_type:
+                    # Only inject accelerator hint when bundle actually contains GPU resources.
+                    # Raising in _build_accelerator already covers the CPU-config case,
+                    # but this guards against a contradictory (bundle_per_worker, accelerator_type)
+                    # combination that would otherwise silently produce a mismatched bundle.
+                    if self.accelerator_type and bundle.get("GPU", 0) > 0:
                         res_key = format_ray_accelerator_resource(self.accelerator_type)
                         bundle.setdefault(res_key, 0.001)
                     bundles.append(bundle)
@@ -282,10 +302,14 @@ class VLLMEngineConfig(BaseModelExtended):
             # Otherwise use explicit bundles list
             bundles = []
             explicit_bundles = self.placement_group_config.get("bundles") or []
+            # Detect whether the explicit bundles contain GPU resources.
+            has_gpu = any(b.get("GPU", 0) > 0 for b in explicit_bundles)
             for bundle_dict in explicit_bundles:
                 bundle = bundle_dict.copy()
-                if self.accelerator_type:
-                    # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
+                if self.accelerator_type and has_gpu:
+                    # Use setdefault to add accelerator hint WITHOUT overriding explicit user values.
+                    # Silently skip when bundles contain no GPUs to avoid producing a
+                    # contradictory (CPU bundle + GPU accelerator hint) bundle.
                     res_key = format_ray_accelerator_resource(self.accelerator_type)
                     bundle.setdefault(res_key, 0.001)
                 bundles.append(bundle)
