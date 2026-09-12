@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -16,13 +17,41 @@ from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
 from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
     OnlineBinPacker,
 )
+from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
 
 
 def _rg(
     idx: int, size: int, rows: int = 10, fully_matched: bool = True
 ) -> RowGroupInfo:
+    # ``decoded_size == uncompressed_size`` so every byte budget in these tests
+    # reads directly as decoded bytes, which is what the packer measures. The
+    # no-size-statistics fallback is exercised separately via
+    # ``_rg_without_size_stats``.
     return RowGroupInfo(
-        rg_idx=idx, uncompressed_size=size, num_rows=rows, fully_matched=fully_matched
+        rg_idx=idx,
+        uncompressed_size=size,
+        num_rows=rows,
+        fully_matched=fully_matched,
+        decoded_size=size,
+    )
+
+
+def _rg_without_size_stats(
+    idx: int, size: int, rows: int = 10, fully_matched: bool = True
+) -> RowGroupInfo:
+    """A row group whose footer carried no usable ``SizeStatistics``.
+
+    Consumers must then fall back to scaling ``uncompressed_size`` by
+    ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT``, i.e. the pre-existing behavior.
+    """
+    return RowGroupInfo(
+        rg_idx=idx,
+        uncompressed_size=size,
+        num_rows=rows,
+        fully_matched=fully_matched,
+        decoded_size=None,
     )
 
 
@@ -243,6 +272,8 @@ def test_split_coalesced_prefers_bin_that_fits_largest_prefix() -> None:
         rg_count=3,
         rg_sizes=(30, 30, 30),
         rg_rows=(10, 10, 10),
+        decoded_size=90,
+        rg_decoded_sizes=(30, 30, 30),
     )
     bins = _pack(
         [
@@ -272,6 +303,8 @@ def test_split_coalesced_splits_oversize_run_at_boundaries() -> None:
         rg_count=3,
         rg_sizes=(30, 30, 30),
         rg_rows=(10, 10, 10),
+        decoded_size=90,
+        rg_decoded_sizes=(30, 30, 30),
     )
     bins = _pack(
         [FileChunks(path="a", size=90, row_groups=(coalesced,))],
@@ -293,6 +326,8 @@ def test_oversize_coalesced_run_fills_shared_bin() -> None:
         rg_count=2,
         rg_sizes=(40, 80),
         rg_rows=(4, 8),
+        decoded_size=120,
+        rg_decoded_sizes=(40, 80),
     )
     bins = _pack(
         [
@@ -304,6 +339,118 @@ def test_oversize_coalesced_run_fills_shared_bin() -> None:
     )
 
     assert bins == [{"light": [0], "big": [0]}, {"big": [1]}]
+
+
+# ---------------------------------------------------------------------------
+# Decoded sizing, and falling back to the pre-existing math
+# ---------------------------------------------------------------------------
+
+
+def _manifest_decoded(manifest: FileManifest) -> dict[str, int | None]:
+    """A sealed bin's manifest as ``{path: decoded_size}``."""
+    return {
+        str(path): meta["decoded_size"]
+        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
+    }
+
+
+def test_capacity_is_measured_in_decoded_bytes() -> None:
+    # Two row groups of 40 uncompressed bytes each, but 60 decoded. A 100-byte
+    # cap fits one, not both -- which packing on uncompressed bytes would get
+    # wrong, since 40 + 40 <= 100.
+    inflated = RowGroupInfo(
+        rg_idx=0, uncompressed_size=40, num_rows=10, decoded_size=60
+    )
+    bins = _pack(
+        [
+            FileChunks(path="a", size=40, row_groups=(inflated,)),
+            FileChunks(path="b", size=40, row_groups=(replace(inflated, rg_idx=0),)),
+        ],
+        max_bin_bytes=100,
+    )
+    assert bins == [{"a": [0]}, {"b": [0]}]
+
+
+def test_falls_back_to_scaled_uncompressed_without_size_statistics() -> None:
+    # 20 uncompressed bytes -> 100 decoded under the fixed ratio, which exactly
+    # fills a 100-byte bin, so the second row group must open a new one.
+    size = 100 // PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    bins = _pack(
+        [
+            FileChunks(
+                path="a", size=size, row_groups=(_rg_without_size_stats(0, size),)
+            ),
+            FileChunks(
+                path="b", size=size, row_groups=(_rg_without_size_stats(0, size),)
+            ),
+        ],
+        max_bin_bytes=100,
+    )
+    assert bins == [{"a": [0]}, {"b": [0]}]
+
+
+def test_manifest_carries_decoded_size_when_known() -> None:
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(
+        _file_chunks_to_manifest(
+            FileChunks(
+                path="a",
+                size=30,
+                row_groups=(_rg(idx=0, size=10), _rg(idx=1, size=20)),
+            )
+        )
+    )
+    packer.finalize()
+
+    assert _manifest_decoded(packer.next_partition()) == {"a": 30}
+
+
+def test_manifest_reports_none_when_any_item_fell_back() -> None:
+    # Mixing exact and fallback sizing inside one row would produce a total no
+    # consumer could interpret, so the whole row falls back instead.
+    packer = OnlineBinPacker(max_bin_bytes=10_000)
+    packer.add_input(
+        _file_chunks_to_manifest(
+            FileChunks(
+                path="a",
+                size=30,
+                row_groups=(_rg(idx=0, size=10), _rg_without_size_stats(1, 20)),
+            )
+        )
+    )
+    packer.finalize()
+
+    assert _manifest_decoded(packer.next_partition()) == {"a": None}
+
+
+def test_coalesce_target_measures_decoded_bytes() -> None:
+    # 10 uncompressed bytes each but 30 decoded, so a 50-byte target admits two
+    # row groups and then breaks -- where sizing on uncompressed bytes would have
+    # merged all three.
+    per_rg = [
+        RowGroupInfo(rg_idx=i, uncompressed_size=10, num_rows=1, decoded_size=30)
+        for i in range(3)
+    ]
+    out = coalesce_row_groups(per_rg, 50)
+
+    assert [(c.rg_idx, c.rg_count) for c in out] == [(0, 2), (2, 1)]
+    assert out[0].decoded_size == 60
+    assert out[0].rg_decoded_sizes == (30, 30)
+
+
+def test_coalesce_drops_decoded_size_for_a_mixed_run() -> None:
+    per_rg = [
+        RowGroupInfo(rg_idx=0, uncompressed_size=10, num_rows=1, decoded_size=30),
+        RowGroupInfo(rg_idx=1, uncompressed_size=10, num_rows=1, decoded_size=None),
+    ]
+    out = coalesce_row_groups(per_rg, 1000)
+
+    assert len(out) == 1 and out[0].rg_count == 2
+    # Uncompressed stays exact and keeps its breakdown; decoded falls back.
+    assert out[0].uncompressed_size == 20
+    assert out[0].rg_sizes == (10, 10)
+    assert out[0].decoded_size is None
+    assert out[0].rg_decoded_sizes == ()
 
 
 if __name__ == "__main__":

@@ -61,3 +61,8 @@ lerobot>=0.5.0,<0.6; python_version >= "3.12"
 # torch 2.9.
 torchcodec<0.10; python_version >= "3.12"
 av; python_version >= "3.12"
+# Test-only differential oracle for the Parquet SizeStatistics Thrift reader
+# (``test_parquet_size_statistics.py``). An independent implementation of the
+# compact protocol is the only way to show our targeted walk decodes the same
+# bytes the same way; it must never become a runtime dependency of ray[data].
+thriftpy2

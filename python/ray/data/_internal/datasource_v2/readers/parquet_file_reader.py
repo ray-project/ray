@@ -17,6 +17,9 @@ from ray._common.utils import env_integer
 from ray.data._internal.datasource.parquet_datasource import (
     _row_group_uncompressed_size,
 )
+from ray.data._internal.datasource_v2.chunkers.parquet_decoded_size import (
+    decoded_size_or_fallback,
+)
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
     _with_io_retry,
@@ -153,21 +156,26 @@ def _estimate_batch_size_from_chunk_stats(
     uncompressed_size: int,
     num_rows: int,
     target_block_size: int,
+    decoded_size: Optional[int] = None,
 ) -> Optional[int]:
     """Estimate batch size from footer-derived chunk stats, without any I/O.
 
     ``ListFiles`` already read each file's footer and recorded the
-    projection-scoped uncompressed byte size and row count of the row groups it
-    assigned to this chunk (:class:`ParquetRowGroupChunkMetadata`). Sizing from
-    those avoids the extra footer read that
-    :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
-    math but over the whole chunk (its row-group average) rather than the first
-    row group; the estimate is refined from real data after the first batch.
+    projection-scoped byte size and row count of the row groups it assigned to
+    this chunk (:class:`ParquetRowGroupChunkMetadata`). Sizing from those avoids
+    the extra footer read that :func:`_estimate_batch_size_from_metadata` incurs.
+    Works over the whole chunk (its row-group average) rather than the first row
+    group; the estimate is refined from real data after the first batch.
+
+    ``decoded_size`` is the Arrow size the footer's ``SizeStatistics`` yielded,
+    which is what a batch actually costs in memory. When it is absent this falls
+    back to scaling ``uncompressed_size`` by the fixed encoding ratio -- the same
+    approximation of the same quantity, just a far cruder one.
     """
     if num_rows <= 0 or uncompressed_size <= 0:
         return None
     estimated_in_mem_row_size = (
-        uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT / num_rows
+        decoded_size_or_fallback(decoded_size, uncompressed_size) / num_rows
     )
     if estimated_in_mem_row_size == 0:
         return None
@@ -319,6 +327,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 chunk["uncompressed_size"],
                 chunk["num_rows"],
                 self._target_block_size,
+                chunk.get("decoded_size"),
             )
             if estimated is not None:
                 return estimated

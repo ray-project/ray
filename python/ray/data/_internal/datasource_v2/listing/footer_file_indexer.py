@@ -75,6 +75,8 @@ def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
                 fully_matched=rg.fully_matched,
                 rg_sizes=rg.rg_sizes,
                 rg_rows=rg.rg_rows,
+                decoded_size=rg.decoded_size,
+                rg_decoded_sizes=rg.rg_decoded_sizes,
             )
             for rg in file_chunks.row_groups
         ],

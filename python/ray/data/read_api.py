@@ -529,6 +529,9 @@ def _read_datasource_v2(
         _build_pruners,
         sample_files,
     )
+    from ray.data._internal.datasource_v2.read_task_memory import (
+        apply_read_task_memory,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
     ctx = DataContext.get_current()
@@ -626,6 +629,12 @@ def _read_datasource_v2(
         max_bucket_size=max_bucket_size,
         num_buckets=num_buckets,
     )
+
+    # When the partitioner bounds a read task's decoded size, reserve Ray
+    # ``memory`` for it. Setting it here means ``ConfigureMapTaskMemoryRule``
+    # leaves the read op alone, so this replaces that rule's flat per-CPU
+    # default with a number derived from the footer.
+    ray_remote_args = apply_read_task_memory(ray_remote_args, partitioner, ctx)
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
     #       time, rather than at the composition time (for backward-compatibility)
