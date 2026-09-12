@@ -45,19 +45,19 @@ WaitForPersistedPort(const std::string &dir,
   std::string file_path = (std::filesystem::path(dir) / file_name).string();
   auto result = WaitForFile(file_path, timeout_ms, poll_interval_ms);
   if (result.has_error()) {
-    return std::visit(overloaded{[](const StatusT::IOError &e) -> RetType {
-                                   return StatusT::IOError(e.message());
-                                 },
-                                 [&port_name, timeout_ms](const StatusT::TimedOut &e) -> RetType {
-                                   return StatusT::TimedOut(
-                                       e.message() + ". Timed out after " +
-                                       std::to_string(timeout_ms) +
-                                       " ms waiting for persisted port '" + port_name +
-                                       "'. The corresponding Ray process may be slow to "
-                                       "start or may have failed "
-                                       "to start.");
-                                 }},
-                      result.error());
+    return std::visit(
+        overloaded{[](const StatusT::IOError &e) -> RetType {
+                     return StatusT::IOError(e.message());
+                   },
+                   [&port_name, timeout_ms](const StatusT::TimedOut &e) -> RetType {
+                     return StatusT::TimedOut(
+                         e.message() + ". Timed out after " + std::to_string(timeout_ms) +
+                         " ms waiting for persisted port '" + port_name +
+                         "'. The corresponding Ray process may be slow to "
+                         "start or may have failed "
+                         "to start.");
+                   }},
+        result.error());
   }
 
   try {

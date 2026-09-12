@@ -47,7 +47,7 @@ TEST_P(PortPersistenceTest, TimeoutMessageIncludesProcessStartupHint) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AgentAndGcsPorts,
-                        PortPersistenceTest,
-                        ::testing::Values("metrics_agent_port", "gcs_server_port"));
+                         PortPersistenceTest,
+                         ::testing::Values("metrics_agent_port", "gcs_server_port"));
 
 }  // namespace ray
