@@ -20,6 +20,8 @@ def test_unique(ray_start_regular_shared_2_cpus, disable_fallback_to_object_exte
     )
     assert set(ds.unique("a")) == {1}
 
+    assert ds.limit(0).unique("a") == []
+
 
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_unique_with_nulls(
