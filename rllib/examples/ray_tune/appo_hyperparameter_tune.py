@@ -131,12 +131,13 @@ config = (
         lr=tune.loguniform(0.0001, 0.005),
         vf_loss_coeff=tune.uniform(0.5, 2.0),
         entropy_coeff=tune.uniform(0.001, 0.02),
-        # Use tune.qrandint(a, b, q) for discrete params in [a, b) with step q (defaults to 1)
+        # Use tune.randint(a, b) and tune.qrandint(a, b, q) with multiples
+        # of q for discrete params
         train_batch_size_per_learner=tune.qrandint(256, 2048, 64),
-        target_network_update_freq=tune.qrandint(1, 6),
-        broadcast_interval=tune.qrandint(2, 11),
-        circular_buffer_num_batches=tune.qrandint(2, 6),
-        circular_buffer_iterations_per_batch=tune.qrandint(1, 5),
+        target_network_update_freq=tune.randint(1, 6),
+        broadcast_interval=tune.randint(2, 11),
+        circular_buffer_num_batches=tune.randint(2, 6),
+        circular_buffer_iterations_per_batch=tune.randint(1, 5),
     )
 )
 

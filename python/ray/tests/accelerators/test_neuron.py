@@ -6,38 +6,31 @@ import pytest
 
 import ray
 from ray._private.accelerators import NeuronAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 
 
 def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more neuron_cores are configured than visible.
     monkeypatch.setenv("NEURON_RT_VISIBLE_CORES", "0,1,2")
-    with pytest.raises(ValueError):
+    with mock_accelerator_detection(NeuronAcceleratorManager), pytest.raises(
+        ValueError
+    ):
         ray.init(resources={"neuron_cores": 4})
 
 
-@patch(
-    "ray._private.accelerators.NeuronAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=4,
-)
-def test_auto_detected_more_than_visible(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
-):
+def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     # Test more neuron_cores are detected than visible.
     monkeypatch.setenv("NEURON_RT_VISIBLE_CORES", "0,1,2")
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert ray.available_resources()["neuron_cores"] == 3
+    with mock_accelerator_detection(NeuronAcceleratorManager, num_accelerators=4):
+        ray.init()
+        assert ray.available_resources()["neuron_cores"] == 3
 
 
-@patch(
-    "ray._private.accelerators.NeuronAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=2,
-)
-def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
+def test_auto_detect_resources(shutdown_only):
     # Test that ray node resources are filled with auto detected count.
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert ray.available_resources()["neuron_cores"] == 2
+    with mock_accelerator_detection(NeuronAcceleratorManager, num_accelerators=2):
+        ray.init()
+        assert ray.available_resources()["neuron_cores"] == 2
 
 
 @patch(
