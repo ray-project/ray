@@ -353,6 +353,51 @@ class TestSubmit:
                 entrypoint_label_selector=None,
             )
 
+    def test_submit_error_shows_concise_message(self, mock_sdk_client):
+        """A duplicate-submission_id style RuntimeError should drop the outer
+        HTTP-forwarding hop but keep the last stack in full."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+        nested_error = (
+            "Request failed with status code 500: Traceback (most recent call last):\n"
+            '  File ".../job_head.py", line 130, in _raise_error\n'
+            "    raise RuntimeError(...)\n"
+            "RuntimeError: Request failed with status code 400: Traceback (most recent "
+            "call last):\n"
+            '  File ".../job_manager.py", line 555, in submit_job\n'
+            "    raise ValueError(\n"
+            "ValueError: Job with submission_id my_job_id already exists."
+        )
+        mock_client_instance.submit_job.side_effect = RuntimeError(nested_error)
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
+            check_exit_code(result, 1)
+            assert (
+                "ValueError: Job with submission_id my_job_id already exists."
+                in result.output
+            )
+            # The last stack is kept in full (frames + root-cause line)...
+            assert "job_manager.py" in result.output
+            # ...but the outer forwarding hop (status 500 + its job_head frames)
+            # is dropped.
+            assert "status code 500" not in result.output
+            assert "job_head.py" not in result.output
+
+    def test_submit_error_with_braces_does_not_crash(self, mock_sdk_client):
+        """A message containing literal '{...}' (e.g. a dict repr) must not be
+        passed through str.format(), which would crash and mask the real
+        error with an unrelated KeyError/IndexError."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+        error_with_braces = "ValueError: Job config {'a': 1} is invalid."
+        mock_client_instance.submit_job.side_effect = RuntimeError(error_with_braces)
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
+            check_exit_code(result, 1)
+            assert "Job config {'a': 1} is invalid." in result.output
+
     def test_entrypoint_num_cpus(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
