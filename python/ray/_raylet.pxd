@@ -158,7 +158,8 @@ cdef class CoreWorker:
             size_t data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
             &contained_id, const CAddress &caller_address,
             int64_t *task_output_inlined_bytes,
-            shared_ptr[CRayObject] *return_ptr)
+            shared_ptr[CRayObject] *return_ptr,
+            c_bool force_inline)
     cdef store_task_outputs(
             self,
             worker, outputs,
