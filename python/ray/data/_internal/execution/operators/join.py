@@ -146,12 +146,34 @@ def _make_join_reduce_fn(
         ), f"Join reduce expects two inputs (got {len(tables_by_input)})"
         left_table = _side_table(tables_by_input[0], left_schema)
         right_table = _side_table(tables_by_input[1], right_schema)
+
+        # Synthesize the empty side's schema from the known side for anti joins
+        if (
+            join_type == JoinType.LEFT_ANTI
+            and right_table is None
+            and left_table is not None
+        ):
+            right_table = (
+                left_table.select(left_key_col_names)
+                .schema.empty_table()
+                .rename_columns(right_key_col_names)
+            )
+        elif (
+            join_type == JoinType.RIGHT_ANTI
+            and left_table is None
+            and right_table is not None
+        ):
+            left_table = (
+                right_table.select(right_key_col_names)
+                .schema.empty_table()
+                .rename_columns(left_key_col_names)
+            )
+
         if left_table is None or right_table is None:
             # TODO(you-cheng): A whole input side is empty AND its schema can't be inferred
             # (0 blocks + un-inferable schema, e.g. a map_batches side), so
             # _side_table returns None and we skip the partition. This silently
-            # drops the preserved side's rows for preserving joins, left_outer/
-            # full_outer and left_anti/right_anti.
+            # drops the preserved side's rows for preserving outer joins.
             return
         yield join_tables(
             left_table,

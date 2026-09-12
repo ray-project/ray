@@ -425,6 +425,36 @@ def test_anti_join_no_matches(
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
+def test_anti_join_preserves_rows_with_unknown_schema_empty_side(
+    ray_start_regular_shared_2_cpus,
+    hash_shuffle_version,
+    join_type,
+):
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
+        pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
+
+    preserved = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
+
+    if join_type == "left_anti":
+        left, right = preserved, unknown_schema_empty
+    else:
+        left, right = unknown_schema_empty, preserved
+
+    result = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+    ).take_all()
+
+    assert sorted(result, key=lambda row: row["id"]) == [
+        {"id": 1, "value": "a"},
+        {"id": 2, "value": "b"},
+    ]
+
+
+@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
     join_type,
