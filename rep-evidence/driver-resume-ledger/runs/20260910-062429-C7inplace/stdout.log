@@ -1,0 +1,55 @@
+
+====================================================================
+ARM: nokill
+====================================================================
+  [nokill] coordinator started
+  [nokill] NC-outage: no kill
+  [nokill] exec_pre                         (5, 44)
+  [nokill] exec_during                      (50, 141)
+  [nokill] exec_after                       (164, 400)
+  [nokill] writes_during                    (49, 140)
+  [nokill] writes_after                     (165, 401)
+  [nokill] sampler_errors                   0
+  [nokill] epochs_seen                      [1]
+  [nokill] kv_unavailable_during_outage     False
+  [nokill] kv_available_after_restore       True
+  [nokill] kv_error_examples                []
+  [nokill] live actor rows: 1  rows: [{"state": "ALIVE", "pid": "", "restarts": 0}]
+  [nokill] committed=400 dupes=False contiguous=True
+  [nokill] final={"epoch": 1, "instance_id": "73c83a40f7a84440aa4794bc5b194876", "resumed_from": 0, "executed_this_incarnation": 400, "finished": true, "fatal": null, "ledger_writes": 401, "ledger_keys": 5, "pid": 987845}
+
+====================================================================
+ARM: kill
+====================================================================
+  [kill] coordinator started
+  [kill] exec_pre                         None
+  [kill] exec_during                      None
+  [kill] exec_after                       None
+  [kill] writes_during                    None
+  [kill] writes_after                     None
+  [kill] sampler_errors                   0
+  [kill] epochs_seen                      []
+  [kill] kv_unavailable_during_outage     False
+  [kill] kv_available_after_restore       False
+  [kill] kv_error_examples                []
+  [kill] live actor rows: None  rows: null
+  [kill] committed=None dupes=None contiguous=None
+  [kill] final=null
+
+====================================================================
+  NC_outage_nokill_progressed                  True
+  VOID_nokill_also_stalled                     False
+  work_continued_during_outage                 False
+  durability_paused_during_outage              True
+  kv_confirmed_unavailable_during_outage       False
+  kv_confirmed_available_after_restore         False
+  NC_sampler_saw_kv_go_red                     False
+  recovered_after_restore                      False
+  durability_resumed_after_restore             False
+  ray55996_wedged_after_restore                True
+  coordinator_survived                         False
+  no_duplicate_incarnation                     False
+  ledger_no_dupes                              False
+  ledger_contiguous                            None
+  no_restart_epoch_stayed_1                    False
+====================================================================

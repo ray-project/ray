@@ -1,0 +1,39 @@
+{
+  "experiment": "C9 -- can KubeRay restart the driver without replacing the RayCluster?",
+  "method": "source reading of ray-project/kuberay ray-operator/apis/ray/v1/rayjob_types.go via the GitHub API, 2026-09-10",
+  "verdict": "refuted -- which for C9 is the good outcome, since C9 was written as an inverted claim",
+  "findings": [
+    {
+      "id": "F1",
+      "quote": "Specifies the number of retries before marking this job failed. Each retry creates a new RayCluster.",
+      "field": "RayJobSpec.BackoffLimit",
+      "reading": "confirms the first clause of C9: the RayJob RETRY path does recreate the cluster, so R4's ledger does not survive a backoffLimit retry"
+    },
+    {
+      "id": "F2",
+      "quote": "BackoffLimit of the submitter. In K8sJobMode, this is the K8s Job backoffLimit. In SidecarMode with SidecarSubmitterRestart enabled, this is the maximum container restart count.",
+      "field": "SubmitterConfig.BackoffLimit",
+      "reading": "REFUTES the second clause. SidecarMode injects the submitter as a container in the Ray head pod, and with SidecarSubmitterRestart the submitter container is restarted in place. The driver restarts; the RayCluster does not. That is exactly the lifecycle R4 needs, and it already exists."
+    },
+    {
+      "id": "F3",
+      "quote": "clusterSelector is used to select running rayclusters by labels",
+      "field": "RayJobSpec.ClusterSelector",
+      "reading": "a second, independent route: a RayJob can target a pre-existing long-lived RayCluster rather than having one created for it, so the cluster outlives the job by construction"
+    },
+    {
+      "id": "F4",
+      "quote": "If jobId is not set, a new jobId will be auto-generated.",
+      "field": "RayJobSpec.JobId",
+      "reading": "a user-settable, stable identity for the JOB. Relevant to C23 as a ledger scope key, but it does NOT detect cluster replacement -- two different clusters can carry the same jobId."
+    },
+    {
+      "id": "F5",
+      "quote": "SidecarMode JobSubmissionMode = \"SidecarMode\" // Submit job via a sidecar container in the Ray head Pod",
+      "field": "JobSubmissionMode",
+      "reading": "confirms SidecarMode is a shipped submission mode, not a proposal"
+    }
+  ],
+  "consequence_for_the_design": "R4's resume boundary is wider than the parent doc assumed. The doc treated 'one RayCluster' as a hard ceiling imposed by KubeRay. It is not: SidecarMode with submitter restart, and clusterSelector against a long-lived cluster, both keep the cluster while the driver dies. This materially improves R4's upstream story, because the KubeRay-side lifecycle it needs already exists.",
+  "not_established": "Whether SidecarSubmitterRestart is GA or gated behind a feature flag, and how it interacts with RayJob.backoffLimit, were not checked. Source reading only; nothing was deployed."
+}

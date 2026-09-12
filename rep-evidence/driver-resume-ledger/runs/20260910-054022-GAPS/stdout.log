@@ -1,0 +1,38 @@
+experiment=GAPS git=600919383eb4 budgets=[1, 2]
+
+==============================================================================
+F6 -- does a longer stale tail expose anything new?
+==============================================================================
+  tail=8   n=2  traces=248    fenced-active=233    max-tail-used=8   hit-cap=233   CLEAN
+  tail=8   n=3  traces=312    fenced-active=312    max-tail-used=8   hit-cap=312   CLEAN
+  tail=16  n=2  traces=248    fenced-active=233    max-tail-used=16  hit-cap=158   CLEAN
+  tail=16  n=3  traces=312    fenced-active=312    max-tail-used=16  hit-cap=260   CLEAN
+  tail=32  n=2  traces=248    fenced-active=233    max-tail-used=30  hit-cap=0     CLEAN
+  tail=32  n=3  traces=312    fenced-active=312    max-tail-used=32  hit-cap=37    CLEAN
+  tail=64  n=2  traces=248    fenced-active=233    max-tail-used=30  hit-cap=0     CLEAN
+  tail=64  n=3  traces=312    fenced-active=312    max-tail-used=38  hit-cap=0     CLEAN
+
+==============================================================================
+F7 -- 5 and 6 concurrent incarnations
+==============================================================================
+  n=5 w=4  traces=273    fenced-active=273    CLEAN 1s
+  n=5 w=5  traces=945    fenced-active=945    CLEAN 3s
+  n=6 w=4  traces=273    fenced-active=273    CLEAN 1s
+  n=6 w=5  traces=945    fenced-active=945    CLEAN 4s
+
+==============================================================================
+DEPTH -- sequential crash enumeration at fault budget 3
+==============================================================================
+  budget=3  traces=237840 CLEAN 441s
+
+==============================================================================
+CONTROLS -- must be red at EVERY configuration, not just the old ones
+==============================================================================
+  NC15_epochs_descending         n=3,tail=64  RED  {'INV-FENCE-ACK': 8137, 'INV-DUR': 25748}
+  NC15_epochs_descending         n=5,tail=8   RED  {'INV-FENCE-ACK': 14137, 'INV-DUR': 24839}
+  NC13_carry_forward_ptr_first   n=3,tail=64  RED  {'INV-FENCE-ACK': 8139, 'INV-DUR': 147}
+  NC13_carry_forward_ptr_first   n=5,tail=8   RED  {'INV-FENCE-ACK': 14137, 'INV-DUR': 95}
+
+==============================================================================
+VERDICT: gaps-narrowed -- no violation at stale tails up to 64, up to 6 concurrent incarnations, or at sequential fault budget 3; all controls red
+==============================================================================

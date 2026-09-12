@@ -1,0 +1,293 @@
+{
+  "experiment": "GAPS",
+  "verdict": "VOID",
+  "why": "control(s) went green at scale: ['NC13_carry_forward_ptr_first/n=3,tail=64', 'NC13_carry_forward_ptr_first/n=5,tail=8']",
+  "config": {
+    "experiment": "GAPS",
+    "git_rev": "600919383eb4749cfdb7927c63f73515ce2dbd54",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      },
+      "NC13_carry_forward_ptr_first": {
+        "carry_forward_ptr_first": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T05:31:38"
+  },
+  "new_violations": {},
+  "f6_stale_tail": {
+    "tail=8/n=2": {
+      "traces": 248,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 213
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 233,
+      "max_tail_actually_used": 8,
+      "traces_hitting_the_cap": 233
+    },
+    "tail=8/n=3": {
+      "traces": 312,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 287
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 312,
+      "max_tail_actually_used": 8,
+      "traces_hitting_the_cap": 312
+    },
+    "tail=16/n=2": {
+      "traces": 248,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 228
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 233,
+      "max_tail_actually_used": 16,
+      "traces_hitting_the_cap": 158
+    },
+    "tail=16/n=3": {
+      "traces": 312,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 307
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 312,
+      "max_tail_actually_used": 16,
+      "traces_hitting_the_cap": 260
+    },
+    "tail=32/n=2": {
+      "traces": 248,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 228
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 233,
+      "max_tail_actually_used": 30,
+      "traces_hitting_the_cap": 0
+    },
+    "tail=32/n=3": {
+      "traces": 312,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 307
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 312,
+      "max_tail_actually_used": 32,
+      "traces_hitting_the_cap": 37
+    },
+    "tail=64/n=2": {
+      "traces": 248,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 228
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 233,
+      "max_tail_actually_used": 30,
+      "traces_hitting_the_cap": 0
+    },
+    "tail=64/n=3": {
+      "traces": 312,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 307
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 312,
+      "max_tail_actually_used": 38,
+      "traces_hitting_the_cap": 0
+    }
+  },
+  "f7_instances": {
+    "n=5/w=4": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 253
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 273,
+      "max_tail_actually_used": 8,
+      "seconds": 1.02
+    },
+    "n=5/w=5": {
+      "traces": 945,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 864
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 945,
+      "max_tail_actually_used": 8,
+      "seconds": 4.57
+    },
+    "n=6/w=4": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 253
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 273,
+      "max_tail_actually_used": 8,
+      "seconds": 1.21
+    },
+    "n=6/w=5": {
+      "traces": 945,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 864
+      },
+      "violations_excluding_fence_ack": {},
+      "fenced_active_traces": 945,
+      "max_tail_actually_used": 8,
+      "seconds": 4.43
+    }
+  },
+  "depth": {
+    "budget3": {
+      "traces": 237840,
+      "violations_by_kind": {},
+      "seconds": 418.35
+    }
+  },
+  "controls": {
+    "NC15_epochs_descending/n=3,tail=64": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 273,
+        "INV-DUR": 759
+      },
+      "red": true
+    },
+    "NC15_epochs_descending/n=5,tail=8": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 253,
+        "INV-DUR": 164
+      },
+      "red": true
+    },
+    "NC13_carry_forward_ptr_first/n=3,tail=64": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 273
+      },
+      "red": false
+    },
+    "NC13_carry_forward_ptr_first/n=5,tail=8": {
+      "traces": 273,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 253
+      },
+      "red": false
+    }
+  },
+  "f6_inert_configurations": [
+    "tail=32/n=2",
+    "tail=64/n=2",
+    "tail=64/n=3"
+  ]
+}

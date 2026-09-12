@@ -1,0 +1,103 @@
+{
+  "ray_version": "2.58.0",
+  "candidates": {
+    "session_name": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": true,
+      "values": {
+        "1_fresh_A": "session_2026-09-10_05-53-45_087184_954919",
+        "2_restart_same_A": "session_2026-09-10_05-53-45_087184_954919",
+        "3_fresh_B": "session_2026-09-10_05-53-58_610737_954919"
+      }
+    },
+    "session_dir": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": true,
+      "values": {
+        "1_fresh_A": "/tmp/ray/session_2026-09-10_05-53-45_087184_954919",
+        "2_restart_same_A": "/tmp/ray/session_2026-09-10_05-53-45_087184_954919",
+        "3_fresh_B": "/tmp/ray/session_2026-09-10_05-53-58_610737_954919"
+      }
+    },
+    "gcs_address": {
+      "stable_across_restart": false,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "values": {
+        "1_fresh_A": "100.76.134.17:32895",
+        "2_restart_same_A": "100.76.134.17:36137",
+        "3_fresh_B": "100.76.134.17:44635"
+      }
+    },
+    "node_id": {
+      "stable_across_restart": false,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": false,
+      "values": {
+        "1_fresh_A": "07222724a9ef30d35ba8dbdfcfd763851d81685c7a6f495c45293f57",
+        "2_restart_same_A": "fc01a47aaae2dcc252130b124ee29ed4b11e60c54dc1a28c5539dc14",
+        "3_fresh_B": "fefdecf74a14df058c023668701271cd719ed4af9d921ffca73f949e"
+      }
+    },
+    "runtime_ctx_cluster_id": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": false,
+      "USABLE_AS_SCOPE_KEY": false,
+      "values": {
+        "1_fresh_A": "None",
+        "2_restart_same_A": "None",
+        "3_fresh_B": "None"
+      }
+    },
+    "gcs_client_cluster_id": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": true,
+      "values": {
+        "1_fresh_A": "ClusterID(635741174efe10345a365d75e2c2440ac02920ec96f6c8311604a52e)",
+        "2_restart_same_A": "ClusterID(635741174efe10345a365d75e2c2440ac02920ec96f6c8311604a52e)",
+        "3_fresh_B": "ClusterID(7a8751239c33ef645cb6fa0afcebc4c853eeafb1696cedfea0d07ba5)"
+      }
+    },
+    "env_RAY_CLUSTER_NAME": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": false,
+      "USABLE_AS_SCOPE_KEY": false,
+      "values": {
+        "1_fresh_A": "None",
+        "2_restart_same_A": "None",
+        "3_fresh_B": "None"
+      }
+    },
+    "storage_path_cluster_marker": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": true,
+      "USABLE_AS_SCOPE_KEY": true,
+      "values": {
+        "1_fresh_A": "session_2026-09-10_05-53-45_087184_954919",
+        "2_restart_same_A": "session_2026-09-10_05-53-45_087184_954919",
+        "3_fresh_B": "session_2026-09-10_05-53-58_610737_954919"
+      }
+    },
+    "storage_dir_listing": {
+      "stable_across_restart": true,
+      "differs_on_new_cluster": false,
+      "USABLE_AS_SCOPE_KEY": false,
+      "values": {
+        "1_fresh_A": "kv,session_name,tables",
+        "2_restart_same_A": "kv,session_name,tables",
+        "3_fresh_B": "kv,session_name,tables"
+      }
+    }
+  },
+  "usable_candidates": [
+    "session_name",
+    "session_dir",
+    "gcs_client_cluster_id",
+    "storage_path_cluster_marker"
+  ],
+  "probe_can_distinguish_clusters_at_all": true,
+  "C23_refuted": true
+}

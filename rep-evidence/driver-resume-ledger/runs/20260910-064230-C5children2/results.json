@@ -1,0 +1,383 @@
+{
+  "arms": {
+    "opaque": {
+      "arm": "opaque",
+      "reconcile": true,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "f07baedefc7e43e1850e897f54c5ca88",
+            "pid": 996010
+          },
+          {
+            "idx": 1,
+            "name": "4b17b756a0514c5c8c1b1988fac10c06",
+            "pid": 996009
+          },
+          {
+            "idx": 2,
+            "name": "0606bb10929f4644a48df52799259bb8",
+            "pid": 996008
+          },
+          {
+            "idx": 3,
+            "name": "579626343aad4367ab92e60c181799a9",
+            "pid": 996011
+          },
+          {
+            "idx": 4,
+            "name": "9e5ad2c3a2b349da91cda65558721ae7",
+            "pid": 996168
+          },
+          {
+            "idx": 5,
+            "name": "cd98d1c7340d4bf3ac28c585ddf66109",
+            "pid": 996206
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "f07baedefc7e43e1850e897f54c5ca88",
+          "1": "4b17b756a0514c5c8c1b1988fac10c06"
+        },
+        "discovered": [],
+        "adopted": [
+          {
+            "name": "f07baedefc7e43e1850e897f54c5ca88",
+            "ident": {
+              "idx": 0,
+              "pid": 996010
+            }
+          },
+          {
+            "name": "4b17b756a0514c5c8c1b1988fac10c06",
+            "ident": {
+              "idx": 1,
+              "pid": 996009
+            }
+          }
+        ],
+        "created_now": [
+          {
+            "name": "2259322953464b3baaa0e5e253e4759c",
+            "pid": 996282,
+            "via": "create"
+          },
+          {
+            "name": "bfd79dcdcb00443698103957a512068d",
+            "pid": 996319,
+            "via": "create"
+          },
+          {
+            "name": "9c8ce8abb29b42ad8f4a2a4431991500",
+            "pid": 996357,
+            "via": "create"
+          },
+          {
+            "name": "5f2a78d46eba4e92b10b1f9f139ed2a2",
+            "pid": 996394,
+            "via": "create"
+          }
+        ],
+        "unreachable": [],
+        "live_named_total": 10,
+        "live_named": [
+          "9e5ad2c3a2b349da91cda65558721ae7",
+          "2259322953464b3baaa0e5e253e4759c",
+          "4b17b756a0514c5c8c1b1988fac10c06",
+          "0606bb10929f4644a48df52799259bb8",
+          "cd98d1c7340d4bf3ac28c585ddf66109",
+          "579626343aad4367ab92e60c181799a9",
+          "f07baedefc7e43e1850e897f54c5ca88",
+          "bfd79dcdcb00443698103957a512068d",
+          "5f2a78d46eba4e92b10b1f9f139ed2a2",
+          "9c8ce8abb29b42ad8f4a2a4431991500"
+        ]
+      },
+      "reacquired_same_pid": [],
+      "metrics": {
+        "adopted": 2,
+        "adopted_same_pid": true,
+        "created_now": 4,
+        "unreachable": 0,
+        "orphans": 4,
+        "orphan_names": [
+          "0606bb10929f4644a48df52799259bb8",
+          "579626343aad4367ab92e60c181799a9",
+          "9e5ad2c3a2b349da91cda65558721ae7",
+          "cd98d1c7340d4bf3ac28c585ddf66109"
+        ],
+        "live_named_total": 10
+      }
+    },
+    "prefixed_explicit": {
+      "arm": "prefixed_explicit",
+      "reconcile": true,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+            "pid": 996480
+          },
+          {
+            "idx": 1,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-1",
+            "pid": 996518
+          },
+          {
+            "idx": 2,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-2",
+            "pid": 996556
+          },
+          {
+            "idx": 3,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-3",
+            "pid": 996594
+          },
+          {
+            "idx": 4,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-4",
+            "pid": 996631
+          },
+          {
+            "idx": 5,
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-5",
+            "pid": 996669
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+          "1": "r4/scope-c5-prefixed_explicit/jobc5/child-1"
+        },
+        "discovered": [
+          "r4/scope-c5-prefixed_explicit/jobc5/child-1",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-3",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-2",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-5",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-4"
+        ],
+        "adopted": [
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+            "ident": {
+              "idx": 0,
+              "pid": 996480
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-1",
+            "ident": {
+              "idx": 1,
+              "pid": 996518
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-2",
+            "ident": {
+              "idx": 2,
+              "pid": 996556
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-3",
+            "ident": {
+              "idx": 3,
+              "pid": 996594
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-4",
+            "ident": {
+              "idx": 4,
+              "pid": 996631
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_explicit/jobc5/child-5",
+            "ident": {
+              "idx": 5,
+              "pid": 996669
+            }
+          }
+        ],
+        "created_now": [],
+        "unreachable": [],
+        "live_named_total": 16,
+        "live_named": [
+          "9e5ad2c3a2b349da91cda65558721ae7",
+          "9c8ce8abb29b42ad8f4a2a4431991500",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-1",
+          "5f2a78d46eba4e92b10b1f9f139ed2a2",
+          "f07baedefc7e43e1850e897f54c5ca88",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-3",
+          "bfd79dcdcb00443698103957a512068d",
+          "2259322953464b3baaa0e5e253e4759c",
+          "4b17b756a0514c5c8c1b1988fac10c06",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-2",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-5",
+          "cd98d1c7340d4bf3ac28c585ddf66109",
+          "0606bb10929f4644a48df52799259bb8",
+          "579626343aad4367ab92e60c181799a9",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-4"
+        ]
+      },
+      "reacquired_same_pid": [],
+      "metrics": {
+        "adopted": 6,
+        "adopted_same_pid": true,
+        "created_now": 0,
+        "unreachable": 0,
+        "orphans": 0,
+        "orphan_names": [],
+        "live_named_total": 16
+      }
+    },
+    "prefixed_getifexists": {
+      "arm": "prefixed_getifexists",
+      "reconcile": true,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-0",
+            "pid": 996796
+          },
+          {
+            "idx": 1,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-1",
+            "pid": 996833
+          },
+          {
+            "idx": 2,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-2",
+            "pid": 996872
+          },
+          {
+            "idx": 3,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-3",
+            "pid": 996913
+          },
+          {
+            "idx": 4,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-4",
+            "pid": 996952
+          },
+          {
+            "idx": 5,
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-5",
+            "pid": 996990
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "r4/scope-c5-prefixed_getifexists/jobc5/child-0",
+          "1": "r4/scope-c5-prefixed_getifexists/jobc5/child-1"
+        },
+        "discovered": [],
+        "adopted": [
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-0",
+            "ident": {
+              "idx": 0,
+              "pid": 996796
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-1",
+            "ident": {
+              "idx": 1,
+              "pid": 996833
+            }
+          }
+        ],
+        "created_now": [
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-2",
+            "pid": 996872,
+            "via": "get_if_exists"
+          },
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-3",
+            "pid": 996913,
+            "via": "get_if_exists"
+          },
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-4",
+            "pid": 996952,
+            "via": "get_if_exists"
+          },
+          {
+            "name": "r4/scope-c5-prefixed_getifexists/jobc5/child-5",
+            "pid": 996990,
+            "via": "get_if_exists"
+          }
+        ],
+        "unreachable": [],
+        "live_named_total": 22,
+        "live_named": [
+          "9e5ad2c3a2b349da91cda65558721ae7",
+          "9c8ce8abb29b42ad8f4a2a4431991500",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-3",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-1",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-1",
+          "5f2a78d46eba4e92b10b1f9f139ed2a2",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-4",
+          "f07baedefc7e43e1850e897f54c5ca88",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-3",
+          "bfd79dcdcb00443698103957a512068d",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-5",
+          "2259322953464b3baaa0e5e253e4759c",
+          "4b17b756a0514c5c8c1b1988fac10c06",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-2",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-0",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-0",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-5",
+          "cd98d1c7340d4bf3ac28c585ddf66109",
+          "0606bb10929f4644a48df52799259bb8",
+          "579626343aad4367ab92e60c181799a9",
+          "r4/scope-c5-prefixed_getifexists/jobc5/child-2",
+          "r4/scope-c5-prefixed_explicit/jobc5/child-4"
+        ]
+      },
+      "reacquired_same_pid": [
+        "r4/scope-c5-prefixed_getifexists/jobc5/child-2",
+        "r4/scope-c5-prefixed_getifexists/jobc5/child-3",
+        "r4/scope-c5-prefixed_getifexists/jobc5/child-4",
+        "r4/scope-c5-prefixed_getifexists/jobc5/child-5"
+      ],
+      "metrics": {
+        "adopted": 2,
+        "adopted_same_pid": true,
+        "created_now": 4,
+        "unreachable": 0,
+        "orphans": 0,
+        "orphan_names": [],
+        "live_named_total": 22
+      }
+    }
+  },
+  "K": 6,
+  "R": 2,
+  "verdict": {
+    "NC_opaque_leaked_as_required": true,
+    "VOID_control_clean": false,
+    "opaque_orphans": 4,
+    "opaque_real_duplicates": 4,
+    "explicit_orphans": 0,
+    "explicit_adopted_all": true,
+    "explicit_adoption_real_same_pid": true,
+    "explicit_created_nothing": true,
+    "getifexists_orphans": 0,
+    "getifexists_reacquired": 4,
+    "C5_proven_conditional_on_scoped_names": true,
+    "getifexists_is_sufficient_on_its_own": true
+  }
+}

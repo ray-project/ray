@@ -1,0 +1,51 @@
+{
+  "before": {
+    "session": "session_2026-09-10_05-58-09_073229_962153",
+    "nodes": 2
+  },
+  "coordinator_created": {
+    "target_node": "f6b0725be081a323abf89f1e7ca719030ed042afcf1d7ac0ec4e5d4d",
+    "head_node": "cfd8d422c24d548f920e9a4005a2d5f9f17659f8ca4f20fc38ab7be3",
+    "off_head": true,
+    "info": {
+      "epoch": 1,
+      "instance_id": "36a2146794574021aca3cfa0b0a04d12",
+      "resumed_from": 0,
+      "executed_this_incarnation": 60,
+      "finished": true,
+      "fatal": null,
+      "ledger_writes": 59,
+      "ledger_keys": 5,
+      "pid": 963034
+    }
+  },
+  "killed_gcs_pids": [
+    962133,
+    962155
+  ],
+  "gcs_alive_during_outage": false,
+  "outage_seconds": 26.3,
+  "after_restart": {
+    "session": "session_2026-09-10_05-58-09_073229_962153",
+    "epochs": [
+      1
+    ],
+    "epoch1_state_units": 60,
+    "named": [
+      {
+        "name": "coord-H",
+        "namespace": "r4"
+      }
+    ],
+    "reattach": {
+      "error": "ActorUnschedulableError: The actor is not schedulable: The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible, and soft=False was specified."
+    }
+  },
+  "verdict": {
+    "C21_session_name_survives_real_head_restart": true,
+    "ledger_survived_head_loss": true,
+    "committed_units_recovered": 60,
+    "actor_reattachable_after_head_restart": false,
+    "coordinator_progressed_off_head_before_kill": true
+  }
+}

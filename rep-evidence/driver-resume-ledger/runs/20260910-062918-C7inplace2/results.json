@@ -1,0 +1,1915 @@
+{
+  "arms": {
+    "nokill": {
+      "arm": "nokill",
+      "sampler_stderr": "",
+      "samples": [
+        {
+          "t": 0.0,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 5,
+            "committed_this_incarnation": 4,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 2.11,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 4.12,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 16,
+            "committed_this_incarnation": 14,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 6.12,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 22,
+            "committed_this_incarnation": 22,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 8.13,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 28,
+            "committed_this_incarnation": 30,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 10.13,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 33,
+            "committed_this_incarnation": 32,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 12.14,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 39,
+            "committed_this_incarnation": 40,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 14.14,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 45,
+            "committed_this_incarnation": 48,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 16.15,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 50,
+            "committed_this_incarnation": 49,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 18.15,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 56,
+            "committed_this_incarnation": 57,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 20.16,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 62,
+            "committed_this_incarnation": 59,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 22.16,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 67,
+            "committed_this_incarnation": 67,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 24.17,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 73,
+            "committed_this_incarnation": 75,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 26.17,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 79,
+            "committed_this_incarnation": 77,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 28.18,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 84,
+            "committed_this_incarnation": 85,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 30.18,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 90,
+            "committed_this_incarnation": 93,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 32.19,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 96,
+            "committed_this_incarnation": 95,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 34.19,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 102,
+            "committed_this_incarnation": 103,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 36.2,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 107,
+            "committed_this_incarnation": 104,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 38.2,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 113,
+            "committed_this_incarnation": 112,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 40.21,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 119,
+            "committed_this_incarnation": 120,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 42.22,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 124,
+            "committed_this_incarnation": 122,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 44.22,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 130,
+            "committed_this_incarnation": 130,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 46.23,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 136,
+            "committed_this_incarnation": 138,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 48.23,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 141,
+            "committed_this_incarnation": 140,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 50.24,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 147,
+            "committed_this_incarnation": 148,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 52.24,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 153,
+            "committed_this_incarnation": 156,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 54.25,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 158,
+            "committed_this_incarnation": 157,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 56.25,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 164,
+            "committed_this_incarnation": 165,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 58.25,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 170,
+            "committed_this_incarnation": 167,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 60.26,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 176,
+            "committed_this_incarnation": 175,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 62.27,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 181,
+            "committed_this_incarnation": 183,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 64.27,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 187,
+            "committed_this_incarnation": 185,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 66.28,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 193,
+            "committed_this_incarnation": 193,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 68.29,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 198,
+            "committed_this_incarnation": 201,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 70.29,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 204,
+            "committed_this_incarnation": 203,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 72.3,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 210,
+            "committed_this_incarnation": 211,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 74.3,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 215,
+            "committed_this_incarnation": 212,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 76.31,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 221,
+            "committed_this_incarnation": 220,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 78.33,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 227,
+            "committed_this_incarnation": 228,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 80.34,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 232,
+            "committed_this_incarnation": 230,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 82.34,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 238,
+            "committed_this_incarnation": 238,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 84.35,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 244,
+            "committed_this_incarnation": 246,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 86.36,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 250,
+            "committed_this_incarnation": 248,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 88.36,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 255,
+            "committed_this_incarnation": 256,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 90.37,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 261,
+            "committed_this_incarnation": 264,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 92.37,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 267,
+            "committed_this_incarnation": 266,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 94.38,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 272,
+            "committed_this_incarnation": 273,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 96.38,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 278,
+            "committed_this_incarnation": 275,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 98.39,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 284,
+            "committed_this_incarnation": 283,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 100.39,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 289,
+            "committed_this_incarnation": 291,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 102.4,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 295,
+            "committed_this_incarnation": 293,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 104.4,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 301,
+            "committed_this_incarnation": 301,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 106.41,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 307,
+            "committed_this_incarnation": 309,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 108.41,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 312,
+            "committed_this_incarnation": 311,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 110.42,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 318,
+            "committed_this_incarnation": 319,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 112.42,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 324,
+            "committed_this_incarnation": 327,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 114.43,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 329,
+            "committed_this_incarnation": 328,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 116.43,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 335,
+            "committed_this_incarnation": 336,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 118.44,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 341,
+            "committed_this_incarnation": 338,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 120.44,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 346,
+            "committed_this_incarnation": 346,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 122.44,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 352,
+            "committed_this_incarnation": 354,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 124.45,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 358,
+            "committed_this_incarnation": 356,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 126.45,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 363,
+            "committed_this_incarnation": 364,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 128.46,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 369,
+            "committed_this_incarnation": 372,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 130.46,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 375,
+            "committed_this_incarnation": 374,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 132.47,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 381,
+            "committed_this_incarnation": 382,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 134.47,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 386,
+            "committed_this_incarnation": 383,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 136.47,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 392,
+            "committed_this_incarnation": 391,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 138.48,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 398,
+            "committed_this_incarnation": 399,
+            "finished": false,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 140.48,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "finished": true,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 142.49,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "finished": true,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 144.49,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "finished": true,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 146.5,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "finished": true,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 148.5,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "finished": true,
+            "fatal": null,
+            "pid": 990191
+          },
+          "kv_ok": true
+        }
+      ],
+      "post": {
+        "actor_rows": [
+          {
+            "state": "ALIVE",
+            "pid": "",
+            "restarts": 0
+          }
+        ],
+        "live_rows": 1,
+        "final": {
+          "epoch": 1,
+          "instance_id": "2a1dd84833ab44bf9e5c903935b47e0d",
+          "resumed_from": 0,
+          "executed_this_incarnation": 400,
+          "finished": true,
+          "fatal": null,
+          "ledger_writes": 401,
+          "ledger_keys": 5,
+          "pid": 990191
+        },
+        "committed": 400,
+        "committed_has_dupes": false,
+        "committed_contiguous": true
+      }
+    },
+    "kill": {
+      "arm": "kill",
+      "gcs_argv": [
+        "/tmp/rayenv/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server",
+        "--log_dir=/tmp/ray/session_2026-09-10_06-32-21_247164_990781/logs",
+        "--config_list=eyJnY3Nfc3RvcmFnZSI6ICJyb2Nrc2RiIiwgImdjc19zdG9yYWdlX3BhdGgiOiAiL3RtcC9yNF9jN19raWxsIiwgImF1dG9tYXRpY19vYmplY3Rfc3BpbGxpbmdfZW5hYmxlZCI6IHRydWUsICJvYmplY3Rfc3BpbGxpbmdfY29uZmlnIjogIntcInR5cGVcIjogXCJmaWxlc3lzdGVtXCIsIFwicGFyYW1zXCI6IHtcImRpcmVjdG9yeV9wYXRoXCI6IFwiL3RtcC9yYXkvc2Vzc2lvbl8yMDI2LTA5LTEwXzA2LTMyLTIxXzI0NzE2NF85OTA3ODFcIn19IiwgImlzX2V4dGVybmFsX3N0b3JhZ2VfdHlwZV9mcyI6IHRydWV9",
+        "--gcs_server_port=6583",
+        "--metrics-agent-port=0",
+        "--node-ip-address=100.76.134.17",
+        "--session-name=session_2026-09-10_06-32-21_247164_990781",
+        "--ray-commit=cec0a091b12675bbf101cf8a350c8706107baee1",
+        "--session-dir=/tmp/ray/session_2026-09-10_06-32-21_247164_990781",
+        "--node-id=d483a31b59309515928d7eb6e8c9c4d3d561f7d5380603b1f46c0aa9",
+        "--stdout_filepath=/tmp/ray/session_2026-09-10_06-32-21_247164_990781/logs/gcs_server.out",
+        "--stderr_filepath=/tmp/ray/session_2026-09-10_06-32-21_247164_990781/logs/gcs_server.err"
+      ],
+      "kill_at": 1789021973.6482208,
+      "gcs_alive_during_outage": false,
+      "gcs_restarted_pid": 991588,
+      "gcs_alive_after_restore": true,
+      "sampler_stderr": "",
+      "samples": [
+        {
+          "t": 0.0,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 4,
+            "committed_this_incarnation": 4,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 2.1,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 4.1,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 15,
+            "committed_this_incarnation": 14,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 6.13,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 21,
+            "committed_this_incarnation": 22,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 8.13,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 27,
+            "committed_this_incarnation": 30,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 10.14,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 32,
+            "committed_this_incarnation": 31,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 12.14,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 38,
+            "committed_this_incarnation": 39,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 14.15,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 44,
+            "committed_this_incarnation": 41,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 16.15,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": false,
+          "kv_error": "GetTimeoutError: Get timed out: some object(s) not ready."
+        },
+        {
+          "t": 26.15,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": false,
+          "kv_error": "GetTimeoutError: Get timed out: some object(s) not ready."
+        },
+        {
+          "t": 36.16,
+          "error": "GetTimeoutError: Get timed out: some object(s) not ready.",
+          "kv_ok": true
+        },
+        {
+          "t": 53.45,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 53,
+            "committed_this_incarnation": 50,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 55.46,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 59,
+            "committed_this_incarnation": 58,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 57.46,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 65,
+            "committed_this_incarnation": 66,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 59.46,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 70,
+            "committed_this_incarnation": 68,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 61.47,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 76,
+            "committed_this_incarnation": 76,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 63.48,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 82,
+            "committed_this_incarnation": 84,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 65.48,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 87,
+            "committed_this_incarnation": 86,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 67.49,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 93,
+            "committed_this_incarnation": 94,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 69.49,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 99,
+            "committed_this_incarnation": 102,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 71.5,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 104,
+            "committed_this_incarnation": 103,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 73.5,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 110,
+            "committed_this_incarnation": 111,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 75.51,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 116,
+            "committed_this_incarnation": 113,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 77.51,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 122,
+            "committed_this_incarnation": 121,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 79.51,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 127,
+            "committed_this_incarnation": 129,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 81.52,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 133,
+            "committed_this_incarnation": 131,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 83.53,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 139,
+            "committed_this_incarnation": 139,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 85.53,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 144,
+            "committed_this_incarnation": 147,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 87.54,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 150,
+            "committed_this_incarnation": 149,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 89.54,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 156,
+            "committed_this_incarnation": 157,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 91.55,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 161,
+            "committed_this_incarnation": 158,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 93.55,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 167,
+            "committed_this_incarnation": 166,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 95.56,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 173,
+            "committed_this_incarnation": 174,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 97.56,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 178,
+            "committed_this_incarnation": 176,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 99.57,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 184,
+            "committed_this_incarnation": 184,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 101.58,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 190,
+            "committed_this_incarnation": 192,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 103.58,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 196,
+            "committed_this_incarnation": 194,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 105.58,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 201,
+            "committed_this_incarnation": 202,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 107.59,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 207,
+            "committed_this_incarnation": 210,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 109.59,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 213,
+            "committed_this_incarnation": 212,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 111.6,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 218,
+            "committed_this_incarnation": 219,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 113.61,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 224,
+            "committed_this_incarnation": 221,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 115.61,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 230,
+            "committed_this_incarnation": 229,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 117.62,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 235,
+            "committed_this_incarnation": 237,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 119.62,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 241,
+            "committed_this_incarnation": 239,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 121.63,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 247,
+            "committed_this_incarnation": 247,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 123.63,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 253,
+            "committed_this_incarnation": 255,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 125.64,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 258,
+            "committed_this_incarnation": 257,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 127.64,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 264,
+            "committed_this_incarnation": 265,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 129.65,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 270,
+            "committed_this_incarnation": 273,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 131.66,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 275,
+            "committed_this_incarnation": 274,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 133.66,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 281,
+            "committed_this_incarnation": 282,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 135.67,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 287,
+            "committed_this_incarnation": 284,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 137.68,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 292,
+            "committed_this_incarnation": 292,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 139.68,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 298,
+            "committed_this_incarnation": 300,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 141.69,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 304,
+            "committed_this_incarnation": 302,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 143.69,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 310,
+            "committed_this_incarnation": 310,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 145.7,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 315,
+            "committed_this_incarnation": 318,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 147.7,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 321,
+            "committed_this_incarnation": 320,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        },
+        {
+          "t": 149.71,
+          "info": {
+            "epoch": 1,
+            "executed_this_incarnation": 327,
+            "committed_this_incarnation": 328,
+            "finished": false,
+            "fatal": null,
+            "pid": 991371
+          },
+          "kv_ok": true
+        }
+      ],
+      "post": {
+        "actor_rows": [
+          {
+            "state": "ALIVE",
+            "pid": "",
+            "restarts": 0
+          }
+        ],
+        "live_rows": 1,
+        "final": {
+          "epoch": 1,
+          "instance_id": "acf3f8e57bc047bb9fd46ec790a29bb6",
+          "resumed_from": 0,
+          "executed_this_incarnation": 336,
+          "finished": false,
+          "fatal": null,
+          "ledger_writes": 337,
+          "ledger_keys": 4,
+          "pid": 991371
+        },
+        "committed": 336,
+        "committed_has_dupes": false,
+        "committed_contiguous": true
+      }
+    }
+  },
+  "analysis": {
+    "nokill": {
+      "samples_total": 75,
+      "samples_ok": 75,
+      "sampler_errors": 0,
+      "sampler_error_examples": [],
+      "exec_pre": [
+        5,
+        45
+      ],
+      "exec_during": [
+        50,
+        141
+      ],
+      "exec_after": [
+        164,
+        400
+      ],
+      "writes_during": [
+        49,
+        140
+      ],
+      "writes_after": [
+        165,
+        401
+      ],
+      "epochs_seen": [
+        1
+      ],
+      "kv_ok_during": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "kv_ok_after": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "kv_error_examples": [],
+      "kv_unavailable_during_outage": false,
+      "kv_available_after_restore": true,
+      "work_progressed_during_outage": true,
+      "work_progressed_after_restore": true,
+      "durability_progressed_during_outage": true,
+      "durability_resumed_after_restore": true
+    },
+    "kill": {
+      "samples_total": 60,
+      "samples_ok": 59,
+      "sampler_errors": 1,
+      "sampler_error_examples": [
+        "GetTimeoutError: Get timed out: some object(s) not ready."
+      ],
+      "exec_pre": [
+        4,
+        44
+      ],
+      "exec_during": [
+        48,
+        48
+      ],
+      "exec_after": [
+        59,
+        327
+      ],
+      "writes_during": [
+        49,
+        49
+      ],
+      "writes_after": [
+        58,
+        328
+      ],
+      "epochs_seen": [
+        1
+      ],
+      "kv_ok_during": [
+        false,
+        false
+      ],
+      "kv_ok_after": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "kv_error_examples": [
+        "GetTimeoutError: Get timed out: some object(s) not ready.",
+        "GetTimeoutError: Get timed out: some object(s) not ready."
+      ],
+      "kv_unavailable_during_outage": true,
+      "kv_available_after_restore": true,
+      "work_progressed_during_outage": false,
+      "work_progressed_after_restore": true,
+      "durability_progressed_during_outage": false,
+      "durability_resumed_after_restore": true
+    }
+  },
+  "verdict": {
+    "NC_outage_nokill_progressed": true,
+    "VOID_nokill_also_stalled": false,
+    "work_continued_during_outage": false,
+    "durability_paused_during_outage": true,
+    "kv_confirmed_unavailable_during_outage": true,
+    "kv_confirmed_available_after_restore": true,
+    "NC_sampler_saw_kv_go_red": true,
+    "recovered_after_restore": true,
+    "durability_resumed_after_restore": true,
+    "ray55996_wedged_after_restore": false,
+    "coordinator_survived": true,
+    "no_duplicate_incarnation": true,
+    "ledger_no_dupes": true,
+    "ledger_contiguous": true,
+    "no_restart_epoch_stayed_1": true
+  }
+}

@@ -1,0 +1,413 @@
+{
+  "experiment": "C16",
+  "verdict": "C16prime=proven",
+  "why": "INV-DUR=0, INV-FENCE-ACK=38826, INV-ONE=0, coverage=49393, C6 regression clean",
+  "config": {
+    "experiment": "C16",
+    "git_rev": "9ea80fdc7d5b18a28838ee61d25e62353f106ba7",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      },
+      "NC13_carry_forward_ptr_first": {
+        "carry_forward_ptr_first": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T04:31:10"
+  },
+  "totals": {
+    "INV-FENCE-ACK": 38826
+  },
+  "coverage": 49393,
+  "real": {
+    "tiny/w=4": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 4,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 4,
+      "traces": 1061,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 663
+      },
+      "fenced_active_traces": 971,
+      "fenced_ack_traces": 663,
+      "seconds": 2.44,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "tiny/w=6": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 4,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 6,
+      "traces": 4193,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2739
+      },
+      "fenced_active_traces": 3949,
+      "fenced_ack_traces": 2739,
+      "seconds": 9.62,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "tiny/w=8": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 4,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 8,
+      "traces": 16221,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 11123
+      },
+      "fenced_active_traces": 15627,
+      "fenced_ack_traces": 11123,
+      "seconds": 36.48,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "small/w=4": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 4,
+      "traces": 1395,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1004
+      },
+      "fenced_active_traces": 1340,
+      "fenced_ack_traces": 1004,
+      "seconds": 3.98,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "small/w=6": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 6,
+      "traces": 5695,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 4136
+      },
+      "fenced_active_traces": 5486,
+      "fenced_ack_traces": 4136,
+      "seconds": 16.14,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "small/w=8": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 8,
+      "traces": 22579,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 16744
+      },
+      "fenced_active_traces": 22020,
+      "fenced_ack_traces": 16744,
+      "seconds": 64.23,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    }
+  },
+  "fuzz": {
+    "tiny": {
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "traces": 2500,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 977
+      },
+      "fenced_active_traces": 1437,
+      "fenced_ack_traces": 977,
+      "seconds": 5.28,
+      "inv_dur_examples": []
+    },
+    "small": {
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "traces": 2500,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1440
+      },
+      "fenced_active_traces": 2023,
+      "fenced_ack_traces": 1440,
+      "seconds": 7.11,
+      "inv_dur_examples": []
+    }
+  },
+  "controls": {
+    "NC13_carry_forward_ptr_first": {
+      "flags": {
+        "carry_forward_ptr_first": true
+      },
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2739,
+        "INV-DUR": 28
+      },
+      "traces": 4193,
+      "went_red_INV_ONE": false,
+      "went_red_any_fencing": false,
+      "went_red_INV_DUR": true,
+      "example": "[spawn@0 dec=[0, 0, 0, 0, 0, 0]] -> INV-FENCE-ACK at fencing: 2 ack(s) issued by a fenced instance, e.g. [('A', 1, 0), ('A', 1, 1)] (instance, its epoch, unit)",
+      "epoch_owners_example": null
+    },
+    "NC1_fence_ignored": {
+      "flags": {
+        "fence_mode": "ignore"
+      },
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2612,
+        "INV-ONE": 126
+      },
+      "traces": 4071,
+      "went_red_INV_ONE": true,
+      "went_red_any_fencing": true,
+      "went_red_INV_DUR": false,
+      "example": "[spawn@0 dec=[0, 1, 0, 0, 0, 0]] -> INV-ONE at fencing: epoch 1 claimed by ['A', 'B']",
+      "epoch_owners_example": {
+        "1": [
+          "A",
+          "B"
+        ],
+        "2": [
+          "audit"
+        ]
+      }
+    },
+    "NC2_fence_inverted": {
+      "flags": {
+        "fence_mode": "inverted"
+      },
+      "violations_by_kind": {
+        "INV-LIVE": 73
+      },
+      "traces": 123,
+      "went_red_INV_ONE": false,
+      "went_red_any_fencing": true,
+      "went_red_INV_DUR": false,
+      "example": "[spawn@0 dec=[0, 0, 0]] -> INV-LIVE at end of trace: no instance made progress: {'A': 'aborted', 'B': 'aborted'}",
+      "epoch_owners_example": null
+    }
+  },
+  "c6_regression": {
+    "traces": 7620,
+    "violations_by_kind": {}
+  }
+}

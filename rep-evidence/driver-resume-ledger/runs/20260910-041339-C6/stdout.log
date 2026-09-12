@@ -1,0 +1,34 @@
+experiment=C6 git=4eee3fd351c9 budgets=[1, 2]
+
+==============================================================================
+REAL PROTOCOL -- exhaustive crash/lost-ack enumeration
+==============================================================================
+  small/B=1        traces=105     instances<=3 compactions<=3 keys<=3      0.2s  CLEAN
+  small/B=2        traces=7524    instances<=4 compactions<=3 keys<=3     17.0s  CLEAN
+  batched/B=1      traces=80      instances<=3 compactions<=2 keys<=3      0.1s  CLEAN
+  batched/B=2      traces=4731    instances<=4 compactions<=2 keys<=3      8.8s  CLEAN
+  wide/B=1         traces=70      instances<=3 compactions<=1 keys<=3      0.2s  CLEAN
+  wide/B=2         traces=3979    instances<=4 compactions<=1 keys<=3      7.3s  CLEAN
+
+==============================================================================
+NEGATIVE CONTROLS -- each MUST produce a counterexample
+==============================================================================
+  NC4_sweep_before_ptr               RED   after 1 trace(s), 0.0s
+      counterexample: [(no faults)] -> INV-PTR at i1#8 after Delete: base_ptr names a base key that does not exist; INV-DUR at i1#8 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#9 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#11 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#12 after Put: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])
+  NC5_compact_delete_before_ptr      RED   after 1 trace(s), 0.0s
+      counterexample: [(no faults)] -> INV-PTR at i0#16 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#16 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#17 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#17 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#18 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#18 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#29 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#29 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#30 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#30 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#31 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#31 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#42 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#42 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-PTR at i0#43 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#43 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-PTR at i0#44 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#44 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])
+  NC6_compact_base_in_place          GREEN after 6513 trace(s), 14.6s
+  NC7_no_startup_sweep               RED   after 1 trace(s), 0.0s
+      counterexample: [(no faults)] -> INV-GC at after audit startup: 3 key(s) below the winning epoch survived a clean startup: ['session-A/job1/epoch/0001', 'session-A/job1/state/0001/base@0006', 'session-A/job1/state/0001/base_ptr']
+  NC10_compact_ptr_before_base       RED   after 1 trace(s), 0.0s
+      counterexample: [(no faults)] -> INV-PTR at i0#14 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#14 after Put: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#27 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#27 after Put: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#40 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#40 after Put: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])
+  NC11_ack_before_commit             RED   after 1 trace(s), 0.0s
+      counterexample: [(no faults)] -> INV-DUR at i0#9 after Ack: acked units [0] are not recoverable (recovered []); INV-DUR at i0#12 after Ack: acked units [1] are not recoverable (recovered [0]); INV-DUR at i0#22 after Ack: acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at i0#25 after Ack: acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at i0#35 after Ack: acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at i0#38 after Ack: acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4])
+  NC12_resume_ignores_ledger         RED   after 49 trace(s), 0.1s
+      counterexample: [i0#0:crash_before, i1#21:crash_after] -> INV-REDO at end of trace: 3 unit(s) re-executed after 2 crash(es); budget is 2 (= crashes x W)
+  NC1b_fence_raw_no_readback         RED   after 7 trace(s), 0.0s
+      counterexample: [i0#0:crash_before, i1#1:lost_ack] -> INV-LIVE at end of trace: no instance ever completed: crashed(Keys), aborted(i1: lost epoch 1)
+
+==============================================================================
+VERDICT: proven -- no violation across the exhaustive sweep; all voiding controls red
+==============================================================================

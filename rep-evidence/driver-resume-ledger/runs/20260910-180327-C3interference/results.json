@@ -1,0 +1,106 @@
+{
+  "arms": {
+    "idle_a": {
+      "arm": "idle_a",
+      "kv_n": 5059,
+      "rt_n": 1012,
+      "kv": {
+        "p50": 1.138,
+        "p95": 1.996,
+        "p99": 6.158
+      },
+      "rt": {
+        "p50": 1.511,
+        "p95": 3.73,
+        "p99": 15.011
+      },
+      "kv_mean": 1.318
+    },
+    "idle_b": {
+      "arm": "idle_b",
+      "kv_n": 4833,
+      "rt_n": 967,
+      "kv": {
+        "p50": 1.26,
+        "p95": 4.087,
+        "p99": 9.573
+      },
+      "rt": {
+        "p50": 1.69,
+        "p95": 8.745,
+        "p99": 22.009
+      },
+      "kv_mean": 1.637
+    },
+    "design": {
+      "arm": "design",
+      "kv_n": 4886,
+      "rt_n": 978,
+      "kv": {
+        "p50": 1.187,
+        "p95": 3.346,
+        "p99": 9.226
+      },
+      "rt": {
+        "p50": 1.676,
+        "p95": 9.714,
+        "p99": 23.046
+      },
+      "kv_mean": 1.517,
+      "load": {
+        "writes": 1405,
+        "rate": 26.000017939271103
+      }
+    },
+    "overload": {
+      "arm": "overload",
+      "kv_n": 5047,
+      "rt_n": 1010,
+      "kv": {
+        "p50": 1.029,
+        "p95": 2.464,
+        "p99": 9.419
+      },
+      "rt": {
+        "p50": 1.607,
+        "p95": 3.438,
+        "p99": 12.962
+      },
+      "kv_mean": 1.352,
+      "load": {
+        "writes": 111749,
+        "rate": 2069.3699003138863
+      }
+    }
+  },
+  "config": {
+    "victim_seconds": 60,
+    "design_rate": 26.0
+  },
+  "verdict": {
+    "kv_p99_idle_a": 6.158,
+    "kv_p99_idle_b": 9.573,
+    "baseline_p99": 7.865500000000001,
+    "noise_floor_frac": 0.4342,
+    "noise_floor_below_25pct": false,
+    "threshold_frac": 0.4342,
+    "kv_p99_design": 9.226,
+    "design_delta_frac": 0.173,
+    "kv_p99_overload": 9.419,
+    "overload_delta_frac": 0.1975,
+    "POSCTRL_overload_regressed": false,
+    "VOID_rig_blind": true,
+    "design_within_noise": true,
+    "actor_rt_p99": {
+      "idle_a": 15.011,
+      "idle_b": 22.009,
+      "design": 23.046,
+      "overload": 12.962
+    },
+    "measured_load_rates": {
+      "design": 26.000017939271103,
+      "overload": 2069.3699003138863
+    },
+    "C3b_proven": false
+  }
+}
