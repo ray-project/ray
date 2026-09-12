@@ -595,6 +595,56 @@ class Row:
 
 @DeveloperAPI
 @dataclass
+class GrafanaAnnotation:
+    """Defines a Grafana dashboard annotation query.
+
+    Annotations overlay event markers onto every panel's time axis. Each one runs
+    a query against a log datasource and renders a marker per matching log line.
+
+    Only the event-specific half of the query is declared here. Every Ray
+    annotation record carries the same two fields -- ``annotation_source`` and
+    ``session_name``, written by
+    :class:`ray._common.observability.annotation.Annotation` -- so the common
+    preamble that finds this source's lines and scopes them to one cluster is
+    built at generation time by
+    :func:`~ray.dashboard.modules.metrics.grafana_dashboard_factory.generate_annotation`.
+    ``expr`` picks up from there.
+
+    Scoping to a single cluster is not configurable, and deliberately so: the
+    session name is baked in as a literal, so no datasource or stream selector
+    the operator supplies can widen a dashboard onto another cluster's events.
+    Narrowing further, to a run or a worker, is left to the query and is
+    normally a dashboard variable the viewer selects.
+
+    Attributes:
+        name: Display name shown in the dashboard's annotation toggle.
+        source: The ``annotation_source`` written by the emitting library, e.g.
+            ``"ray_train_annotation"``. Used both as a cheap line pre-filter and
+            as the field the preamble matches on.
+        expr: The event-specific pipeline stages, appended to the generated
+            preamble. Starts at a ``|`` stage, e.g.
+            ``| event="ray.train.report" | line_format "..."``.
+        icon_color: rgba/hex color for the annotation markers.
+        ref_id: Grafana refId for the annotation's target query.
+        tag_keys: Comma-separated label keys surfaced as annotation tags.
+        query_type: Datasource query type (e.g. "range").
+        enable: Whether the annotation is enabled by default.
+        hide: Whether the annotation toggle is hidden by default.
+    """
+
+    name: str
+    source: str
+    expr: str
+    icon_color: str
+    ref_id: str
+    tag_keys: str = ""
+    query_type: str = "range"
+    enable: bool = True
+    hide: bool = False
+
+
+@DeveloperAPI
+@dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars
     # to check for customization
@@ -609,6 +659,8 @@ class DashboardConfig:
     # If both are specified, panels will be rendered before rows.
     panels: List[Panel] = field(default_factory=list)
     rows: List[Row] = field(default_factory=list)
+    # Dashboard annotations, appended to the base JSON's built-in annotation list.
+    annotations: List[GrafanaAnnotation] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.panels and not self.rows:

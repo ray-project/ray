@@ -1,6 +1,6 @@
-# flake8: noqa E501
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
+    GrafanaAnnotation,
     Panel,
     Row,
     Target,
@@ -526,10 +526,86 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
+# Must match `ray.train.v2._internal.constants.TRAIN_ANNOTATION_SOURCE`
+TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+
+# Queries are isolated to prevent annotations appearing in other jobs.
+_RUN_FILTERS = '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
+
+CONTROLLER_STATE_ANNOTATION = GrafanaAnnotation(
+    name="Train Controller State Changes",
+    source=TRAIN_ANNOTATION_SOURCE,
+    icon_color="rgba(31, 120, 193, 1)",  # blue
+    ref_id="TrainControllerStateAnnotations",
+    tag_keys="__no_tags__",
+    expr=f'| event="controller_state_change" {_RUN_FILTERS} | line_format "{{{{.message}}}}"',
+)
+
+REPORT_CALL_ANNOTATION = GrafanaAnnotation(
+    name="ray.train.report call",
+    source=TRAIN_ANNOTATION_SOURCE,
+    icon_color="rgba(50, 172, 45, 1)",  # green
+    ref_id="TrainReportCallAnnotations",
+    tag_keys="metrics_pill,checkpoint_pill,validation_pill",
+    expr=(
+        f'| event="ray.train.report" {_RUN_FILTERS} | label_format '
+        "metrics_pill=`metrics: {{.metrics}}`, "
+        'checkpoint_pill=`{{if eq .has_checkpoint "true"}}checkpoint{{if .checkpoint_dir_name}}: {{.checkpoint_dir_name}}{{end}}{{else}}no checkpoint{{end}}`, '
+        'validation_pill=`{{if eq .validation "true"}}with validation{{if .validation_config}} {{.validation_config}}{{end}}{{else}}no validation{{end}}` '
+        '| line_format "ray.train.report()"'
+    ),
+)
+
+# The custom-annotation variants differ only by severity filter, color, and refId.
+_CUSTOM_ANNOTATION_VARIANTS = [
+    (
+        "Train Custom Annotations (Info)",
+        "rgba(184, 119, 217, 1)",  # purple
+        "TrainCustomAnnotationsInfo",
+        "info",
+    ),
+    (
+        "Train Custom Annotations (Warnings)",
+        "rgba(255, 152, 48, 1)",  # orange
+        "TrainCustomAnnotationsWarning",
+        "warning",
+    ),
+    (
+        "Train Custom Annotations (Errors)",
+        "rgba(224, 47, 68, 1)",  # red
+        "TrainCustomAnnotationsError",
+        "error",
+    ),
+]
+CUSTOM_ANNOTATIONS = [
+    GrafanaAnnotation(
+        name=name,
+        source=TRAIN_ANNOTATION_SOURCE,
+        icon_color=icon_color,
+        ref_id=ref_id,
+        tag_keys="severity,worker,fields",
+        expr=(
+            f'| event="ray.train.annotate" '
+            f'| severity="{severity}" {_RUN_FILTERS} '
+            '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
+            "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
+            '| line_format "{{.message}}"'
+        ),
+    )
+    for name, icon_color, ref_id, severity in _CUSTOM_ANNOTATION_VARIANTS
+]
+
+TRAIN_ANNOTATIONS = [
+    CONTROLLER_STATE_ANNOTATION,
+    REPORT_CALL_ANNOTATION,
+    *CUSTOM_ANNOTATIONS,
+]
+
 train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",
     rows=TRAIN_GRAFANA_ROWS,
     standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="train_grafana_dashboard_base.json",
+    annotations=TRAIN_ANNOTATIONS,
 )
