@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Set, Union
 
 from ray._common import cdi
 from ray.experimental.sandbox.backend.base import (
@@ -81,23 +81,6 @@ _SLIRP4NETNS_FLAGS = [
     "--enable-seccomp",
 ]
 
-# CDI kinds this backend's device passthrough has actually been validated
-# against, mapped to the runsc flag(s) required to enable each (e.g.
-# --nvproxy for NVIDIA GPUs). Not GPU-specific: cdi.get_spec (see
-# ray._common.cdi) is generic across any accelerator vendor whose
-# AcceleratorManager implements CDI support, and this dict follows suit --
-# it's keyed by CDI kind, not by accelerator type. Only NVIDIA GPU
-# passthrough is populated today because that's the only kind runsc's
-# support has actually been verified against; the flag a kind needs (if
-# any) is vendor-specific by nature, so there's no reason to assume
-# --nvproxy (or nothing at all) works out-of-the-box for another. This is
-# purely gVisor's own capability knowledge (a different SandboxBackend
-# could support a different set of kinds), so it lives here rather than in
-# image_manager.py's backend-agnostic OCI-spec builder.
-_CDI_KIND_RUNSC_FLAGS: Dict[str, Tuple[str, ...]] = {
-    "nvidia.com/gpu": ("--nvproxy",),
-}
-
 
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
@@ -105,6 +88,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
+        self._nvproxy_supported_drivers_cache: Optional[Set[str]] = None
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -133,6 +117,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # _build_run_command stays pure argv construction.
         gpu_run_args = []
         if config.gpu_ids:
+            self._validate_gpu_environment()
             gpu_run_args = self._resolve_gpu_run_args()
 
         sandbox_uuid = uuid.uuid4().hex[:12]
@@ -553,24 +538,94 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except (subprocess.TimeoutExpired, ValueError):
             pass
 
-    def _resolve_gpu_run_args(self) -> List[str]:
-        """The runsc flag(s) this node's resolved GPU CDI kind needs
-        (e.g. --nvproxy for NVIDIA). Raises if no CDI spec exists, or
-        the kind isn't one runsc's GPU passthrough has been validated
-        against -- see _CDI_KIND_RUNSC_FLAGS.
+    def _validate_gpu_environment(self) -> None:
+        """Raise if this node's GPU environment can't back gVisor GPU
+        passthrough for its resolved CDI kind (e.g. an unsupported NVIDIA
+        driver version). Raises if no CDI spec exists, or the kind isn't
+        one runsc's GPU passthrough has actually been verified against --
+        today, only NVIDIA.
         """
         spec = cdi.get_spec("GPU")
         if spec is None:
             raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
-        kind = spec.kind
-        if kind not in _CDI_KIND_RUNSC_FLAGS:
-            raise SandboxCreationError(
-                f"gpu_ids was requested, but this node's GPU CDI spec is "
-                f"for kind '{kind}', which gVisor sandbox GPU passthrough "
-                f"doesn't support yet (only {tuple(_CDI_KIND_RUNSC_FLAGS)} "
-                f"has been validated)."
+        if spec.kind == "nvidia.com/gpu":
+            self._check_nvidia_driver_supported()
+            return
+        raise SandboxCreationError(
+            f"This node's GPU CDI spec is for kind '{spec.kind}', which "
+            f"gVisor sandbox GPU passthrough doesn't support yet (only "
+            f"'nvidia.com/gpu' has been validated)."
+        )
+
+    def _resolve_gpu_run_args(self) -> List[str]:
+        """The runsc flag(s) this node's resolved GPU CDI kind needs (e.g.
+        --nvproxy for NVIDIA). Raises if no CDI spec exists, or the kind
+        isn't one runsc's GPU passthrough has actually been verified
+        against -- today, only NVIDIA.
+        """
+        spec = cdi.get_spec("GPU")
+        if spec is None:
+            raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+        if spec.kind == "nvidia.com/gpu":
+            return ["--nvproxy"]
+        raise SandboxCreationError(
+            f"This node's GPU CDI spec is for kind '{spec.kind}', which "
+            f"gVisor sandbox GPU passthrough doesn't support yet (only "
+            f"'nvidia.com/gpu' has been validated)."
+        )
+
+    def _list_nvproxy_supported_drivers(self) -> Set[str]:
+        """The driver versions gVisor's --nvproxy recognizes, via `runsc
+        nvproxy list-supported-drivers`: a pure, stateless subcommand that
+        just prints runsc's compiled-in list, so it's safe to call outside
+        the context of any container. Cached on this instance so it only
+        shells out once per backend lifetime. Raises if the subcommand
+        isn't available or fails (e.g. an old runsc without it).
+        """
+        if self._nvproxy_supported_drivers_cache is not None:
+            return self._nvproxy_supported_drivers_cache
+
+        try:
+            result = subprocess.run(
+                ["runsc", "nvproxy", "list-supported-drivers"],
+                capture_output=True,
+                timeout=10,
+                text=True,
+                check=True,
             )
-        return list(_CDI_KIND_RUNSC_FLAGS[kind])
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+            stderr = getattr(e, "stderr", None)
+            raise SandboxCreationError(
+                f"Could not determine which NVIDIA driver versions this "
+                f"node's gVisor (runsc) supports: {e}. Run `runsc nvproxy "
+                f"list-supported-drivers` on this node directly to see why "
+                f"it failed. {stderr}"
+            ) from e
+
+        self._nvproxy_supported_drivers_cache = {
+            line.strip() for line in result.stdout.splitlines() if line.strip()
+        }
+        return self._nvproxy_supported_drivers_cache
+
+    def _check_nvidia_driver_supported(self) -> None:
+        """Raise if this node's NVIDIA driver is one gVisor's --nvproxy
+        doesn't recognize. Only called once GPU passthrough was actually
+        requested, so a failure to even determine the driver or the
+        supported-driver list (see _list_nvproxy_supported_drivers and
+        NvidiaGPUAcceleratorManager.get_current_node_driver_version)
+        propagates as-is rather than being swallowed here.
+        """
+        from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
+
+        supported = self._list_nvproxy_supported_drivers()
+        driver_version = NvidiaGPUAcceleratorManager.get_current_node_driver_version()
+        if driver_version not in supported:
+            raise SandboxCreationError(
+                f"This node's NVIDIA driver ({driver_version}) isn't one "
+                f"gVisor's GPU passthrough (--nvproxy) recognizes. Update "
+                f"the driver to one of the supported versions: "
+                f"{', '.join(sorted(supported))}."
+            )
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")

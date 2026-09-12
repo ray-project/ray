@@ -104,6 +104,15 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         return cuda_device_type
 
     @staticmethod
+    def get_current_node_driver_version() -> str:
+        import ray._private.thirdparty.pynvml as pynvml
+
+        pynvml.nvmlInit()
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        pynvml.nvmlShutdown()
+        return driver_version
+
+    @staticmethod
     def _gpu_name_to_accelerator_type(name):
         if name is None:
             return None
