@@ -5,7 +5,6 @@ from typing import NamedTuple, Tuple, Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray.data._internal.execution.interfaces import ExecutionResources
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +49,6 @@ class ClusterResourceMonitor:
         self._background_thread: Optional[threading.Thread] = None
         self._stop_background_thread_event: Optional[threading.Event] = None
 
-        self._peak_cpu_count: float = 0
-        self._peak_gpu_count: float = 0
         self._peak_cpu_nodes: int = 0
         self._peak_gpu_nodes: int = 0
 
@@ -64,9 +61,6 @@ class ClusterResourceMonitor:
             self._stop_background_thread_event,
         ) = self._start_background_thread()
         return self
-
-    def get_peak_cluster_resources(self) -> ExecutionResources:
-        return ExecutionResources(cpu=self._peak_cpu_count, gpu=self._peak_gpu_count)
 
     def get_peak_cpu_nodes(self) -> int:
         """Get the peak number of alive CPU worker nodes."""
@@ -83,17 +77,9 @@ class ClusterResourceMonitor:
 
         def monitor_cluster_resources():
             while not stop_event.is_set():
-                # These query the GCS, so a transient failure shouldn't kill the
+                # This query the GCS, so a transient failure shouldn't kill the
                 # thread and leave the peaks frozen for the rest of the run.
                 try:
-                    resources = ray.cluster_resources()
-                    self._peak_cpu_count = max(
-                        self._peak_cpu_count, resources.get("CPU", 0)
-                    )
-                    self._peak_gpu_count = max(
-                        self._peak_gpu_count, resources.get("GPU", 0)
-                    )
-
                     node_counts = _count_worker_nodes()
                     self._peak_cpu_nodes = max(self._peak_cpu_nodes, node_counts.cpu)
                     self._peak_gpu_nodes = max(self._peak_gpu_nodes, node_counts.gpu)
