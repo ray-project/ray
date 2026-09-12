@@ -1,6 +1,8 @@
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "py_test_module_list", "py_test_module_list_with_env_variants", "py_test_run_all_subdirectory")
 
+exports_files(["repro_grpc_63261.py"])
+
 py_library(
     name = "conftest",
     srcs = ["conftest.py"],
