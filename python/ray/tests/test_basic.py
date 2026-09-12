@@ -173,6 +173,64 @@ def test_max_calls_releases_resources(shutdown_only):
         ray.get(f.remote())  # This will hang if GPU resources aren't released.
 
 
+def test_hung_worker_releases_pinned_lease_args(shutdown_only):
+    """E2E: max_calls + hung DrainAndShutdown must release pinned lease args."""
+    import glob
+
+    import numpy as np
+
+    ctx = ray.init(
+        num_cpus=2,
+        object_store_memory=400 * 1024 * 1024,
+        # Observe pin while the task still holds it (released on return).
+        _system_config={"debug_dump_period_milliseconds": 1000},
+    )
+    session_dir = ctx.address_info["session_dir"]
+
+    def read_pinned_bytes():
+        total = 0
+        for path in glob.glob(os.path.join(session_dir, "logs", "debug_state*.txt")):
+            with open(path) as f:
+                m = re.search(
+                    r"Total size of pinned lease arguments:\s*(\d+)", f.read()
+                )
+            if m:
+                total += int(m.group(1))
+        return total
+
+    def wait_until(predicate, timeout=15):
+        deadline = time.monotonic() + timeout
+        value = read_pinned_bytes()
+        while time.monotonic() < deadline and not predicate(value):
+            time.sleep(0.5)
+            value = read_pinned_bytes()
+        return value
+
+    @ray.remote(max_calls=1)
+    def hanging_task(payload):
+        # sleep: cover one debug dump while pinned. ray.put return: keep
+        # worker in DrainAndShutdown (no DisconnectClient).
+        time.sleep(3)
+        return ray.put({"m": 1})
+
+    keepalive = []
+    for i in range(3):
+        # Use a 15MB plasma object so the lease argument is pinned by the
+        # raylet rather than inlined in the task spec.
+        payload = ray.put(np.zeros(15 * 1024 * 1024 // 8, dtype=np.int64))
+        ref = hanging_task.remote(payload)
+        if i == 0:
+            assert (
+                wait_until(lambda v: v >= 10 * 1024 * 1024) > 0
+            ), "raylet did not pin the lease arg; test precondition broken"
+        keepalive.append(ray.get(ref, timeout=30))
+        del payload
+        assert (
+            wait_until(lambda v: v == 0) == 0
+        ), f"pinned bytes did not return to 0 after iteration {i}"
+    keepalive.clear()
+
+
 # https://github.com/ray-project/ray/issues/7263
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
