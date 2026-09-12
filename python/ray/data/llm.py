@@ -328,6 +328,10 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig, ProcessorC
     Args:
         deployment_name: The name of the serve deployment to use.
         app_name: The name of the serve application to use.
+        stream: Whether the serve deployment returns a streaming response. If True
+            (default), the processor consumes the deployment's streaming response.
+            If False, the processor supports an ordinary non-streaming or unary
+            serve deployment.
         batch_size: The batch size to send to the serve deployment. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could

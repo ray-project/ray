@@ -107,6 +107,40 @@ async def test_serve_deployment_udf_methods(
     assert getattr(mock_serve_deployment_handle, method).remote.call_count == len(
         test_data
     )
+    mock_serve_deployment_handle.options.assert_called_once_with(stream=True)
+
+
+@pytest.mark.asyncio
+async def test_serve_deployment_udf_unary_response(mock_serve_deployment_handle):
+    async def mock_response():
+        return {"test": "unary response"}
+
+    mock_serve_deployment_handle.completions.remote.return_value = mock_response()
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        stream=False,
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+    )
+
+    responses = []
+    async for response in udf(
+        {
+            "__data": [
+                {
+                    "method": "completions",
+                    "dtype": "CompletionRequest",
+                    "request_kwargs": {"prompt": "Hello"},
+                }
+            ]
+        }
+    ):
+        responses.append(response)
+
+    assert responses[0]["__data"][0]["test"] == "unary response"
+    mock_serve_deployment_handle.options.assert_not_called()
 
 
 @pytest.mark.asyncio
