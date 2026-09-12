@@ -24,6 +24,7 @@ except (ImportError, ModuleNotFoundError) as e:
 import fnmatch
 import logging
 import os
+import posixpath
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
@@ -208,9 +209,17 @@ def _upload_to_fs_path(
             Ex: ["*.png"] to exclude all .png images.
     """
 
+    if os.path.isfile(local_path):
+        # Upload a single file to `fs_path` (a file path), creating only its
+        # parent directory — mirroring `_download_from_fs_path`. `exclude` does
+        # not apply to a single file.
+        parent = posixpath.dirname(fs_path)
+        if parent:
+            _create_directory(fs=fs, fs_path=parent)
+        _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
+
     if not exclude:
-        # TODO(justinvyu): uploading a single file doesn't work
-        # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
