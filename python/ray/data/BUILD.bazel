@@ -2414,6 +2414,23 @@ py_test(
     ],
 )
 
+# The Azure tests start Azurite as a container via `testcontainers`, the same
+# way `test_kafka` starts its broker, and skip if no usable Docker and no local
+# `azurite` binary is found.
+py_test(
+    name = "test_catalog_azure",
+    size = "medium",
+    srcs = ["tests/datasource/test_catalog_azure.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_aggregations",
     size = "medium",
