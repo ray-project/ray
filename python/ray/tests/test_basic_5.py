@@ -125,6 +125,23 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
+def test_internal_kv_put_if_absent(ray_start_regular):
+    # regression for #66114: overwrite=False returns True when the key
+    # already existed (value not written). put_if_absent inverts that so
+    # True means "this call created the key".
+    import ray.experimental.internal_kv as kv
+
+    k = b"demo_key_put_if_absent"
+    assert kv._internal_kv_put(k, b"a", overwrite=False) is False
+    assert kv._internal_kv_put(k, b"b", overwrite=False) is True
+    assert kv._internal_kv_get(k) == b"a"
+
+    k2 = b"demo_key_put_if_absent_2"
+    assert kv._internal_kv_put_if_absent(k2, b"a") is True
+    assert kv._internal_kv_put_if_absent(k2, b"b") is False
+    assert kv._internal_kv_get(k2) == b"a"
+
+
 def test_exit_logging():
     log = run_string_as_driver(
         """

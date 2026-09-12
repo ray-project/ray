@@ -70,20 +70,27 @@ def _internal_kv_put(
     value: Union[str, bytes],
     overwrite: bool = True,
     *,
-    namespace: Optional[Union[str, bytes]] = None
+    namespace: Optional[Union[str, bytes]] = None,
 ) -> bool:
     """Globally associates a value with a given binary key.
-
-    This only has an effect if the key does not already have a value.
 
     Args:
         key: The binary key to associate the value with.
         value: The binary value to store under the key.
-        overwrite: Whether to overwrite an existing value for the key.
+        overwrite: Whether to overwrite an existing value for the key. If
+            False and the key already exists, the existing value is left
+            unchanged.
         namespace: Optional namespace under which the key is scoped.
 
     Returns:
-        Whether the value already exists.
+        True if the key already existed prior to this call; False if this
+        call newly created the key. When ``overwrite=False``, True means
+        the value was therefore NOT written.
+
+        This polarity is historical and easy to misread as "put succeeded".
+        New compare-and-set callers should use
+        ``_internal_kv_put_if_absent``, which returns True iff this call
+        created the key.
     """
 
     if isinstance(key, str):
@@ -100,12 +107,39 @@ def _internal_kv_put(
     return global_gcs_client.internal_kv_put(key, value, overwrite, namespace) == 0
 
 
+def _internal_kv_put_if_absent(
+    key: Union[str, bytes],
+    value: Union[str, bytes],
+    *,
+    namespace: Optional[Union[str, bytes]] = None,
+) -> bool:
+    """Put ``value`` only if ``key`` does not already exist.
+
+    Compare-and-set helper for callers that want a natural "did I create
+    the key?" return value. Unlike ``_internal_kv_put(..., overwrite=False)``,
+    True means this call won the race and wrote the value.
+
+    Args:
+        key: The binary key to associate the value with.
+        value: The binary value to store under the key.
+        namespace: Optional namespace under which the key is scoped.
+
+    Returns:
+        True if this call created the key; False if the key already existed
+        and nothing was written.
+    """
+    # invert the legacy "already existed" return from `_internal_kv_put`.
+    # no @client_mode_hook here: `_internal_kv_put` already redirects under
+    # ray client, so this wrapper stays correct in both modes.
+    return not _internal_kv_put(key, value, overwrite=False, namespace=namespace)
+
+
 @client_mode_hook
 def _internal_kv_del(
     key: Union[str, bytes],
     *,
     del_by_prefix: bool = False,
-    namespace: Optional[Union[str, bytes]] = None
+    namespace: Optional[Union[str, bytes]] = None,
 ) -> int:
     if isinstance(key, str):
         key = key.encode()
