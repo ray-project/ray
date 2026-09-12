@@ -1,5 +1,6 @@
 import logging
 import math
+import re
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
@@ -12,6 +13,13 @@ if TYPE_CHECKING:
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
+
+_CLICKHOUSE_IDENTIFIER = r"(?:[A-Za-z_][A-Za-z0-9_]*|`(?:[^`]|``)+`)"
+_TABLE_IDENTIFIER_PATTERN = re.compile(
+    rf"^(?:(?P<database>{_CLICKHOUSE_IDENTIFIER})\.)?"
+    rf"(?P<table>{_CLICKHOUSE_IDENTIFIER})$"
+)
+_SORTING_KEY_IDENTIFIER_PATTERN = re.compile(_CLICKHOUSE_IDENTIFIER)
 
 
 def _is_filter_string_safe(filter_str: str) -> bool:
@@ -36,6 +44,45 @@ def _is_filter_string_safe(filter_str: str) -> bool:
     # If we end inside a string, it's suspicious, but let's allow
     # it to be further validated by the DB. Just return True here.
     return True
+
+
+def _unquote_identifier(identifier: str) -> str:
+    if identifier.startswith("`") and identifier.endswith("`"):
+        return identifier[1:-1].replace("``", "`")
+    return identifier
+
+
+def _parse_table_identifier(table: str) -> Optional[Tuple[Optional[str], str]]:
+    """Parse a table identifier accepted by automatic metadata discovery."""
+    match = _TABLE_IDENTIFIER_PATTERN.fullmatch(table.strip())
+    if match is None:
+        return None
+    database = match.group("database")
+    return (
+        _unquote_identifier(database) if database is not None else None,
+        _unquote_identifier(match.group("table")),
+    )
+
+
+def _parse_simple_sorting_key(sorting_key: str) -> Optional[List[str]]:
+    """Map a simple ClickHouse sorting key to Ray's ``order_by`` model.
+
+    Expressions are deliberately rejected. Separate OFFSET/FETCH queries must
+    use an ordering expression that Ray can reproduce without interpreting
+    ClickHouse SQL.
+    """
+    value = sorting_key.strip()
+    if value.lower().startswith("tuple(") and value.endswith(")"):
+        value = value[6:-1].strip()
+    if not value:
+        return None
+
+    columns = [column.strip() for column in value.split(",")]
+    if not columns or any(
+        _SORTING_KEY_IDENTIFIER_PATTERN.fullmatch(column) is None for column in columns
+    ):
+        return None
+    return columns
 
 
 @DeveloperAPI
@@ -63,6 +110,13 @@ class ClickHouseDatasource(Datasource):
         order_by: Optional Tuple containing a list of columns to order by
             and a boolean indicating the order. Note: order_by is required to
             support parallelism.
+        auto_discover_order_by: If ``True`` and ``order_by`` isn't provided,
+            discover a simple MergeTree sorting key from ``system.tables``.
+            Discovery is skipped for filtered reads and falls back to a single
+            read task for unsupported table engines and sorting-key expressions.
+            Ray doesn't verify that the discovered key is unique. Only enable
+            this for tables that remain stable for the duration of the read and
+            whose sorting key provides deterministic pagination.
         client_settings: Optional ClickHouse server settings to be used with the
             session/every request. For more information, see
             `ClickHouse Client Settings doc
@@ -97,6 +151,7 @@ class ClickHouseDatasource(Datasource):
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
+        auto_discover_order_by: bool = False,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -105,9 +160,91 @@ class ClickHouseDatasource(Datasource):
         self._columns = columns
         self._filter = filter
         self._order_by = order_by
+        self._auto_discover_order_by = auto_discover_order_by
         self._client_settings = client_settings or {}
         self._client_kwargs = client_kwargs or {}
+        if self._auto_discover_order_by and self._order_by is None:
+            if self._filter is None:
+                self._order_by = self._discover_order_by()
+            else:
+                logger.info(
+                    "Skipping ClickHouse order-by discovery because a filter "
+                    "was provided; filtered reads use a single read task."
+                )
         self._query = self._generate_query()
+
+    def _discover_order_by(self) -> Optional[Tuple[List[str], bool]]:
+        parsed_table = _parse_table_identifier(self._table)
+        if parsed_table is None:
+            logger.warning(
+                "ClickHouse order-by discovery requires a table identifier; "
+                "falling back to a single read task for %r.",
+                self._table,
+            )
+            return None
+
+        requested_database, table = parsed_table
+        client = self._init_client()
+        try:
+            database = requested_database or str(
+                getattr(client, "database", "") or "default"
+            )
+            result = client.query(
+                "SELECT engine, sorting_key FROM system.tables "
+                "WHERE database = {database:String} "
+                "AND name = {table:String} LIMIT 1",
+                parameters={"database": database, "table": table},
+            )
+            rows = getattr(result, "result_rows", None)
+            if not rows:
+                logger.warning(
+                    "ClickHouse table %s.%s was not found during order-by "
+                    "discovery; falling back to a single read task.",
+                    database,
+                    table,
+                )
+                return None
+
+            engine, sorting_key = rows[0]
+            engine = str(engine or "")
+            if not engine.endswith("MergeTree"):
+                logger.warning(
+                    "ClickHouse order-by discovery only supports MergeTree-family "
+                    "tables, but %s.%s uses %s; falling back to a single read task.",
+                    database,
+                    table,
+                    engine or "an unknown engine",
+                )
+                return None
+
+            columns = _parse_simple_sorting_key(str(sorting_key or ""))
+            if columns is None:
+                logger.warning(
+                    "ClickHouse table %s.%s has an empty or unsupported sorting "
+                    "key %r; falling back to a single read task.",
+                    database,
+                    table,
+                    sorting_key,
+                )
+                return None
+
+            logger.info(
+                "Discovered ClickHouse sorting key %s for %s.%s.",
+                columns,
+                database,
+                table,
+            )
+            return (columns, False)
+        except Exception as exc:
+            logger.warning(
+                "Failed to discover the ClickHouse sorting key for %s: %s; "
+                "falling back to a single read task.",
+                self._table,
+                exc,
+            )
+            return None
+        finally:
+            client.close()
 
     def _init_client(self):
         _check_import(self, module="clickhouse_connect", package="clickhouse-connect")
