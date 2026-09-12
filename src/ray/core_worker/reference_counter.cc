@@ -1566,11 +1566,11 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   // Decrement counter for old state
   UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
 
-  it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
       spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
+    it->second.spilled = true;
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
     }
@@ -1580,10 +1580,13 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     PushToLocationSubscribers(it);
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
-        << "Object spilled to dead node ";
-    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
-    UnsetObjectPrimaryCopy(it);
-    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
+        << "Object spilled to dead node. Unsetting spilled metadata if stale.";
+
+    // Only clear the pinned copy if the spilled node is the same as the pinned node.
+    if (it->second.pinned_at_node_id_.has_value() &&
+        it->second.pinned_at_node_id_.value() == spilled_node_id) {
+      UnsetObjectPrimaryCopy(it);
+    }
     objects_to_recover_.push_back(object_id);
   }
 
