@@ -108,11 +108,12 @@ class WorldModel(nn.Module):
         self.batch_length_T = batch_length_T
         self.symlog_obs = symlog_obs
         self.action_space = action_space
-        a_flat = (
-            action_space.n
-            if isinstance(action_space, gym.spaces.Discrete)
-            else (np.prod(action_space.shape))
-        )
+        if isinstance(action_space, gym.spaces.Discrete):
+            a_flat = action_space.n
+        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+            a_flat = int(np.sum(action_space.nvec))
+        else:
+            a_flat = int(np.prod(action_space.shape))
 
         # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder
