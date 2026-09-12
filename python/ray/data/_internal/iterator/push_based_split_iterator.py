@@ -87,7 +87,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
@@ -115,6 +115,15 @@ class _PollResponse:
 
 
 @dataclass
+class _BundleDelivery:
+    """One pushed bundle (single block, refs nested) plus its metadata."""
+
+    bundle: RefBundle
+    num_rows: int
+    size_bytes: int
+
+
+@dataclass
 class _EndOfEpoch:
     epoch_id: int
 
@@ -122,6 +131,12 @@ class _EndOfEpoch:
 @dataclass
 class _ExecutorError:
     error: Exception
+
+
+# What the pusher delivers through the sequenced channel (_receiver_deliver).
+_SequencedItem = Union[_BundleDelivery, _EndOfEpoch]
+# What can appear on a receiver's queue (_ExecutorError arrives unsequenced).
+_QueueItem = Union[_SequencedItem, _ExecutorError]
 
 
 @ray.remote(num_cpus=0)
@@ -161,7 +176,7 @@ class PushSplitCoordinator:
         self._gen_epoch_error: Optional[Exception] = None
 
         # split_idx -> (handle, key); see register().
-        self._consumers: Dict[int, Any] = {}
+        self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, str]] = {}
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
@@ -416,7 +431,7 @@ class PushSplitCoordinator:
                 key,
                 epoch_id,
                 seq,
-                (sub_bundle, num_rows, size_bytes),
+                _BundleDelivery(sub_bundle, num_rows, size_bytes),
             )
 
         def push_eof(seq):
@@ -606,7 +621,7 @@ class _PushReceiver:
     """
 
     def __init__(self, target_buffer_rows: int):
-        self.queue: "queue.Queue" = queue.Queue()
+        self.queue: "queue.Queue[_QueueItem]" = queue.Queue()
         self.lock = threading.Lock()
         self.target_buffer_rows = target_buffer_rows
         self.rows_consumed = 0
@@ -615,7 +630,7 @@ class _PushReceiver:
         self.cur_epoch: Optional[int] = None
         self.reorder_epoch: Optional[int] = None
         self.reorder_next_seq = 0
-        self.reorder_pending: Dict[int, Any] = {}
+        self.reorder_pending: Dict[int, _SequencedItem] = {}
 
     def reset(self, target_buffer_rows: int) -> None:
         """Reset before re-arriving at the epoch barrier."""
@@ -651,8 +666,10 @@ class _PushReceiver:
             self.bytes_consumed += size_bytes
 
 
-def _receiver_deliver(_actor: Any, key: str, epoch_id: int, seq: int, item: Any):
-    """Deliver one sequenced item (bundle tuple or _EndOfEpoch) in order."""
+def _receiver_deliver(
+    _actor: Any, key: str, epoch_id: int, seq: int, item: _SequencedItem
+) -> None:
+    """Deliver one sequenced item (_BundleDelivery or _EndOfEpoch) in order."""
     receiver = _RECEIVER_REGISTRY.get(key)
     if receiver is None:
         return
@@ -669,7 +686,9 @@ def _receiver_deliver(_actor: Any, key: str, epoch_id: int, seq: int, item: Any)
             receiver.reorder_next_seq += 1
 
 
-def _receiver_deliver_error(_actor: Any, key: str, epoch_id: int, error: Any):
+def _receiver_deliver_error(
+    _actor: Any, key: str, epoch_id: int, error: _ExecutorError
+) -> None:
     """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
     receiver = _RECEIVER_REGISTRY.get(key)
     if receiver is None:
@@ -806,9 +825,9 @@ class PushBasedDataIterator(DataIterator):
                     return
                 if isinstance(item, _ExecutorError):
                     raise item.error
-                bundle, num_rows, size_bytes = item
-                receiver.record_consumed(num_rows, size_bytes)
-                yield bundle
+                assert isinstance(item, _BundleDelivery)
+                receiver.record_consumed(item.num_rows, item.size_bytes)
+                yield item.bundle
 
         return gen_bundles(), self._iter_stats, None
 
