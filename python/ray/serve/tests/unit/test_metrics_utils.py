@@ -1,9 +1,11 @@
 import asyncio
 import sys
 
+import numpy as np
 import pytest
 
 from ray._common.test_utils import async_wait_for_condition
+from ray.serve._private import autoscaling_metrics_merge as merge
 from ray.serve._private.common import TimeStampedValue
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
@@ -321,7 +323,59 @@ class TestAggregateTimeseries:
         assert result_without_window < 30.0  # Includes the 10 from 100.1-100.2
 
 
+def _flat(series_list):
+    """Object timeseries -> the flat ts/val arrays plus CSR offsets the port takes."""
+    ts, val, offsets = [], [], [0]
+    for series in series_list:
+        ts += [p.timestamp for p in series]
+        val += [p.value for p in series]
+        offsets.append(len(ts))
+    return (
+        np.array(ts, dtype=np.float64),
+        np.array(val, dtype=np.float64),
+        np.array(offsets, dtype=np.int64),
+    )
+
+
+def _array_merge_instantaneous_total(series_list):
+    mts, mtot = merge.merge_instantaneous_total_arrays(*_flat(series_list))
+    return [TimeStampedValue(t, v) for t, v in zip(mts.tolist(), mtot.tolist())]
+
+
+def _array_time_weighted_average(
+    step_series, window_start=None, window_end=None, last_window_s=1.0
+):
+    if window_end is not None:
+        pytest.skip(
+            "the array form derives the window end; production never passes one"
+        )
+    if not step_series:
+        return None
+    mts = np.array([p.timestamp for p in step_series], dtype=np.float64)
+    mtot = np.array([p.value for p in step_series], dtype=np.float64)
+    return merge.time_weighted_average_arrays(mts, mtot, window_start, last_window_s)
+
+
+@pytest.fixture(params=["object", "array"])
+def kernel_impl(request, monkeypatch):
+    """Run a test twice: against the Cython-backed kernels and the array port.
+
+    The port has to agree with the original on tests written without it in mind.
+    """
+    if request.param == "array":
+        module = sys.modules[__name__]
+        monkeypatch.setattr(
+            module, "merge_instantaneous_total", _array_merge_instantaneous_total
+        )
+        monkeypatch.setattr(
+            module, "time_weighted_average", _array_time_weighted_average
+        )
+    return request.param
+
+
 class TestInstantaneousMerge:
+    pytestmark = pytest.mark.usefixtures("kernel_impl")
+
     """Test the new instantaneous merge functionality."""
 
     def test_merge_instantaneous_total_empty(self):
@@ -783,6 +837,8 @@ class TestInstantaneousMerge:
 
 
 class TestCythonImplementationEdgeCases:
+    pytestmark = pytest.mark.usefixtures("kernel_impl")
+
     """Test edge cases and stress scenarios for the Cython/C++ implementation."""
 
     def test_merge_large_number_of_replicas(self):
