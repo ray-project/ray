@@ -81,6 +81,7 @@ def plan_list_files_op(
                 filesystem=filesystem,
                 file_extensions=file_extensions,
                 partition_filter=partition_filter,
+                partition_pruner=op.partition_pruner,
                 preserve_order=data_context.execution_options.preserve_order,
                 # Pushed-down read constraints; metadata-aware indexers use them
                 # to prune row groups, stop early, and size projected columns.

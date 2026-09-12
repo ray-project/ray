@@ -52,7 +52,7 @@ and languages (C++/Python). Raylet spawns two agents:
 
 1. **Dashboard Agent** - exposes three ports:
 
-   - ``dashboard_agent_listen_port``: HTTP for Dashboard UI (default: 52365)
+   - ``dashboard_agent_listen_port``: HTTP for the dashboard UI (default: 52365)
    - ``metrics_agent_port``: gRPC for internal communication (default: random)
    - ``metrics_export_port``: Prometheus metrics export (default: random)
 
@@ -82,6 +82,12 @@ for "bind to any port within this range". So Raylet must manage the range itself
 
 Raylet maintains a ``free_ports_`` queue. When a worker registers, Raylet assigns
 it an unused port from the queue. The worker binds, then confirms with ``AnnounceWorkerPort``.
+
+At startup, Raylet seeds that queue with a random permutation of the configured ports,
+independently on each Raylet. Without it, every Raylet sharing a network namespace and a
+port range starts from the lower bound of the range and deterministically contends for
+the same ports. Randomizing lowers the odds of a collision; it isn't a reservation
+protocol, so two Raylets can still pick the same port and rely on the retry path below.
 
 If the worker fails to bind the port (e.g., port already in use by external process),
 it crashes. Raylet detects the socket disconnect via

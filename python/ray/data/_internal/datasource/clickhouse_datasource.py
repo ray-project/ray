@@ -2,6 +2,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -244,11 +245,15 @@ class ClickHouseDatasource(Datasource):
         try:
             with client.query_arrow_stream(query) as stream:
                 record_batches = list(stream)  # Collect all record batches
-            return pa.Table.from_batches(record_batches)
+            table = pa.Table.from_batches(record_batches)
         except Exception as e:
             raise RuntimeError(f"Failed to execute block query: {e}")
         finally:
             client.close()
+        # Unpickling untrusted data can execute arbitrary code. Reject object
+        # columns unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        return table
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """

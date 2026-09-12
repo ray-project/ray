@@ -1871,7 +1871,7 @@
 ########################
 
 - name: training_ingest_benchmark-task=image_classification
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1886,8 +1886,8 @@
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      # 'type: torch-cu128' means: use the 'ray-torch' image.
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
@@ -2051,7 +2051,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_fixed_size
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2068,8 +2068,8 @@
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      # 'type: torch-cu128' means: use the 'ray-torch' image.
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
@@ -2085,7 +2085,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_autoscaling
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2102,8 +2102,8 @@
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      # 'type: torch-cu128' means: use the 'ray-torch' image.
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
@@ -2198,7 +2198,7 @@
         num_nodes: 1
 
 - name: training_ingest_benchmark-soak_test
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2207,7 +2207,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
@@ -4876,6 +4876,28 @@
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
+
+- name: llm_serve_llama_3dot2_1B_s3_runai_streamer
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      post_build_script: byod_llm_runai_streamer.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3_runai_streamer.yaml --skip-hf-token true
 
 - name: llm_serve_correctness
   frequency: nightly
