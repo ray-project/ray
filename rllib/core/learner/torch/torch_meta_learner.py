@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 
-logger = logging.getLogger("__name__")
+logger = logging.getLogger(__name__)
 
 torch, nn = try_import_torch()
 
@@ -160,6 +160,13 @@ class TorchMetaLearner(TorchLearner):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             **kwargs,
         )
+
+        # `None` means: skip this update.
+        if batch_iter is None:
+            self.after_gradient_based_update(timesteps=timesteps or {})
+            if not _no_metrics_reduce:
+                return self.metrics.reduce()
+            return
 
         # If no training data for `DifferentiableLearner`s have been passed in, cycle
         # over the main training_data for each `DifferentiableLearner`.

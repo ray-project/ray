@@ -6,13 +6,17 @@ import numpy as np
 
 import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.learner import Learner, UpdatePlan
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
@@ -330,6 +334,72 @@ class TestLearner(unittest.TestCase):
             self.assertEqual(
                 batch1.count + batch2.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
             )
+
+    def test_update_empty_batch_is_skipped(self):
+        """Tests that `update()` skips the gradient step for an empty train batch."""
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
+
+        def check_skipped(results):
+            results = results[ALL_MODULES]
+            self.assertEqual(1, results[LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME])
+            self.assertEqual(
+                0, results.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
+            )
+            self.assertEqual(0, results[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
+            self.assertTrue(learner.TOTAL_LOSS_KEY not in results[DEFAULT_MODULE_ID])
+
+        # Both ways an empty batch reaches `update()`.
+        check_skipped(
+            learner.update(
+                batch=MultiAgentBatch(policy_batches={}, env_steps=0),
+                timesteps=timesteps,
+            )
+        )
+        check_skipped(learner.update(episodes=[], timesteps=timesteps))
+
+        # A real batch after the skips must still train.
+        reader = get_cartpole_dataset_reader(batch_size=512)
+        batch = learner._convert_batch_type(reader.next().as_multi_agent())
+        results = learner.update(batch=batch)
+        self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
+
+    def test_should_skip_update_single_learner(self):
+        """`_should_skip_update` defaults to "no module data"; without DDP
+        (`num_learners <= 1`) the group sync has nobody to agree with and must pass
+        the decision through unchanged, without communicating.
+        """
+        config = BaseTestingAlgorithmConfig().learners(num_learners=0)
+        learner = config.build_learner(env=self.ENV)
+        self.assertTrue(
+            learner._should_skip_update(MultiAgentBatch(policy_batches={}, env_steps=0))
+        )
+        reader = get_cartpole_dataset_reader(batch_size=64)
+        self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
+        for plan in (
+            UpdatePlan(skip=False, num_minibatches=0),
+            UpdatePlan(skip=True, num_minibatches=7),
+        ):
+            self.assertEqual(plan, learner._sync_update_plan(plan))
+
+    def test_never_skip_update(self):
+        """`never_skip_update=True` opts out of the skip logic entirely: no
+        `_should_skip_update` call (and thus no cross-Learner agreement collective),
+        and an empty batch is a hard error instead of a skipped update."""
+        from unittest import mock
+
+        config = BaseTestingAlgorithmConfig().learners(never_skip_update=True)
+        learner = config.build_learner(env=self.ENV)
+        with mock.patch.object(
+            type(learner), "_should_skip_update", autospec=True
+        ) as hook:
+            with self.assertRaisesRegex(ValueError, "never_skip_update"):
+                learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
+            # A real batch trains as usual, still without consulting the hook.
+            reader = get_cartpole_dataset_reader(batch_size=512)
+            batch = learner._convert_batch_type(reader.next().as_multi_agent())
+            learner.update(batch=batch)
+            hook.assert_not_called()
 
 
 if __name__ == "__main__":

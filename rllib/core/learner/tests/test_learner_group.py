@@ -23,8 +23,17 @@ from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_CONNECTOR,
+    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+)
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
 
@@ -255,6 +264,116 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # autoscale
             learner_group.shutdown()
             del learner_group
+
+
+class TestLearnerGroupUpdatePlan(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_learners_agree_on_the_update_plan(self):
+        """Tests that the Learners of a group carry out every update the same way.
+
+        Learners in a DDP group run one all-reduce per minibatch, so one of them
+        skipping an update that its peer takes, or stepping through a different
+        number of minibatches, makes their collectives mismatch. This test would
+        therefore hang rather than fail if the Learners stopped agreeing.
+        """
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+
+        def batch(num_timesteps, seed):
+            rng = np.random.default_rng(seed)
+            return MultiAgentBatch(
+                {
+                    DEFAULT_MODULE_ID: SampleBatch(
+                        {
+                            Columns.OBS: rng.standard_normal(
+                                (num_timesteps, 4), dtype=np.float32
+                            ),
+                            Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
+                        }
+                    )
+                },
+                env_steps=num_timesteps,
+            )
+
+        def weights():
+            """The module weights of each Learner in the group."""
+            return [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+
+        def update(**kwargs):
+            """Runs one group update; returns each Learner's results as plain values.
+
+            `LearnerGroup.update()` hands back one `Stats`-valued dict per Learner.
+            """
+            return MetricsLogger.peek_results(learner_group.update(**kwargs))
+
+        def steps_trained(results):
+            """The timesteps each Learner trained on, i.e. minibatches x their size."""
+            return [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results]
+
+        def total(results, metric):
+            return sum(result[ALL_MODULES].get(metric, 0) for result in results)
+
+        try:
+            # One Learner's shard is empty: both skip, so neither trains, and the
+            # skip is attributed per Learner -- one had no data, the other had to
+            # drop the data it did have.
+            before = weights()
+            results = update(
+                batches=[
+                    batch(128, seed=0),
+                    MultiAgentBatch(policy_batches={}, env_steps=0),
+                ]
+            )
+            check(before, weights())
+            self.assertEqual(
+                1, total(results, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME)
+            )
+            self.assertEqual(
+                1, total(results, LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME)
+            )
+            self.assertEqual(
+                128, total(results, LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME)
+            )
+
+            # Unequal shards: both Learners still step through the same number of
+            # minibatches (the group's, not their own), and stay in sync.
+            results = update(
+                batches=[batch(256, seed=1), batch(64, seed=2)],
+                minibatch_size=32,
+                num_epochs=1,
+            )
+            # On their own the two shards would yield ceil(256/32) = 8 and
+            # ceil(64/32) = 2 minibatches; the group settles on the average, 5.
+            self.assertEqual([5 * 32, 5 * 32], steps_trained(results))
+            learner_0_weights, learner_1_weights = weights()
+            check(learner_0_weights, learner_1_weights)
+
+            # A minibatch count passed in by the caller is used by both as-is.
+            results = update(
+                batches=[batch(256, seed=3), batch(64, seed=4)],
+                minibatch_size=32,
+                num_epochs=1,
+                num_total_minibatches=3,
+            )
+            self.assertEqual([3 * 32, 3 * 32], steps_trained(results))
+        finally:
+            learner_group.shutdown()
 
 
 class TestLearnerGroupCheckpointRestore(unittest.TestCase):
