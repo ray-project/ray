@@ -31,6 +31,7 @@ from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import TracingConfig
 
 ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE = "Router is not ready for traffic"
 
@@ -507,6 +508,26 @@ class TestHTTPProxy:
             proxy_router=FakeProxyRouter(),
             self_actor_name="fake-proxy-name",
         )
+
+    def test_update_tracing_config_swallows_setup_failure(self):
+        """A bad tracing config must not crash the proxy's long-poll handler.
+
+        Regression coverage for #65437 review: `_update_tracing_config` runs as
+        a long-poll callback, so a raising `setup_tracing` (e.g. a bad
+        `exporter_import_path`) must be swallowed. Setup is left marked
+        unsucceeded so a later (valid) delivery can retry.
+        """
+        http_proxy = self.create_http_proxy()
+        assert http_proxy._tracing_setup_succeeded is False
+
+        # A bogus exporter path raises inside setup_tracing; the callback must
+        # not propagate it (which would wedge the proxy's long poll client).
+        http_proxy._update_tracing_config(
+            TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")
+        )
+
+        # Setup did not succeed, so a later valid update can still retry.
+        assert http_proxy._tracing_setup_succeeded is False
 
     @pytest.mark.asyncio
     async def test_not_found_response(self):

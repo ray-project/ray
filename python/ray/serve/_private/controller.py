@@ -230,6 +230,10 @@ class ServeController:
         self.long_poll_host.notify_changed(
             {LongPollNamespace.GLOBAL_TRACING_CONFIG: self.global_tracing_config}
         )
+        # The tracing config's fields are resolved here (from the checkpoint or
+        # the RAY_SERVE_TRACING_* env vars read controller-side), so log it:
+        # this is the only place the effective, cluster-wide config is visible.
+        logger.info(f"Global tracing config: {self.global_tracing_config}.")
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -416,6 +420,7 @@ class ServeController:
         self.long_poll_host.notify_changed(
             {LongPollNamespace.GLOBAL_TRACING_CONFIG: global_tracing_config}
         )
+        logger.info(f"Updated global tracing config to: {global_tracing_config}.")
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (

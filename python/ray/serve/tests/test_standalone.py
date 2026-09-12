@@ -22,6 +22,7 @@ from ray import serve
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -707,6 +708,27 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     assert client.get_serve_details()["proxy_location"] == expected
 
 
+def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
+    """Whether a span file for ``component`` records a span named ``span_name``.
+
+    The default file exporter opens the span file at setup time, so a file
+    merely existing does not prove a span was emitted; the exported span JSON
+    embeds its name, so assert on file contents instead.
+    """
+    if not os.path.isdir(spans_dir):
+        return False
+    for fname in os.listdir(spans_dir):
+        if component not in fname:
+            continue
+        try:
+            with open(os.path.join(spans_dir, fname)) as f:
+                if span_name in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     """Tracing config passed to ``serve.start()`` reaches the controller and is
     applied to both replicas and proxies (the imperative flow).
@@ -739,15 +761,18 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     url = get_application_url("HTTP")
     assert httpx.post(f"{url}/").text == "hello"
 
-    # Tracing was set up on the replica and (via long poll) the proxy, so span
-    # files are produced for both.
+    # Tracing was set up on the replica and (via long poll) the proxy, so each
+    # emits a span. Assert on span *contents*, not just file existence: the file
+    # exporter creates the file at setup time, so an empty file would pass an
+    # existence-only check even if no span was ever emitted.
     spans_dir = os.path.join(get_serve_logs_dir(), "spans")
 
     def replica_and_proxy_traces_created() -> bool:
-        if not os.path.isdir(spans_dir):
-            return False
-        files = os.listdir(spans_dir)
-        return any("replica" in f for f in files) and any("proxy" in f for f in files)
+        # The replica runs the user code that emits ``application_span``; the
+        # proxy emits ``proxy_http_request`` for the HTTP request it forwards.
+        return _span_file_contains(
+            spans_dir, "replica", "application_span"
+        ) and _span_file_contains(spans_dir, "proxy", "proxy_http_request")
 
     try:
         wait_for_condition(replica_and_proxy_traces_created, timeout=20)
@@ -776,6 +801,77 @@ def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
     wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
 
     assert ray.get(client._controller.get_tracing_config.remote()) == updated_config
+
+
+def test_serve_tracing_config_enabled_at_runtime_reaches_proxy(ray_shutdown):
+    """Enabling tracing at runtime propagates to an already-running proxy.
+
+    The proxy subscribes to the GLOBAL_TRACING_CONFIG long poll, so a config
+    change made after the proxy started still reaches it and it begins emitting
+    spans. This is the runtime-reconfiguration path this PR adds.
+    """
+    # Start with tracing disabled so the proxy has not set tracing up yet:
+    # OpenTelemetry only honors the first set_tracer_provider per process, so a
+    # proxy that started enabled could not adopt a later change.
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=TracingConfig(enabled=False),
+    )
+    client = _get_global_client()
+
+    @serve.deployment
+    class Model:
+        def __call__(self, request):
+            return "hello"
+
+    serve.run(Model.bind())
+
+    url = get_application_url("HTTP")
+    assert httpx.post(f"{url}/").text == "hello"
+
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    # Drop any files from the disabled phase so we only observe post-enable spans.
+    shutil.rmtree(spans_dir, ignore_errors=True)
+
+    # Enable tracing at runtime; the controller broadcasts it over long poll.
+    ray.get(
+        client._controller.reconfigure_global_tracing_config.remote(
+            TracingConfig(enabled=True, sampling_ratio=1.0)
+        )
+    )
+
+    def proxy_emits_span() -> bool:
+        # Drive traffic each poll so the proxy has a request to trace once its
+        # long-poll callback has set tracing up.
+        httpx.post(f"{url}/")
+        return _span_file_contains(spans_dir, "proxy", "proxy_http_request")
+
+    try:
+        wait_for_condition(proxy_emits_span, timeout=30)
+    finally:
+        serve.shutdown()
+        shutil.rmtree(spans_dir, ignore_errors=True)
+
+
+def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
+    """A bad exporter_import_path is rejected before it is checkpointed/broadcast.
+
+    The controller resolves the path eagerly, so `serve deploy` / `apply_config`
+    fails fast and the previously-applied config is left untouched (rather than
+    persisting a value that would only break later at each proxy/replica).
+    """
+    good_config = TracingConfig(enabled=True, sampling_ratio=1.0)
+    serve.start(tracing_config=good_config)
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()) == good_config
+
+    bad_config = TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")
+    with pytest.raises(RayTaskError):
+        ray.get(client._controller.reconfigure_global_tracing_config.remote(bad_config))
+
+    # The rejected config was not applied; the previous one is still in effect.
+    assert ray.get(client._controller.get_tracing_config.remote()) == good_config
+    serve.shutdown()
 
 
 @pytest.mark.parametrize(
