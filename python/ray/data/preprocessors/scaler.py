@@ -92,6 +92,8 @@ class StandardScaler(SerializablePreprocessorBase):
             will be raised.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
         self._columns = columns
