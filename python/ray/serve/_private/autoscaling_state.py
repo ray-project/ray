@@ -17,6 +17,8 @@ from ray.serve._private.common import (
     TimeSeries,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S,
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -59,6 +61,26 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
         )
         return raw(**policy.policy_kwargs)
     return raw
+
+
+def _clip_window_start(
+    window_start: Optional[float],
+    first_ts: float,
+    last_ts: float,
+    clip_window_s: float,
+) -> Optional[float]:
+    """Cap window_start to the last clip_window_s of DATA, dropping a stale ramp
+    transient from the aggregated request total. Anchored on last_ts rather than the
+    wall clock, so a metrics stall neither strands MAX/MIN (which hard-filter with no
+    carry-forward) on the final sample nor folds the transient back in as data ages.
+    Apply only to the scale-driving total; custom-policy callers pass 0 for the full window.
+    """
+    if clip_window_s <= 0:
+        return window_start
+    clip_limit = last_ts - clip_window_s
+    if window_start is None:
+        return clip_limit if clip_limit > first_ts else None
+    return max(window_start, clip_limit)
 
 
 class DeploymentAutoscalingState:
@@ -475,6 +497,7 @@ class DeploymentAutoscalingState:
     def _merge_and_aggregate_timeseries(
         self,
         timeseries_list: List[TimeSeries],
+        clip_window_s: float = 0.0,
     ) -> float:
         """Aggregate and average a metric from timeseries data using instantaneous merge.
 
@@ -482,6 +505,8 @@ class DeploymentAutoscalingState:
             timeseries_list: A list of TimeSeries (TimeSeries), where each
                 TimeSeries represents measurements from a single source (replica, handle, etc.).
                 Each list is sorted by timestamp ascending.
+            clip_window_s: If > 0, cap the window to the most recent
+                clip_window_s seconds (see _clip_window_start); 0 disables it.
 
         Returns:
             The time-weighted average of the metric
@@ -532,6 +557,15 @@ class DeploymentAutoscalingState:
                 aligned_start = max(ts[0].timestamp for ts in non_empty_series)
                 if aligned_start <= merged_timeseries[-1].timestamp:
                     window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
+            # Cap the window to clip_window_s (0 = no clip); only the scale-driving
+            # total passes a value. See _clip_window_start.
+            window_start = _clip_window_start(
+                window_start,
+                merged_timeseries[0].timestamp,
+                merged_timeseries[-1].timestamp,
+                clip_window_s,
+            )
 
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
@@ -617,8 +651,18 @@ class DeploymentAutoscalingState:
         ongoing_requests_timeseries.extend(queued_timeseries)
 
         # Aggregate and add running requests to total
+        # Floor at 2x the record cadence so the window always spans real samples.
+        clip_window_s = RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S
+        if clip_window_s > 0:
+            clip_window_s = max(
+                clip_window_s,
+                2
+                * self._config.look_back_period_s
+                * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
+            )
         ongoing_requests = self._merge_and_aggregate_timeseries(
-            ongoing_requests_timeseries
+            ongoing_requests_timeseries,
+            clip_window_s=clip_window_s,
         )
 
         return ongoing_requests
