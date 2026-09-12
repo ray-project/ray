@@ -6,13 +6,16 @@ runs one pusher thread per split that pulls bundles from the streaming
 executor's output iterator and pushes them to the consumer actor. The
 consumer can be ANY Ray actor (e.g. a Ray Train worker): delivery goes
 through the actor's built-in ``__ray_call__`` into a process-local receiver
-registry, so the actor class needs no new methods. Bundles are pushed with
-their block refs NESTED (kept as refs, which the standard pipeline needs) —
-but the block ref is ALSO passed as a resolved top-level arg, so the push
-moves the block's data to the consumer node, not just the ref.
-``PushBasedDataIterator`` drains the receiver queue through the standard
-DataIterator pipeline (prefetch -> resolve -> batch -> collate, including
-iter_torch_batches), where resolve's ray.get is then a local hit.
+registry, so the actor class needs no new methods. Blocks are pushed BY
+VALUE (the block ref is a resolved top-level arg; only metadata rides in the
+message), so no ObjectRef ever crosses the wire and the consumer never
+becomes a borrower of the executor's refs — the executor can free each block
+as soon as its delivery completes. The consumer re-owns the block via
+ray.put and wraps it in a local RefBundle, which ``PushBasedDataIterator``
+drains through the standard DataIterator pipeline (prefetch -> resolve ->
+batch -> collate, including iter_torch_batches); resolve's ray.get is a
+local, consumer-owned hit. The cost is one local object-store copy per
+block at delivery.
 
 Flow control is poll-based: each pusher periodically polls the consumer to
 learn how many rows it has drained from its queue and how many rows it wants
@@ -51,16 +54,18 @@ Pipeline overview::
          _receiver_    |                |      -> rows_consumed,
          deliver, key, |                |      target_buffer_rows, iterating
          epoch, seq,   |                |  (2) credit = target_buffer_rows
-         bundle w/     |                |        - (rows_pushed - rows_consumed)
-         nested refs)  |                |  (3) credit > 0: push bundles;
-       EOF: same, seq'd|                |      else sleep POLL_INTERVAL_S,
-       errors unseq'd  |                |      re-poll
+         metadata,     |                |        - (rows_pushed - rows_consumed)
+         block BY      |                |  (3) credit > 0: push blocks;
+         VALUE)        |                |      else sleep POLL_INTERVAL_S,
+       EOF: same, seq'd|                |      re-poll
+       errors unseq'd  |                |
                        v                |
     +--------------------------------------------------------------------+
     |      consumer actor i (any Ray actor, e.g. a Ray Train worker)     |
     |                                                                    |
-    |  actor task thread(s): __ray_call__ deliveries -> reorder buffer   |
-    |      (by seq) -> _PushReceiver.queue (bundles w/ nested refs);     |
+    |  actor task thread(s): __ray_call__ deliveries -> ray.put(block)   |
+    |      -> reorder buffer (by seq) -> _PushReceiver.queue holding     |
+    |      consumer-OWNED single-block RefBundles (no borrowed refs);    |
     |      errors jump the queue; polls read the receiver counters       |
     |  iteration thread (e.g. Train's ThreadRunner):                     |
     |      PushBasedDataIterator: register(current_actor) ->             |
@@ -93,8 +98,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.util.debug import log_once
@@ -118,8 +124,23 @@ class _PollResponse:
 
 
 @dataclass
+class _BlockPush:
+    """Wire format of one pushed block: metadata only, NO ObjectRef.
+
+    The block itself travels as a resolved top-level ``__ray_call__`` arg
+    (by value), so the consumer never becomes a borrower of the executor's
+    block refs; it re-owns the block via ``ray.put`` on arrival.
+    """
+
+    block_metadata: BlockMetadata
+    schema: Any
+    num_rows: int
+    size_bytes: int
+
+
+@dataclass
 class _BundleDelivery:
-    """One pushed bundle (single block, refs nested) plus its metadata."""
+    """Local queue entry: a consumer-owned single-block bundle + counters."""
 
     bundle: RefBundle
     num_rows: int
@@ -136,10 +157,10 @@ class _ExecutorError:
     error: Exception
 
 
-# What the pusher delivers through the sequenced channel (_receiver_deliver).
-_SequencedItem = Union[_BundleDelivery, _EndOfEpoch]
+# What the pusher sends through the sequenced channel (_receiver_deliver).
+_SequencedItem = Union[_BlockPush, _EndOfEpoch]
 # What can appear on a receiver's queue (_ExecutorError arrives unsequenced).
-_QueueItem = Union[_SequencedItem, _ExecutorError]
+_QueueItem = Union[_BundleDelivery, _EndOfEpoch, _ExecutorError]
 
 
 @ray.remote(num_cpus=0)
@@ -428,20 +449,19 @@ class PushSplitCoordinator:
             )
 
         def push_block(seq, entry, schema, num_rows, size_bytes):
-            sub_bundle = RefBundle(blocks=(entry,), owns_blocks=False, schema=schema)
-            # entry.ref is passed twice on purpose:
-            # - nested inside _BundleDelivery it stays a ref, which the
-            #   standard DataIterator pipeline needs;
-            # - as the TOP-LEVEL `_prefetched_block` arg Ray resolves it, so
-            #   the delivery task only executes once the block is fetched
-            #   into the consumer's local object store. The later
-            #   resolve-stage ray.get is then a guaranteed-local hit.
+            # entry.ref is a TOP-LEVEL arg, so Ray resolves it and delivers
+            # the block BY VALUE; no ObjectRef crosses the wire, so the
+            # consumer never borrows the executor's refs and the executor
+            # can free the block as soon as the delivery task completes.
+            # The consumer re-owns the block via ray.put in
+            # _receiver_deliver and rebuilds a local RefBundle for the
+            # standard DataIterator pipeline.
             consumer.__ray_call__.remote(
                 _receiver_deliver,
                 key,
                 epoch_id,
                 seq,
-                _BundleDelivery(sub_bundle, num_rows, size_bytes),
+                _BlockPush(entry.metadata, schema, num_rows, size_bytes),
                 entry.ref,
             )
 
@@ -641,7 +661,7 @@ class _PushReceiver:
         self.cur_epoch: Optional[int] = None
         self.reorder_epoch: Optional[int] = None
         self.reorder_next_seq = 0
-        self.reorder_pending: Dict[int, _SequencedItem] = {}
+        self.reorder_pending: Dict[int, _QueueItem] = {}
 
     def reset(self, target_buffer_rows: int) -> None:
         """Reset before re-arriving at the epoch barrier."""
@@ -683,19 +703,32 @@ def _receiver_deliver(
     epoch_id: int,
     seq: int,
     item: _SequencedItem,
-    _prefetched_block: Any = None,
+    block: Optional[Block] = None,
 ) -> None:
-    """Deliver one sequenced item (_BundleDelivery or _EndOfEpoch) in order.
+    """Deliver one sequenced item (_BlockPush or _EndOfEpoch) in order.
 
-    ``_prefetched_block`` is the materialized Block of a _BundleDelivery,
-    deliberately unused: the pusher passes the block ref as this top-level
-    arg so Ray fetches the block to this node before the delivery runs
-    (push moves the data, not just the ref). The queue still carries the
-    nested-ref bundle for the standard DataIterator pipeline.
+    For a _BlockPush, ``block`` is the materialized Block (the pusher passed
+    its ref as a resolved top-level arg — no borrowed refs). It is re-owned
+    locally via ray.put and wrapped into a consumer-owned RefBundle so the
+    standard DataIterator pipeline can consume it; resolve's ray.get is a
+    local, owned hit.
     """
     receiver = _RECEIVER_REGISTRY.get(key)
     if receiver is None:
         return
+    if isinstance(item, _BlockPush):
+        # ray.put outside the lock: it copies the block into the local
+        # object store. A stale-epoch put is dropped below and GC'd.
+        local_bundle = RefBundle(
+            blocks=(BlockEntry(ref=ray.put(block), metadata=item.block_metadata),),
+            owns_blocks=False,
+            schema=item.schema,
+        )
+        queue_item: _QueueItem = _BundleDelivery(
+            local_bundle, item.num_rows, item.size_bytes
+        )
+    else:
+        queue_item = item
     with receiver.lock:
         if epoch_id != receiver.cur_epoch:
             return
@@ -703,7 +736,7 @@ def _receiver_deliver(
             receiver.reorder_epoch = epoch_id
             receiver.reorder_next_seq = 0
             receiver.reorder_pending = {}
-        receiver.reorder_pending[seq] = item
+        receiver.reorder_pending[seq] = queue_item
         while receiver.reorder_next_seq in receiver.reorder_pending:
             receiver.queue.put(receiver.reorder_pending.pop(receiver.reorder_next_seq))
             receiver.reorder_next_seq += 1
