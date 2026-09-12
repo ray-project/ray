@@ -22,26 +22,32 @@
 
 namespace ray {
 
-TEST(PortPersistenceTest, TimeoutMessageIncludesAgentStartupHint) {
+class PortPersistenceTest : public ::testing::TestWithParam<const char *> {};
+
+TEST_P(PortPersistenceTest, TimeoutMessageIncludesProcessStartupHint) {
   auto test_dir =
       std::filesystem::temp_directory_path() / "port_persistence_timeout_test";
   std::filesystem::create_directories(test_dir);
 
   auto result = WaitForPersistedPort(test_dir.string(),
                                      NodeID::FromRandom(),
-                                     "metrics_agent_port",
+                                     GetParam(),
                                      /*timeout_ms=*/10,
                                      /*poll_interval_ms=*/5);
   ASSERT_TRUE(result.has_error());
   EXPECT_TRUE(std::holds_alternative<StatusT::TimedOut>(result.error()));
 
-  EXPECT_NE(result.message().find("metrics_agent_port"), std::string::npos);
+  EXPECT_NE(result.message().find(GetParam()), std::string::npos);
   EXPECT_NE(result.message().find("10 ms"), std::string::npos);
-  EXPECT_NE(result.message().find("The corresponding Ray agent may be slow to start or "
+  EXPECT_NE(result.message().find("The corresponding Ray process may be slow to start or "
                                   "may have failed to start."),
             std::string::npos);
 
   std::filesystem::remove_all(test_dir);
 }
+
+INSTANTIATE_TEST_SUITE_P(AgentAndGcsPorts,
+                        PortPersistenceTest,
+                        ::testing::Values("metrics_agent_port", "gcs_server_port"));
 
 }  // namespace ray

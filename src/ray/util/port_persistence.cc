@@ -53,7 +53,7 @@ WaitForPersistedPort(const std::string &dir,
                                        e.message() + ". Timed out after " +
                                        std::to_string(timeout_ms) +
                                        " ms waiting for persisted port '" + port_name +
-                                       "'. The corresponding Ray agent may be slow to "
+                                       "'. The corresponding Ray process may be slow to "
                                        "start or may have failed "
                                        "to start.");
                                  }},
