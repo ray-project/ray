@@ -71,6 +71,8 @@ def _new_direct_router(handle=None):
     router._handle = handle or MagicMock()
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
+    router._base_model_id = None
+    router._multiplexed_handles = {}
     return router
 
 

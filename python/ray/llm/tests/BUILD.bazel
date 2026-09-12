@@ -95,13 +95,14 @@ py_test_module_list(
     ],
 )
 
-# Direct-streaming session-affinity tests
+# Direct-streaming integration tests
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY": "1",
     },
     files = [
         "serve/cpu/deployments/data_parallel/test_dp_direct_streaming.py",
