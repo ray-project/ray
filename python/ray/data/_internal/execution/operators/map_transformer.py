@@ -333,6 +333,11 @@ class MapTransformPhaseTimes:
     where inside the chain the time went; they are all ``None`` when the chain
     measured only its total. Each is summed over every stage, so a fused
     operator reports one figure per phase rather than one per stage.
+
+    ``stage_s`` splits the same total the other way: one entry per stage, in
+    chain order. Where the phase figures say what kind of work was slow, these
+    say which of the fused stages it was in. They sum to ``total_s`` as well,
+    since every stage gets an entry.
     """
 
     total_s: float = 0.0
@@ -341,6 +346,9 @@ class MapTransformPhaseTimes:
     input_prep_s: Optional[float] = None
     function_body_s: Optional[float] = None
     output_build_s: Optional[float] = None
+    # None unless `DataContext.per_stage_map_timing` is set, and only for a
+    # chain with more than one stage -- with one stage this repeats `total_s`.
+    stage_s: Optional[Tuple[float, ...]] = None
 
 
 class TransformClock:
@@ -358,13 +366,16 @@ class TransformClock:
     flowing.
     """
 
-    __slots__ = ("_steps", "_timers")
+    __slots__ = ("_steps", "_timers", "_per_stage")
 
     def __init__(self) -> None:
         self._steps: List["Step"] = []
         self._timers: List[_TimedStep] = []
+        self._per_stage: bool = False
 
-    def chain(self, steps: List["Step"], blocks: Iterable[Any]) -> Iterable[Any]:
+    def chain(
+        self, steps: List["Step"], blocks: Iterable[Any], *, per_stage: bool = False
+    ) -> Iterable[Any]:
         """Wrap each step in a timer and link them into one pipeline.
 
         ``data`` starts as the raw input blocks, and each pass through the
@@ -393,6 +404,7 @@ class TransformClock:
         """
         self._steps = steps
         self._timers = []
+        self._per_stage = per_stage
         data: Iterable[Any] = blocks
         for step in steps:
             timer = _TimedStep(step.apply, data)
@@ -422,9 +434,19 @@ class TransformClock:
         """
         own = self._self_times([timer.drain() for timer in self._timers])
         by_bucket: Dict[MapTransformPhase, float] = {}
+        by_stage: Dict[int, float] = {}
         for step, seconds in zip(self._steps, own):
             if step.bucket is not None:
                 by_bucket[step.bucket] = by_bucket.get(step.bucket, 0.0) + seconds
+            by_stage[step.stage_idx] = by_stage.get(step.stage_idx, 0.0) + seconds
+
+        # Every step carries a stage, so these sum to the total whether the
+        # chain was timed phase by phase or a stage at a time.
+        stage_s = (
+            tuple(by_stage[idx] for idx in sorted(by_stage))
+            if self._per_stage
+            else None
+        )
 
         # A step spanning all three phases carries no bucket, so if any step
         # carries one this chain was timed phase by phase. Deriving that from
@@ -438,8 +460,9 @@ class TransformClock:
                 input_prep_s=by_bucket.get(MapTransformPhase.INPUT_PREP, 0.0),
                 function_body_s=by_bucket.get(MapTransformPhase.FUNCTION_BODY, 0.0),
                 output_build_s=by_bucket.get(MapTransformPhase.OUTPUT_BUILD, 0.0),
+                stage_s=stage_s,
             )
-        return MapTransformPhaseTimes(total_s=sum(own))
+        return MapTransformPhaseTimes(total_s=sum(own), stage_s=stage_s)
 
 
 def _coalesce_stage(steps: List["Step"], transform_fn: "MapTransformFn") -> "Step":
@@ -592,10 +615,17 @@ class MapTransformer:
         per_row = any(
             fn._input_type is MapTransformFnDataType.Row for fn in self._transform_fns
         )
-        decomposed = not per_row or DataContext.get_current().accurate_map_phase_timing
+        data_context = DataContext.get_current()
+        decomposed = not per_row or data_context.accurate_map_phase_timing
+
+        # Independent of `decomposed`: a coalesced stage is still one step with
+        # one stage index, so a row transform can have the per-stage split
+        # without paying for the per-phase one. Skipped for a single stage,
+        # where the figure would only repeat the total.
+        per_stage = data_context.per_stage_map_timing and len(self._transform_fns) > 1
 
         steps = self.get_steps(ctx, report_custom_op_stats, decomposed=decomposed)
-        return clock.chain(steps, input_blocks)
+        return clock.chain(steps, input_blocks, per_stage=per_stage)
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
         """Fuse two `MapTransformer`s together."""
