@@ -585,6 +585,11 @@ class DeploymentAutoscalingState:
         Returns:
             The aggregated total of running and queued requests.
         """
+        return self._object_aggregate_total_requests()
+
+    def _object_aggregate_total_requests(self) -> float:
+        """Aggregate the object-store timeseries. Split out of get_total_num_requests
+        so the caller can pick an aggregation path without carrying its body."""
         # Collect replica-based running requests (returns List[TimeSeries])
         replica_timeseries = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_timeseries) > 0
