@@ -1,8 +1,10 @@
+import subprocess
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
+from ray._private.accelerators import NvidiaGPUAcceleratorManager, nvidia_gpu
 from ray.tests.accelerators.mock_pynvml import (
     DeviceHandleMock,
     PyNVMLMock,
@@ -99,6 +101,123 @@ def test_gpu_info_parsing(patch_mock_pynvml):
 )
 def test_gpu_name_to_accelerator_type(name, expected):
     assert NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(name) == expected
+
+
+@pytest.fixture(autouse=True)
+def reset_cdi_spec_cache():
+    """generate_cdi_spec caches its result for the process lifetime; each
+    test needs a fresh nvidia-ctk call rather than a prior test's cache."""
+    nvidia_gpu._cdi_spec_cache = None
+    yield
+    nvidia_gpu._cdi_spec_cache = None
+
+
+def test_generate_cdi_spec_no_nvidia_ctk_binary():
+    with patch("shutil.which", return_value=None):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
+
+
+def test_generate_cdi_spec_success():
+    """generate_cdi_spec never writes to disk: nvidia-ctk writes to stdout
+    (no --output flag), which is parsed directly."""
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ) as mock_run:
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+        args = mock_run.call_args.args[0]
+        assert args[0] == "/usr/bin/nvidia-ctk"
+        assert "cdi" in args and "generate" in args
+        assert not any(a.startswith("--output=") for a in args)
+
+        # A hung/misbehaving nvidia-ctk must not stall the caller, and
+        # output/errors must actually be captured rather than inherited.
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["timeout"] == nvidia_gpu._NVIDIA_CTK_TIMEOUT_SECONDS
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+
+
+def test_generate_cdi_spec_decodes_only_first_of_multiple_documents():
+    """If nvidia-ctk ever writes multiple JSON documents to stdout back to
+    back with no separator (see the comment on the raw_decode call this
+    exercises), only the first (full) document must be decoded, not
+    concatenated with or replaced by the trailing ones."""
+    fake_result = MagicMock(
+        returncode=0,
+        stdout=(
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}]}'
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}], "class": "coherent"}'
+        ),
+        stderr="",
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [{"name": "0"}],
+        }
+
+
+def test_generate_cdi_spec_caches_success():
+    """A second call reuses the first's result instead of shelling out to
+    nvidia-ctk again."""
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ) as mock_run:
+        first = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        second = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        assert first == second == {"kind": "nvidia.com/gpu", "devices": []}
+        assert mock_run.call_count == 1
+
+
+def test_generate_cdi_spec_does_not_cache_failure():
+    """A failed generation isn't cached, so the next call retries rather
+    than getting stuck returning None for the rest of the process."""
+    with patch("shutil.which", return_value=None):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
+
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=fake_result
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+
+
+def test_generate_cdi_spec_unparseable_output():
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run",
+        return_value=MagicMock(returncode=0, stdout="not json", stderr=""),
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
+
+
+@pytest.mark.parametrize(
+    "side_effect",
+    [
+        subprocess.CalledProcessError(1, ["nvidia-ctk"], stderr="boom"),
+        subprocess.TimeoutExpired(["nvidia-ctk"], 30),
+    ],
+)
+def test_generate_cdi_spec_subprocess_error(side_effect):
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=side_effect
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
 
 
 if __name__ == "__main__":

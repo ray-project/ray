@@ -120,6 +120,60 @@ def test_sandbox_actor_resource_translation():
     ray.kill(actor)
 
 
+def test_sandbox_gpu_ids_distinct_across_concurrent_actors():
+    """One sandbox per GPU: with 4 (fake) GPUs on the cluster and 4 actors
+    each requesting num_gpus=1, Ray's own scheduler hands out 4 distinct
+    ids, and each actor auto-inherits its own via ray.get_gpu_ids() -- the
+    same call Sandbox.__init__ makes. No real GPU/CDI/gVisor is involved,
+    only Ray's own GPU scheduling.
+
+    Forces a fresh 4-GPU cluster rather than relying on
+    ray.init(ignore_reinit_error=True): that's a no-op on an already-running
+    cluster, which would silently keep whatever GPU count an earlier test
+    in this module left behind."""
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_gpus=4)
+
+    @ray.remote(num_gpus=1)
+    class GpuIdProbe:
+        def gpu_ids(self):
+            # str()-coerced to match what Sandbox.__init__ actually does --
+            # ray.get_gpu_ids() can return ints.
+            return [str(i) for i in ray.get_gpu_ids()]
+
+    probes = [GpuIdProbe.remote() for _ in range(4)]
+    try:
+        resolved = ray.get([p.gpu_ids.remote() for p in probes])
+        assert all(len(ids) == 1 for ids in resolved)
+        assert sorted(ids[0] for ids in resolved) == ["0", "1", "2", "3"]
+    finally:
+        for p in probes:
+            ray.kill(p)
+        ray.shutdown()
+
+
+def test_sandbox_actor_gpu_ids_default_to_none_without_assigned_gpus():
+    """Mirrors cpu/memory auto-inherit: with no GPUs assigned to the actor,
+    ray.get_gpu_ids() returns [] and gpu_ids stays None (no error) rather
+    than being coerced to an empty/falsy non-None value. A None gpu_ids
+    means create_oci_spec never reaches its CDI lookup at all -- see
+    test_create_oci_spec_raises_when_no_cdi_spec_found in
+    test_image_manager.py for what CDI lookup failure actually looks
+    like."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    actor = Sandbox.remote(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
+    ret_config = ray.get(actor.get_config.remote())
+    assert ret_config.gpu_ids is None
+
+    ray.get(actor.delete.remote())
+    ray.kill(actor)
+
+
 def test_sandbox_runtime_create_variants():
     rt = SandboxRuntime()
 
