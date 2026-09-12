@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 from pydantic import BaseModel, root_validator
 
+import ray
 from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -112,15 +113,32 @@ class SGLangEngineWrapper:
         kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
         try:
-            import sglang
+            from sglang.srt.ray.engine import RayEngine as Engine
         except ImportError as e:
             raise ImportError(
-                "SGLang is not installed or failed to import. Please run "
-                "`pip install sglang[all]` to install required dependencies."
+                "SGLang with Ray backend is not installed or failed to import. "
+                "Please run `pip install sglang[all,ray]` to install required "
+                "dependencies."
             ) from e
 
+        # Create the placement group here rather than letting RayEngine
+        # auto-create one. RayEngine's auto-created PG is owned by the job, so
+        # it keeps its GPU bundles reserved for the lifetime of the session even
+        # after Engine.shutdown() kills the SchedulerActors — subsequent engines
+        # then block forever waiting on GPUs. Owning the PG here means shutdown()
+        # can remove exactly the PG this wrapper created, which is also the only
+        # way to get it right when several wrappers run concurrently
+        # (`concurrency > 1`).
+        self._placement_group = self._create_placement_group(kwargs)
+
         # Initialize the SGLang engine
-        self.engine = sglang.Engine(**kwargs)
+        try:
+            self.engine = Engine(placement_group=self._placement_group, **kwargs)
+        except Exception:
+            # shutdown() is never called if __init__ raises, so release the
+            # bundles here instead of leaking them for the rest of the job.
+            self._remove_placement_group()
+            raise
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -219,11 +237,53 @@ class SGLangEngineWrapper:
             "[SGLang] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
+    @staticmethod
+    def _create_placement_group(engine_kwargs: Dict[str, Any]):
+        """Reserve the GPUs the SGLang SchedulerActors will run on.
+
+        RayEngine treats a caller-supplied placement group as a "custom" PG and
+        requires exactly one GPU per bundle, one bundle per rank. STRICT_PACK
+        keeps all ranks on a single node, which is what the single-node batch
+        stage needs for NCCL.
+        """
+        from ray.util.placement_group import placement_group
+
+        tp_size = engine_kwargs.get("tp_size", 1)
+        pp_size = engine_kwargs.get("pp_size", 1)
+        dp_size = engine_kwargs.get("dp_size", 1)
+        # DP attention folds DP into TP, so the GPU count excludes dp_size.
+        if engine_kwargs.get("enable_dp_attention"):
+            world_size = tp_size * pp_size
+        else:
+            world_size = tp_size * pp_size * dp_size
+
+        pg = placement_group([{"GPU": 1}] * world_size, strategy="STRICT_PACK")
+        ray.get(pg.ready())
+        return pg
+
+    def _remove_placement_group(self):
+        """Release the bundles reserved by ``_create_placement_group``."""
+        pg = getattr(self, "_placement_group", None)
+        if pg is None:
+            return
+        self._placement_group = None
+        try:
+            from ray.util.placement_group import remove_placement_group
+
+            remove_placement_group(pg)
+        except Exception:
+            logger.exception("Failed to remove the SGLang placement group")
+
     def shutdown(self):
-        """Shutdown the SGLang engine."""
+        """Shutdown the SGLang engine and release the PG it created."""
         if hasattr(self.engine, "shutdown"):
             logger.info("Shutting down SGLang engine")
+            # RayEngine.shutdown() kills its own SchedulerActors.
             self.engine.shutdown()
+
+        # The actors are gone but the bundles they occupied stay reserved until
+        # the PG is removed, so the next engine could not schedule without this.
+        self._remove_placement_group()
 
 
 class SGLangEngineStageUDF(StatefulStageUDF):
@@ -356,19 +416,16 @@ class SGLangEngineStage(StatefulStage):
         """
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
-        fn_constructor_kwargs = values["fn_constructor_kwargs"]
-        engine_kwargs = fn_constructor_kwargs.get("engine_kwargs", {})
 
         ray_remote_args = {}
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Set up num_gpus required
-        tp_size = engine_kwargs.get("tp_size", 1)
-        dp_size = engine_kwargs.get("dp_size", 1)
-        num_gpus = tp_size * dp_size
-
-        ray_remote_args["num_gpus"] = num_gpus
+        # RayEngine spawns its own SchedulerActors that claim the GPUs via a
+        # placement group, so the outer Ray Data actor must request zero GPUs —
+        # otherwise the outer actor's reservation and the inner SchedulerActors'
+        # reservations double-count and deadlock on GPU-tight clusters.
+        ray_remote_args["num_gpus"] = 0
         map_batches_kwargs.update(ray_remote_args)
         return values
 

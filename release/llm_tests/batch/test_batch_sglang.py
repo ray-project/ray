@@ -1,9 +1,28 @@
+import gc
 import sys
 
 import pytest
 
 import ray
 from ray.data.llm import SGLangEngineProcessorConfig, build_processor
+
+
+@pytest.fixture(autouse=True)
+def _release_engine_gpus():
+    """Force the SGLang engines of a finished test to release their GPUs.
+
+    Ray Data keeps its MapWorker actors warm after a dataset completes, so the
+    SGLangEngineWrapper (and therefore its SchedulerActors and placement group)
+    stays alive until the worker is collected. With the parametrized cases
+    reserving 2 and 4 GPUs on a 4-GPU cluster, the next case would otherwise
+    block forever waiting on bundles the previous one still holds.
+
+    SGLangEngineStageUDF.__del__ runs the real teardown; this just makes sure it
+    happens between tests. The wrapper removes its own placement group, so
+    nothing needs to be reaped by hand here.
+    """
+    yield
+    gc.collect()
 
 
 def test_chat_template():
