@@ -104,7 +104,7 @@ class FakeReplicaResult(ReplicaResult):
     def cancel(self):
         self.cancelled = True
 
-    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         raise NotImplementedError
 
     async def to_object_ref_async(self) -> ray.ObjectRef:

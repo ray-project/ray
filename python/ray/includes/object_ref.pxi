@@ -169,6 +169,50 @@ cdef class ObjectRef(BaseID):
         core_worker.set_get_async_callback(self, py_callback)
         return self
 
+    def _on_ready(self, py_callback: Callable):
+        """Register a callback that will be called after the Object exists.
+
+        Unlike ``_on_completed``, this does not fetch or deserialize the value.
+        The callback is ``callback(exc)``: ``exc`` is None when the object is
+        ready.
+
+        Returns a function that cancels the wait. It is a no-op if the
+        callback already ran synchronously.
+        """
+        core_worker = ray._private.worker.global_worker.core_worker
+        handle = core_worker.set_wait_async_callback(self, py_callback)
+
+        def cancel():
+            if handle:
+                core_worker.cancel_wait_async(handle)
+
+        return cancel
+
+    async def _ready(self):
+        """Wait until the object exists without fetching or deserializing it.
+
+        Unlike ``await self``, this returns ``self`` rather than the value.
+        Cancelling this coroutine cancels the wait.
+        """
+        py_future = concurrent.futures.Future()
+
+        def _set(exc):
+            if py_future.done():
+                return
+            if exc is not None:
+                py_future.set_exception(exc)
+            else:
+                py_future.set_result(None)
+
+        cancel = self._on_ready(_set)
+        aio_future = asyncio.wrap_future(py_future)
+        try:
+            await aio_future
+        except asyncio.CancelledError:
+            cancel()
+            raise
+        return self
+
     def tensor_transport(self):
         return self._tensor_transport
 

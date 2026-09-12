@@ -15,7 +15,9 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <future>
 #include <memory>
 #include <string>
@@ -55,6 +57,18 @@ using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
+
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Mutated under ``wait_async_mu_``. ``callback == nullptr`` means completed.
+ */
+struct WaitAsyncState {
+  ObjectID object_id;
+  void (*callback)(Status status, void *callback_arg) = nullptr;
+  void *callback_arg = nullptr;
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+};
 
 namespace {
 // Default capacity for serialization caches.
@@ -589,7 +603,24 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
+  // Drain WaitAsync *after* shutdown completes: that joins io_thread_, so no
+  // GetAsync callback can be mid-FinishWaitAsync while we clear the map.
+  // Clearing before the join left a window where a completion already taken
+  // off the state would still call the user callback from here.
   WaitForShutdownComplete();
+  // Do not invoke the callbacks: this can run after Py_Finalize(). Graceful
+  // shutdown already cancelled pending waits (CancelAllWaitAsync), so a
+  // non-empty map here means shutdown never ran. Leaking on process exit is
+  // fine; clearing ``callback`` keeps any surviving GetAsync off ``this``.
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      entry.second->callback = nullptr;
+      entry.second->callback_arg = nullptr;
+    }
+    wait_async_requests_.clear();
+  }
   RAY_LOG(INFO) << "Core worker is destructed";
 }
 
@@ -1720,6 +1751,122 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
+}
+
+void CoreWorker::FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state,
+                                 uint64_t handle,
+                                 Status status) {
+  void (*callback)(Status status, void *callback_arg) = nullptr;
+  void *callback_arg = nullptr;
+  ObjectID object_id;
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    if (state->callback == nullptr) {
+      return;
+    }
+    callback = state->callback;
+    callback_arg = state->callback_arg;
+    object_id = state->object_id;
+    memory_callback_id = state->memory_callback_id;
+    state->callback = nullptr;
+    state->callback_arg = nullptr;
+    state->memory_callback_id = 0;
+    wait_async_requests_.erase(handle);
+  }
+  if (memory_callback_id != 0) {
+    memory_store_->CancelGetAsync(object_id, memory_callback_id);
+  }
+  if (callback != nullptr) {
+    callback(std::move(status), callback_arg);
+  }
+}
+
+uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
+                               void (*callback)(Status status, void *callback_arg),
+                               void *callback_arg) {
+  rpc::Address owner_address;
+  Status owner_status = GetOwnerAddress(object_id, &owner_address);
+  if (!owner_status.ok()) {
+    callback(std::move(owner_status), callback_arg);
+    return 0;
+  }
+
+  std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
+  state->object_id = object_id;
+  state->callback = callback;
+  state->callback_arg = callback_arg;
+
+  uint64_t handle = 0;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    // Once CancelAllWaitAsync has run, io_service_ is about to stop, so a new
+    // registration would never be posted. Fail fast instead of hanging.
+    if (!wait_async_shutdown_) {
+      // Handles are never zero; zero means "already completed / not registered".
+      do {
+        ++wait_async_next_handle_;
+      } while (wait_async_next_handle_ == 0);
+      handle = wait_async_next_handle_;
+      wait_async_requests_[handle] = state;
+      // Hold the lock through GetAsync so the cancel token is stored before
+      // cancel can run.
+      std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
+          [this, handle, weak_state = std::weak_ptr<WaitAsyncState>(state)](
+              std::shared_ptr<RayObject>) {
+            std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
+            if (wait_state == nullptr) {
+              return;
+            }
+            FinishWaitAsync(wait_state, handle, Status::OK());
+          };
+      state->memory_callback_id =
+          memory_store_->GetAsync(object_id, std::move(on_memory_object));
+    }
+  }
+  if (handle == 0) {
+    callback(Status::UnknownError("Core worker is shutting down."), callback_arg);
+    return 0;
+  }
+  return handle;
+}
+
+void CoreWorker::CancelWaitAsync(uint64_t handle) {
+  if (handle == 0) {
+    return;
+  }
+  std::shared_ptr<WaitAsyncState> state;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>>::iterator it =
+        wait_async_requests_.find(handle);
+    if (it == wait_async_requests_.end()) {
+      return;
+    }
+    state = it->second;
+  }
+  // No Status::Cancelled; Invalid uniquely means this wait was cancelled.
+  FinishWaitAsync(state, handle, Status::Invalid("WaitAsync cancelled"));
+}
+
+void CoreWorker::CancelAllWaitAsync() {
+  // Steal the map under the lock, then finish outside it: FinishWaitAsync takes
+  // wait_async_mu_ to unregister, so holding it here would deadlock.
+  std::vector<std::pair<uint64_t, std::shared_ptr<WaitAsyncState>>> pending;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    wait_async_shutdown_ = true;
+    pending.reserve(wait_async_requests_.size());
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      pending.emplace_back(entry.first, entry.second);
+    }
+    wait_async_requests_.clear();
+  }
+  for (const std::pair<uint64_t, std::shared_ptr<WaitAsyncState>> &entry : pending) {
+    FinishWaitAsync(
+        entry.second, entry.first, Status::UnknownError("Core worker is shutting down."));
+  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
