@@ -64,7 +64,7 @@ Status PersistPort(const std::string &dir,
  * @param dir The directory where the port file is expected.
  * @param node_id The node ID to identify this port file.
  * @param port_name The name of the port (e.g., "dashboard_agent").
- * @param timeout_ms Maximum time to wait in milliseconds. Defaults to 15000.
+ * @param timeout_ms Maximum time to wait in milliseconds. Defaults to 30000.
  * @param poll_interval_ms Interval between filesystem checks in milliseconds.
  *        Defaults to 50.
  * @return The port number if successful.
@@ -76,7 +76,7 @@ StatusSetOr<int, StatusT::IOError, StatusT::TimedOut, StatusT::Invalid>
 WaitForPersistedPort(const std::string &dir,
                      const NodeID &node_id,
                      const std::string &port_name,
-                     int timeout_ms = 15000,
+                     int timeout_ms = 30000,
                      int poll_interval_ms = 50);
 
 }  // namespace ray
