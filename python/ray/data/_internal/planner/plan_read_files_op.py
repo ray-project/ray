@@ -58,12 +58,10 @@ def plan_read_files_op(
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
-        # File-level predicate pruning (partition predicates pushed down onto
-        # the scanner) runs per incoming manifest block. ``Scanner.prune_manifest``
-        # is an identity by default; ``ArrowFileScanner`` overrides it to
-        # evaluate ``partition_predicate``.
+        # ``prune_input_split`` is an identity by default; ``ArrowFileScanner``
+        # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
-            manifest = scanner.prune_manifest(FileManifest(block))
+            manifest = scanner.prune_input_split(FileManifest(block))
             if len(manifest) == 0:
                 continue
             for table in reader.read(manifest):

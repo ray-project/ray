@@ -525,9 +525,8 @@ def _read_datasource_v2(
     file — no caching layer needed.
 
     This function is the whole framework <-> datasource contract: every
-    attribute it reads off ``datasource`` is declared on ``DataSourceV2``, and
-    the datasource object is not referenced after it returns (``ReadFiles``
-    keeps only ``datasource.name``).
+    attribute it reads is declared on ``DataSourceV2``, and the object is not
+    referenced after it returns (``ReadFiles`` keeps only ``datasource.name``).
     """
     import time
 

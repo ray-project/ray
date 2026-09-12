@@ -466,13 +466,11 @@ class ListFiles(LogicalOperator, SourceOperator):
         default=lambda: None
     )
     # Pushed-down read constraints, filled in by ``DeriveListFilesPushdown``
-    # from the scanner's accepted pushdowns after the logical rules have run.
-    # They are forwarded to ``FileIndexer.list_files``: a metadata-aware indexer
-    # (``FooterFileIndexer``, which reads Parquet footers on an actor pool) uses
-    # them to drop row groups, size only projected columns and stop listing
-    # early; the generic ``NonSamplingFileIndexer`` ignores them. Which happens
-    # is decided by the indexer the datasource chose, not by a flag here -- this
-    # op stays format-agnostic.
+    # from the scanner's accepted pushdowns and forwarded to
+    # ``FileIndexer.list_files``. ``FooterFileIndexer`` uses them to drop row
+    # groups, size only projected columns and stop listing early;
+    # ``NonSamplingFileIndexer`` ignores them. Which one runs is the
+    # datasource's choice of indexer, not a flag here.
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None

@@ -72,19 +72,15 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
     The framework touches a datasource in exactly one place,
-    ``ray.data.read_api._read_datasource_v2``: it builds the
-    ``ListFiles -> ReadFiles`` logical plan from the datasource and then drops
-    it. Every attribute that function reads is declared here, so a subclass
-    that implements the abstract members works end to end. The abstract
-    members are :attr:`paths`, :attr:`filesystem`, :meth:`_get_file_indexer`,
-    :attr:`schema_needs_file_sample`, :meth:`infer_schema` and
-    :meth:`create_scanner`; everything else has a working default.
+    ``ray.data.read_api._read_datasource_v2``, which builds the
+    ``ListFiles -> ReadFiles`` plan and then drops it. Every attribute that
+    function reads is declared here, so implementing the abstract members is
+    enough to work end to end.
 
-    The framework is file-based today -- ``_read_datasource_v2`` always builds
-    a ``ListFiles`` op -- which is why ``paths``, ``filesystem`` and
-    ``_get_file_indexer`` live on this base class. When a non-file source (a
-    database scan, say) is added they move down into a ``FileDataSourceV2``
-    subclass and ``_read_datasource_v2`` branches on which one it received.
+    That function always builds a ``ListFiles`` op, which is why ``paths``,
+    ``filesystem`` and ``_get_file_indexer`` live here. A future non-file
+    source (a database scan, say) moves them into a ``FileDataSourceV2``
+    subclass.
 
     Example::
 
@@ -142,31 +138,27 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     @property
     @abstractmethod
     def paths(self) -> List[str]:
-        """Listing inputs. Each becomes the input of one ``ListFiles`` task and
-        is handed to :meth:`_get_file_indexer`'s ``list_files`` unread: the
-        framework never interprets them. File sources return the root files or
-        directories to walk; a catalog- or engine-backed source, whose indexer
-        already knows what to read, returns one identifier label. Must be
-        non-empty: with no paths ``ListFiles`` schedules no task and the read
-        is silently empty.
+        """Listing inputs, one ``ListFiles`` task each, passed to the indexer
+        unread -- the framework never interprets them.
 
-        Also recorded as ``ListFiles.source_paths`` for lineage tracking.
+        File sources return the roots to walk. A catalog- or engine-backed
+        source, whose indexer already knows what to read, returns a single
+        identifier label. Must be non-empty, or ``ListFiles`` schedules no task
+        and the read is silently empty.
         """
         ...
 
     @property
     @abstractmethod
     def filesystem(self) -> Optional["FileSystem"]:
-        """PyArrow filesystem the indexer and scanner should read through, or
-        ``None`` when they do their own IO.
+        """PyArrow filesystem the indexer and scanner read through, or ``None``
+        when they do their own IO.
 
-        The framework only forwards it -- to ``ListFiles``, to
-        ``sample_files`` and to :meth:`create_scanner` -- and never dereferences
-        it, so whether ``None`` is acceptable is decided by the components the
-        datasource itself returns. ``NonSamplingFileIndexer`` and
-        ``FooterFileIndexer`` require one; resolve it in ``__init__`` (see
-        ``_resolve_paths_and_filesystem``). A source read through its own
-        library (PyIceberg's ``FileIO``, Lance, hudi-rs) returns ``None``.
+        The framework only forwards it and never dereferences it, so whether
+        ``None`` is acceptable is up to the components this datasource returns.
+        The stock indexers require one -- resolve it in ``__init__``, see
+        ``_resolve_paths_and_filesystem``. A source read through its own library
+        (PyIceberg, Lance, hudi-rs) returns ``None``.
         """
         ...
 
@@ -189,12 +181,10 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
         ``FileManifest`` blocks.
 
-        Abstract rather than defaulted: the framework hands the result straight
-        to ``ListFiles`` and to schema sampling, neither of which accepts
-        ``None``, and a silent default would commit a new format to whole-file
-        chunking without anyone choosing it. Formats without usable file
-        metadata return ``NonSamplingFileIndexer``; Parquet returns
-        ``FooterFileIndexer``.
+        Abstract rather than defaulted, because a default would commit a new
+        format to whole-file chunking without anyone choosing it. Formats
+        without usable file metadata return ``NonSamplingFileIndexer``; Parquet
+        returns ``FooterFileIndexer``.
         """
         ...
 

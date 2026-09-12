@@ -34,10 +34,8 @@ class FileIndexer(ABC):
     """Turns root paths into ``FileManifest`` blocks inside ``ListFiles`` tasks.
 
     Chosen by ``DataSourceV2._get_file_indexer``. How an implementation splits a
-    file into manifest rows (whole file, byte ranges, row groups) is its own
-    business and not part of this interface: see ``NonSamplingFileIndexer``'s
-    ``file_chunker`` for the generic path and ``FooterFileIndexer`` for the
-    Parquet one.
+    file into manifest rows is deliberately its own business, not part of this
+    interface.
     """
 
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
@@ -218,7 +216,6 @@ class NonSamplingFileIndexer(FileIndexer):
         """The chunker ``list_files`` applies to each listed file.
 
         Specific to this indexer -- its ``list_files`` is the only consumer.
-        Exposed so tests can check which strategy an indexer was built with.
         """
         return self._file_chunker
 
