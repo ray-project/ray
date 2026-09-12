@@ -18,6 +18,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
+| Release nodes left underused after downscaling | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Long-running service whose deployments scale up and down |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
 | Shard large embeddings across nodes | `placement_group_bundles` + `STRICT_SPREAD` | Recommendation model with distributed embedding table |
 | Simple deployment, no special needs | Default (just `ray_actor_options`) | Single-GPU model |
@@ -279,6 +280,34 @@ ray start --head
 :::{note}
 Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
 :::
+
+#### Node compaction
+
+Packing only decides where new replicas go. As deployments scale down or get deleted, nodes end up partially used, so pack scheduling also actively compacts the cluster:
+
+1. Once every deployment has been `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S` seconds and no node is draining, the scheduler looks for a worker node whose replicas can all be bin-packed onto the other non-idle nodes. If several nodes qualify, it picks the one with the most total resources, then the one with the fewest replicas to move.
+2. Replicas on that node are migrated with a start-then-stop pattern: a replacement is started on another node and the old replica is stopped only after the replacement is running, so serving capacity never dips.
+3. Once the node is empty, the autoscaler can release it.
+
+A compaction is cancelled if new replicas land on the target node, for example an upscale that no longer fits elsewhere, or if it doesn't finish within `RAY_SERVE_COMPACTION_TIMEOUT_S`. After a cancellation, the scheduler waits with exponential backoff, capped at `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`, before looking for another opportunity. The head node is never compacted, and a deployment whose placement group strategy isn't `STRICT_PACK` blocks compaction of the nodes it runs on. Completed compactions are counted in the `serve_num_compacted_nodes` metric.
+
+### `RAY_SERVE_NODE_COMPACTION_DELAY_S`
+
+**Default**: `300`
+
+How long all deployments must stay `HEALTHY` before the scheduler starts a new node compaction. Only used with pack scheduling.
+
+### `RAY_SERVE_COMPACTION_TIMEOUT_S`
+
+**Default**: `1800`
+
+How long an in-progress node compaction may take before it's cancelled. Warnings are logged after one and ten minutes.
+
+### `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`
+
+**Default**: `3600`
+
+Upper bound on the exponential backoff between compaction attempts after a cancellation or timeout.
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
 

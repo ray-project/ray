@@ -36,6 +36,7 @@ from ray.serve._private.test_utils import (
     MockActorClass,
     MockClusterNodeInfoCache,
     MockPlacementGroup,
+    MockTimer,
 )
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
@@ -2243,6 +2244,619 @@ class TestScheduleGangPlacementGroups:
         assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
         assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
         assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
+
+
+def _compaction_scheduler(cluster_node_info_cache, head_node_id="fake-head-node-id"):
+    return default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override=head_node_id,
+        create_placement_group_fn_override=None,
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+class TestActiveCompaction:
+    def test_basic(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+        cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        scheduler.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 1})
+        )
+
+        for i in range(3):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica4", d_id2), "node2")
+
+        node, deadline = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert node == "node2"
+        assert deadline == float("inf")
+        node, deadline = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert node == "node2"
+        assert deadline == float("inf")
+
+    def test_no_compaction_opportunity(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+        cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        scheduler.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 2, "num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica3", d_id2), "node2")
+
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    def test_idle_nodes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    def test_compaction_completes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._compacting_node is None
+
+    def test_compaction_cancelled(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._compacting_node is None
+
+    def test_compaction_timeout(self):
+        timer = MockTimer()
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+
+            timer.advance(100)
+            for _ in range(10):
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=False)[0]
+                    == "node2"
+                )
+            timer.advance(1000)
+            for _ in range(10):
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=False)[0]
+                    == "node2"
+                )
+
+            timer.advance(10000)
+            assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+            assert scheduler._compacting_node is None
+
+    def test_exponential_backoff_cancellation(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            for i in range(5):
+                scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+
+                expected_backoff = 2 ** (i + 1)
+                timer.advance(expected_backoff / 2)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                timer.advance(expected_backoff / 2)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+    def test_exponential_backoff_timeout(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            for i in range(5):
+                timer.advance(1000)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+                timer.advance(800)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+                expected_backoff = 2 ** (i + 1)
+                timer.advance(expected_backoff / 2)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                timer.advance(expected_backoff / 2)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+    def test_head_node_not_considered(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("head-node-id", {"CPU": 1})
+        cluster_node_info_cache.add_node("worker-node-id", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node-id")
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    def test_custom_resources(self):
+        d1_id = DeploymentID(name="deployment1")
+        d2_id = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 1, "customx": 1})
+        scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node-id")
+
+        scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d2_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d1_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d2_id,
+            rconfig(ray_actor_options={"num_cpus": 1, "resources": {"customx": 0.1}}),
+        )
+
+        scheduler.on_replica_running(ReplicaID("r1", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r2", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r3", d2_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        cluster_node_info_cache.add_node("node3", {"CPU": 3, "customx": 1})
+        scheduler.on_replica_running(ReplicaID("r4", d1_id), "node3")
+        scheduler.on_replica_running(ReplicaID("r5", d1_id), "node3")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    def test_migrate_to_multiple_nodes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 6})
+        cluster_node_info_cache.add_node("node2", {"CPU": 6})
+        cluster_node_info_cache.add_node("node3", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        for i in range(5):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node1")
+        for i in range(5, 9):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node2")
+        for i in range(9, 12):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node3")
+
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node3"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node3"
+
+    def test_prioritize_larger_nodes_to_compact(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        if random.randint(0, 1) == 1:
+            expected_node = "node2"
+            cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+            cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        else:
+            expected_node = "node1"
+            cluster_node_info_cache.add_node("node1", {"GPU": 10, "CPU": 2})
+            cluster_node_info_cache.add_node("node2", {"GPU": 4, "CPU": 8})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_gpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert node == expected_node
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert node == expected_node
+
+
+def test_get_deployment_placement_candidates_keeps_empty_actor_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id, rconfig(ray_actor_options={"num_cpus": 1, "label_selector": {}})
+    )
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert len(candidates) == 1
+    assert candidates[0][1] == [{}]
+
+
+def test_get_deployment_placement_candidates_no_selector_has_empty_labels():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert len(candidates) == 1
+    assert candidates[0][1] == []
+
+
+def test_get_deployment_placement_candidates_orders_primary_before_fallback():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={
+                "num_cpus": 1,
+                "label_selector": {"region": "us-west"},
+                "fallback_strategy": [
+                    {"label_selector": {"region": "us-east"}},
+                    {"label_selector": {"region": "us-central"}},
+                ],
+            },
+        ),
+    )
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert [labels for _, labels in candidates] == [
+        [{"region": "us-west"}],
+        [{"region": "us-east"}],
+        [{"region": "us-central"}],
+    ]
+
+
+def test_get_node_to_compact_respects_actor_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    east_filler_dep_id = DeploymentID(name="east-filler")
+    west_filler_dep_id = DeploymentID(name="west-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-west", {"CPU": 2}, labels={"region": "us-west"}
+    )
+    cluster_node_info_cache.add_node(
+        "node-east", {"CPU": 1}, labels={"region": "us-east"}
+    )
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(
+        east_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_created(
+        west_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 1, "label_selector": {"region": "us-west"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        east_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-east"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        west_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-west"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-west")
+    scheduler.on_replica_running(
+        ReplicaID("east-filler", east_filler_dep_id), "node-east"
+    )
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    cluster_node_info_cache.add_node(
+        "node-west-2", {"CPU": 1}, labels={"region": "us-west"}
+    )
+    scheduler.on_replica_running(
+        ReplicaID("west-filler", west_filler_dep_id), "node-west-2"
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-west"
+
+
+def test_get_node_to_compact_respects_actor_fallback_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    filler_dep_id = DeploymentID(name="east-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-west", {"CPU": 2}, labels={"region": "us-west"}
+    )
+    cluster_node_info_cache.add_node(
+        "node-east", {"CPU": 1}, labels={"region": "us-east"}
+    )
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={
+                "num_cpus": 1,
+                "label_selector": {"region": "us-west"},
+                "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+            },
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-east"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-west")
+    scheduler.on_replica_running(ReplicaID("east-filler", filler_dep_id), "node-east")
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-west"
+
+
+def test_get_node_to_compact_respects_bundle_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    t4_filler_dep_id = DeploymentID(name="t4-filler")
+    a100_filler_dep_id = DeploymentID(name="a100-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-a100", {"CPU": 2}, labels={"gpu-type": "A100"}
+    )
+    cluster_node_info_cache.add_node("node-t4", {"CPU": 1}, labels={"gpu-type": "T4"})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(
+        t4_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_created(
+        a100_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            placement_group_bundle_label_selector=[{"gpu-type": "A100"}],
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        t4_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"gpu-type": "T4"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        a100_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"gpu-type": "A100"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-a100")
+    scheduler.on_replica_running(ReplicaID("t4-filler", t4_filler_dep_id), "node-t4")
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    cluster_node_info_cache.add_node(
+        "node-a100-2", {"CPU": 1}, labels={"gpu-type": "A100"}
+    )
+    scheduler.on_replica_running(
+        ReplicaID("a100-filler", a100_filler_dep_id), "node-a100-2"
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-a100"
+
+
+def test_active_compaction_can_schedule_upscale_to_source_node():
+    dep_id = DeploymentID(name="deployment1")
+    filler_dep_id = DeploymentID(name="filler")
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(node_id_1, {"CPU": 2})
+    cluster_node_info_cache.add_node(node_id_2, {"CPU": 1})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 0})
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), node_id_1)
+    scheduler.on_replica_running(ReplicaID("filler", filler_dep_id), node_id_2)
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == node_id_1
+
+    on_scheduled_mock = Mock()
+    scheduler._on_replica_launching(
+        ReplicaID("migration", dep_id), target_node_id=node_id_2
+    )
+
+    replacement_replica_id = ReplicaID("r1", dep_id)
+    request = ReplicaSchedulingRequest(
+        replica_id=replacement_replica_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+    )
+    scheduler._pending_replicas[dep_id][replacement_replica_id] = request
+
+    all_node_labels = {
+        node_id: cluster_node_info_cache.get_node_labels(node_id)
+        for node_id in cluster_node_info_cache.get_active_node_ids()
+    }
+    target_node = scheduler._pack_schedule_replica(
+        request,
+        all_node_labels,
+        scheduler._get_available_resources_per_node(),
+        scheduler._get_node_to_running_replicas(),
+    )
+
+    assert target_node == node_id_1
+    scheduling_strategy = on_scheduled_mock.call_args.args[0]._options[
+        "scheduling_strategy"
+    ]
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_1
 
 
 if __name__ == "__main__":

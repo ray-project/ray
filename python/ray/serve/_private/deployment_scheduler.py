@@ -1,5 +1,6 @@
 import copy
 import logging
+import time
 import uuid
 import warnings
 from abc import ABC, abstractmethod
@@ -25,11 +26,15 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S,
+    RAY_SERVE_COMPACTION_TIMEOUT_S,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.usage import ServeUsageTag
+from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
@@ -358,6 +363,14 @@ class LaunchingReplicaInfo:
 
     target_node_id: Optional[str] = None
     target_labels: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class CompactingNodeInfo:
+    target_node_id: str
+    start_timestamp_s: float
+    cached_running_replicas_on_target_node: Set[ReplicaID]
+    last_logged_timeout_warning: Optional[float] = None
 
 
 def _flatten(
@@ -974,6 +987,26 @@ class DeploymentScheduler(ABC):
 
 
 class DefaultDeploymentScheduler(DeploymentScheduler):
+    def __init__(
+        self,
+        cluster_node_info_cache: ClusterNodeInfoCache,
+        head_node_id: str,
+        create_placement_group_fn: Callable,
+    ):
+        super().__init__(
+            cluster_node_info_cache, head_node_id, create_placement_group_fn
+        )
+        # Not checkpointed: a restarted controller reconciles first, then
+        # re-detects compaction opportunities.
+        self._compacting_node: Optional[CompactingNodeInfo] = None
+        self._num_consecutive_failed_compactions: int = 0
+        self._next_allowed_compaction_timestamp_s: float = 0
+        self._num_succeeded_compactions: int = 0
+        self._num_compacted_nodes_counter = ray_metrics.Counter(
+            "serve_num_compacted_nodes",
+            description="The number of nodes that have been compacted.",
+        )
+
     def schedule(
         self,
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
@@ -1402,15 +1435,20 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 if not available_resources_per_node:
                     return None
 
+        target_compact = (
+            self._compacting_node.target_node_id if self._compacting_node else None
+        )
         non_idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
             if len(node_to_assigned_replicas.get(node_id, set())) > 0
+            and node_id != target_compact
         }
         idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
             if len(node_to_assigned_replicas.get(node_id, set())) == 0
+            and node_id != target_compact
         }
 
         # 1. Prefer non-idle nodes
@@ -1418,13 +1456,257 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if chosen_node:
             return chosen_node
 
-        # 2. Consider idle nodes last
+        # 2. Fall back to the compacting node; landing here cancels the
+        # compaction on the next update.
+        if target_compact and target_compact in available_resources_per_node:
+            chosen_node = self._best_fit_node(
+                required_resources,
+                {target_compact: available_resources_per_node[target_compact]},
+            )
+            if chosen_node:
+                return chosen_node
+
+        # 3. Consider idle nodes last
         chosen_node = self._best_fit_node(required_resources, idle_nodes)
         if chosen_node:
             return chosen_node
         return None
 
+    def _get_deployment_placement_candidates(
+        self, deployment: DeploymentSchedulingInfo
+    ) -> Optional[List[Tuple[RequestedResources, List[Dict[str, str]]]]]:
+        if deployment.is_non_strict_pack_pg():
+            return None
+
+        actor_options: Dict[str, Any] = {}
+        if deployment.label_selector is not None:
+            actor_options["label_selector"] = deployment.label_selector
+        if deployment.fallback_strategy is not None:
+            actor_options["fallback_strategy"] = deployment.fallback_strategy
+
+        return self._build_pack_placement_candidates(
+            ReplicaSchedulingRequest(
+                replica_id=ReplicaID(
+                    unique_id="", deployment_id=deployment.deployment_id
+                ),
+                actor_def=None,
+                actor_resources=dict(deployment.actor_resources or {}),
+                actor_options=actor_options,
+                actor_init_args=(),
+                on_scheduled=lambda *args, **kwargs: None,
+                placement_group_bundles=(
+                    [dict(bundle) for bundle in deployment.placement_group_bundles]
+                    if deployment.placement_group_bundles
+                    else None
+                ),
+                placement_group_strategy=deployment.placement_group_strategy,
+                placement_group_bundle_label_selector=deployment.bundle_label_selector,
+                max_replicas_per_node=deployment.max_replicas_per_node,
+            )
+        )
+
+    def _launching_replicas_on_node_id(self, target_node_id: str) -> Set[ReplicaID]:
+        return {
+            replica_id
+            for replicas in self._launching_replicas.values()
+            for replica_id, info in replicas.items()
+            if info.target_node_id == target_node_id
+        }
+
+    def _running_replicas_on_node_id(self, target_node_id: str) -> Set[ReplicaID]:
+        return {
+            replica_id
+            for replicas in self._running_replicas.values()
+            for replica_id, node_id in replicas.items()
+            if node_id == target_node_id
+        }
+
+    def _fail_compaction(self):
+        self._compacting_node = None
+        self._num_consecutive_failed_compactions += 1
+        backoff_s = min(
+            2**self._num_consecutive_failed_compactions,
+            RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S,
+        )
+        self._next_allowed_compaction_timestamp_s = time.time() + backoff_s
+        if self._num_consecutive_failed_compactions >= 2:
+            logger.info(
+                f"Compaction failed {self._num_consecutive_failed_compactions} "
+                f"times in a row. Retrying after {backoff_s} seconds."
+            )
+
+    def _update_compacting_node_info(self):
+        info = self._compacting_node
+        target_node = info.target_node_id
+        current_replicas = self._running_replicas_on_node_id(
+            target_node
+        ) | self._launching_replicas_on_node_id(target_node)
+        new_replicas = current_replicas - info.cached_running_replicas_on_target_node
+        now = time.time()
+
+        if new_replicas:
+            logger.info(
+                f"Canceling compaction of {target_node} because new replicas "
+                f"have been scheduled on {target_node}: {new_replicas}."
+            )
+            self._fail_compaction()
+        elif not current_replicas:
+            logger.info(f"Successfully migrated replicas off of {target_node}.")
+            self._compacting_node = None
+            self._num_consecutive_failed_compactions = 0
+            self._next_allowed_compaction_timestamp_s = 0
+            self._num_succeeded_compactions += 1
+            self._num_compacted_nodes_counter.inc()
+            ServeUsageTag.NUM_NODE_COMPACTIONS.record(
+                str(self._num_succeeded_compactions)
+            )
+        elif now >= info.start_timestamp_s + RAY_SERVE_COMPACTION_TIMEOUT_S:
+            logger.info(
+                f"Migrating replicas off of node {target_node} timed out after "
+                f"{RAY_SERVE_COMPACTION_TIMEOUT_S} seconds. Canceling compaction "
+                f"of node {target_node}. Replicas still running on node "
+                f"{target_node}: {current_replicas}."
+            )
+            self._fail_compaction()
+        else:
+            for threshold_s, amount in ((600, "10 minutes"), (60, "1 minute")):
+                threshold = info.start_timestamp_s + threshold_s
+                already_logged = (
+                    info.last_logged_timeout_warning is not None
+                    and info.last_logged_timeout_warning >= threshold
+                )
+                if now > threshold and not already_logged:
+                    logger.warning(
+                        f"The controller has been trying to compact {target_node} "
+                        f"for more than {amount}. Resources may be unexpectedly "
+                        "constrained, or migration is slow because new replicas "
+                        "are taking a long time to initialize. Compaction will "
+                        "time out and be cancelled if it takes more than "
+                        f"{RAY_SERVE_COMPACTION_TIMEOUT_S / 60} minutes."
+                    )
+                    info.last_logged_timeout_warning = now
+                    break
+
     def get_node_to_compact(
         self, allow_new_compaction: bool
     ) -> Optional[Tuple[str, float]]:
-        return None
+        if self._compacting_node:
+            self._update_compacting_node_info()
+        if self._compacting_node:
+            return self._compacting_node.target_node_id, float("inf")
+
+        if (
+            time.time() < self._next_allowed_compaction_timestamp_s
+            or not allow_new_compaction
+            or any(self._pending_replicas.values())
+            or any(self._launching_replicas.values())
+            or any(self._recovering_replicas.values())
+        ):
+            return None
+
+        target_node_id = self._find_best_node_to_compact()
+        if not target_node_id:
+            return None
+
+        self._compacting_node = CompactingNodeInfo(
+            target_node_id=target_node_id,
+            start_timestamp_s=time.time(),
+            cached_running_replicas_on_target_node=self._running_replicas_on_node_id(
+                target_node_id
+            ),
+        )
+        return target_node_id, float("inf")
+
+    def _find_best_node_to_compact(self) -> Optional[str]:
+        node_to_running_replicas = self._get_node_to_running_replicas()
+        available_resources_per_node = self._get_available_resources_per_node()
+        total_resources_per_node = {
+            node_id: AvailableNodeResources(resources)
+            for node_id, resources in (
+                self._cluster_node_info_cache.get_total_resources_per_node().items()
+            )
+        }
+        all_node_labels = {
+            node_id: self._cluster_node_info_cache.get_node_labels(node_id)
+            for node_id in self._cluster_node_info_cache.get_active_node_ids()
+        }
+
+        best_node = None
+        best_assignment = None
+        for target_node_id in available_resources_per_node:
+            if target_node_id == self._head_node_id:
+                continue
+
+            # Best-fit binpack the target's replicas onto the other non-idle nodes.
+            available_resources = {
+                n: v
+                for n, v in available_resources_per_node.items()
+                if n != target_node_id and len(node_to_running_replicas[n]) > 0
+            }
+            replicas_on_target = sorted(
+                self._running_replicas_on_node_id(target_node_id),
+                key=lambda r: self._deployments[r.deployment_id].required_resources,
+                reverse=True,
+            )
+            node_to_simulated_replicas = self._get_node_to_running_replicas()
+            assignment: Optional[Dict[ReplicaID, str]] = {}
+            for replica_id in replicas_on_target:
+                placement_candidates = self._get_deployment_placement_candidates(
+                    self._deployments[replica_id.deployment_id]
+                )
+                if placement_candidates is None:
+                    assignment = None
+                    break
+
+                chosen_node = None
+                for required_resources, required_labels in placement_candidates:
+                    chosen_node = self._find_best_fit_node_for_pack(
+                        required_resources,
+                        available_resources,
+                        node_to_simulated_replicas,
+                        required_labels_list=required_labels,
+                        node_labels=all_node_labels,
+                    )
+                    if chosen_node:
+                        break
+                if not chosen_node:
+                    assignment = None
+                    break
+
+                assignment[replica_id] = chosen_node
+                available_resources[chosen_node] -= required_resources
+                node_to_simulated_replicas[chosen_node].add(replica_id)
+
+            if not assignment:
+                continue
+
+            # Prefer the largest compactable node, then the fewest migrations.
+            if best_node is None:
+                take = True
+            else:
+                current_total = total_resources_per_node.get(
+                    target_node_id, AvailableNodeResources()
+                )
+                best_total = total_resources_per_node.get(
+                    best_node, AvailableNodeResources()
+                )
+                take = current_total > best_total or (
+                    current_total == best_total
+                    and len(assignment) < len(best_assignment)
+                )
+            if take:
+                best_node = target_node_id
+                best_assignment = assignment
+
+        if best_node:
+            node_to_assigned: Dict[str, List[ReplicaID]] = defaultdict(list)
+            for replica_id, node_id in best_assignment.items():
+                node_to_assigned[node_id].append(replica_id)
+            plan = ", ".join(
+                f"{replicas} -> {node_id}"
+                for node_id, replicas in node_to_assigned.items()
+            )
+            logger.info(
+                f"Found compactable node '{best_node}' with migration plan: {{{plan}}}."
+            )
+        return best_node
