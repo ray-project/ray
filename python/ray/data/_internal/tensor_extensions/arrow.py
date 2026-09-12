@@ -1415,6 +1415,30 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             ]
         )
 
+    def _to_dense_numpy_or_none(self) -> Optional[np.ndarray]:
+        """A single ``(num_rows, *shape)`` view, when the rows permit one.
+
+        :meth:`to_numpy` returns one view per row, which a caller that wants a
+        dense array has to stack, copying the whole payload. Rows that all have
+        the same shape are already laid out back to back, so one view covers
+        them all and no copy is needed.
+
+        Returns ``None`` when no single view can describe the rows, leaving the
+        caller to fall back to :meth:`to_numpy`. This is deliberately not folded
+        into :meth:`to_numpy`, which is documented to return one ndarray per
+        row: a one-row slice of a ragged column would otherwise start returning
+        a dense array.
+        """
+        data_array = self.storage.field("data")
+        shapes_array = self.storage.field("shape")
+
+        return _to_dense_ndarray_or_none(
+            shapes_array.to_pylist(),
+            data_array.offsets.to_pylist(),
+            data_array.type.value_type,
+            data_array.buffers()[3],
+        )
+
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
         if ndim == self.type.ndim:
             return self
@@ -1712,6 +1736,40 @@ def _get_root_base(a: np.ndarray) -> np.ndarray:
 def _get_buffer_address(arr: np.ndarray) -> int:
     """Get the address of the buffer underlying the provided NumPy ndarray."""
     return arr.__array_interface__["data"][0]
+
+
+def _to_dense_ndarray_or_none(
+    shapes: List[Optional[List[int]]],
+    offsets: List[int],
+    value_type: pa.DataType,
+    data_buffer: Optional[pa.Buffer],
+) -> Optional[np.ndarray]:
+    """One ``(num_rows, *shape)`` view over uniformly shaped, adjacent rows.
+
+    Returns ``None`` when no single view can describe the rows, and the caller
+    should fall back to one view per row. That happens when the rows are
+    genuinely ragged, when one of them is null and so has no shape, or when they
+    are not adjacent in the buffer, which a view cannot express.
+    """
+    num_rows = len(shapes)
+    if num_rows == 0 or data_buffer is None or len(offsets) < num_rows + 1:
+        return None
+
+    shape = shapes[0]
+    # A null row's shape is None, which no other row's shape equals, so this
+    # rejects nulls as well as ragged rows.
+    if shape is None or any(s != shape for s in shapes):
+        return None
+
+    num_items_per_row = np.prod(shape) if shape else 1
+    if num_items_per_row == 0:
+        # Nothing to point at, and an empty column is not worth a second path.
+        return None
+
+    if any(offsets[i + 1] - offsets[i] != num_items_per_row for i in range(num_rows)):
+        return None
+
+    return _to_ndarray_helper((num_rows, *shape), value_type, offsets[0], data_buffer)
 
 
 def _to_ndarray_helper(shape, value_type, offset, data_buffer):

@@ -1465,6 +1465,95 @@ def test_arrow_extension_serialize_deserialize_cache_thread_safety():
         assert result.value_type == results[0].value_type
 
 
+def _arrow_values_view(arr: ArrowVariableShapedTensorArray) -> np.ndarray:
+    """The tensor payload buffer of a variable-shaped tensor array, as ndarray."""
+    data_array = arr.storage.field("data")
+    dtype = data_array.type.value_type.to_pandas_dtype()
+    return np.frombuffer(data_array.buffers()[3], dtype=dtype)
+
+
+def _to_pandas(arr: ArrowVariableShapedTensorArray) -> TensorArray:
+    """Convert through the pandas extension protocol, as a pandas batch does."""
+    return TensorDtype(
+        None, arr.storage.field("data").type.value_type.to_pandas_dtype()
+    ).__from_arrow__(arr)
+
+
+def test_variable_shaped_uniform_rows_to_pandas_is_zero_copy():
+    """Uniform rows reach pandas as a view, without copying the payload.
+
+    A variable-shaped tensor column whose rows all happen to have the same shape
+    holds its values contiguously, so the dense array pandas wants is already
+    there. Building it used to stack the per-row views, copying everything.
+    """
+    data = np.arange(12, dtype=np.float32).reshape(3, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr)
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_variable_shaped_uniform_rows_sliced_to_pandas_is_zero_copy():
+    """Slicing offsets the view rather than defeating it."""
+    data = np.arange(20, dtype=np.float32).reshape(5, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr.slice(1, 3))
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data[1:4])
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_variable_shaped_ragged_rows_to_pandas_unchanged():
+    """Genuinely ragged rows cannot share one view, and still convert correctly."""
+    rows = [np.arange(3, dtype=np.float32), np.arange(5, dtype=np.float32)]
+    arr = ArrowVariableShapedTensorArray.from_numpy(rows)
+
+    tensor_array = _to_pandas(arr)
+
+    assert len(tensor_array) == 2
+    for actual, expected in zip(tensor_array.to_numpy(), rows):
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_variable_shaped_to_numpy_still_returns_one_ndarray_per_row():
+    """``to_numpy`` keeps returning per-row views, including for uniform rows.
+
+    The dense fast path is opt-in through ``_to_dense_numpy_or_none`` rather
+    than folded into ``to_numpy``. A one-row slice of a ragged column is
+    trivially uniform, so folding it in would change what ``to_numpy`` returns
+    for a ragged column depending on how it was sliced.
+    """
+    uniform = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    assert uniform.to_numpy().dtype == object
+
+    ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 2)), np.zeros((3, 3))]
+    )
+    assert ragged.to_numpy().dtype == object
+    assert ragged.slice(0, 1).to_numpy().dtype == object
+
+
+def test_to_dense_numpy_or_none_declines_ragged_rows():
+    """The fast path reports that it cannot describe ragged rows."""
+    ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 2)), np.zeros((3, 3))]
+    )
+    assert ragged._to_dense_numpy_or_none() is None
+
+    uniform = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    dense = uniform._to_dense_numpy_or_none()
+    assert dense is not None
+    assert dense.shape == (3, 4)
+    assert dense.dtype == np.float32
+
+
 if __name__ == "__main__":
     import sys
 
