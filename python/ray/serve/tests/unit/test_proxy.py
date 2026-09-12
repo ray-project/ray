@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 import sys
+from types import SimpleNamespace
 from typing import Dict, List, Tuple
 from unittest.mock import AsyncMock
 
@@ -13,6 +14,7 @@ from ray.serve._private.constants import HEALTHY_MESSAGE
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
     HTTPProxy,
+    ProxyActorInterface,
     ResponseGenerator,
     ResponseStatus,
     gRPCProxy,
@@ -488,6 +490,35 @@ class TestgRPCProxy:
         assert context.details() == ""
 
 
+def test_update_tracing_config_swallows_setup_failure():
+    """A bad tracing config must not crash the proxy's long-poll handler.
+
+    Regression coverage for #65437 review: `_update_tracing_config` runs as a
+    long-poll callback, so a raising `setup_tracing` (e.g. a bad
+    `exporter_import_path`) must be swallowed. Setup is left marked
+    unsucceeded so a later (valid) delivery can retry.
+
+    `_update_tracing_config` only reads/writes `_tracing_setup_succeeded`,
+    `_tracing_config`, and `_node_ip_address`, so exercise it against a
+    lightweight stand-in rather than constructing a full proxy actor.
+    """
+    proxy = SimpleNamespace(
+        _tracing_setup_succeeded=False,
+        _tracing_config=None,
+        _node_ip_address="fake-node-ip",
+    )
+
+    # A bogus exporter path raises inside setup_tracing; the callback must not
+    # propagate it (which would wedge the proxy's long poll client).
+    ProxyActorInterface._update_tracing_config(
+        proxy,
+        TracingConfig(enabled=True, exporter_import_path="no.such.module:nope"),
+    )
+
+    # Setup did not succeed, so a later valid update can still retry.
+    assert proxy._tracing_setup_succeeded is False
+
+
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
@@ -508,26 +539,6 @@ class TestHTTPProxy:
             proxy_router=FakeProxyRouter(),
             self_actor_name="fake-proxy-name",
         )
-
-    def test_update_tracing_config_swallows_setup_failure(self):
-        """A bad tracing config must not crash the proxy's long-poll handler.
-
-        Regression coverage for #65437 review: `_update_tracing_config` runs as
-        a long-poll callback, so a raising `setup_tracing` (e.g. a bad
-        `exporter_import_path`) must be swallowed. Setup is left marked
-        unsucceeded so a later (valid) delivery can retry.
-        """
-        http_proxy = self.create_http_proxy()
-        assert http_proxy._tracing_setup_succeeded is False
-
-        # A bogus exporter path raises inside setup_tracing; the callback must
-        # not propagate it (which would wedge the proxy's long poll client).
-        http_proxy._update_tracing_config(
-            TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")
-        )
-
-        # Setup did not succeed, so a later valid update can still retry.
-        assert http_proxy._tracing_setup_succeeded is False
 
     @pytest.mark.asyncio
     async def test_not_found_response(self):
