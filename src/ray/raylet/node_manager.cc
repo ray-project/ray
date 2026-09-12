@@ -1630,7 +1630,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << "using process groups for worker cleanup. "
           << "Subreaper is deprecated and will be removed in a future release.";
     }
-    if (pg_enabled) {
+    const bool profiler_cleanup =
+        worker_pool_.DeferProfilerCleanup(worker->WorkerId(), graceful);
+    if (pg_enabled && !profiler_cleanup) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
         const auto wid = worker->WorkerId();
@@ -3042,7 +3044,12 @@ void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 
+void NodeManager::PrepareForShutdown(std::function<void()> done) {
+  worker_pool_.PrepareProfilerShutdown(std::move(done));
+}
+
 void NodeManager::Stop() {
+  worker_pool_.DrainProfilerProcesses();
   store_client_->Disconnect();
 #if !defined(_WIN32)
   // Best-effort process-group cleanup for any remaining workers before shutdown.

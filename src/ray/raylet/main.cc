@@ -48,6 +48,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/shutdown.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
@@ -58,6 +59,7 @@
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
@@ -461,9 +463,10 @@ int main(int argc, char *argv[]) {
   ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
 
   std::atomic_bool shutting_down = false;
-  // Shut down raylet gracefully, in a synchronous fashion.
-  // This can be run by the signal handler or on the main io service.
-  auto shutdown_raylet_gracefully =
+  // Agent monitors and signal handlers share this entry point. Post all teardown
+  // to the main executor, which must keep serving worker disconnect replies.
+  auto shutdown_raylet_gracefully = ray::raylet::MakeRayletShutdownCallback(
+      main_service,
       [raylet_node_id,
        &shutting_down,
        &node_manager,
@@ -511,9 +514,15 @@ int main(int argc, char *argv[]) {
           remove(raylet_socket_name.c_str());
         };
 
-        gcs_client->Nodes().UnregisterSelf(
-            raylet_node_id, node_death_info, std::move(unregister_done_callback));
-      };
+        node_manager->PrepareForShutdown(
+            [&gcs_client,
+             raylet_node_id,
+             node_death_info,
+             done = std::move(unregister_done_callback)]() mutable {
+              gcs_client->Nodes().UnregisterSelf(
+                  raylet_node_id, node_death_info, std::move(done));
+            });
+      });
 
   gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
                                                       const std::optional<std::string>
@@ -753,7 +762,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.ray_debugger_external,
         /*clock=*/clock,
         worker_pool_metrics,
-        std::move(add_process_to_workers_cgroup_hook));
+        std::move(add_process_to_workers_cgroup_hook),
+        session_dir + "/raylet-profiler-" + std::to_string(ray::GetPID()));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
         main_service, /*record_stats=*/true, node_ip_address);

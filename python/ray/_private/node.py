@@ -1852,6 +1852,30 @@ class Node:
                 wait=wait,
             )
 
+    def _raylet_graceful_shutdown_timeout(self, process):
+        # Written atomically by this raylet while it owns an Nsight worker/launcher.
+        # Use the raylet's effective config (which may come from another head node).
+        marker = os.path.join(
+            self.get_session_dir_path(), f"raylet-profiler-{process.pid}"
+        )
+        try:
+            with open(marker) as file:
+                return 5 + max(0, int(file.read())) / 1000
+        except (OSError, ValueError):
+            pass
+
+        # An explicit positive flush budget also opts into a longer graceful wait,
+        # e.g. when the marker cannot be published. Otherwise retain the 1s default.
+        flush_ms = max(
+            0, int(self._resolve_ray_config("worker_profiler_flush_timeout_ms", 0))
+        )
+        if flush_ms == 0:
+            return 1
+        worker_ms = max(
+            0, int(self._resolve_ray_config("kill_worker_timeout_milliseconds", 5000))
+        )
+        return 5 + (worker_ms + flush_ms) / 1000
+
     def _kill_process_impl(
         self, process_type, allow_graceful=False, check_alive=True, wait=False
     ):
@@ -1861,7 +1885,7 @@ class Node:
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
-        wait_timeout_seconds = 1
+        reap_timeout_seconds = 1
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1898,12 +1922,27 @@ class Node:
                 time.sleep(0.1)
 
             if allow_graceful:
+                graceful_start = time.monotonic()
+                graceful_timeout_seconds = (
+                    self._raylet_graceful_shutdown_timeout(process)
+                    if process_type == ray_constants.PROCESS_TYPE_RAYLET
+                    else 1
+                )
                 process.terminate()
-                # Allow the process one second to exit gracefully.
                 try:
-                    process.wait(timeout=wait_timeout_seconds)
+                    process.wait(timeout=graceful_timeout_seconds)
                 except subprocess.TimeoutExpired:
-                    pass
+                    # A worker can register between the initial marker read and
+                    # SIGTERM. Recheck once, without restarting the graceful budget.
+                    if process_type == ray_constants.PROCESS_TYPE_RAYLET:
+                        remaining = self._raylet_graceful_shutdown_timeout(process) - (
+                            time.monotonic() - graceful_start
+                        )
+                        if remaining > 0:
+                            try:
+                                process.wait(timeout=remaining)
+                            except subprocess.TimeoutExpired:
+                                pass
 
             # If the process did not exit, force kill it.
             if process.poll() is None:
@@ -1924,7 +1963,7 @@ class Node:
                 timeout = (
                     KILLED_PROCESS_REAP_TIMEOUT_SECONDS
                     if wait
-                    else wait_timeout_seconds
+                    else reap_timeout_seconds
                 )
                 try:
                     process.wait(timeout=timeout)

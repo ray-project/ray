@@ -16,12 +16,17 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdio>
 #include <deque>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -30,6 +35,7 @@
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -139,8 +145,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        int ray_debugger_external,
                        ClockInterface &clock,
                        WorkerPoolMetrics &worker_pool_metrics,
-                       AddProcessToCgroupHook add_to_cgroup_hook)
+                       AddProcessToCgroupHook add_to_cgroup_hook,
+                       std::string profiler_shutdown_marker_path)
     : clock_(clock),
+      profiler_shutdown_marker_path_(std::move(profiler_shutdown_marker_path)),
       io_service_(&io_service),
       node_id_(node_id),
       node_address_(std::move(node_address)),
@@ -195,13 +203,20 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
     RAY_LOG(INFO) << "Initialized the worker port pool with " << ports.size()
                   << " shuffled ports.";
   }
+#if defined(__linux__)
+  UpdateProfilerShutdownMarker();
+#endif
 }
 
 WorkerPool::~WorkerPool() {
-  absl::flat_hash_map<pid_t, std::unique_ptr<ProcessInterface>> procs_to_kill;
+  DrainProfilerProcesses();
+  absl::flat_hash_map<pid_t, std::shared_ptr<ProcessInterface>> procs_to_kill;
   for (auto &entry : states_by_lang_) {
     // Kill all the worker processes.
     for (auto &worker_process : entry.second.worker_processes) {
+      if (worker_process.second.profiler_cleanup_owned) {
+        continue;
+      }
       auto pid = worker_process.second.proc->GetId();
       procs_to_kill.try_emplace(pid, std::move(worker_process.second.proc));
     }
@@ -210,6 +225,223 @@ WorkerPool::~WorkerPool() {
     proc->Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
+}
+
+#if defined(__linux__)
+bool WorkerPool::TryFinishProfiler(ProfilerProcess &profiler, bool force) {
+  if (profiler.state == ProfilerState::finished) {
+    return true;
+  }
+  const auto now = clock_.SteadyNow();
+  if (!force) {
+    if (profiler.state == ProfilerState::waiting_for_worker_exit) {
+      if (profiler.worker->GetProcess().IsAlive()) {
+        return false;
+      }
+      profiler.state = ProfilerState::flushing;
+      profiler.flush_deadline =
+          now + std::chrono::milliseconds(std::max<int64_t>(
+                    0, RayConfig::instance().worker_profiler_flush_timeout_ms()));
+    }
+    // Once flushing, never probe or signal the old worker PID again.
+    if (now < *profiler.flush_deadline && profiler.launcher->IsAlive()) {
+      return false;
+    }
+  }
+  // W may have escaped the saved process group (e.g. via setsid). Terminate it
+  // directly before MarkDead suppresses DestroyWorker's subsequent KillAsync.
+  // Never touch W's old PID once its exit has been observed.
+  if (profiler.state == ProfilerState::waiting_for_worker_exit &&
+      !profiler.worker_kill_sent) {
+    profiler.worker_kill_sent = true;
+    kill(profiler.worker->GetProcess().GetId(), SIGKILL);
+  }
+  // Consume ownership before signaling the launcher/group. Stop filters dead
+  // workers; the process record retains ownership until DisconnectWorker.
+  profiler.state = ProfilerState::finished;
+  profiler.worker->MarkDead();
+  const auto pgid = std::exchange(profiler.pgid, -1);
+  if (profiler.launcher->IsAlive()) {
+    profiler.launcher->Kill();
+  }
+  RAY_LOG(INFO).WithField(profiler.worker->WorkerId())
+      << "Profiler cleanup: sending SIGKILL to pgid=" << pgid;
+  auto error = KillProcessGroup(pgid, SIGKILL);
+  if (error && *error && error->value() != ESRCH) {
+    RAY_LOG(WARNING) << "Profiler group cleanup failed: " << error->message();
+  }
+  return true;
+}
+
+void WorkerPool::UpdateProfilerShutdownMarker() {
+  if (profiler_shutdown_marker_path_.empty()) {
+    return;
+  }
+  if (profiler_processes_.empty()) {
+    std::remove(profiler_shutdown_marker_path_.c_str());
+    return;
+  }
+  // Publish the effective C++ budget, including on non-head nodes. Python only
+  // extends its graceful wait while this raylet owns a profiled worker/launcher.
+  const auto timeout_ms =
+      std::max<int64_t>(0, RayConfig::instance().kill_worker_timeout_milliseconds()) +
+      std::max<int64_t>(0, RayConfig::instance().worker_profiler_flush_timeout_ms());
+  const auto temporary = profiler_shutdown_marker_path_ + ".tmp";
+  std::ofstream marker(temporary);
+  marker << timeout_ms;
+  marker.close();
+  if (!marker || std::rename(temporary.c_str(), profiler_shutdown_marker_path_.c_str())) {
+    RAY_LOG(WARNING) << "Could not publish profiler shutdown budget";
+    std::remove(temporary.c_str());
+  }
+}
+
+void WorkerPool::ScheduleProfilerPoll() {
+  if (profiler_timer_pending_) {
+    return;
+  }
+  if (!profiler_timer_) {
+    profiler_timer_ = std::make_unique<boost::asio::steady_timer>(*io_service_);
+  }
+  profiler_timer_pending_ = true;
+  profiler_timer_->expires_after(std::chrono::milliseconds(10));
+  profiler_timer_->async_wait(
+      [this, lifetime = std::weak_ptr<int>(profiler_lifetime_)](
+          const boost::system::error_code &ec) {
+        if (ec || lifetime.expired()) {
+          return;
+        }
+        profiler_timer_pending_ = false;
+        PollProfilerProcesses();
+      });
+}
+
+void WorkerPool::PollProfilerProcesses() {
+  bool pending = false;
+  const auto now = clock_.SteadyNow();
+  for (auto it = profiler_processes_.begin(); it != profiler_processes_.end();) {
+    auto &profiler = it->second;
+    if (!profiler.cleanup_requested) {
+      ++it;
+      continue;
+    }
+    const bool force =
+        profiler_shutdown_deadline_ && now >= *profiler_shutdown_deadline_;
+    if (TryFinishProfiler(profiler, force)) {
+      profiler_processes_.erase(it++);
+      if (profiler_processes_.empty()) {
+        UpdateProfilerShutdownMarker();
+      }
+      continue;
+    }
+    if (profiler.state == ProfilerState::waiting_for_worker_exit &&
+        profiler_worker_exit_deadline_ && now >= *profiler_worker_exit_deadline_ &&
+        !profiler.worker_kill_sent) {
+      profiler.worker_kill_sent = true;
+      kill(profiler.worker->GetProcess().GetId(), SIGKILL);
+    }
+    pending = true;
+    ++it;
+  }
+  if (pending) {
+    ScheduleProfilerPoll();
+  } else if (profiler_shutdown_done_) {
+    auto done = std::move(profiler_shutdown_done_);
+    done();  // May destroy the pool; do not access members afterwards.
+  }
+}
+#endif
+
+bool WorkerPool::DeferProfilerCleanup(const WorkerID &worker_id, bool graceful) {
+#if defined(__linux__)
+  auto it = profiler_processes_.find(worker_id);
+  if (it != profiler_processes_.end()) {
+    if (!graceful) {
+      TryFinishProfiler(it->second, true);
+      profiler_processes_.erase(it);
+      if (profiler_processes_.empty()) {
+        UpdateProfilerShutdownMarker();
+      }
+      return true;
+    }
+    it->second.cleanup_requested = true;
+    // Do not finish inline: DisconnectClient must send its reply first.
+    ScheduleProfilerPoll();
+    return true;
+  }
+  // Terminal cleanup can precede a late EOF while the worker is still registered.
+  // Its record outlives the registry entry, so disconnect must not reacquire PGID.
+  for (const auto &[_, state] : states_by_lang_) {
+    auto process = state.worker_processes.find(worker_id);
+    if (process != state.worker_processes.end() &&
+        process->second.profiler_cleanup_owned) {
+      return true;
+    }
+  }
+#endif
+  return false;
+}
+
+void WorkerPool::PrepareProfilerShutdown(std::function<void()> done) {
+  RAY_CHECK(!profiler_shutdown_started_);
+  profiler_shutdown_started_ = true;
+#if defined(__linux__)
+  const auto now = clock_.SteadyNow();
+  profiler_worker_exit_deadline_ =
+      now + std::chrono::milliseconds(std::max<int64_t>(
+                0, RayConfig::instance().kill_worker_timeout_milliseconds()));
+  profiler_shutdown_deadline_ =
+      *profiler_worker_exit_deadline_ +
+      std::chrono::milliseconds(std::max<int64_t>(
+          0, RayConfig::instance().worker_profiler_flush_timeout_ms()));
+  profiler_shutdown_done_ = std::move(done);
+  for (auto &[_, profiler] : profiler_processes_) {
+    profiler.cleanup_requested = true;
+    // Observe exit before signaling, preserving any existing flush deadline.
+    if (!TryFinishProfiler(profiler, false) &&
+        profiler.state == ProfilerState::waiting_for_worker_exit) {
+      kill(profiler.worker->GetProcess().GetId(), SIGTERM);
+    }
+  }
+  PollProfilerProcesses();
+#else
+  done();
+#endif
+}
+
+void WorkerPool::DrainProfilerProcesses() {
+#if defined(__linux__)
+  profiler_lifetime_.reset();
+  if (profiler_timer_) {
+    boost::system::error_code ignored;
+    profiler_timer_->cancel(ignored);
+  }
+  profiler_shutdown_done_ = nullptr;
+  // This is a fallback for Stop/destruction without PrepareProfilerShutdown.
+  // Never wait for a live W here: it may need a disconnect reply on this executor.
+  // Only launchers whose W has exited may consume their remaining flush budget.
+  while (!profiler_processes_.empty()) {
+    for (auto it = profiler_processes_.begin(); it != profiler_processes_.end();) {
+      auto &profiler = it->second;
+      bool finished = TryFinishProfiler(profiler, false);
+      if (!finished &&
+          (profiler.state == ProfilerState::waiting_for_worker_exit ||
+           (profiler_shutdown_deadline_ &&
+            clock_.SteadyNow() >= *profiler_shutdown_deadline_))) {
+        finished = TryFinishProfiler(profiler, true);
+      }
+      if (finished) {
+        profiler_processes_.erase(it++);
+      } else {
+        ++it;
+      }
+    }
+    if (!profiler_processes_.empty()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+  UpdateProfilerShutdownMarker();
+#endif
 }
 
 void WorkerPool::Start() {
@@ -864,6 +1096,11 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   pid_t pid,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
+  if (profiler_shutdown_started_) {
+    const auto status = Status::Invalid("Raylet is shutting down");
+    send_reply_callback(status, /*port=*/0);
+    return status;
+  }
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const WorkerID &worker_id = worker->WorkerId();
   auto it = state.worker_processes.find(worker_id);
@@ -911,6 +1148,28 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
       << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
+#if defined(__linux__)
+  // Nsight's launcher exports after the registered Python process exits.
+  // P != W alone is insufficient (e.g. py_executable wrappers or rocprof-sys).
+  if (RayConfig::instance().process_group_cleanup_enabled() &&
+      worker->GetLanguage() == Language::PYTHON && it->second.proc->GetId() != pid) {
+    const auto env = nlohmann::json::parse(
+        it->second.runtime_env_info.serialized_runtime_env(), nullptr, false);
+    const auto saved = worker->GetSavedProcessGroupId();
+    if (env.is_object() && env.contains("_nsight") &&
+        (env["_nsight"] == "default" ||
+         (env["_nsight"].is_object() && !env["_nsight"].empty())) &&
+        saved && *saved > 1 && *saved != getpgrp()) {
+      const bool first = profiler_processes_.empty();
+      profiler_processes_.emplace(
+          worker_id, ProfilerProcess{it->second.proc, worker, *saved});
+      it->second.profiler_cleanup_owned = true;
+      if (first) {
+        UpdateProfilerShutdownMarker();
+      }
+    }
+  }
+#endif
   state.registered_workers.insert(worker);
 
   // Send the reply immediately for worker registrations.
