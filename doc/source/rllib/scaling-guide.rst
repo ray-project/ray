@@ -56,7 +56,7 @@ To assign resources to each :py:class:`~ray.rllib.env.env_runner.EnvRunner`, use
     )
 
 See this
-`example of an EnvRunner and RL environment requiring a GPU resource <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/gpus_on_env_runners.py>`__.
+`example of an EnvRunner and RL environment requiring a GPU resource <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/gpus/gpus_on_env_runners.py>`__.
 
 The number of GPUs may be fractional quantities, for example 0.5, to allocate only a fraction of a GPU per
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
@@ -117,7 +117,7 @@ this asynchronous vectorization behavior through:
 This setting can speed up the sampling process significantly in combination with ``num_envs_per_env_runner > 1``,
 especially when your RL environment's stepping process is time consuming.
 
-See this `example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/async_gym_env_vectorization.py>`__  that demonstrates a massive speedup with async vectorization.
+See this `example script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/async_gym_env_vectorization.py>`__  that demonstrates a massive speedup with async vectorization.
 
 
 Scaling the number of Learner actors
@@ -159,7 +159,7 @@ Make sure to set the number of GPUs per :py:class:`~ray.rllib.core.learner.learn
 The number of GPUs may be fractional quantities, for example 0.5, to allocate only a fraction of a GPU per
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`. For example, you can pack five :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 instances onto one GPU by setting ``num_learners=1, num_gpus_per_learner=0.2``.
-See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__
+See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/gpus/fractional_gpus_per_learner.py>`__
 for details.
 
 .. note::

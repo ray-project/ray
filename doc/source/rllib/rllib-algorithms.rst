@@ -60,7 +60,7 @@ On-policy
 Proximal Policy Optimization (PPO)
 ----------------------------------
 `[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/ppo.py>`__
 
 .. figure:: images/algos/ppo-architecture.svg
     :width: 750
@@ -75,9 +75,9 @@ Proximal Policy Optimization (PPO)
 
 
 **Tuned examples:**
-`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py>`__,
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/cartpole_ppo.py>`__.
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/pendulum_ppo.py>`__.
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/atari_ppo.py>`__,
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/cartpole_ppo.py>`__.
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/pendulum_ppo.py>`__.
 
 
 **PPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
@@ -94,7 +94,7 @@ Off-Policy
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
 `[paper] <https://arxiv.org/abs/1312.5602>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py>`__
 
 .. figure:: images/algos/dqn-architecture.svg
     :width: 650
@@ -109,14 +109,14 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 
 
 All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
-For parametric or variable-length action spaces on the new API stack, see the `action masking example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/action_masking_rl_module.py>`__. The example uses PPO.
+For parametric or variable-length action spaces on the new API stack, see the `action masking example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/action_masking_rl_module.py>`__. The example uses PPO.
 
 **Tuned examples:**
-`PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-dqn.yaml>`__,
-`Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-rainbow.yaml>`__,
-`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dqn.yaml>`__,
-`with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-duel-ddqn.yaml>`__,
-`with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dist-dqn.yaml>`__.
+`PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/pong-dqn.yaml>`__,
+`Rainbow configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/pong-rainbow.yaml>`__,
+`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/atari-dqn.yaml>`__,
+`with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/atari-duel-ddqn.yaml>`__,
+`with Distributional DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/atari-dist-dqn.yaml>`__.
 
 .. hint::
     For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
@@ -140,7 +140,7 @@ Soft Actor Critic (SAC)
 ------------------------
 `[original paper] <https://arxiv.org/pdf/1801.01290>`__,
 `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__,
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__.
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/sac/sac.py>`__.
 
 .. figure:: images/algos/sac-architecture.svg
     :width: 750
@@ -155,8 +155,8 @@ Soft Actor Critic (SAC)
 
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/pendulum-sac.yaml>`__,
-`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/halfcheetah_sac.py>`__,
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/pendulum-sac.yaml>`__,
+`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/halfcheetah_sac.py>`__,
 
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -177,7 +177,7 @@ Asynchronous Proximal Policy Optimization (APPO)
     APPO was originally `published under the name "IMPACT" <https://arxiv.org/abs/1912.00167>`__. RLlib's APPO exactly matches the algorithm described in the paper.
 
 `[paper] <https://arxiv.org/abs/1912.00167>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py>`__
 
 .. figure:: images/algos/appo-architecture.svg
     :width: 750
@@ -196,8 +196,8 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 
 **Tuned examples:**
-`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py>`__
-`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/halfcheetah_appo.py>`__
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/pong_appo.py>`__
+`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/halfcheetah_appo.py>`__
 
 **APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -210,7 +210,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 Importance Weighted Actor-Learner Architecture (IMPALA)
 -------------------------------------------------------
 `[paper] <https://arxiv.org/abs/1802.01561>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/impala/impala.py>`__
 
 .. figure:: images/algos/impala-architecture.svg
     :width: 750
@@ -227,10 +227,10 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 
 
 Tuned examples:
-`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala.yaml>`__,
-`vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-vectorized.yaml>`__,
-`multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-fast.yaml>`__,
-`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/atari-impala.yaml>`__.
+`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/pong-impala.yaml>`__,
+`vectorized configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/pong-impala-vectorized.yaml>`__,
+`multi-gpu configuration <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/pong-impala-fast.yaml>`__,
+`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/atari-impala.yaml>`__.
 
 .. figure:: images/impala.png
     :width: 650
@@ -253,10 +253,10 @@ Model-based RL
 DreamerV3
 ---------
 `[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
-`[RLlib readme] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+`[RLlib readme] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/README.md>`__
 
-Also see `this README here for more details on how to run experiments <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md>`__ with DreamerV3.
+Also see `this README here for more details on how to run experiments <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/README.md>`__ with DreamerV3.
 
 .. figure:: images/algos/dreamerv3-architecture.svg
     :width: 850
@@ -275,9 +275,9 @@ Also see `this README here for more details on how to run experiments <https://g
 
 
 **Tuned examples:**
-`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_100k_dreamerv3.py>`__,
-`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_200M_dreamerv3.py>`__,
-`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py>`__
+`Atari 100k <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/atari_100k_dreamerv3.py>`__,
+`Atari 200M <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/atari_200M_dreamerv3.py>`__,
+`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py>`__
 
 
 **Pong-v5 results (1, 2, and 4 GPUs)**:
@@ -317,7 +317,7 @@ Offline RL and Imitation Learning
 Behavior Cloning (BC)
 ---------------------
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/bc/bc.py>`__
 
 .. figure:: images/algos/bc-architecture.svg
     :width: 750
@@ -333,8 +333,8 @@ Behavior Cloning (BC)
     BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 
 **Tuned examples:**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py>`__
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/pendulum_bc.py>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/cartpole_bc.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/pendulum_bc.py>`__
 
 **BC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -347,7 +347,7 @@ Behavior Cloning (BC)
 Conservative Q-Learning (CQL)
 -----------------------------
 `[paper] <https://arxiv.org/abs/2006.04779>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/cql/cql.py>`__
 
 .. figure:: images/algos/cql-architecture.svg
     :width: 750
@@ -360,7 +360,7 @@ Conservative Q-Learning (CQL)
 
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/cql/pendulum_cql.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/cql/pendulum_cql.py>`__
 
 **CQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -373,7 +373,7 @@ Conservative Q-Learning (CQL)
 Implicit Q-Learning (IQL)
 -------------------------
 `[paper] <https://arxiv.org/abs/2110.06169>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/iql/iql.py>`__
 
     **IQL architecture:** IQL (Implicit Q-Learning) is an offline RL algorithm that never needs to evaluate actions outside of
     the dataset, but still enables the learned policy to improve substantially over the best behavior in the data through
@@ -385,7 +385,7 @@ Implicit Q-Learning (IQL)
     high-advantage actions—enabling substantial performance gains over the behavior policy using only in-dataset actions.
 
 **Tuned examples:**
-`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/iql/pendulum_iql.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/iql/pendulum_iql.py>`__
 
 **IQL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -397,7 +397,7 @@ Implicit Q-Learning (IQL)
 Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 -----------------------------------------------------------
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/marwil.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/marwil/marwil.py>`__
 
 .. figure:: images/algos/marwil-architecture.svg
     :width: 750
@@ -412,7 +412,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
 
 **Tuned examples:**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/marwil/cartpole_marwil.py>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/marwil/cartpole_marwil.py>`__
 
 **MARWIL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -429,7 +429,7 @@ Algorithm Extensions- and Plugins
 Curiosity-driven Exploration by Self-supervised Prediction
 ----------------------------------------------------------
 `[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 .. figure:: images/algos/curiosity-architecture.svg
     :width: 850
@@ -443,7 +443,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
     badly in predicting what happens next), the artificial intrinsic reward is large and the
     agent is motivated to go and explore these unknown regions.
     RLlib's curiosity implementation works with any of RLlib's algorithms. See these links here for example implementations on top of
-    `PPO and DQN <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
+    `PPO and DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
     ICM uses the chosen Algorithm's `training_step()` as-is, but then executes the following additional steps during
     `LearnerGroup.update`: Duplicate the train batch of the "main" policy and use it for
     performing a self-supervised update of the ICM. Use the ICM to compute the intrinsic rewards
@@ -451,7 +451,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
 
 **Tuned examples:**
-`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
+`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 
 

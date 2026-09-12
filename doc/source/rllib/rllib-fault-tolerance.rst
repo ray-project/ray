@@ -34,7 +34,7 @@ The two properties that RLlib supports here are self-recovery and elasticity:
 You can turn on worker fault tolerance by setting ``config.fault_tolerance(restart_failed_env_runners=True)``.
 
 RLlib achieves this by utilizing a
-`state-aware and fault tolerant actor manager <https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py>`__. Under the hood, RLlib relies on Ray Core :ref:`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
+`state-aware and fault tolerant actor manager <https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/actor_manager.py>`__. Under the hood, RLlib relies on Ray Core :ref:`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
 
 Env Fault Tolerance
 -------------------
