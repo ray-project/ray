@@ -148,6 +148,50 @@ For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and
 :ref:`Inspecting batches <inspecting-batches>`.
 
+Iterating with a token budget
+==============================
+
+For variable-length sequences, use :meth:`~ray.data.Dataset.iter_bucket_batches`
+to group similar lengths and limit the sum of sequence lengths in each batch:
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.from_items([
+        {"text": text}
+        for text in ["1", "11", "1", "1111", "111", "1", "11", "11", "111"]
+    ])
+    for batch in ds.iter_bucket_batches(
+        max_tokens=5,
+        length_fn=lambda row: len(row["text"]),
+        buffer_size=1000,
+    ):
+        print(batch["text"].tolist())
+
+.. testoutput::
+
+    ['1', '1', '1', '11']
+    ['11', '11']
+    ['111']
+    ['111']
+    ['1111']
+
+For tokenized text, return the length of the token ID sequence from ``length_fn``.
+The method sorts each window of at most ``buffer_size`` rows independently and
+keeps every row, including the final batch of each window. Larger windows improve
+grouping but require more memory and increase the delay before the first batch.
+The buffer limit counts rows, not bytes. Input order changes, and rows aren't
+shuffled. ``prefetch_batches`` controls how many input windows to fetch ahead.
+
+The budget counts lengths before padding. If you pad each sequence to the longest
+sequence in its batch, the padded token count can exceed ``max_tokens``. The method
+does not pad or truncate sequences and raises ``ValueError`` for a sequence longer
+than the budget.
+
+Ray Train dataset shards support the same method through
+:meth:`~ray.data.DataIterator.iter_bucket_batches`.
+
 .. _iterating-over-batches-with-shuffling:
 
 Iterating over batches with shuffling
