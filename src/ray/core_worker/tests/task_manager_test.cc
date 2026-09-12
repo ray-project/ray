@@ -1851,6 +1851,72 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
   ASSERT_FALSE(manager_.ObjectRefStreamExists(generator_id));
 }
 
+TEST_F(TaskManagerTest, TestStreamingGeneratorReplyWithoutReturnObjects) {
+  // Taking the generator id from the reply would index an empty repeated field. A worker
+  // that is already stopping answers OK with return_objects empty, on a task that can be
+  // a generator; what keeps that reply out of here is the was_cancelled_before_running
+  // check in both submitters, not anything this function can see. So the id comes from
+  // the pinned spec.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(
+      spec.TaskId(), reply, caller_address, /*is_application_error=*/false);
+
+  // End of stream landed on the spec's generator id, not on one read out of the reply.
+  ObjectID obj_id;
+  ASSERT_TRUE(
+      manager_.TryReadObjectRefStream(generator_id, &obj_id).IsObjectRefEndOfStream());
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
+TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplyWithoutReturnObjects) {
+  // Same reply, but is_application_error, which is what reaches the
+  // reply.return_objects(0).in_plasma() read — the condition short-circuits otherwise.
+  // That read needs its own case: deleting the size check guarding it leaves the case
+  // above green. With no error object in the reply to copy, the EOF refs get the plain
+  // end-of-stream marker, the same fallback the branch already takes when the error
+  // object is in plasma.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  // Nothing is produced, so the stream's first item ref is where end of stream lands.
+  const ObjectID first_item_id = spec.StreamingGeneratorReturnId(0);
+  std::vector<std::pair<ObjectID, bool>> peeked =
+      manager_.PeekObjectRefStreamN(generator_id, 1);
+  ASSERT_EQ(peeked.size(), 1UL);
+  ASSERT_EQ(peeked[0].first, first_item_id);
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(
+      spec.TaskId(), reply, caller_address, /*is_application_error=*/true);
+
+  ObjectID obj_id;
+  ASSERT_TRUE(
+      manager_.TryReadObjectRefStream(generator_id, &obj_id).IsObjectRefEndOfStream());
+
+  // The eagerly peeked ref carries the end-of-stream marker, not an error copied out of
+  // the reply, because the reply had none to copy.
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({first_item_id}, 1, /*timeout_ms=*/0, ctx, &results));
+  ASSERT_EQ(results.size(), 1UL);
+  rpc::ErrorType error_type;
+  ASSERT_TRUE(results[0]->IsException(&error_type));
+  ASSERT_EQ(error_type, rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
   /**
    * Test that when DELETE is called, all subsequent Writes are ignored.

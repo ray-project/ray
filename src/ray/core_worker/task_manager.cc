@@ -1424,12 +1424,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // return_objects(0) onto stream refs on app-error replay: for streaming
   // generators the static return is intentionally serialized None.
   if (spec.IsStreamingGenerator() && first_execution) {
-    const ObjectID generator_id =
-        ObjectID::FromBinary(reply.return_objects(0).object_id());
+    // Take the id from the pinned spec rather than the reply: the executor builds the
+    // return object from spec.ReturnId(0), and a reply that arrived without
+    // return_objects would otherwise index an empty repeated field.
+    const ObjectID generator_id = spec.ReturnId(0);
     const int streaming_generator_return_count =
         reply.streaming_generator_return_ids_size();
     if (is_application_error && streaming_generator_return_count == 0 &&
-        !reply.return_objects(0).in_plasma()) {
+        reply.return_objects_size() > 0 && !reply.return_objects(0).in_plasma()) {
       // A failure before the generator executor starts (for example, a
       // failed by-reference dependency) has no streamed error item. Copy the
       // generator completion error to EOF-region refs so an eagerly peeked
