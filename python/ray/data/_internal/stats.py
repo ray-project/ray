@@ -1713,6 +1713,9 @@ class OperatorStatsSummary:
     function_body_time: Optional[StatsSummary] = None
     # Time assembling transform output back into blocks.
     output_build_time: Optional[StatsSummary] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set.
+    stage_time: Optional[List[StatsSummary]] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1764,6 +1767,7 @@ class OperatorStatsSummary:
         input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
         function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
         output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
+        stage_time_accs: List[_StatsAccumulator] = []
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1792,6 +1796,14 @@ class OperatorStatsSummary:
                     function_body_time_acc.add(es.function_body_time_s)
                 if es.output_build_time_s is not None:
                     output_build_time_acc.add(es.output_build_time_s)
+                if es.stage_time_s is not None:
+                    # Sized on first sight. Every block a chain produces has the
+                    # same number of stages, but a retry that re-planned could
+                    # in principle differ, so grow rather than assume.
+                    while len(stage_time_accs) < len(es.stage_time_s):
+                        stage_time_accs.append(_StatsAccumulator())
+                    for acc, seconds in zip(stage_time_accs, es.stage_time_s):
+                        acc.add(seconds)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1844,6 +1856,10 @@ class OperatorStatsSummary:
         input_prep_stats = input_prep_time_acc.get() if phases_measured else None
         function_body_stats = function_body_time_acc.get() if phases_measured else None
         output_build_stats = output_build_time_acc.get() if phases_measured else None
+        # Empty unless `DataContext.per_stage_map_timing` was set for a chain
+        # with more than one stage. `None`, not `[]`, for the same reason the
+        # phases are `None`: absent means not measured.
+        stage_stats = [acc.get() for acc in stage_time_accs] or None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1873,6 +1889,7 @@ class OperatorStatsSummary:
             input_prep_time=input_prep_stats,
             function_body_time=function_body_stats,
             output_build_time=output_build_stats,
+            stage_time=stage_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1924,6 +1941,13 @@ class OperatorStatsSummary:
                 ("Input prep", self.input_prep_time),
                 ("Function body", self.function_body_time),
                 ("Output block build", self.output_build_time),
+            ]
+            # The same total split the other way, one line per fused stage.
+            # Numbered in chain order, so stage 0 is the leftmost name in the
+            # operator name above. These sum to the total as well.
+            breakdown += [
+                (f"Stage {idx}", stats)
+                for idx, stats in enumerate(self.stage_time or [])
             ]
             if DataContext.get_current().verbose_stats_logs and any(
                 s is not None for _, s in breakdown

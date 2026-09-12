@@ -886,6 +886,7 @@ def _map_task(
                         input_prep_time_s=phase_times.input_prep_s,
                         function_body_time_s=phase_times.function_body_s,
                         output_build_time_s=phase_times.output_build_s,
+                        stage_time_s=phase_times.stage_s,
                         task_idx=ctx.task_idx,
                     )
                     # NOTE: This tracks task duration up to this point, though we're

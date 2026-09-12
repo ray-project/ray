@@ -180,6 +180,8 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
 
+DEFAULT_PER_STAGE_MAP_TIMING = False
+
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
@@ -660,6 +662,15 @@ class DataContext:
             :meth:`~ray.data.Dataset.map_batches` are always broken down, since one
             measurement there covers a whole batch. Enable this when you need the
             breakdown for a row-based transform and can afford the overhead.
+        per_stage_map_timing: Whether to also split "Block transform time" per
+            fused stage, so you can tell which of several fused functions the
+            time went to. Ray Data fuses adjacent operators, so one operator's
+            figure can cover several of your functions, and the phase breakdown
+            says what kind of work was slow rather than which function. This
+            puts one extra number per stage on every output block's metadata,
+            so it is off by default. It is independent of
+            ``accurate_map_phase_timing``: a row-based transform can have the
+            per-stage split without the per-phase one.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         execution_options: The
@@ -970,6 +981,7 @@ class DataContext:
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
+    per_stage_map_timing: bool = DEFAULT_PER_STAGE_MAP_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
