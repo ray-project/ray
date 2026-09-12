@@ -77,7 +77,7 @@ class ClusterResourceMonitor:
 
         def monitor_cluster_resources():
             while not stop_event.is_set():
-                # This query the GCS, so a transient failure shouldn't kill the
+                # This queries the GCS, so a transient failure shouldn't kill the
                 # thread and leave the peaks frozen for the rest of the run.
                 try:
                     node_counts = _count_worker_nodes()
