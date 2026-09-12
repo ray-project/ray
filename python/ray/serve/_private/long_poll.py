@@ -53,6 +53,8 @@ LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (
     float(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND", "60")),
 )
 
+LONG_POLL_HOST_RETRY_DELAY_S = 1.0
+
 
 class LongPollNamespace(Enum):
     def __repr__(self):
@@ -119,6 +121,11 @@ class LongPollClient:
           to post the callback into.
         client_id: identifier reported back to the host if this client
           disables itself.
+        host_actor_resolver: optional synchronous callback that looks up a
+          replacement host after an actor error. It runs off the event loop
+          and should raise ValueError while the host is unavailable or
+          GetTimeoutError when lookup times out. The owner must call stop()
+          when it no longer wants to receive updates.
     """
 
     def __init__(
@@ -127,6 +134,7 @@ class LongPollClient:
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
         client_id: str,
+        host_actor_resolver: Optional[Callable[[], Any]] = None,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -137,6 +145,8 @@ class LongPollClient:
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
         self.client_id = client_id
+        self._host_actor_resolver = host_actor_resolver
+        self._reconnect_task: Optional[asyncio.Task] = None
         # The initial snapshot id for each key is < 0,
         # but real snapshot keys in the long poll host are always >= 0,
         # so this will always trigger an initial update.
@@ -164,8 +174,56 @@ class LongPollClient:
         )
 
     def stop(self) -> None:
-        """Stop the long poll client after the next RPC returns."""
+        """Stop callbacks and recovery; an in-flight RPC may still finish."""
         self.is_running = False
+        if not self.event_loop.is_closed():
+            self.event_loop.call_soon_threadsafe(self._cancel_reconnect)
+
+    def _cancel_reconnect(self) -> None:
+        if self._reconnect_task is not None:
+            self._reconnect_task.cancel()
+
+    def _schedule_reconnect(self) -> None:
+        if self.is_running and (
+            self._reconnect_task is None or self._reconnect_task.done()
+        ):
+            self._reconnect_task = self.event_loop.create_task(self._reconnect())
+
+    async def _reconnect(self) -> None:
+        resolver = self._host_actor_resolver
+        assert resolver is not None
+        try:
+            while self.is_running:
+                # Bound retries even if discovery still returns the dead handle.
+                await asyncio.sleep(
+                    random.uniform(0.5, 1.5) * LONG_POLL_HOST_RETRY_DELAY_S
+                )
+                try:
+                    # ray.get_actor can block. Keep discovery off the client's
+                    # event loop, with only one lookup in flight at a time.
+                    host_actor = await self.event_loop.run_in_executor(None, resolver)
+                except (ValueError, ray.exceptions.GetTimeoutError):
+                    continue
+                except Exception:
+                    logger.exception(
+                        "LongPollClient %r could not resolve its host. Shutting down.",
+                        self.client_id,
+                    )
+                    self.is_running = False
+                    return
+
+                # Cancelling the task cannot stop an already-running executor
+                # call. A stopped client must never accept its late result.
+                if not self.is_running:
+                    return
+                self.host_actor = host_actor
+                # Versions belong to the host incarnation, not its stable name.
+                # Include listeners added while discovery was in flight.
+                self.snapshot_ids = dict.fromkeys(self.key_listeners, -1)
+                self._poll_next()
+                return
+        finally:
+            self._reconnect_task = None
 
     def add_key_listeners(
         self, key_listeners: Dict[KeyType, UpdateStateCallable]
@@ -249,7 +307,17 @@ class LongPollClient:
                 )
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
+        if not self.is_running:
+            return
+
         if isinstance(updates, (ray.exceptions.RayActorError)):
+            if self._host_actor_resolver is not None:
+                logger.warning(
+                    "LongPollClient %r lost its host; resolving a replacement.",
+                    self.client_id,
+                )
+                self._schedule_to_event_loop(self._schedule_reconnect)
+                return
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
@@ -309,6 +377,8 @@ class LongPollClient:
             # Bind the parameters because closures are late-binding.
             # https://docs.python-guide.org/writing/gotchas/#late-binding-closures # noqa: E501
             def chained(callback=callback, arg=update.object_snapshot):
+                if not self.is_running:
+                    return
                 callback(arg)
                 self._on_callback_completed(trigger_at=len(updates))
 
