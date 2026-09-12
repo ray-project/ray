@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 from collections import OrderedDict
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -565,18 +566,14 @@ class KubernetesEventProvider(PlatformEventProvider):
         involved_object = event_obj.involved_object
         uid = event_obj.metadata.uid
 
-        event_timestamp = (
-            event_obj.last_timestamp
-            or event_obj.first_timestamp
-            or event_obj.event_time
-        )
+        event_timestamp = _extract_k8s_event_timestamp(event_obj)
         timestamp = Timestamp()
         if event_timestamp:
             timestamp.FromDatetime(event_timestamp)
         else:
             logger.warning(
                 f"Kubernetes event {uid} involvedObject={involved_object.kind}/{involved_object.name} "
-                "is missing both last_timestamp and first_timestamp. Leaving event timestamp unpopulated."
+                "is missing timestamps. Leaving event timestamp unpopulated."
             )
 
         k8s_event_type = event_obj.type or "Normal"
@@ -590,25 +587,16 @@ class KubernetesEventProvider(PlatformEventProvider):
         if self._cluster_name:
             source_metadata["ray_cluster_name"] = self._cluster_name
 
-        # Events written through events.k8s.io/v1 leave the legacy `source` empty
-        # and report the emitter in `reportingComponent` instead. Prefer `source.component` and
-        # fallback to `reportingComponent`, matching kubectl.
-        event_source = event_obj.source
-        component = (
-            (event_source.component if event_source else None)
-            or event_obj.reporting_component
-            or ""
-        )
-
         source_proto = Source(
             platform=Source.Platform.KUBERNETES,
-            component=component,
+            component=_extract_k8s_event_component(event_obj),
             metadata=source_metadata,
         )
 
         custom_fields = {}
-        if event_obj.count and event_obj.count > 1:
-            custom_fields["count"] = str(event_obj.count)
+        event_count = _extract_k8s_event_count(event_obj)
+        if event_count is not None and event_count > 1:
+            custom_fields["count"] = str(event_count)
 
         platform_event = PlatformEvent(
             source=source_proto,
@@ -659,3 +647,83 @@ class KubernetesEventProvider(PlatformEventProvider):
 
         await loop.run_in_executor(None, join_all_threads)
         logger.info("Kubernetes events watcher stopped.")
+
+
+def _extract_k8s_event_timestamp(event_obj: Any) -> Optional[datetime]:
+    """Extract the most relevant timestamp from a Kubernetes event object.
+
+    For repeated events, prefers `series.last_observed_time` (from
+    events.k8s.io/v1 or core/v1 series). Otherwise falls back through
+    last_timestamp, deprecated_last_timestamp, event_time, first_timestamp,
+    and deprecated_first_timestamp.
+    """
+    series = _get_event_attr(event_obj, "series")
+    if series is not None:
+        last_observed = _get_event_attr(series, "last_observed_time")
+        if last_observed is not None and isinstance(last_observed, datetime):
+            return last_observed
+
+    for attr in (
+        "last_timestamp",
+        "deprecated_last_timestamp",
+        "event_time",
+        "first_timestamp",
+        "deprecated_first_timestamp",
+    ):
+        val = _get_event_attr(event_obj, attr)
+        if val is not None and isinstance(val, datetime):
+            return val
+
+    return None
+
+
+def _extract_k8s_event_count(event_obj: Any) -> Optional[int]:
+    """Extract the recurrence count from a Kubernetes event object.
+
+    For repeated events represented as a series (events.k8s.io/v1 or
+    core/v1 EventSeries), prefers `series.count`. Otherwise falls back
+    to the legacy top-level `count` or `deprecated_count`.
+    """
+    series = _get_event_attr(event_obj, "series")
+    if series is not None:
+        series_count = _get_event_attr(series, "count")
+        if isinstance(series_count, int) and not isinstance(series_count, bool):
+            return series_count
+
+    for attr in ("count", "deprecated_count"):
+        val = _get_event_attr(event_obj, attr)
+        if isinstance(val, int) and not isinstance(val, bool):
+            return val
+
+    return None
+
+
+def _extract_k8s_event_component(event_obj: Any) -> str:
+    """Extract the reporting component from a Kubernetes event object.
+
+    Events written through events.k8s.io/v1 leave the legacy `source` empty
+    and report the emitter in `reportingComponent` (or `reportingController`)
+    instead. Prefer `source.component` and fallback to `reportingComponent`,
+    matching kubectl.
+    """
+    event_source = _get_event_attr(event_obj, "source")
+    if event_source is not None:
+        source_component = _get_event_attr(event_source, "component")
+        if isinstance(source_component, str) and source_component:
+            return source_component
+
+    for attr in ("reporting_component", "reporting_controller"):
+        val = _get_event_attr(event_obj, attr)
+        if isinstance(val, str) and val:
+            return val
+
+    return ""
+
+
+def _get_event_attr(obj: Any, attr: str) -> Any:
+    """Safely retrieve an attribute or dict key from an event-like object."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(attr)
+    return getattr(obj, attr, None)
