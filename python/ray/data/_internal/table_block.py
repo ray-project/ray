@@ -549,7 +549,7 @@ class TableBlockAccessor(BlockAccessor):
 
         # Pick the most prevalent block-type
         if target_block_type is None:
-            _, target_block_type = sorted(
+            target_block_type, _ = sorted(
                 seen_types.items(),
                 key=lambda x: x[1],
                 reverse=True,
