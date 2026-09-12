@@ -11,6 +11,7 @@ import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR,
     TPU_SUBSLICE_LABEL_PREFIX,
     VALID_TPU_TYPES,
     _build_subslice_labels,
@@ -33,8 +34,6 @@ from ray.util.placement_group import (
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 
 @PublicAPI(stability="alpha")

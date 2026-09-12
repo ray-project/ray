@@ -6,10 +6,14 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_tpu_num_slices_for_workers,
+    get_tpu_worker_resources,
 )
 
 
@@ -2708,6 +2712,77 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+def test_tpu_resource_and_label_spec_resolution_with_visible_chips(monkeypatch):
+    """Test resource resolution with GKE injected TPU_VISIBLE_CHIPS on dual-device nodes."""
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", "0,1,2,3")
+    monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    monkeypatch.setattr(
+        TPUAcceleratorManager,
+        "get_current_node_num_accelerators",
+        lambda: 8,
+    )
+
+    # Default host-level behavior: 4 physical chips clamp detected TPUs to 4
+    spec_default = ResourceAndLabelSpec()
+    spec_default.resolve(is_head=False)
+    assert spec_default.to_resource_dict().get("TPU") == 4
+
+    # Opt-in per-device behavior: with RAY_TPU_RESOURCE_PER_CHIP=2, resolves all 8 TPUs
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    spec_opt_in = ResourceAndLabelSpec()
+    spec_opt_in.resolve(is_head=False)
+    assert spec_opt_in.to_resource_dict().get("TPU") == 8
+
+    # Explicit --resources='{"TPU": 8}' succeeds without ValueError
+    spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+    spec_override.resolve(is_head=False)
+    assert spec_override.to_resource_dict().get("TPU") == 8
+
+
+def test_util_tpu_resources_per_chip_scaling():
+    """Test util.tpu resource calculation with default and explicit tpu_resource_per_chip."""
+    # Default host-level behavior without override (4 TPU resources per slice)
+    _, res = get_tpu_worker_resources("2x2x1", "v7x")
+    assert res.get("TPU") == 4
+
+    # Explicit tpu_resource_per_chip parameter (4 chips * 2 = 8 TPU resources per slice)
+    _, res = get_tpu_worker_resources("2x2x1", "v7x", tpu_resource_per_chip=2)
+    assert res.get("TPU") == 8
+    assert get_tpu_num_slices_for_workers("2x2x1", "v7x", num_workers=1) == 1
+
+
+def test_v7x_multi_host_and_multi_slice_resources_per_chip_2():
+    """Test multi-host (2x2x2) and multi-slice worker resource calculation with tpu_resource_per_chip=2."""
+    # Single-host 2x2x1 (4 chips -> 8 TPUs with tpu_resource_per_chip=2)
+    workers, res = get_tpu_worker_resources(
+        "2x2x1", "v7x", tpu_resource_per_chip=2, num_slices=2
+    )
+    assert workers == 2
+    assert res.get("TPU") == 8
+
+    # Multi-host 2x2x2 (8 chips across 2 hosts -> 2 workers each requesting 8 TPUs)
+    workers, res = get_tpu_worker_resources(
+        "2x2x2", "v7x", tpu_resource_per_chip=2, num_slices=1
+    )
+    assert workers == 2
+    assert res.get("TPU") == 8
+
+    # Multi-host 2x2x2 with 2 slices -> 4 workers each requesting 8 TPUs
+    workers, res = get_tpu_worker_resources(
+        "2x2x2", "v7x", tpu_resource_per_chip=2, num_slices=2
+    )
+    assert workers == 4
+    assert res.get("TPU") == 8
+
+    # Slice count calculation with num_workers
+    assert (
+        get_tpu_num_slices_for_workers(
+            "2x2x2", "v7x", num_workers=4, tpu_resource_per_chip=2
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":
