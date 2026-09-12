@@ -1,9 +1,11 @@
 import os
-from typing import AsyncIterator, List, Tuple
+from typing import AsyncIterator, Generator, List, Tuple
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.dashboard.modules.job.utils import fast_tail_last_n_lines, file_tail_iterator
+
+JOB_LOG_CHUNK_SIZE = 64 * 1024
 
 
 class JobLogStorageClient:
@@ -19,10 +21,28 @@ class JobLogStorageClient:
 
     def get_logs(self, job_id: str) -> str:
         try:
-            with open(self.get_log_file_path(job_id), "r") as f:
+            with open(
+                self.get_log_file_path(job_id),
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as f:
                 return f.read()
         except FileNotFoundError:
             return ""
+
+    def get_log_chunks(self, job_id: str) -> Generator[str, None, None]:
+        try:
+            with open(
+                self.get_log_file_path(job_id),
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as f:
+                while chunk := f.read(JOB_LOG_CHUNK_SIZE):
+                    yield chunk
+        except FileNotFoundError:
+            return
 
     def tail_logs(self, job_id: str) -> AsyncIterator[List[str]]:
         return file_tail_iterator(self.get_log_file_path(job_id))
