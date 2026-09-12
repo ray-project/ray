@@ -280,6 +280,12 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+@pytest.fixture(autouse=True)
+def _directory_layout(monkeypatch):
+    """These tests inspect the extracted tree; pin the directory layout."""
+    monkeypatch.setenv("RAY_SANDBOX_ROOTFS", "dir")
+
+
 class _StubImageManager(ImageManager):
     """ImageManager that skips pulling so spec construction is testable offline."""
 
@@ -634,6 +640,29 @@ def test_image_cache_eviction(tmp_path):
     assert not newer.exists()  # third eviction reaches the cap
     assert newest.exists()
     assert partial.exists()  # mid-pull (no marker): protected
+
+
+def test_create_oci_spec_erofs_image(tmp_path):
+    """An EROFS image mounts through the gVisor annotations with a "self"
+    overlay under a per-sandbox root.path; the rootfs /tmp seeding is skipped
+    (it happened at build time)."""
+    mgr = _StubImageManager(tmp_path)
+    (tmp_path / "rootfs.erofs").write_bytes(b"erofs")
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=False,
+        root_path=str(root_path),
+    )
+    assert spec["annotations"] == {
+        "dev.gvisor.spec.rootfs.source": str(tmp_path / "rootfs.erofs"),
+        "dev.gvisor.spec.rootfs.type": "erofs",
+        "dev.gvisor.spec.rootfs.overlay": "self",
+    }
+    assert spec["root"] == {"path": str(root_path), "readonly": False}
+    assert root_path.is_dir()
+    assert not (tmp_path / "rootfs").exists()
 
 
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
