@@ -9,14 +9,19 @@ def redirect_stdout_stderr_if_needed(
     stderr_filepath: str,
     rotation_bytes: int,
     rotation_backup_count: int,
+    *,
+    tee_to_stdout: bool = False,
+    tee_to_stderr: bool = False,
 ):
-    """This function sets up redirection for stdout and stderr if needed, based on the given rotation parameters.
+    """Set up stdout and stderr redirection.
 
     params:
     stdout_filepath: the filepath stdout will be redirected to; if empty, stdout will not be redirected.
     stderr_filepath: the filepath stderr will be redirected to; if empty, stderr will not be redirected.
     rotation_bytes: number of bytes which triggers file rotation.
     rotation_backup_count: the max size of rotation files.
+    tee_to_stdout: whether redirected stdout is also written to the original stdout.
+    tee_to_stderr: whether redirected stderr is also written to the original stderr.
     """
 
     # Setup redirection for stdout and stderr.
@@ -25,7 +30,7 @@ def redirect_stdout_stderr_if_needed(
             stdout_filepath,
             rotation_bytes,
             rotation_backup_count,
-            False,  # tee_to_stdout
+            tee_to_stdout,
             False,  # tee_to_stderr
         )
     if stderr_filepath:
@@ -34,7 +39,7 @@ def redirect_stdout_stderr_if_needed(
             rotation_bytes,
             rotation_backup_count,
             False,  # tee_to_stdout
-            False,  # tee_to_stderr
+            tee_to_stderr,
         )
 
     # Setup python system stdout/stderr.
