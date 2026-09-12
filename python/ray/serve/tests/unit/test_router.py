@@ -3034,6 +3034,50 @@ class TestAsyncioRouterBackoffConfig:
         assert fake_request_router.backoff_multiplier == custom_multiplier
         assert fake_request_router.max_backoff_s == custom_max_backoff
 
+    async def test_update_deployment_config_sets_locality_routing_params(self):
+        """Test that update_deployment_config propagates locality routing params."""
+        from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
+
+        request_router = PowerOfTwoChoicesRequestRouter(
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            self_node_id="test-node-id",
+            self_actor_id="fake-actor-id",
+            self_actor_handle=None,
+            prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
+        )
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        deployment_config = DeploymentConfig.from_default(
+            prefer_local_node_routing=True,
+            prefer_local_az_routing=True,
+        )
+        deployment_config.user_configured_option_names = {
+            "prefer_local_node_routing",
+            "prefer_local_az_routing",
+        }
+
+        router.update_deployment_config(deployment_config)
+
+        assert router._prefer_local_node_routing is True
+        assert router._prefer_local_az_routing is True
+        assert request_router._prefer_local_node_routing is True
+        assert request_router._prefer_local_az_routing is True
+
 
 class TestOnRequestCompleted:
     """Tests for the on_request_completed hook introduced in this branch.

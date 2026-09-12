@@ -1326,6 +1326,82 @@ def test_schema_to_deployment_deployment_actors_from_dict():
     assert dep.num_replicas == 2
 
 
+@pytest.mark.parametrize("flag_value", [True, False])
+def test_locality_routing_deployment_schema_roundtrip(flag_value):
+    # Ensure deployment_to_schema -> schema_to_deployment preserves the locality
+    # routing flags, including the names in user_configured_option_names, which
+    # is what the router uses to decide between the config value and the env var.
+    dc = DeploymentConfig.from_default(
+        prefer_local_node_routing=flag_value,
+        prefer_local_az_routing=flag_value,
+    )
+    dc.user_configured_option_names = {
+        "prefer_local_node_routing",
+        "prefer_local_az_routing",
+    }
+
+    rc = ReplicaConfig.create(deployment_def="", init_args=(), init_kwargs={})
+    dep = Deployment(
+        name="LocalityDep",
+        deployment_config=dc,
+        replica_config=rc,
+        _internal=True,
+    )
+
+    schema = deployment_to_schema(dep)
+    assert schema.prefer_local_node_routing is flag_value
+    assert schema.prefer_local_az_routing is flag_value
+
+    dep2 = schema_to_deployment(schema)
+    assert dep2._deployment_config.prefer_local_node_routing is flag_value
+    assert dep2._deployment_config.prefer_local_az_routing is flag_value
+    assert dep2._deployment_config.user_configured_option_names.issuperset(
+        {"prefer_local_node_routing", "prefer_local_az_routing"}
+    )
+
+
+def test_locality_routing_unset_omitted_from_schema():
+    # Options the user didn't configure must stay unset so that the router falls
+    # back to the env var instead of the pydantic default.
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    dc.user_configured_option_names = {"num_replicas"}
+
+    rc = ReplicaConfig.create(deployment_def="", init_args=(), init_kwargs={})
+    dep = Deployment(
+        name="LocalityDep",
+        deployment_config=dc,
+        replica_config=rc,
+        _internal=True,
+    )
+
+    schema = deployment_to_schema(dep)
+    assert schema.prefer_local_node_routing is DEFAULT.VALUE
+    assert schema.prefer_local_az_routing is DEFAULT.VALUE
+
+    user_configured = schema._get_user_configured_option_names()
+    assert "prefer_local_node_routing" not in user_configured
+    assert "prefer_local_az_routing" not in user_configured
+
+
+def test_schema_to_deployment_locality_routing_from_dict():
+    # The YAML / declarative API path: a config file must be able to disable
+    # locality routing.
+    schema = DeploymentSchema.model_validate(
+        {
+            "name": "LocalityDep",
+            "prefer_local_node_routing": False,
+            "prefer_local_az_routing": False,
+        }
+    )
+
+    dep = schema_to_deployment(schema)
+    assert dep._deployment_config.prefer_local_node_routing is False
+    assert dep._deployment_config.prefer_local_az_routing is False
+    assert dep._deployment_config.user_configured_option_names.issuperset(
+        {"prefer_local_node_routing", "prefer_local_az_routing"}
+    )
+
+
 def test_get_app_code_version_includes_deployment_actors():
     """Test that get_app_code_version changes when deployment_actors changes."""
     base_config = {
