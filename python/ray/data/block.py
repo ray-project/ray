@@ -830,7 +830,7 @@ class BlockColumnAccessor:
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a sum of the values in the column"""
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a min of the values in the column"""
