@@ -171,5 +171,49 @@ def test_aggregate_arrays_rejects_an_unknown_function():
     assert merge.aggregate_arrays(mts, mtot, "min", None, 1.0) == 1.0
 
 
+def _to_arrays_padded(tl, pad_head=2, pad_tail=1, junk=(99.0, 50.0)):
+    """Same CSR as _to_arrays, but placed inside an oversized buffer with live data
+    only in [offsets[0], offsets[-1]). Models a preallocated ingest buffer: slots
+    outside that span belong to no source and must not affect the merge."""
+    ts, val, offs = _to_arrays(tl)
+    jt, jv = junk
+    return (
+        np.concatenate([np.full(pad_head, jt), ts, np.full(pad_tail, jt)]),
+        np.concatenate([np.full(pad_head, jv), val, np.full(pad_tail, jv)]),
+        offs + pad_head,
+    )
+
+
+@pytest.mark.parametrize(
+    "tl",
+    [
+        [
+            [TimeStampedValue(1.0, 5.0), TimeStampedValue(2.0, 7.0)],
+            [TimeStampedValue(1.5, 3.0), TimeStampedValue(2.5, 4.0)],
+        ],
+        [[TimeStampedValue(1.0, 5.0), TimeStampedValue(2.0, 7.0)]],
+        [
+            [],
+            [TimeStampedValue(1.0, 5.0)],
+            [],
+            [TimeStampedValue(2.0, 3.0)],
+        ],
+        [
+            [TimeStampedValue(1.0011, 5.0), TimeStampedValue(1.0042, 7.0)],
+            [TimeStampedValue(1.0035, 3.0)],
+        ],
+    ],
+)
+def test_merge_ignores_buffer_outside_the_csr_window(tl):
+    """Only ts[offsets[0]:offsets[-1]] belongs to a source; the rest is spare capacity."""
+    ref = merge_instantaneous_total(tl)
+    mts, mtot = merge.merge_instantaneous_total_arrays(*_to_arrays_padded(tl))
+
+    assert len(mts) == len(ref), (len(mts), len(ref))
+    for i, p in enumerate(ref):
+        assert abs(float(mts[i]) - p.timestamp) < 1e-9, i
+        assert abs(float(mtot[i]) - p.value) < 1e-9, i
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

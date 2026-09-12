@@ -50,6 +50,13 @@ def merge_instantaneous_total_arrays(
             val[starts[i] : ends[i]].astype(np.float64, copy=False),
         )
 
+    # Only [offsets[0], offsets[-1]) belongs to a source. Anything outside is spare
+    # capacity in the caller's buffer, so narrow to the live span before the one-pass
+    # merge below, which would otherwise treat those slots as reported points.
+    lo, hi = int(offsets[0]), int(offsets[-1])
+    ts, val = ts[lo:hi], val[lo:hi]
+    starts = starts - lo
+
     # One pass over the flat arrays -- sources are already contiguous, so a per-source
     # loop costs dispatch overhead linear in source count. LOCF change-detect on RAW
     # values (baseline 0), rounding only after, exactly as the kernel orders it: a
