@@ -257,6 +257,10 @@ class BlockExecStats:
     # materializing Python objects into Arrow, which is why it is not covered by
     # `block_ser_time_s`.
     output_build_time_s: Optional[float] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set and the
+    # chain has more than one stage.
+    stage_time_s: Optional[Tuple[float, ...]] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.

@@ -2003,6 +2003,105 @@ def test_row_transform_phases_are_opt_in(
     )
 
 
+def test_per_stage_timing_splits_a_fused_chain(
+    ray_start_regular_shared, restore_data_context
+):
+    """A fused operator can say which of its stages the time went to.
+
+    Fusion is what makes this necessary: two ``map_batches`` calls become one
+    operator, and one figure for both is exactly what leaves you unable to tell
+    which function to optimise. The second stage sleeps 10x longer than the
+    first here, so a correct split is unmistakable.
+    """
+    fast_s, slow_s = 0.02, 0.2
+    num_blocks = 4
+
+    def fast_stage(batch):
+        time.sleep(fast_s)
+        return batch
+
+    def slow_stage(batch):
+        time.sleep(slow_s)
+        return batch
+
+    def run():
+        ds = (
+            ray.data.range(num_blocks, override_num_blocks=num_blocks)
+            .map_batches(fast_stage, batch_size=None)
+            .map_batches(slow_stage, batch_size=None)
+            .materialize()
+        )
+        return get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+
+    DataContext.get_current().per_stage_map_timing = False
+    off = run()
+    # Not measured at all, rather than measured as zero.
+    assert off.stage_time is None, "per-stage timing should be off by default"
+
+    DataContext.get_current().per_stage_map_timing = True
+    on = run()
+    # The read fuses into the same operator, so it is stage 0.
+    assert (
+        len(on.stage_time) == 3
+    ), f"expected one entry per fused stage, got {len(on.stage_time)}"
+
+    read, fast, slow = on.stage_time
+    # The slow stage must be attributed the bulk of the time. The ratio is
+    # diluted by each stage's own prep and block building, so assert direction
+    # and a wide margin rather than the 10x the sleeps differ by.
+    assert slow.sum > fast.sum * 3, (
+        f"fast stage {fast.sum:.4f}s vs slow stage {slow.sum:.4f}s; the 10x "
+        "slower stage should dominate"
+    )
+    # Every stage gets an entry, so the split accounts for the whole total.
+    stage_sum = read.sum + fast.sum + slow.sum
+    assert stage_sum == pytest.approx(on.block_transform_time.sum, rel=1e-6)
+
+    # Turning it on must not move the headline figure.
+    assert on.block_transform_time.sum == pytest.approx(
+        off.block_transform_time.sum, rel=0.25
+    )
+
+
+def test_per_stage_timing_is_independent_of_phase_timing(
+    ray_start_regular_shared, restore_data_context
+):
+    """Row transforms can have the per-stage split without the per-phase one.
+
+    A coalesced stage is still one step carrying one stage index, so the two
+    flags buy different things and neither implies the other.
+    """
+    ctx = DataContext.get_current()
+    ctx.per_stage_map_timing = True
+    ctx.accurate_map_phase_timing = False
+
+    ds = (
+        ray.data.range(8, override_num_blocks=2)
+        .map(lambda row: row)
+        .map(lambda row: row)
+        .materialize()
+    )
+    op = get_operator(ds.get_stats_summary(), name_pattern="Map")
+
+    assert all(p is None for p in _phase_components(op).values())
+    assert len(op.stage_time) == 3
+    assert sum(s.sum for s in op.stage_time) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+
+
+def test_single_stage_chain_skips_the_per_stage_split(
+    ray_start_regular_shared, restore_data_context
+):
+    """One stage means the split would only repeat the total, so it is skipped."""
+    DataContext.get_current().per_stage_map_timing = True
+
+    ds = ray.data.range(8, override_num_blocks=2).materialize()
+    op = get_operator(ds.get_stats_summary(), name_pattern="Read")
+
+    assert op.stage_time is None
+
+
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Test 1: Basic write_parquet - stats stored in _write_ds
     ds1 = ray.data.range(100, override_num_blocks=100)
