@@ -50,6 +50,8 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
+        # Drain before reading `ctx` below: consuming the input is what runs
+        # the write stage, and the write is what sets `_datasink_write_return`.
         block_accessors = [BlockAccessor.for_block(block) for block in blocks]
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
         total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
@@ -69,7 +71,6 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
 
     return BlockMapTransformFn(
         fn,
-        is_udf=False,
         disable_block_shaping=True,
     )
 
@@ -119,7 +120,6 @@ def _plan_write_op_internal(
     pre_transforms = pre_transformations or []
     write_transform = BlockMapTransformFn(
         write_fn,
-        is_udf=False,
         # NOTE: No need for block-shaping
         disable_block_shaping=True,
     )

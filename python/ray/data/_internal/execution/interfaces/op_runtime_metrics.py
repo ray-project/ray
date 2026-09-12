@@ -405,6 +405,53 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent serializing blocks produced.",
         metrics_group=MetricsGroup.TASKS,
     )
+    block_transform_time_s: float = metric_field(
+        default=0,
+        description=(
+            "Time spent transforming one output block. The input prep, function "
+            "body and output build metrics decompose this."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    # `None`, not zero, until a block reports a phase: a row transform is timed
+    # as a whole unless `DataContext.accurate_map_phase_timing` is set, and a
+    # consumer has to be able to tell that apart from a phase that took no time.
+    input_prep_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent turning input blocks into the batches or rows the "
+            "operator's stages consume. Absent when the operator measured only "
+            "its total, which is what a row transform does by default."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    function_body_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent inside the bodies of the operator's stages, the ones Ray "
+            "Data supplies as well as the ones you passed in, excluding the "
+            "batch/row formatting and block building around them. Absent when "
+            "the operator measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    output_build_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent assembling stage output back into blocks, including "
+            "materializing Python objects into Arrow. Absent when the operator "
+            "measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
     task_submission_backpressure_time: float = metric_field(
         default=0,
         description="Wall-clock time operator wasn't able to launch any new tasks.",
@@ -1035,6 +1082,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             self.block_generation_time += exec_stats.wall_time_s
             self.block_serialization_time_s += exec_stats.block_ser_time_s
+            self.block_transform_time_s += exec_stats.block_transform_time_s or 0
+            # Leave the phases `None` rather than summing them to zero when the
+            # chain measured only its total: three zeros that don't add up to
+            # `block_transform_time_s` read as "no time here" rather than as
+            # "not measured".
+            for name in (
+                "input_prep_time_s",
+                "function_body_time_s",
+                "output_build_time_s",
+            ):
+                measured = getattr(exec_stats, name)
+                if measured is not None:
+                    setattr(self, name, (getattr(self, name) or 0) + measured)
 
             task_info.cum_block_gen_time_s += exec_stats.wall_time_s
             task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s
