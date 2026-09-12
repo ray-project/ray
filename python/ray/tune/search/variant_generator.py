@@ -252,45 +252,56 @@ def _generate_variants_internal(
     to_resolve = domain_vars
 
     all_resolved = True
+    constant_vars = {}
     if constant_grid_search:
         # In this path, we first sample random variables and keep them constant
         # for grid search.
         # `_resolve_domain_vars` will alter `spec` directly
-        all_resolved, resolved_vars = _resolve_domain_vars(
+        all_resolved, constant_vars = _resolve_domain_vars(
             spec, domain_vars, allow_fail=True, random_state=random_state
         )
         if not all_resolved:
             # Not all variables have been resolved, but remove those that have
             # from the `to_resolve` list.
-            to_resolve = [(r, d) for r, d in to_resolve if r not in resolved_vars]
+            to_resolve = [(r, d) for r, d in to_resolve if r not in constant_vars]
+    resolved_vars = constant_vars
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
         if not constant_grid_search or not all_resolved:
             # In this path, we sample the remaining random variables
-            _, resolved_vars = _resolve_domain_vars(
+            _, pass_vars = _resolve_domain_vars(
                 resolved_spec, to_resolve, random_state=random_state
             )
+            # `to_resolve` holds only what the first pass could not reach, so the first
+            # pass has to be carried forward here or the variables that were meant to be
+            # held constant across the grid drop out of the reported vars entirely.
+            # `constant_vars` is empty unless `constant_grid_search` filled it.
+            resolved_vars = {**constant_vars, **pass_vars}
 
         for resolved, spec in _generate_variants_internal(
             resolved_spec,
             constant_grid_search=constant_grid_search,
             random_state=random_state,
         ):
+            # Under `constant_grid_search`, `resolved_vars` is built once before the
+            # grid loop and would otherwise be mutated and yielded again for every
+            # variant, so all of them would end up sharing the last grid value.
+            variant_vars = resolved_vars.copy()
             for path, value in grid_vars:
-                resolved_vars[path] = _get_value(spec, path)
+                variant_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
                 if (
-                    k in resolved_vars
-                    and v != resolved_vars[k]
-                    and _is_resolved(resolved_vars[k])
+                    k in variant_vars
+                    and v != variant_vars[k]
+                    and _is_resolved(variant_vars[k])
                 ):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
                         "your configuration.".format(k)
                     )
-                resolved_vars[k] = v
-            yield resolved_vars, spec
+                variant_vars[k] = v
+            yield variant_vars, spec
 
 
 def _get_preset_variants(

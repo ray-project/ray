@@ -2043,6 +2043,76 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
+    def testConstantGridSearchResolvedVarsPerVariant(self):
+        """Each variant must report its own grid value, not the last one."""
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            reported = [resolved_vars[("grid",)] for resolved_vars, _ in variants]
+            actual = [spec["grid"] for _, spec in variants]
+
+            self.assertEqual(actual, [1, 2, 3])
+            self.assertEqual(
+                reported,
+                actual,
+                f"resolved_vars disagrees with the spec for "
+                f"constant_grid_search={constant_grid_search}",
+            )
+
+    def testConstantGridSearchTrialsReportTheirOwnGridValue(self):
+        """The experiment tag and evaluated_params must match the config each trial runs."""
+        from ray.tune.search.basic_variant import BasicVariantGenerator
+
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+        searcher = BasicVariantGenerator(constant_grid_search=True)
+        searcher.add_configurations(
+            Experiment(run=_mock_objective, name="test", config=config, num_samples=1)
+        )
+
+        trials = []
+        while not searcher.is_finished():
+            trial = searcher.next_trial()
+            if not trial:
+                break
+            trials.append(trial)
+
+        self.assertEqual([t.config["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual([t.evaluated_params["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual(len({t.experiment_tag for t in trials}), len(trials))
+
+    def testConstantGridSearchKeepsFirstPassVars(self):
+        """A variable sampled before the grid loop must survive a second resolution pass."""
+        # `dep` reads `grid`, so the first pass cannot resolve it and a second pass runs
+        # per grid value. That second pass only covers what is left to resolve, so `const`
+        # (the variable `constant_grid_search` exists to hold fixed) has to be carried over.
+        config = {
+            "grid": tune.grid_search([1, 2, 3]),
+            "const": tune.uniform(0, 1000),
+            "dep": tune.sample_from(lambda spec: spec.config.grid * 10),
+        }
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            self.assertEqual(len(variants), 3)
+            for resolved_vars, spec in variants:
+                reported = {path[0]: value for path, value in resolved_vars.items()}
+                self.assertEqual(
+                    sorted(reported),
+                    ["const", "dep", "grid"],
+                    f"constant_grid_search={constant_grid_search} lost a variable",
+                )
+                for key in ("grid", "const", "dep"):
+                    self.assertEqual(reported[key], spec[key])
+
+        # and the point of constant_grid_search still holds: one value across the grid
+        variants = list(generate_variants(config, constant_grid_search=True))
+        self.assertEqual(len({spec["const"] for _, spec in variants}), 1)
+
     @patch.object(logger, "warning")
     @pytest.mark.skipif(
         sys.version_info >= (3, 12),
