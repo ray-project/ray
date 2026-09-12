@@ -374,5 +374,17 @@ def test_actor_cleanup(
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
+def test_actor_not_found_status_code(disable_aiohttp_cache, ray_start_with_dashboard):
+    """`GET /logical/actors/{actor_id}` returns 404 for an unknown actor ID."""
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+
+    resp = requests.get(f"{webui_url}/logical/actors/{'f' * 32}")
+    assert resp.status_code == 404, resp.text
+    resp_json = resp.json()
+    assert resp_json["result"] is False
+    assert "not found" in resp_json["msg"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -413,7 +413,7 @@ class NodeHead(SubprocessModule):
             )
         else:
             return dashboard_optional_utils.rest_response(
-                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                status_code=dashboard_utils.HTTPStatusCode.BAD_REQUEST,
                 message=f"Unknown view {view}",
             )
 
@@ -422,6 +422,11 @@ class NodeHead(SubprocessModule):
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
+        if node_info is None:
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.NOT_FOUND,
+                message=f"Node {node_id} not found.",
+            )
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="Node details fetched.",
@@ -718,10 +723,17 @@ class NodeHead(SubprocessModule):
     async def get_actor(self, req) -> aiohttp.web.Response:
         actor_id = req.match_info.get("actor_id")
         actors = await DataOrganizer.get_actor_infos(actor_ids=[actor_id])
+        # `get_actor_infos` returns a `None` entry for unknown actor IDs.
+        actor_detail = actors.get(actor_id)
+        if actor_detail is None:
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.NOT_FOUND,
+                message=f"Actor {actor_id} not found.",
+            )
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="Actor details fetched.",
-            detail=actors[actor_id],
+            detail=actor_detail,
         )
 
     @routes.get("/test/dump")
