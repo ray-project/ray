@@ -189,6 +189,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
+        self._finish_map_inputs()
+
+    def _finish_map_inputs(self) -> None:
+        """Flush buffered inputs after the upstream stream is complete.
+
+        Kept separate from :meth:`all_inputs_done` so specialized map
+        operators can defer map submission until a preparation phase (for
+        example range-boundary sampling) has completed.
+        """
         for node_id in list(self._merge_buffer_refs_by_node.keys()):
             self._flush_merge_buffer(node_id)
         self._maybe_emit_partition_bundles()

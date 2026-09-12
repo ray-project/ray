@@ -150,7 +150,15 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
