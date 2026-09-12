@@ -356,6 +356,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
 
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+  FRIEND_TEST(NodeManagerTest, TestReRegisteredWorkerClearsFailedWorkersCache);
 
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
