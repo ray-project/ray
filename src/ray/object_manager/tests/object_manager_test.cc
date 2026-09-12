@@ -139,7 +139,7 @@ class ObjectManagerTest : public ::testing::Test {
   }
 
   /// Delivers the store's "object added" notification, the only thing that
-  /// populates ObjectManager's local_objects_ mirror of plasma. Never delivering
+  /// populates ObjectManager's local_plasma_objects_ mirror of plasma. Never delivering
   /// the matching delete notification is what leaves the mirror stale.
   void NotifyObjectAdded(const ObjectID &object_id,
                          int64_t data_size,
@@ -229,7 +229,7 @@ TEST_F(ObjectManagerTest, MarkObjectFailedReleasesPlaceholderAndWritesSentinel) 
   EXPECT_EQ(std::string(actual_meta.begin(), actual_meta.end()), expected_meta);
 }
 
-/// Push() when local_objects_ -- ObjectManager's mirror of plasma -- is stale:
+/// Push() when local_plasma_objects_ -- ObjectManager's mirror of plasma -- is stale:
 /// the object was spilled and its plasma copy evicted, but the mirror hasn't
 /// processed the store's delete notification yet, so it still claims the object
 /// is in plasma. A pull landing in that window must not trust the mirror.
