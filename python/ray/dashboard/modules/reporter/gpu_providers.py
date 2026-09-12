@@ -526,14 +526,18 @@ class AmdGpuProvider(GpuProvider):
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""
 
-    def __init__(self):
+    def __init__(self, enable_metric_report: bool = True):
         self._provider: Optional[GpuProvider] = None
-        self._enable_metric_report = True
+        self._enable_metric_report = enable_metric_report
         self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
         self._initialized = False
 
     def initialize(self) -> bool:
         """Initialize the GPU metric provider by detecting available GPU providers."""
+        if not self._enable_metric_report:
+            self._initialized = True
+            return False
+
         if self._initialized:
             return True
 
