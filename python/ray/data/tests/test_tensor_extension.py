@@ -1538,6 +1538,25 @@ def test_variable_shaped_to_numpy_still_returns_one_ndarray_per_row():
     assert ragged.slice(0, 1).to_numpy().dtype == object
 
 
+def test_variable_shaped_multidimensional_rows_to_pandas_is_zero_copy():
+    """Uniform rows of more than one dimension share the view too."""
+    data = np.arange(24, dtype=np.float32).reshape(4, 2, 3)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr)
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_to_dense_numpy_or_none_declines_rows_differing_in_one_extent():
+    """Rows of the same rank but different extents are still ragged."""
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 3)), np.zeros((2, 4))]
+    )
+    assert arr._to_dense_numpy_or_none() is None
+
+
 def test_to_dense_numpy_or_none_declines_ragged_rows():
     """The fast path reports that it cannot describe ragged rows."""
     ragged = ArrowVariableShapedTensorArray.from_numpy(

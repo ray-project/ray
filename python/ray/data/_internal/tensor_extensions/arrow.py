@@ -1429,14 +1429,13 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         row: a one-row slice of a ragged column would otherwise start returning
         a dense array.
         """
-        data_array = self.storage.field("data")
-        shapes_array = self.storage.field("shape")
+        if self.null_count > 0:
+            return None
 
         return _to_dense_ndarray_or_none(
-            shapes_array.to_pylist(),
-            data_array.offsets.to_pylist(),
-            data_array.type.value_type,
-            data_array.buffers()[3],
+            self.storage.field("shape"),
+            self.storage.field("data"),
+            self.type.ndim,
         )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
@@ -1739,10 +1738,9 @@ def _get_buffer_address(arr: np.ndarray) -> int:
 
 
 def _to_dense_ndarray_or_none(
-    shapes: List[Optional[List[int]]],
-    offsets: List[int],
-    value_type: pa.DataType,
-    data_buffer: Optional[pa.Buffer],
+    shapes_array: pa.Array,
+    data_array: pa.Array,
+    ndim: int,
 ) -> Optional[np.ndarray]:
     """One ``(num_rows, *shape)`` view over uniformly shaped, adjacent rows.
 
@@ -1750,26 +1748,49 @@ def _to_dense_ndarray_or_none(
     should fall back to one view per row. That happens when the rows are
     genuinely ragged, when one of them is null and so has no shape, or when they
     are not adjacent in the buffer, which a view cannot express.
+
+    Every check reads the offset and shape buffers as ndarrays rather than
+    converting them to Python lists. A ragged column pays this probe and then
+    falls back, so the probe has to stay cheap next to the conversion it is
+    trying to avoid.
     """
-    num_rows = len(shapes)
-    if num_rows == 0 or data_buffer is None or len(offsets) < num_rows + 1:
+    num_rows = len(shapes_array)
+    if num_rows == 0 or shapes_array.null_count > 0 or data_array.null_count > 0:
         return None
 
-    shape = shapes[0]
-    # A null row's shape is None, which no other row's shape equals, so this
-    # rejects nulls as well as ragged rows.
-    if shape is None or any(s != shape for s in shapes):
+    # `offsets` is absolute into the child array, which slicing leaves whole, so
+    # a sliced column indexes into the same buffers as an unsliced one.
+    shape_offsets = np.asarray(shapes_array.offsets)
+    flat_shapes = np.asarray(shapes_array.values)[shape_offsets[0] : shape_offsets[-1]]
+    if flat_shapes.size != num_rows * ndim:
         return None
 
-    num_items_per_row = np.prod(shape) if shape else 1
+    shapes = flat_shapes.reshape(num_rows, ndim)
+    if (shapes != shapes[0]).any():
+        return None
+
+    shape = tuple(int(extent) for extent in shapes[0])
+    num_items_per_row = int(np.prod(shape)) if shape else 1
     if num_items_per_row == 0:
         # Nothing to point at, and an empty column is not worth a second path.
         return None
 
-    if any(offsets[i + 1] - offsets[i] != num_items_per_row for i in range(num_rows)):
+    data_offsets = np.asarray(data_array.offsets)
+    if data_offsets.size != num_rows + 1:
+        return None
+    if (np.diff(data_offsets) != num_items_per_row).any():
         return None
 
-    return _to_ndarray_helper((num_rows, *shape), value_type, offsets[0], data_buffer)
+    data_buffer = data_array.buffers()[3]
+    if data_buffer is None:
+        return None
+
+    return _to_ndarray_helper(
+        (num_rows, *shape),
+        data_array.type.value_type,
+        int(data_offsets[0]),
+        data_buffer,
+    )
 
 
 def _to_ndarray_helper(shape, value_type, offset, data_buffer):
