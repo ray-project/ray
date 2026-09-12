@@ -32,6 +32,7 @@ from ray.dashboard.modules.dashboard_sdk import (
     ClusterInfo,
     parse_cluster_info,
 )
+from ray.dashboard.modules.job.job_head import JOB_LOGS_UNAVAILABLE_ERROR_CODE
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
@@ -354,6 +355,50 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     assert (num_ids > 1) if allow_driver_on_worker_nodes else (num_ids == 1), [
         id[:5] for id in driver_node_ids
     ]
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "include_dashboard": True,
+            "num_cpus": 0,
+            "dashboard_agent_listen_port": 52465,
+        }
+    ],
+    indirect=True,
+)
+def test_job_logs_after_driver_node_removed(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    worker_node = cluster.add_node(num_cpus=1, dashboard_agent_listen_port=52466)
+    assert wait_until_server_available(cluster.webui_url)
+    client = JobSubmissionClient(format_web_url(cluster.webui_url))
+    gcs_client = GcsClient(address=cluster.gcs_address)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
+
+    job_id = client.submit_job(
+        entrypoint="echo worker-log",
+        entrypoint_num_cpus=1,
+    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=30)
+    assert "worker-log" in client.get_job_logs(job_id)
+
+    cluster.remove_node(worker_node, allow_graceful=True)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 1, timeout=20)
+
+    assert client.get_job_status(job_id) == JobStatus.SUCCEEDED
+    response = client._do_request("GET", f"/api/jobs/{job_id}/logs")
+    assert response.status_code == 503
+    assert response.json() == {
+        "error_code": JOB_LOGS_UNAVAILABLE_ERROR_CODE,
+        "message": (
+            f"Logs for job {job_id} are unavailable because "
+            "the driver agent cannot be reached."
+        ),
+        "submission_id": job_id,
+    }
+    with pytest.raises(RuntimeError, match=JOB_LOGS_UNAVAILABLE_ERROR_CODE):
+        client.get_job_logs(job_id)
 
 
 @pytest.fixture
