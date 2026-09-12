@@ -91,6 +91,7 @@ TEAM_API_CONFIGS = {
             "ray.data.dataset.Dataset.write_json",
             "ray.data.dataset.Dataset.write_mongo",
             "ray.data.dataset.Dataset.write_numpy",
+            "ray.data.dataset.Dataset.write_orc",
             "ray.data.dataset.Dataset.write_parquet",
             "ray.data.dataset.Dataset.write_tfrecords",
         },
