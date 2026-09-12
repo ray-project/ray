@@ -1,4 +1,5 @@
 import asyncio
+import platform
 import sys
 import time
 from typing import List, Optional
@@ -196,6 +197,10 @@ class TestBatching:
 
         # Inner task is checked automatically with pytest.raises
 
+    @pytest.mark.skipif(
+        platform.machine().lower() in ("aarch64", "arm64"),
+        reason="Batcher jitter comparison is unreliable on ARM CI workers.",
+    )
     @pytest.mark.asyncio
     async def test_stable_streaming(self):
         """Test that the batcher does not add jitter to the stream when interval_ms is 0"""

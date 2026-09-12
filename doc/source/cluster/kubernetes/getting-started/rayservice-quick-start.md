@@ -95,7 +95,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 > **What do these services do?**
 
 - **`rayservice-sample-head-svc`**  
-  This service points to the **head pod** of the active RayCluster and is typically used to view the **Ray Dashboard** (port `8265`).
+  This service points to the **head pod** of the active RayCluster and is typically used to view the **Ray dashboard** (port `8265`).
 
 - **`rayservice-sample-serve-svc`**  
   This service exposes the **HTTP interface** of Ray Serve, typically on port `8000`.  

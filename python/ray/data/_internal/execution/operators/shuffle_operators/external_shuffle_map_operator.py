@@ -1,12 +1,3 @@
-"""ExternalHashShuffleMapOp — map phase of the external-shuffle variant.
-
-Drives one ``_external_shuffle_map_task`` per input group and, once all mappers finish,
-emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
-each carrying the SAME shared Ray object (the list of handle refs)
-and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
-body live in ``external_shuffle_runtime.py`` / ``external_shuffle_tasks.py``.
-"""
-
 import functools
 import logging
 import os
@@ -36,6 +27,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
+    BlockTransformer,
     PartitionFn,
     _external_shuffle_map_task,
 )
@@ -72,7 +64,6 @@ class ExternalHashShuffleMapOp(
     """External-shuffle map operator. See module docstring."""
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -81,7 +72,7 @@ class ExternalHashShuffleMapOp(
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
-        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
+        block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
@@ -94,13 +85,16 @@ class ExternalHashShuffleMapOp(
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
 
         # -- Pre-map merge ---------------------------------------------------
-        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        # Buffered blocks are coalesced per node into a single map task once
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[str, List[ObjectRef]] = defaultdict(list)
         self._merge_buffer_bytes_by_node: Dict[str, int] = defaultdict(int)
         self._merge_buffer_bundles_by_node: Dict[str, List[RefBundle]] = defaultdict(
@@ -173,7 +167,7 @@ class ExternalHashShuffleMapOp(
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._pre_map_merge_threshold > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -187,10 +181,7 @@ class ExternalHashShuffleMapOp(
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._pre_map_merge_threshold
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
@@ -242,11 +233,11 @@ class ExternalHashShuffleMapOp(
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
-        # Pass the raw hash_shuffle_compression through (same as the object-store
+        # Pass the raw shuffle_compression through (same as the object-store
         # ShuffleMapOp). Normalization — casing and the "none" sentinel — lives
         # in _codec_for, which both the map (encode) and reduce (decode) sides
         # go through, so they can't disagree on the codec.
-        compression: Optional[str] = self.data_context.hash_shuffle_compression
+        compression: Optional[str] = self.data_context.shuffle_compression
 
         handle_ref = _external_shuffle_map_task.options(**ray_options).remote(
             *block_refs,
@@ -256,6 +247,7 @@ class ExternalHashShuffleMapOp(
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             compression=compression,
+            block_transformer=self._block_transformer,
         )
 
         task = MetadataOpTask(

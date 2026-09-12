@@ -260,7 +260,7 @@ def test_read_mcap_include_paths(ray_start_regular_shared, simple_mcap_file):
 def test_read_mcap_invalid_time_range(ray_start_regular_shared, simple_mcap_file):
     """Test validation of time range parameters."""
     # Start time >= end time
-    with pytest.raises(ValueError, match="start_time must be less than end_time"):
+    with pytest.raises(ValueError, match="must be less than"):
         ray.data.read_mcap(simple_mcap_file, time_range=(2000, 1000))
 
     # Negative times

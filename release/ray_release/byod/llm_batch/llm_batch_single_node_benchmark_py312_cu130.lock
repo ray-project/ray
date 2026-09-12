@@ -833,9 +833,11 @@ izulu==0.50.0 \
     --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
     --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
     # via taskiq
-jinja2==3.1.6 ; sys_platform != 'win32' \
+jinja2==3.1.6 \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
-    # via memray
+    # via
+    #   -r python/requirements.txt
+    #   memray
 jsonschema==4.26.0 \
     --hash=sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
@@ -918,7 +920,7 @@ markdown-it-py==4.0.0 \
     #   mdit-py-plugins
     #   rich
     #   textual
-markupsafe==3.0.2 ; sys_platform != 'win32' \
+markupsafe==3.0.2 \
     --hash=sha256:e17c96c14e19278594aa4841ec148115f9c7615a47382ecb6b82bd8fea3ab0c8
     # via jinja2
 mdit-py-plugins==0.5.0 ; sys_platform != 'win32' \

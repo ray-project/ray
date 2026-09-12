@@ -25,12 +25,12 @@ This guide covers the salient features of `RayCluster` CR configuration.
 
 For reference, here is a condensed example of a `RayCluster` CR in yaml format.
 ```yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: raycluster-complete
 spec:
-  rayVersion: "2.3.0"
+  rayVersion: "2.56.1"
   enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
@@ -44,7 +44,7 @@ spec:
         spec: # Pod spec
             containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.3.0
+              image: rayproject/ray:2.56.1
               resources:
                 limits:
                   cpu: 14
@@ -179,12 +179,33 @@ Note the format used to express the resources string. In particular, note that t
 
 The field `rayStartParams.resources` should only be used for custom resources. The keys `CPU`, `GPU`, and `memory` are forbidden. If you need to specify overrides for those resource fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
 
+KubeRay also sets the following parameters for you. You rarely set them yourself, but understanding them helps when you debug autoscaling, cluster connectivity, or metrics.
+
+### no-monitor
+When you enable autoscaling with `enableInTreeAutoscaling: true`, KubeRay sets `no-monitor: "true"` on the head pod and runs the Ray Autoscaler in a sidecar container instead. Setting `no-monitor: "true"` disables the autoscaling process that the head pod's monitor would otherwise run, so the sidecar drives scaling. See {ref}`kuberay-autoscaling` for how autoscaling works on Kubernetes.
+
+The monitor process also exports observability data, such as Prometheus metrics, which you want whether or not you enable autoscaling. When KubeRay leaves the monitor running without an autoscaling configuration, the autoscaler starts in READONLY mode. In this mode it reports cluster state and serves metrics, but never launches or terminates nodes. Don't set `no-monitor` yourself. Let KubeRay manage it from your autoscaling configuration.
+
+### block
+KubeRay sets `block: "true"` on every head and worker pod so that `ray start` runs in the foreground and keeps the container alive. Don't override this parameter.
+
+### address
+For worker pods, KubeRay sets `address` to the head pod's GCS server in the form `<FQDN>:<port>`, where `<FQDN>` is the fully qualified domain name of the head service and `<port>` matches the head's `port` parameter. Workers use this address to join the cluster. KubeRay generates it for you, so you don't set it manually.
+
+### port
+The `port` parameter is the port of the head pod's GCS server, which defaults to `6379`. If you expose the GCS server on a non-default container port, set `port` to match. See {ref}`kuberay-networking` for a full example of overriding the head pod's ports.
+
+### metrics-export-port
+The `metrics-export-port` parameter is the port that exposes Ray metrics for a Prometheus endpoint, which defaults to `8080`. If you customize the metrics container port, set this parameter to the same value. See {ref}`kuberay-prometheus-grafana` for how to collect these metrics.
+
+To configure GCS fault tolerance, including an external Redis instance and its password, use the `gcsFaultToleranceOptions` field rather than setting a `redis-password` in `rayStartParams`. See {ref}`kuberay-gcs-ft` for details.
+
 (kuberay-networking)=
 ## Services and Networking
 ### The Ray head service.
 The KubeRay operator automatically configures a Kubernetes Service exposing the default ports for several services of the Ray head pod, including
 - Ray Client (default port 10001)
-- Ray Dashboard (default port 8265)
+- Ray dashboard (default port 8265)
 - Ray GCS server (default port 6379)
 - Ray Serve (default port 8000)
 - Ray Prometheus metrics (default port 8080)
