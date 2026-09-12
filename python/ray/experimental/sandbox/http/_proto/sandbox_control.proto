@@ -1,0 +1,188 @@
+// Vendored control-plane contract for the Ray Sandbox gRPC facade.
+//
+// Minimal subset of the third-party service the facade implements. Package,
+// service, method, and field identifiers reproduce the external service's
+// on-the-wire names verbatim; only the surface the facade uses is declared.
+// Do not renumber fields. Regenerate the stubs after editing (see README.md).
+
+syntax = "proto3";
+
+package modal.client;
+
+import "google/protobuf/empty.proto";
+
+enum ObjectCreationType {
+  OBJECT_CREATION_TYPE_UNSPECIFIED = 0;
+  OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;
+  OBJECT_CREATION_TYPE_EPHEMERAL = 5;
+}
+
+message ClientHelloResponse {}
+
+message AppGetOrCreateRequest {
+  string app_name = 1;
+}
+
+message AppGetOrCreateResponse {
+  string app_id = 1;
+}
+
+message EnvironmentGetOrCreateRequest {
+  string deployment_name = 1;
+}
+
+message EnvironmentSettings {
+  string image_builder_version = 1;
+}
+
+message EnvironmentMetadata {
+  string name = 1;
+  EnvironmentSettings settings = 2;
+}
+
+message EnvironmentGetOrCreateResponse {
+  string environment_id = 1;
+  EnvironmentMetadata metadata = 2;
+}
+
+message SecretGetOrCreateRequest {
+  ObjectCreationType object_creation_type = 4;
+  map<string, string> env_dict = 5;
+}
+
+message SecretGetOrCreateResponse {
+  string secret_id = 1;
+}
+
+message Image {
+  repeated string dockerfile_commands = 6;
+}
+
+message ImageMetadata {
+  optional string image_builder_version = 5;
+}
+
+message ImageGetOrCreateRequest {
+  Image image = 2;
+  string builder_version = 9;
+}
+
+message ImageGetOrCreateResponse {
+  string image_id = 1;
+  ImageMetadata metadata = 3;
+}
+
+message ImageJoinStreamingRequest {}
+
+message GenericResult {
+  enum GenericStatus {
+    GENERIC_STATUS_UNSPECIFIED = 0;
+    GENERIC_STATUS_SUCCESS = 1;
+    GENERIC_STATUS_FAILURE = 2;
+    GENERIC_STATUS_TERMINATED = 3;
+  }
+  GenericStatus status = 1;
+  string exception = 2;
+}
+
+message ImageJoinStreamingResponse {
+  GenericResult result = 1;
+}
+
+message NetworkAccess {
+  enum NetworkAccessType {
+    UNSPECIFIED = 0;
+    OPEN = 1;
+    BLOCKED = 2;
+    ALLOWLIST = 3;
+  }
+  NetworkAccessType network_access_type = 1;
+}
+
+message Resources {
+  uint32 memory_mb = 2;
+  uint32 milli_cpu = 3;
+  uint32 memory_mb_max = 5;
+  uint32 milli_cpu_max = 7;
+}
+
+message SandboxTag {
+  string tag_name = 1;
+  string tag_value = 2;
+}
+
+message Sandbox {
+  repeated string entrypoint_args = 1;
+  string image_id = 3;
+  repeated string secret_ids = 4;
+  Resources resources = 5;
+  uint32 timeout_secs = 7;
+  optional string workdir = 8;
+  NetworkAccess network_access = 22;
+  optional string name = 30;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+  repeated SandboxTag tags = 4;
+}
+
+message SandboxHandleMetadata {
+  string app_id = 2;
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
+  SandboxHandleMetadata metadata = 2;
+}
+
+message SandboxGetTaskIdRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetTaskIdResponse {
+  optional string task_id = 1;
+}
+
+message SandboxWaitRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitResponse {
+  GenericResult result = 1;
+}
+
+message SandboxTerminateRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxTerminateResponse {}
+
+message TaskGetCommandRouterAccessRequest {}
+
+message TaskGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
+}
+
+service ModalClient {
+  rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
+  rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
+  rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest)
+      returns (EnvironmentGetOrCreateResponse);
+  rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
+  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageJoinStreaming(ImageJoinStreamingRequest)
+      returns (stream ImageJoinStreamingResponse);
+  rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxCreateV2(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
+  rpc SandboxGetTaskIdV2(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
+  rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc SandboxTerminateV2(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest)
+      returns (TaskGetCommandRouterAccessResponse);
+}
