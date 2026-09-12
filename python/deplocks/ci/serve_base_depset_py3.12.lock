@@ -2012,7 +2012,6 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   cupy-cuda12x
     #   dm-tree
     #   gradio
@@ -2676,7 +2675,6 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-core
     #   googleapis-common-protos
     #   opentelemetry-proto
@@ -3566,9 +3564,7 @@ taskiq-redis==0.4.0 \
     #   -r python/requirements/serve/serve-test-requirements.txt
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   tensorflow
+    # via tensorflow
 tensorboard-data-server==0.7.2 \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
     --hash=sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60 \
@@ -3604,7 +3600,6 @@ tensorflow==2.20.0 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   tf-keras
 tensorflow-probability==0.24.0 \
@@ -3627,9 +3622,7 @@ textual==4.0.0 ; sys_platform != 'win32' \
 tf-keras==2.20.0 \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/serve/serve-test-requirements.txt
+    # via -r python/requirements/serve/serve-test-requirements.txt
 tokenizers==0.22.2 \
     --hash=sha256:143b999bdc46d10febb15cbffb4207ddd1f410e2c755857b5a0797961bbdc113 \
     --hash=sha256:1a62ba2c5faa2dd175aaeed7b15abf18d20266189fb3406c5d0550dd34dd5f37 \
