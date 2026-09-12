@@ -3841,6 +3841,108 @@ class TestSchedulerPerformanceOptimizations:
         # Shape B: 2 × {GPU:1}. type_gpu has 1 GPU each (CPU=1 can't fit shape A) → need 2.
         assert to_launch == {"type_1": 2, "type_gpu": 2}
 
+    def test_quick_reject_keeps_nodes_for_zero_resource_requests(self):
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                # Cluster is already at its configured maximum.
+                max_worker_nodes=5,
+            ),
+        }
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+        # 3 CPU requests that genuinely cannot be placed (every node has CPU=0
+        # and the cluster is at max_worker_nodes), plus 2 zero-resource
+        # requests that fit on any of the 5 existing nodes.
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})
+        ] * 3 + [ResourceRequestUtil.make({})] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # At max_worker_nodes, so nothing can be launched either way.
+        assert to_launch == {}
+        # Only the 3 CPU requests are infeasible. The 2 zero-resource requests
+        # must be placed on the existing nodes, not reported as unschedulable.
+        assert len(reply.infeasible_resource_requests) == 3
+
+    def test_quick_reject_keeps_nodes_for_implicit_resource_requests(self):
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                # Cluster is already at its configured maximum.
+                max_worker_nodes=5,
+            ),
+        }
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+        # 3 CPU requests that cannot be placed (every node has CPU=0 and the
+        # cluster is at max_worker_nodes), plus one implicit-resource request
+        # that every node satisfies implicitly (nodes do not list implicit
+        # keys in available_resources).
+        implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})
+        ] * 3 + [ResourceRequestUtil.make({implicit_resource: 1})]
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # At max_worker_nodes, so nothing can be launched either way.
+        assert to_launch == {}
+        # Only the 3 CPU requests are infeasible. The implicit-resource request
+        # must be placed on an existing node, not reported as unschedulable.
+        assert len(reply.infeasible_resource_requests) == 3
+
 
 class TestPrecomputeSerializeKeys:
     """Tests for precomputed shape_keys optimization in try_schedule."""

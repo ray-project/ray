@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
+from ray._raylet import IMPLICIT_RESOURCE_PREFIX
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
@@ -139,8 +140,9 @@ def _collect_unique_resource_shapes(
     shapes = []
     for r in requests:
         bundle = {k: v for k, v in r.resources_bundle.items() if v > 0}
-        if not bundle:
-            continue
+        # An empty shape ({}) fits on any node, so keep it as a shape:
+        # dropping it would let the pre-filter reject nodes that could
+        # actually schedule zero-resource requests.
         key = frozenset(bundle.items())
         if key not in seen:
             seen.add(key)
@@ -167,7 +169,6 @@ def _can_fit_any_request(
     """
     if not resource_shapes:
         return True
-    from ray._raylet import IMPLICIT_RESOURCE_PREFIX
 
     for shape in resource_shapes:
         if all(
