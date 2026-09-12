@@ -7,9 +7,12 @@ executor's output iterator and pushes them to the consumer actor. The
 consumer can be ANY Ray actor (e.g. a Ray Train worker): delivery goes
 through the actor's built-in ``__ray_call__`` into a process-local receiver
 registry, so the actor class needs no new methods. Bundles are pushed with
-their block refs NESTED (not materialized), and ``PushBasedDataIterator``
-drains the receiver queue through the standard DataIterator pipeline
-(prefetch -> resolve -> batch -> collate, including iter_torch_batches).
+their block refs NESTED (kept as refs, which the standard pipeline needs) —
+but the block ref is ALSO passed as a resolved top-level arg, so the push
+moves the block's data to the consumer node, not just the ref.
+``PushBasedDataIterator`` drains the receiver queue through the standard
+DataIterator pipeline (prefetch -> resolve -> batch -> collate, including
+iter_torch_batches), where resolve's ray.get is then a local hit.
 
 Flow control is poll-based: each pusher periodically polls the consumer to
 learn how many rows it has drained from its queue and how many rows it wants
@@ -426,12 +429,20 @@ class PushSplitCoordinator:
 
         def push_block(seq, entry, schema, num_rows, size_bytes):
             sub_bundle = RefBundle(blocks=(entry,), owns_blocks=False, schema=schema)
+            # entry.ref is passed twice on purpose:
+            # - nested inside _BundleDelivery it stays a ref, which the
+            #   standard DataIterator pipeline needs;
+            # - as the TOP-LEVEL `_prefetched_block` arg Ray resolves it, so
+            #   the delivery task only executes once the block is fetched
+            #   into the consumer's local object store. The later
+            #   resolve-stage ray.get is then a guaranteed-local hit.
             consumer.__ray_call__.remote(
                 _receiver_deliver,
                 key,
                 epoch_id,
                 seq,
                 _BundleDelivery(sub_bundle, num_rows, size_bytes),
+                entry.ref,
             )
 
         def push_eof(seq):
@@ -667,9 +678,21 @@ class _PushReceiver:
 
 
 def _receiver_deliver(
-    _actor: Any, key: str, epoch_id: int, seq: int, item: _SequencedItem
+    _actor: Any,
+    key: str,
+    epoch_id: int,
+    seq: int,
+    item: _SequencedItem,
+    _prefetched_block: Any = None,
 ) -> None:
-    """Deliver one sequenced item (_BundleDelivery or _EndOfEpoch) in order."""
+    """Deliver one sequenced item (_BundleDelivery or _EndOfEpoch) in order.
+
+    ``_prefetched_block`` is the materialized Block of a _BundleDelivery,
+    deliberately unused: the pusher passes the block ref as this top-level
+    arg so Ray fetches the block to this node before the delivery runs
+    (push moves the data, not just the ref). The queue still carries the
+    nested-ref bundle for the standard DataIterator pipeline.
+    """
     receiver = _RECEIVER_REGISTRY.get(key)
     if receiver is None:
         return
