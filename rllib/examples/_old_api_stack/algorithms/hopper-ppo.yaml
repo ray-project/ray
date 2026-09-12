@@ -1,6 +1,6 @@
 # @OldAPIStack
 hopper-ppo:
-    env: Hopper-v1
+    env: Hopper-v4
     run: PPO
     config:
         # Works for both torch and tf.

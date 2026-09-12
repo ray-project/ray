@@ -297,10 +297,10 @@ Task Events
 
 
 By default, Ray traces the execution of tasks, reporting task status events and profiling events
-that the Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+that the Ray dashboard and :ref:`State API <state-api-overview-ref>` use.
 
 You can change this behavior by setting ``enable_task_events`` options in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`
-to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray Dashboard.
+to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray dashboard.
 Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
 
 

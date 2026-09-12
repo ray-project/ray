@@ -253,7 +253,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
-      if (node.GetLocalView().total != node.GetLocalView().available) {
+      if (node.GetLocalView().total != node.GetLocalView().GetAvailable()) {
         return false;
       }
     }
@@ -308,11 +308,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   double GcsAvailableCpu(const NodeID &node_id) {
-    auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
-                         .GetNodeResources(scheduling::NodeID(node_id.Binary()))
-                         .available.GetResourceMap();
-    auto it = resources.find("CPU");
-    return it != resources.end() ? it->second : 0.0;
+    return cluster_resource_scheduler_->GetClusterResourceManager()
+        .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+        .GetAvailableSum(scheduling::ResourceID::CPU())
+        .Double();
   }
 
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,

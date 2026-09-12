@@ -91,9 +91,9 @@ To follow the job's logs, use the command printed by the above submission script
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --address="http://localhost:8265" --follow
 ```
 
-#### Ray Dashboard
+#### Ray dashboard
 
-View `localhost:8265` in your browser to access the Ray Dashboard.
+View `localhost:8265` in your browser to access the Ray dashboard.
 
 #### Ray Status
 

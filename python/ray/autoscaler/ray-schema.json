@@ -204,6 +204,25 @@
             "type": "object",
             "description": "How Ray will authenticate with newly launched nodes.",
             "additionalProperties": false,
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "ssh_proxy_use_node_id": {
+                                "const": true
+                            }
+                        },
+                        "required": [
+                            "ssh_proxy_use_node_id"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "ssh_proxy_command"
+                        ]
+                    }
+                }
+            ],
             "properties": {
                 "ssh_user": {
                     "type": "string",
@@ -218,6 +237,11 @@
                 "ssh_proxy_command": {
                     "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
                     "type": "string"
+                },
+                "ssh_proxy_use_node_id": {
+                    "description": "Whether to use the provider node ID instead of the node IP as the SSH target. This is useful for proxy commands that require a node ID.",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },

@@ -76,7 +76,14 @@ compile_pip_dependencies() {
     # This is needed because we specify the requirements as torch==version, but
     # the resolver adds the device-specific version tag. If this is not removed,
     # pip install will complain about irresolvable constraints.
-    sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "python/$TARGET"
+    # Strip the whole local segment whenever it names cpu: +cpu, +pt29cpu, and
+    # Astral's +cpu.torch.2.9. The result has to be the bare public version --
+    # this file is also the constraint for the GPU depsets, and only a bare
+    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.9 pin satisfy it. The old
+    # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
+    # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
+    # hence letters in the first class.
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
 
     cat "python/$TARGET"
 

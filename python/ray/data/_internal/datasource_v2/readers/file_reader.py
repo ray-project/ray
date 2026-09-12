@@ -12,6 +12,7 @@ from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data.checkpoint.generated_id import get_generated_id_column_name
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
@@ -155,6 +156,11 @@ class FileReader(Reader[FileManifest]):
             # file already carries a ``row_hash`` column. Strip it from the
             # dataset schema so pyarrow doesn't try to cast.
             synthesized.add(ROW_HASH_COLUMN_NAME)
+
+        generated_id = get_generated_id_column_name()
+        if generated_id:
+            synthesized.add(generated_id)
+
         fields = [
             f
             for f in self._schema
@@ -294,6 +300,7 @@ class FileReader(Reader[FileManifest]):
                     ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
                 )
 
+            generated_id = get_generated_id_column_name()
             if self._columns is not None:
                 # Project/reorder to the caller's requested column order;
                 # drop any that weren't produced (matches V1's lenient
@@ -302,6 +309,12 @@ class FileReader(Reader[FileManifest]):
                 # guard below handles row preservation.
                 produced = set(table.column_names)
                 projected = [c for c in self._columns if c in produced]
+                if (
+                    generated_id
+                    and generated_id in produced
+                    and generated_id not in projected
+                ):
+                    projected.append(generated_id)
                 table = table.select(projected)
 
             if table.num_columns == 0 and table.num_rows > 0:

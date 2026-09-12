@@ -1263,6 +1263,15 @@ datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more detai
     # Write to a custom datasink.
     ds.write_datasink(YourCustomDatasink())
 
+Community-maintained connectors
+===============================
+
+The following connectors are maintained by the community and provide integrations
+with additional data systems:
+
+* `Apache Doris Ray Connector <https://github.com/jiangxt2/ray-doris>`_ - Read and write data between Ray Data and `Apache Doris <https://doris.apache.org/>`_.
+* `Kinetica Ray Connector <https://github.com/kineticadb/kinetica-ray>`_ - Read and write data between Ray Data and `Kinetica <https://www.kinetica.com/>`_.
+
 Performance considerations
 ==========================
 

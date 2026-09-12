@@ -10,6 +10,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
+    get_gpu_visible_devices_env_var,
     get_other_nodes,
     is_placement_group_removed,
     placement_group_assert_no_leak,
@@ -340,10 +341,16 @@ def test_placement_group_stats(ray_start_cluster):
     placement_group_assert_no_leak([pg2])
 
 
-def test_cuda_visible_devices(ray_start_cluster):
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",
+)
+def test_visible_devices(ray_start_cluster):
+    gpu_env_var = get_gpu_visible_devices_env_var()
+
     @ray.remote(num_gpus=1)
     def f():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        return os.environ[gpu_env_var]
 
     cluster = ray_start_cluster
     num_nodes = 1

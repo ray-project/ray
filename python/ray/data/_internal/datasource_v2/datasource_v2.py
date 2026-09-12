@@ -163,15 +163,35 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         return None
 
+    @property
     @abstractmethod
-    def infer_schema(self, sample: InputSplit) -> pa.Schema:
+    def schema_needs_file_sample(self) -> bool:
+        """Whether :meth:`infer_schema` needs data files to look at.
+
+        ``True`` for a plain file format: the caller lists a sample of files
+        and passes it to :meth:`infer_schema`. ``False`` when the schema comes
+        from somewhere else -- a catalog, a config -- and :meth:`infer_schema`
+        is called with ``None`` instead. Answering ``False`` also skips the
+        "no files found" error, so a table that is empty but declared still
+        reads, and skips discovering partition fields from path names.
+
+        Abstract rather than defaulted so that adding a datasource forces the
+        question.
+        """
+        ...
+
+    @abstractmethod
+    def infer_schema(self, sample: Optional[InputSplit]) -> pa.Schema:
         """Infer schema from a sample of data.
 
         Args:
-            sample: Sample data to infer schema from.
+            sample: Sample data to infer schema from, or ``None`` when
+                :attr:`schema_needs_file_sample` is ``False``.
 
         Returns:
-            PyArrow Schema inferred from the sample.
+            PyArrow Schema inferred from the sample. This is the dataset
+            schema; do not pre-apply column pruning, which is pushed down
+            later and applied by ``Scanner.read_schema``.
 
         Raises:
             ValueError: If schema cannot be inferred from the sample.
@@ -197,12 +217,16 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         ...
 
-    def resolve_partitioning(self, sample: InputSplit) -> Optional[Any]:
+    def resolve_partitioning(self, sample: Optional[InputSplit]) -> Optional[Any]:
         """Return a partitioning descriptor derived from ``sample``, or ``None``.
 
         Override this for file-based sources whose partition keys must be
         discovered from a sample path (e.g. hive layouts where field names
         are not known up front). The resolved descriptor is passed into
         :meth:`create_scanner`.
+
+        ``sample`` is ``None`` when :attr:`schema_needs_file_sample` is
+        ``False``; an override must then return ``None`` too, since there is no
+        path to read keys from.
         """
         return None

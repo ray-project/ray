@@ -1499,6 +1499,7 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
+    #   ray
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
     --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64

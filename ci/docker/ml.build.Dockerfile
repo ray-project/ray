@@ -41,7 +41,9 @@ mkdir -p python/ray/thirdparty_files
 uv pip install -r /home/ray/thirdparty_depset.lock --no-deps --target=python/ray/thirdparty_files
 
 # Install Python dependencies from depset lock file
-uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+# --no-binary deepspeed: the GPU locks resolve against Astral's cu128 index, which publishes prebuilt deepspeed wheels
+#   as local versions (0.18.9+cu.12.8.torch.2.11), however, currently we use torch 2.9 which is incompatible
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match --no-binary deepspeed
 
 # Inject our own mirror for the CIFAR10 dataset
 SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')

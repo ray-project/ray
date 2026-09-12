@@ -201,6 +201,9 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "pip_txt",
         "conda_yaml",
         "local_py_modules",
@@ -226,6 +229,9 @@ ray.get(f.remote())
     elif request.param in {
         "local_working_dir",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
     }:
@@ -264,6 +270,31 @@ ray.get(f.remote())
                     "entrypoint": "python test.py",
                     "expected_logs": "Hello from test_module!\n",
                 }
+            elif request.param in {
+                "local_working_dir_tar_gz",
+                "local_working_dir_tgz",
+                "local_working_dir_tar_xz",
+            }:
+                archive_format = (
+                    "xztar" if request.param == "local_working_dir_tar_xz" else "gztar"
+                )
+                with tempfile.TemporaryDirectory() as archive_dir:
+                    archive = Path(
+                        shutil.make_archive(
+                            os.path.join(archive_dir, "test"),
+                            archive_format,
+                            tmp_dir,
+                        )
+                    )
+                    if request.param == "local_working_dir_tgz":
+                        tgz_archive = archive.with_name("test.tgz")
+                        archive.rename(tgz_archive)
+                        archive = tgz_archive
+                    yield {
+                        "runtime_env": {"working_dir": str(archive)},
+                        "entrypoint": "python test.py",
+                        "expected_logs": "Hello from test_module!\n",
+                    }
             elif request.param == "local_py_modules":
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
@@ -430,7 +461,7 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    with pytest.raises(ValueError, match="Only .zip, .tar.gz, and .tgz files"):
+    with pytest.raises(ValueError, match="supported for working_dir URIs"):
         client.submit_job(
             entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
         )

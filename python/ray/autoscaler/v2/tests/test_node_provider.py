@@ -430,6 +430,55 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             "value": 2,  # 1 + 1
         }
 
+    def test_launch_total_max_replicas_cap_fails_and_caches_request(self):
+        """A fully capped launch is cached and reports LaunchNodeError."""
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["maxReplicas"] = 1
+
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-cap")
+
+        assert "launch-cap" in self.provider._requests
+        assert self.mock_client._patches == {}
+
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].request_id == "launch-cap"
+        assert errors[0].node_type == "small-group"
+        assert errors[0].count == 2
+        assert "maxReplicas" in str(errors[0])
+
+        # Replay of the same request id must not try again.
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-cap")
+        assert self.provider.poll_errors() == []
+        assert self.mock_client._patches == {}
+
+    def test_launch_partial_max_replicas_cap_fails_leftover(self):
+        """A partial cap patches what fits, caches the id, and fails the leftover."""
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["maxReplicas"] = 2
+
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-partial")
+
+        assert "launch-partial" in self.provider._requests
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 2,
+            }
+        ]
+
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].request_id == "launch-partial"
+        assert errors[0].node_type == "small-group"
+        assert errors[0].count == 1
+
     def test_terminate_node(self):
         self.provider.terminate(
             ids=["raycluster-autoscaler-worker-small-group-dkz2r"], request_id="term-1"
