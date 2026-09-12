@@ -125,6 +125,8 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        consumer_held_bytes_callback: A callback reporting object store memory
+            the consumer still holds after its ``ObjectRef`` was released.
         preserve_order: Whether to maintain the original order that the batches
             were formed from the blocks (e.g., the input block order).
             This only takes effect in the case that the format/collate threadpool
@@ -150,6 +152,7 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        consumer_held_bytes_callback: Optional[Callable[[int], None]] = None,
         preserve_order: bool = False,
     ):
         self._ref_bundles = ref_bundles
@@ -165,6 +168,8 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._consumer_held_bytes_callback = consumer_held_bytes_callback
+        self._consumer_held_memory = None
         self._preserve_order = preserve_order
 
         actor_prefetcher_enabled = (
@@ -201,7 +206,7 @@ class BatchIterator:
         return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
-        return blocks_to_batches(
+        batch_iter = blocks_to_batches(
             block_iter=blocks,
             stats=self._stats,
             batch_size=self._batch_size,
@@ -210,6 +215,10 @@ class BatchIterator:
             shuffle_seed=self._shuffle_seed,
             ensure_copy=self._ensure_copy,
         )
+        # Built inside the pipeline but read from the user thread on release,
+        # so publish it here rather than passing it downstream.
+        self._consumer_held_memory = batch_iter.consumer_held_memory
+        return batch_iter
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
         num_threadpool_workers = min(
@@ -375,6 +384,15 @@ class BatchIterator:
             batch.on_consume()
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
+
+        # Only now is the user done with the batch. `on_consume` above fires
+        # before the yield, so it is too early to release memory against.
+        if self._consumer_held_memory is not None:
+            self._consumer_held_memory.on_batch_released(batch.metadata.nbytes)
+            if self._consumer_held_bytes_callback is not None:
+                self._consumer_held_bytes_callback(
+                    self._consumer_held_memory.total_bytes()
+                )
 
         # Report prefetched bytes to the executor's resource manager.
         if self._prefetch_bytes_callback is not None and self._stats is not None:

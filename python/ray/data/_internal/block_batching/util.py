@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.batcher import Batcher, BatcherInterface, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
@@ -281,6 +281,35 @@ def blocks_to_batches(
     )
 
 
+class ConsumerHeldMemory:
+    """Object store memory the consumer holds after its ``ObjectRef`` is gone.
+
+    Batches are zero-copy views, so blocks stay resident once
+    ``resolve_block_refs`` drops the ref and ``BlockRefCounter`` stops counting
+    them. Locked: batches are built on the format threadpool workers and
+    released on the user thread.
+    """
+
+    def __init__(self, batcher: "BatcherInterface"):
+        self._batcher = batcher
+        self._in_flight_bytes = 0
+        self._lock = threading.Lock()
+
+    def on_batch_built(self, nbytes: int) -> None:
+        with self._lock:
+            self._in_flight_bytes += nbytes
+
+    def on_batch_released(self, nbytes: int) -> None:
+        with self._lock:
+            # Batches can be dropped without being yielded (e.g. an aborted
+            # iteration), so guard against drifting negative.
+            self._in_flight_bytes = max(self._in_flight_bytes - nbytes, 0)
+
+    def total_bytes(self) -> int:
+        with self._lock:
+            return self._batcher.buffered_nbytes() + self._in_flight_bytes
+
+
 class _BatchingIterator(Iterator[Batch]):
     """Iterator that converts blocks to batches.
 
@@ -315,6 +344,8 @@ class _BatchingIterator(Iterator[Batch]):
         else:
             self._batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
+        self.consumer_held_memory = ConsumerHeldMemory(self._batcher)
+
     def __iter__(self) -> "_BatchingIterator":
         return self
 
@@ -332,14 +363,18 @@ class _BatchingIterator(Iterator[Batch]):
                     next_batch = self._batcher.next_batch()
                 self._pending_timings.batching = span
 
+                accessor = BlockAccessor.for_block(next_batch)
+                nbytes = accessor.size_bytes()
                 res = Batch(
                     metadata=BatchMetadata(
                         batch_idx=self._global_counter,
-                        num_rows=BlockAccessor.for_block(next_batch).num_rows(),
+                        num_rows=accessor.num_rows(),
+                        nbytes=nbytes,
                         stage_timings=self._pending_timings,
                     ),
                     data=next_batch,
                 )
+                self.consumer_held_memory.on_batch_built(nbytes)
                 self._pending_timings = BatchStageTimings()
 
                 self._global_counter += 1

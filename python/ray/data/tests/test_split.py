@@ -17,6 +17,9 @@ from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.iterator.stream_split_iterator import (
+    StreamSplitDataIterator,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
 from ray.data._internal.split import (
@@ -947,6 +950,17 @@ def test_streaming_train_test_split_wrong_params(
             hash_column=hash_column,
             seed=seed,
         )
+
+
+def test_stream_split_iterator_always_reports_consumer_held_bytes():
+    """A split consumer has no local executor, so gating the callback on one
+    silently disabled this accounting for every streaming_split job."""
+    it = StreamSplitDataIterator(coord_actor=None, output_split_idx=0, world_size=2)
+    callback = it._make_consumer_held_bytes_callback(executor=None)
+
+    assert callback is not None
+    callback(4096)
+    assert it._consumer_held_bytes == 4096
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])

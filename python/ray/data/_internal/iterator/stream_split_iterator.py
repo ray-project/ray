@@ -1,7 +1,16 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -71,9 +80,23 @@ class StreamSplitDataIterator(DataIterator):
         # picklable, since users pass split iterators to ``@ray.remote``
         # tasks.
         self._active_epoch: Optional[int] = None
+        # Object store bytes this split's batches still hold after their
+        # ObjectRef was released. Written by the consumer thread via the
+        # callback, read by ``gen_blocks`` on the prefetch worker thread.
+        self._consumer_held_bytes: int = 0
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
+
+    def _make_consumer_held_bytes_callback(
+        self, executor
+    ) -> Optional[Callable[[int], None]]:
+        # ``executor`` is always None here: it lives on the SplitCoordinator
+        # actor, so the value is sent with the next get() instead.
+        def callback(num_bytes: int) -> None:
+            self._consumer_held_bytes = num_bytes
+
+        return callback
 
     def _to_ref_bundle_iterator(
         self,
@@ -89,7 +112,7 @@ class StreamSplitDataIterator(DataIterator):
 
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
-                cur_epoch, self._output_split_idx, 0
+                cur_epoch, self._output_split_idx, 0, 0
             )
             last_log_time = 0.0
             while True:
@@ -109,6 +132,7 @@ class StreamSplitDataIterator(DataIterator):
                         cur_epoch,
                         self._output_split_idx,
                         prefetched_bytes,
+                        self._consumer_held_bytes,
                     )
                     yield RefBundle(
                         blocks=block_ref_and_md.blocks,
@@ -232,6 +256,10 @@ class SplitCoordinator:
         # Guarded by self._lock.
         self._client_prefetched_bytes: Dict[int, int] = {}
 
+        # Track object store bytes each client still holds after releasing the
+        # ObjectRef (zero-copy batch views). Guarded by self._lock.
+        self._client_held_bytes: Dict[int, int] = {}
+
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
@@ -320,6 +348,7 @@ class SplitCoordinator:
                     )
                     # Register the streaming split external consumers with the executor's resource manager.
                     self._current_executor.set_external_consumer_bytes(0)
+                    self._current_executor.set_consumer_held_bytes(0)
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."
@@ -349,6 +378,7 @@ class SplitCoordinator:
         epoch_id: int,
         output_split_idx: int,
         client_prefetched_bytes: int = 0,
+        client_held_bytes: int = 0,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
 
@@ -359,6 +389,8 @@ class SplitCoordinator:
             output_split_idx: The output split index for this client.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
+            client_held_bytes: Object store bytes the client still holds after
+                its ObjectRef was released, which BlockRefCounter cannot see.
 
         Returns:
             The next RefBundle for this split, or None if the epoch is done.
@@ -402,7 +434,9 @@ class SplitCoordinator:
                 self._client_prefetched_bytes[
                     output_split_idx
                 ] = client_prefetched_bytes
+                self._client_held_bytes[output_split_idx] = client_held_bytes
                 self._report_prefetched_bytes_to_executor()
+                self._report_consumer_held_bytes_to_executor()
 
                 # Track per-split row dispatch count.
                 self._num_rows_dispatched[output_split_idx] += (
@@ -445,7 +479,9 @@ class SplitCoordinator:
             if not returned_normally:
                 with self._lock:
                     self._client_prefetched_bytes[output_split_idx] = 0
+                    self._client_held_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
+                    self._report_consumer_held_bytes_to_executor()
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
@@ -468,6 +504,21 @@ class SplitCoordinator:
         if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
             self._current_executor.set_external_consumer_bytes(total_bytes)
+
+    def _report_consumer_held_bytes_to_executor(self) -> None:
+        """Report total consumer-held bytes to the executor's resource manager.
+
+        Must be called while holding self._lock.
+        """
+        if self._current_executor is not None:
+            self._current_executor.set_consumer_held_bytes(
+                sum(self._client_held_bytes.values())
+            )
+
+    def get_client_held_bytes(self) -> Dict[int, int]:
+        """Get consumer-held bytes for each client (for testing)."""
+        with self._lock:
+            return dict(self._client_held_bytes)
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
@@ -538,10 +589,12 @@ class SplitCoordinator:
             self._finished_splits.add(split_idx)
 
             self._client_prefetched_bytes[split_idx] = 0
+            self._client_held_bytes[split_idx] = 0
             # Drop any blocks buffered for this split — the consumer won't
             # read them and they'd otherwise pin memory until the next epoch.
             self._next_bundle.pop(split_idx, None)
             self._report_prefetched_bytes_to_executor()
+            self._report_consumer_held_bytes_to_executor()
 
             if (
                 len(self._finished_splits) == self._n
