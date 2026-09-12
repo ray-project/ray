@@ -7,15 +7,16 @@ executor's output iterator and pushes them to the consumer actor. The
 consumer can be ANY Ray actor (e.g. a Ray Train worker): delivery goes
 through the actor's built-in ``__ray_call__`` into a process-local receiver
 registry, so the actor class needs no new methods. Blocks are pushed BY
-VALUE (the block ref is a resolved top-level arg; only metadata rides in the
-message), so no ObjectRef ever crosses the wire and the consumer never
-becomes a borrower of the executor's refs — the executor can free each block
-as soon as its delivery completes. The consumer re-owns the block via
-ray.put and wraps it in a local RefBundle, which ``PushBasedDataIterator``
-drains through the standard DataIterator pipeline (prefetch -> resolve ->
-batch -> collate, including iter_torch_batches); resolve's ray.get is a
-local, consumer-owned hit. The cost is one local object-store copy per
-block at delivery.
+VALUE (the block ref is a resolved top-level arg; only row/byte counters
+ride in the message), so no ObjectRef ever crosses the wire and the consumer
+never becomes a borrower of the executor's refs — the executor can free each
+block as soon as its delivery completes. The consumer buffers the
+materialized Blocks directly (zero-copy views for Arrow), and
+``PushBasedDataIterator`` feeds them straight into the batching stages of
+the standard pipeline via ``_MaterializedBatchIterator`` — the ref-level
+prefetch and resolve stages are skipped entirely; batching, the
+format/collate threadpool, order restore, and finalize (i.e. everything
+``iter_torch_batches`` needs) are reused unchanged.
 
 Flow control is poll-based: each pusher periodically polls the consumer to
 learn how many rows it has drained from its queue and how many rows it wants
@@ -63,15 +64,15 @@ Pipeline overview::
     +--------------------------------------------------------------------+
     |      consumer actor i (any Ray actor, e.g. a Ray Train worker)     |
     |                                                                    |
-    |  actor task thread(s): __ray_call__ deliveries -> ray.put(block)   |
-    |      -> reorder buffer (by seq) -> _PushReceiver.queue holding     |
-    |      consumer-OWNED single-block RefBundles (no borrowed refs);    |
-    |      errors jump the queue; polls read the receiver counters       |
+    |  actor task thread(s): __ray_call__ deliveries -> reorder buffer   |
+    |      (by seq) -> _PushReceiver.queue holding materialized Blocks   |
+    |      (no refs at all, no ray.put); errors jump the queue; polls    |
+    |      read the receiver counters                                    |
     |  iteration thread (e.g. Train's ThreadRunner):                     |
     |      PushBasedDataIterator: register(current_actor) ->             |
     |      start_epoch (barrier RPC, all n splits sync) ->               |
-    |      pop queue -> standard DataIterator pipeline                   |
-    |      (prefetch -> resolve/ray.get -> batch -> collate)             |
+    |      pop queue -> _MaterializedBatchIterator: batch -> format/     |
+    |      collate threadpool -> finalize (prefetch/resolve skipped)     |
     |      finally: notify_split_finished(epoch, i) RPC -> coordinator   |
     +--------------------------------------------------------------------+
 
@@ -98,9 +99,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+from ray.data._internal.block_batching.interfaces import ResolvedBlock
+from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.util.debug import log_once
@@ -125,24 +127,22 @@ class _PollResponse:
 
 @dataclass
 class _BlockPush:
-    """Wire format of one pushed block: metadata only, NO ObjectRef.
+    """Wire format of one pushed block: row/byte counters only, NO ObjectRef.
 
     The block itself travels as a resolved top-level ``__ray_call__`` arg
     (by value), so the consumer never becomes a borrower of the executor's
-    block refs; it re-owns the block via ``ray.put`` on arrival.
+    block refs; it buffers the materialized Block directly.
     """
 
-    block_metadata: BlockMetadata
-    schema: Any
     num_rows: int
     size_bytes: int
 
 
 @dataclass
-class _BundleDelivery:
-    """Local queue entry: a consumer-owned single-block bundle + counters."""
+class _BlockDelivery:
+    """Local queue entry: one materialized Block + its counters."""
 
-    bundle: RefBundle
+    block: Block
     num_rows: int
     size_bytes: int
 
@@ -160,7 +160,7 @@ class _ExecutorError:
 # What the pusher sends through the sequenced channel (_receiver_deliver).
 _SequencedItem = Union[_BlockPush, _EndOfEpoch]
 # What can appear on a receiver's queue (_ExecutorError arrives unsequenced).
-_QueueItem = Union[_BundleDelivery, _EndOfEpoch, _ExecutorError]
+_QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError]
 
 
 @ray.remote(num_cpus=0)
@@ -438,8 +438,8 @@ class PushSplitCoordinator:
         """Build (poll, push_block, push_eof, push_error) for a consumer.
 
         Targets any actor via __ray_call__ + the process-local receiver
-        registry; blocks stay as NESTED refs inside a one-block RefBundle,
-        so the consumer's standard prefetch/resolve pipeline handles them.
+        registry; blocks are delivered by value (resolved top-level arg),
+        so the consumer buffers materialized Blocks and holds no refs.
         """
         consumer, key = self._consumers[split_idx]
 
@@ -448,20 +448,20 @@ class PushSplitCoordinator:
                 consumer.__ray_call__.remote(_receiver_poll, key), timeout=30
             )
 
-        def push_block(seq, entry, schema, num_rows, size_bytes):
+        def push_block(seq, entry, num_rows, size_bytes):
             # entry.ref is a TOP-LEVEL arg, so Ray resolves it and delivers
             # the block BY VALUE; no ObjectRef crosses the wire, so the
             # consumer never borrows the executor's refs and the executor
             # can free the block as soon as the delivery task completes.
-            # The consumer re-owns the block via ray.put in
-            # _receiver_deliver and rebuilds a local RefBundle for the
-            # standard DataIterator pipeline.
+            # The consumer buffers the materialized Block directly and its
+            # iterator feeds blocks straight into the batching stages
+            # (prefetch/resolve are skipped; see _MaterializedBatchIterator).
             consumer.__ray_call__.remote(
                 _receiver_deliver,
                 key,
                 epoch_id,
                 seq,
-                _BlockPush(entry.metadata, schema, num_rows, size_bytes),
+                _BlockPush(num_rows, size_bytes),
                 entry.ref,
             )
 
@@ -531,7 +531,7 @@ class PushSplitCoordinator:
                             else 1
                         )
                         size_bytes = entry.metadata.size_bytes or 0
-                        push_block(seq, entry, bundle.schema, num_rows, size_bytes)
+                        push_block(seq, entry, num_rows, size_bytes)
                         seq += 1
                         credit_rows -= num_rows
                         # Single-writer (this thread); see __init__.
@@ -708,25 +708,15 @@ def _receiver_deliver(
     """Deliver one sequenced item (_BlockPush or _EndOfEpoch) in order.
 
     For a _BlockPush, ``block`` is the materialized Block (the pusher passed
-    its ref as a resolved top-level arg — no borrowed refs). It is re-owned
-    locally via ray.put and wrapped into a consumer-owned RefBundle so the
-    standard DataIterator pipeline can consume it; resolve's ray.get is a
-    local, owned hit.
+    its ref as a resolved top-level arg — no borrowed refs, no ray.put). The
+    block is buffered as-is; for Arrow blocks this is a zero-copy view whose
+    buffers pin the local object-store copy while queued.
     """
     receiver = _RECEIVER_REGISTRY.get(key)
     if receiver is None:
         return
     if isinstance(item, _BlockPush):
-        # ray.put outside the lock: it copies the block into the local
-        # object store. A stale-epoch put is dropped below and GC'd.
-        local_bundle = RefBundle(
-            blocks=(BlockEntry(ref=ray.put(block), metadata=item.block_metadata),),
-            owns_blocks=False,
-            schema=item.schema,
-        )
-        queue_item: _QueueItem = _BundleDelivery(
-            local_bundle, item.num_rows, item.size_bytes
-        )
+        queue_item: _QueueItem = _BlockDelivery(block, item.num_rows, item.size_bytes)
     else:
         queue_item = item
     with receiver.lock:
@@ -769,17 +759,38 @@ def _receiver_poll(_actor: Any, key: str) -> _PollResponse:
         )
 
 
+class _MaterializedBatchIterator(BatchIterator):
+    """BatchIterator over already-materialized blocks.
+
+    The input iterator yields ``ResolvedBlock`` (not ``RefBundle``): pushed
+    blocks arrive by value, so the ref-level prefetch and resolve stages are
+    skipped, while batching/shuffle, the format/collate threadpool, order
+    restore, and finalize are inherited from ``BatchIterator`` unchanged.
+    """
+
+    def _pipeline(self, resolved_blocks: Iterator[ResolvedBlock]):
+        # Steps 1-2 (prefetch refs, ray.get) of BatchIterator._pipeline are
+        # intentionally absent.
+        batch_iter = self._blocks_to_batches(resolved_blocks)
+        batch_iter = self._format_batches(batch_iter)
+        if self._preserve_order:
+            batch_iter = self._restore_original_batch_order(batch_iter)
+        batch_iter = self._finalize_batches(batch_iter)
+        yield from batch_iter
+
+
 class PushBasedDataIterator(DataIterator):
     """PROTOTYPE: DataIterator over one split of a push-based streaming split.
 
     Picklable, and can be shipped into ANY Ray actor — e.g. a Ray Train
     worker. At iteration time it registers the hosting actor's own handle
     (``ray.get_runtime_context().current_actor``) with the coordinator, and
-    the coordinator delivers bundles via the actor's built-in
-    ``__ray_call__`` into the process-local receiver registry. Bundles carry
-    NESTED block refs, so the standard DataIterator pipeline
-    (prefetch -> resolve -> batch -> collate, including iter_torch_batches)
-    is reused unchanged.
+    the coordinator delivers blocks BY VALUE via the actor's built-in
+    ``__ray_call__`` into the process-local receiver registry — the consumer
+    holds no ObjectRefs at all. Iteration feeds the materialized blocks into
+    ``_MaterializedBatchIterator`` (batch -> format/collate -> finalize,
+    including iter_torch_batches); the ref-level prefetch/resolve stages are
+    skipped.
     """
 
     @staticmethod
@@ -834,8 +845,11 @@ class PushBasedDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
-        def gen_bundles() -> Iterator[RefBundle]:
+    ) -> Tuple[Iterator[ResolvedBlock], Optional[DatasetStats], None]:
+        # NOTE: deviates from the base contract on purpose — blocks arrive
+        # materialized, so this yields ResolvedBlock instead of RefBundle;
+        # the paired _create_batch_iterator override consumes them.
+        def gen_blocks() -> Iterator[ResolvedBlock]:
             try:
                 self_handle = ray.get_runtime_context().current_actor
                 assert self_handle is not None
@@ -881,11 +895,17 @@ class PushBasedDataIterator(DataIterator):
                     return
                 if isinstance(item, _ExecutorError):
                     raise item.error
-                assert isinstance(item, _BundleDelivery)
+                assert isinstance(item, _BlockDelivery)
                 receiver.record_consumed(item.num_rows, item.size_bytes)
-                yield item.bundle
+                yield ResolvedBlock(block=item.block)
 
-        return gen_bundles(), self._iter_stats, None
+        return gen_blocks(), self._iter_stats, None
+
+    def _create_batch_iterator(self, ref_bundles_iter, **kwargs):
+        # The "ref bundles" iterator actually yields ResolvedBlocks (blocks
+        # arrive materialized); use the pipeline variant that starts at the
+        # batching stage.
+        return _MaterializedBatchIterator(ref_bundles_iter, **kwargs)
 
     def _on_iteration_end(self, executor) -> None:
         """Runs on the consumer thread from _iter_batches' finally.
