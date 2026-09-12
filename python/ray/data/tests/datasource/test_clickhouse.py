@@ -1,10 +1,12 @@
 import os
 import re
+import uuid
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
+from clickhouse_connect.driver.exceptions import DatabaseError
 from clickhouse_connect.driver.summary import QuerySummary
 
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -288,6 +290,73 @@ class TestClickHouseDatasource:
         assert len(read_tasks) == 1
         for i, read_task in enumerate(read_tasks):
             assert read_task.metadata.num_rows == 16
+
+    @pytest.mark.parametrize("failure_stage", ["open", "consume"])
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pa.ArrowInvalid(
+                "Expected to read 1701080899 metadata bytes, but only read 224"
+            ),
+            ConnectionError("Connection reset while reading response"),
+            DatabaseError(
+                "Code: 395. DB::Exception: test failure (FUNCTION_THROW_IF_VALUE_IS_NON_ZERO)"
+            ),
+        ],
+    )
+    def test_execute_block_query_error_context(self, datasource, failure_stage, error):
+        client = MagicMock()
+        datasource._init_client = MagicMock(return_value=client)
+        batch = pa.record_batch([pa.array([1, 2])], names=["field1"])
+
+        def failing_stream():
+            yield batch
+            raise error
+
+        if failure_stage == "open":
+            client.query_arrow_stream.side_effect = error
+        else:
+            client.query_arrow_stream.return_value.__enter__.return_value = (
+                failing_stream()
+            )
+
+        with pytest.raises(RuntimeError) as exc_info:
+            datasource._execute_block_query(datasource._query)
+
+        query_id = client.query_arrow_stream.call_args.kwargs["settings"]["query_id"]
+        assert str(uuid.UUID(query_id)) == query_id
+        assert f"query_id={query_id}" in str(exc_info.value)
+        assert str(error) in str(exc_info.value)
+        assert exc_info.value.__cause__ is error
+        client.query_arrow_stream.assert_called_once_with(
+            datasource._query, settings={"query_id": query_id}
+        )
+        client.query.assert_not_called()
+        client.command.assert_not_called()
+        client.close.assert_called_once()
+        if failure_stage == "consume":
+            client.query_arrow_stream.return_value.__exit__.assert_called_once()
+
+    def test_execute_block_query_uses_distinct_query_ids(self, datasource):
+        client = MagicMock()
+        datasource._init_client = MagicMock(return_value=client)
+        batch = pa.record_batch([pa.array([1, 2])], names=["field1"])
+        client.query_arrow_stream.return_value.__enter__.side_effect = lambda: iter(
+            [batch]
+        )
+
+        # Reusing the same read function (as on retry) must create a fresh ID.
+        read_fn = datasource._create_read_fn(datasource._query)
+        for _ in range(2):
+            assert list(read_fn())[0].equals(pa.Table.from_batches([batch]))
+
+        query_ids = [
+            call.kwargs["settings"]["query_id"]
+            for call in client.query_arrow_stream.call_args_list
+        ]
+        assert len(set(query_ids)) == 2
+        assert datasource._client_settings == {"setting1": "value1"}
+        assert client.close.call_count == 2
 
     def test_execute_block_query_rejects_pickle_object_columns(
         self, datasource, tmp_path
