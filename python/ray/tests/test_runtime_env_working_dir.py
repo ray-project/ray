@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -705,6 +706,120 @@ def test_working_dir_does_not_propagate_driver_paths(start_cluster):
             assert paths == [], paths
         finally:
             ray.shutdown()
+
+
+def _local_uri(path) -> str:
+    """Builds a `local://` URI for a path on this machine, POSIX or Windows."""
+    posix = Path(path).as_posix()
+    return f"local://{posix}" if posix.startswith("/") else f"local:///{posix}"
+
+
+def _expected_cd_prefix(local_dir) -> list:
+    """The command_prefix WorkingDirPlugin emits to enter `local_dir`.
+
+    On POSIX the prefix is joined into one `bash -c` string, so the path is shell
+    quoted. On Windows it is handed to `subprocess.Popen(shell=True)` as a list,
+    which applies its own quoting, so the raw path is expected.
+    """
+    if sys.platform == "win32":
+        return ["cd", "/d", str(local_dir), "&&"]
+    return ["cd", shlex.quote(str(local_dir)), "&&"]
+
+
+class TestLocalWorkingDir:
+    """`local://` working_dirs: already on the node, used in place."""
+
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    def test_used_in_place_without_upload(
+        self, start_cluster, tmp_working_dir, option: str
+    ):
+        """cwd, imports and relative file IO all resolve against the directory."""
+        _, address = start_cluster
+        uri = _local_uri(tmp_working_dir)
+        if option == "working_dir":
+            runtime_env = {"working_dir": uri}
+        else:
+            runtime_env = {"py_modules": [uri]}
+        ray.init(address, runtime_env=runtime_env)
+
+        @ray.remote
+        def get_cwd_and_import():
+            import test_module
+
+            return os.getcwd(), test_module.one()
+
+        cwd, imported = ray.get(get_cwd_and_import.remote())
+        assert imported == 1
+        if option == "working_dir":
+            # working_dir also sets the process cwd, so relative reads work.
+            assert Path(cwd).resolve() == Path(tmp_working_dir).resolve()
+
+            @ray.remote
+            def read_relative_file():
+                with open("hello") as f:
+                    return f.read()
+
+            assert ray.get(read_relative_file.remote()) == "world"
+
+    def test_missing_directory_raises_clear_error(self, start_cluster):
+        _, address = start_cluster
+        ray.init(address, runtime_env={"working_dir": "local:///not/in/the/image"})
+
+        @ray.remote
+        def f():
+            return True
+
+        with pytest.raises(Exception, match="must already exist on every node"):
+            ray.get(f.remote())
+
+    def test_relative_path_rejected_on_the_client(self, start_cluster):
+        _, address = start_cluster
+        with pytest.raises(ValueError, match="the path must be absolute"):
+            ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+
+    @pytest.mark.asyncio
+    async def test_directory_is_never_deleted(self, tmpdir, tmp_working_dir):
+        """Ray must not garbage collect a directory it does not own."""
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(tmp_working_dir)
+
+        # Nothing is fetched, and nothing is charged to the URI cache.
+        assert await plugin.create(uri, {}, RuntimeEnvContext()) == 0
+
+        assert plugin.delete_uri(uri) == 0
+        assert Path(tmp_working_dir).is_dir()
+        assert (Path(tmp_working_dir) / "hello").is_file()
+
+    @pytest.mark.asyncio
+    async def test_modify_context_sets_cwd_and_pythonpath(
+        self, tmpdir, tmp_working_dir
+    ):
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(tmp_working_dir)
+        context = RuntimeEnvContext()
+
+        plugin.modify_context([uri], {"working_dir": uri}, context)
+
+        expected = _expected_cd_prefix(tmp_working_dir)
+        assert context.command_prefix[: len(expected)] == expected
+        assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(
+            tmp_working_dir
+        )
+
+    @pytest.mark.asyncio
+    async def test_modify_context_quotes_whitespace_in_path(self, tmpdir):
+        """The cd runs through a shell, so a path with spaces must be quoted."""
+        local_dir = Path(tmpdir) / "my working dir"
+        local_dir.mkdir()
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(local_dir)
+        context = RuntimeEnvContext()
+
+        plugin.modify_context([uri], {"working_dir": uri}, context)
+
+        expected = _expected_cd_prefix(local_dir)
+        assert context.command_prefix[: len(expected)] == expected
+        assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(local_dir)
 
 
 if __name__ == "__main__":
