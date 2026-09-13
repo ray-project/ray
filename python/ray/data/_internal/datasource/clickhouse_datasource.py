@@ -1,5 +1,6 @@
 import logging
 import math
+import uuid
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
@@ -242,12 +243,20 @@ class ClickHouseDatasource(Datasource):
         import pyarrow as pa
 
         client = self._init_client()
+        # Generate the ID before opening the stream so it is available even when
+        # the client cannot decode the response. Use a new ID for each execution,
+        # including samples and retries, to avoid collisions between queries.
+        query_id = str(uuid.uuid4())
         try:
-            with client.query_arrow_stream(query) as stream:
+            with client.query_arrow_stream(
+                query, settings={"query_id": query_id}
+            ) as stream:
                 record_batches = list(stream)  # Collect all record batches
             table = pa.Table.from_batches(record_batches)
         except Exception as e:
-            raise RuntimeError(f"Failed to execute block query: {e}")
+            raise RuntimeError(
+                f"Failed to execute block query (query_id={query_id}): {e}"
+            ) from e
         finally:
             client.close()
         # Unpickling untrusted data can execute arbitrary code. Reject object
