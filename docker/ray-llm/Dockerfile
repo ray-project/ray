@@ -4,7 +4,8 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
+COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
+    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch ./
 COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
@@ -47,6 +48,7 @@ uv pip install --system --no-cache-dir --no-deps \
 # reloads a torch.compile artifact built for a different physical GPU.
 # TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
+VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -70,6 +72,7 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake

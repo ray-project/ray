@@ -1,0 +1,25 @@
+diff --git a/vllm/v1/engine/input_processor.py b/vllm/v1/engine/input_processor.py
+index 5ea35f4cb..000000000 100644
+--- a/vllm/v1/engine/input_processor.py
++++ b/vllm/v1/engine/input_processor.py
+@@ -361,8 +361,18 @@ def process_inputs(
+                     prompt_token_ids, prompt_embeds
+                 )
+                 sampling_params.max_tokens = self.model_config.max_model_len - seq_len
+
++            generation_config = self.generation_config_fields
++            model_eos_token_ids = self.model_config.hf_config.eos_token_id
++            if (
++                self.model_config.generation_config == "auto"
++                and model_eos_token_ids is not None
++                and "eos_token_id" not in generation_config
++            ):
++                generation_config = generation_config | {
++                    "eos_token_id": model_eos_token_ids
++                }
+             sampling_params.update_from_generation_config(
+-                self.generation_config_fields,
++                generation_config,
+                 self.renderer.get_eos_token_id(),
+             )
+             if self.tokenizer is not None:
