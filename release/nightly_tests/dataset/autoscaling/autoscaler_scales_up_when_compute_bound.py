@@ -57,9 +57,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> Dict[str, Any]:
-    # With 10,000 inputs this takes ~30 minutes, long enough that node
-    # provisioning speed doesn't make the test flaky.
-    num_inputs = 10000
+    # Each consume task moves a 256 MiB batch in and out of the object store, so
+    # in practice 10 GPUs sustain ~3 consume batches/s rather than the 10
+    # batches/s the sleep arithmetic below implies, and both worker groups take
+    # ~11 minutes to reach their max size. With 2,500 inputs (5,000 consume
+    # batches) the run takes ~35 minutes: long enough that node provisioning
+    # speed doesn't make the test flaky, and well inside the 1 hour timeout.
+    num_inputs = 2500
     num_output_batches = 4
     produce_sleep_s = 5
     consume_sleep_s = 1
