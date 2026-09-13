@@ -1415,6 +1415,29 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             ]
         )
 
+    def _to_dense_numpy_or_none(self) -> Optional[np.ndarray]:
+        """A single ``(num_rows, *shape)`` view, when the rows permit one.
+
+        :meth:`to_numpy` returns one view per row, which a caller that wants a
+        dense array has to stack, copying the whole payload. Rows that all have
+        the same shape are already laid out back to back, so one view covers
+        them all and no copy is needed.
+
+        Returns ``None`` when no single view can describe the rows, leaving the
+        caller to fall back to :meth:`to_numpy`. This is deliberately not folded
+        into :meth:`to_numpy`, which is documented to return one ndarray per
+        row: a one-row slice of a ragged column would otherwise start returning
+        a dense array.
+        """
+        if self.null_count > 0:
+            return None
+
+        return _to_dense_ndarray_or_none(
+            self.storage.field("shape"),
+            self.storage.field("data"),
+            self.type.ndim,
+        )
+
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
         if ndim == self.type.ndim:
             return self
@@ -1712,6 +1735,62 @@ def _get_root_base(a: np.ndarray) -> np.ndarray:
 def _get_buffer_address(arr: np.ndarray) -> int:
     """Get the address of the buffer underlying the provided NumPy ndarray."""
     return arr.__array_interface__["data"][0]
+
+
+def _to_dense_ndarray_or_none(
+    shapes_array: pa.Array,
+    data_array: pa.Array,
+    ndim: int,
+) -> Optional[np.ndarray]:
+    """One ``(num_rows, *shape)`` view over uniformly shaped, adjacent rows.
+
+    Returns ``None`` when no single view can describe the rows, and the caller
+    should fall back to one view per row. That happens when the rows are
+    genuinely ragged, when one of them is null and so has no shape, or when they
+    are not adjacent in the buffer, which a view cannot express.
+
+    Every check reads the offset and shape buffers as ndarrays rather than
+    converting them to Python lists. A ragged column pays this probe and then
+    falls back, so the probe has to stay cheap next to the conversion it is
+    trying to avoid.
+    """
+    num_rows = len(shapes_array)
+    if num_rows == 0 or shapes_array.null_count > 0 or data_array.null_count > 0:
+        return None
+
+    # `offsets` is absolute into the child array, which slicing leaves whole, so
+    # a sliced column indexes into the same buffers as an unsliced one.
+    shape_offsets = np.asarray(shapes_array.offsets)
+    flat_shapes = np.asarray(shapes_array.values)[shape_offsets[0] : shape_offsets[-1]]
+    if flat_shapes.size != num_rows * ndim:
+        return None
+
+    shapes = flat_shapes.reshape(num_rows, ndim)
+    if (shapes != shapes[0]).any():
+        return None
+
+    shape = tuple(int(extent) for extent in shapes[0])
+    num_items_per_row = int(np.prod(shape)) if shape else 1
+    if num_items_per_row == 0:
+        # Nothing to point at, and an empty column is not worth a second path.
+        return None
+
+    data_offsets = np.asarray(data_array.offsets)
+    if data_offsets.size != num_rows + 1:
+        return None
+    if (np.diff(data_offsets) != num_items_per_row).any():
+        return None
+
+    data_buffer = data_array.buffers()[3]
+    if data_buffer is None:
+        return None
+
+    return _to_ndarray_helper(
+        (num_rows, *shape),
+        data_array.type.value_type,
+        int(data_offsets[0]),
+        data_buffer,
+    )
 
 
 def _to_ndarray_helper(shape, value_type, offset, data_buffer):
