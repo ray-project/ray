@@ -144,7 +144,7 @@ def test_enable_ray_data_reconstruction_is_read_only(shutdown_only):
     context = DataContext()
 
     with pytest.raises(AttributeError):
-        context.enable_ray_data_reconstruction = False
+        context.enable_ray_data_reconstruction = False  # pyrefly: ignore[read-only]
 
     assert context.enable_ray_data_reconstruction is True
 
