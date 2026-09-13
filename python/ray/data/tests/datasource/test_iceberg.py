@@ -16,9 +16,9 @@ from pyiceberg import (
 )
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.manifest import FileFormat
+from pyiceberg.manifest import DataFile, DataFileContent, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
-from pyiceberg.table import Table
+from pyiceberg.table import FileScanTask, Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -368,6 +368,125 @@ def test_get_read_task_normalizes_batch_schemas(monkeypatch):
         {"string": ["a"], "list": [["b"]]},
         {"string": ["c"], "list": [["d"]]},
     ]
+
+
+class _CountingInputFile:
+    """Records every open, so a test can count what reaches storage."""
+
+    def __init__(self, inner, location, opened):
+        self._inner = inner
+        self._location = location
+        self._opened = opened
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def open(self, *args, **kwargs):
+        self._opened.append(self._location)
+        return self._inner.open(*args, **kwargs)
+
+
+class _CountingFileIO:
+    def __init__(self, inner, opened):
+        self._inner = inner
+        self._opened = opened
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def new_input(self, location):
+        return _CountingInputFile(
+            self._inner.new_input(location), location, self._opened
+        )
+
+
+def _shared_positional_delete_file(data_files: List["DataFile"]) -> "DataFile":
+    """Write one delete file that deletes row 0 of every given data file.
+
+    That is the shape a Spark or Flink merge-on-read commit produces when a single
+    commit touches many data files.
+
+    Args:
+        data_files: The data files the delete file should cover.
+
+    Returns:
+        The delete file, as a ``DataFile`` a ``FileScanTask`` can reference.
+    """
+    import pyarrow.parquet as pq
+
+    delete_path = (
+        f"{_WAREHOUSE_PATH}/{_DB_NAME}/{_TABLE_NAME}/data/shared-delete.parquet"
+    )
+    pq.write_table(
+        pa.table(
+            {
+                "file_path": pa.array([f.file_path for f in data_files]),
+                "pos": pa.array([0] * len(data_files), pa.int64()),
+            }
+        ),
+        delete_path,
+    )
+    return DataFile.from_args(
+        content=DataFileContent.POSITION_DELETES,
+        file_path=f"file://{delete_path}",
+        file_format=FileFormat.PARQUET,
+        partition={},
+        record_count=len(data_files),
+        file_size_in_bytes=os.path.getsize(delete_path),
+    )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.parametrize(
+    "cache_max_bytes,expected_delete_opens", [(0, 10), (1 << 26, 1)]
+)
+def test_get_read_task_fetches_a_shared_delete_file_once(
+    cache_max_bytes, expected_delete_opens
+):
+    """A delete file several data files share must not be fetched once per data file.
+
+    PyIceberg deduplicates delete files only within the tasks handed to one scan call,
+    and the read task hands it one data file at a time to bound memory, so without a
+    cache the same delete file is fetched once per data file.
+    """
+    table = SqlCatalog(
+        _CATALOG_NAME,
+        **{k: v for k, v in _CATALOG_KWARGS.items() if k not in ("name", "type")},
+    ).load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    data_files = [task.file for task in table.scan().plan_files()]
+    rows_before = len(table.scan().to_arrow())
+    delete_file = _shared_positional_delete_file(data_files)
+    tasks = [
+        FileScanTask(data_file, delete_files={delete_file}) for data_file in data_files
+    ]
+
+    opened = []
+    rows = sum(
+        len(block)
+        for block in _get_read_task(
+            tasks=tasks,
+            table_io=_CountingFileIO(table.io, opened),
+            table_metadata=table.metadata,
+            row_filter=pyi_expr.AlwaysTrue(),
+            case_sensitive=True,
+            limit=None,
+            schema=table.schema(),
+            delete_file_cache_max_bytes=cache_max_bytes,
+        )
+    )
+
+    delete_opens = [location for location in opened if "shared-delete" in location]
+    data_opens = [location for location in opened if "shared-delete" not in location]
+    assert len(data_files) == 10
+    assert len(delete_opens) == expected_delete_opens
+    # The data files are still read one at a time, exactly as before.
+    assert len(data_opens) == len(data_files)
+    # One row per data file is deleted, whether or not the delete file was cached.
+    assert rows == rows_before - len(data_files)
 
 
 @pytest.mark.parametrize(

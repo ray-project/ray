@@ -2,9 +2,11 @@
 Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API.
 """
 
+import collections
 import heapq
 import itertools
 import logging
+import threading
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
@@ -81,7 +83,7 @@ except ImportError:
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
-    from pyiceberg.io import FileIO
+    from pyiceberg.io import FileIO, InputFile
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
     from pyiceberg.table import DataScan, FileScanTask, Table
@@ -161,6 +163,132 @@ def _estimate_inmemory_file_size(
     return int(on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
 
 
+class _DeleteFileCache:
+    """Bytes of the delete files that several data files in one read task share.
+
+    A delete file is read once per data file that references it, because PyIceberg
+    deduplicates delete files only within the tasks handed to a single scan call and Ray
+    hands it one data file at a time to bound memory. Caching the bytes makes the fetch
+    happen once without changing how the data files are scanned. An entry is dropped once
+    every reference to it has been served, and files are only cached while the total stays
+    within ``max_bytes``.
+    """
+
+    def __init__(self, references: Dict[str, int], max_bytes: int):
+        self._remaining = dict(references)
+        self._max_bytes = max_bytes
+        self._entries: Dict[str, bytes] = {}
+        self._cached_bytes = 0
+        self._lock = threading.Lock()
+
+    def caches(self, location: str) -> bool:
+        return location in self._remaining
+
+    def read(self, location: str, input_file: "InputFile") -> bytes:
+        """Return the file's bytes, from the cache when they are already there.
+
+        Args:
+            location: The file's location, as ``new_input`` was called with.
+            input_file: The underlying input file to read on a miss.
+
+        Returns:
+            The whole content of the file.
+        """
+        with self._lock:
+            payload = self._entries.get(location)
+        if payload is None:
+            with input_file.open() as stream:
+                payload = stream.read()
+
+        with self._lock:
+            # ``_remaining`` counts (task, delete file) pairs, which is exact when each
+            # scan call gets one task and an over-estimate when a call gets several, so
+            # an entry is never dropped while a reference to it is still outstanding.
+            remaining = self._remaining.get(location, 0) - 1
+            self._remaining[location] = remaining
+            if remaining <= 0:
+                self._cached_bytes -= len(self._entries.pop(location, b""))
+            elif (
+                location not in self._entries
+                and self._cached_bytes + len(payload) <= self._max_bytes
+            ):
+                self._entries[location] = payload
+                self._cached_bytes += len(payload)
+        return payload
+
+
+class _CachedInputFile:
+    """``InputFile`` that serves its content through a :class:`_DeleteFileCache`."""
+
+    def __init__(self, inner: "InputFile", cache: _DeleteFileCache, location: str):
+        self._inner = inner
+        self._cache = cache
+        self._location = location
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def open(self, *args, **kwargs) -> pa.BufferReader:
+        return pa.BufferReader(self._cache.read(self._location, self._inner))
+
+
+class _DeleteCachingFileIO:
+    """``FileIO`` that reads the shared delete files of one read task through a cache.
+
+    Everything else is delegated untouched, so data files are read exactly as before.
+    """
+
+    def __init__(self, inner: "FileIO", cache: _DeleteFileCache):
+        self._inner = inner
+        self._cache = cache
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def new_input(self, location: str) -> "InputFile":
+        inner = self._inner.new_input(location)
+        if self._cache.caches(location):
+            return _CachedInputFile(inner, self._cache, location)
+        return inner
+
+
+def _cache_shared_delete_files(
+    tasks: List["FileScanTask"],
+    table_io: "FileIO",
+    max_bytes: int,
+) -> "FileIO":
+    """Read the delete files that several of ``tasks`` reference through a cache.
+
+    Args:
+        tasks: The data files this read task will scan, with their delete files.
+        table_io: The table's ``FileIO``.
+        max_bytes: Memory the cache may use; ``0`` disables it.
+
+    Returns:
+        ``table_io`` itself when there is nothing to share, otherwise a ``FileIO`` that
+        serves those delete files from a cache.
+    """
+    if max_bytes <= 0:
+        return table_io
+
+    references = collections.Counter(
+        delete_file.file_path for task in tasks for delete_file in task.delete_files
+    )
+    # A delete file only referenced once is read once either way. Counting by path rather
+    # than by ``DataFile`` also covers deletion vectors, where each data file gets its own
+    # ``DataFile`` entry pointing into one shared Puffin file.
+    shared = {path: count for path, count in references.items() if count > 1}
+    if not shared:
+        return table_io
+
+    logger.debug(
+        "[iceberg read] caching %d delete file(s) shared by %d data file(s)",
+        len(shared),
+        len(tasks),
+    )
+    return _DeleteCachingFileIO(table_io, _DeleteFileCache(shared, max_bytes))
+
+
 @dataclass(frozen=True)
 class _IcebergReadTaskSharedState:
     table_io: "FileIO"
@@ -171,6 +299,7 @@ class _IcebergReadTaskSharedState:
     schema: "Schema"
     empty_projection: bool
     read_file_tasks_sequentially: bool
+    delete_file_cache_max_bytes: int
 
 
 def _resolve_shared_read_state(
@@ -306,9 +435,13 @@ def _get_read_task(
     schema: "Schema",
     empty_projection: bool = False,
     read_file_tasks_sequentially: bool = True,
+    delete_file_cache_max_bytes: int = 0,
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
+
+    tasks = list(tasks)
+    table_io = _cache_shared_delete_files(tasks, table_io, delete_file_cache_max_bytes)
 
     def _generate_tables() -> Iterable[pa.Table]:
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
@@ -395,6 +528,7 @@ def _get_read_task_from_shared_state(
         schema=state.schema,
         empty_projection=state.empty_projection,
         read_file_tasks_sequentially=state.read_file_tasks_sequentially,
+        delete_file_cache_max_bytes=state.delete_file_cache_max_bytes,
     )
 
 
@@ -683,6 +817,9 @@ class IcebergDatasource(Datasource):
                 empty_projection=empty_projection,
                 read_file_tasks_sequentially=(
                     data_context.iceberg_config.read_file_tasks_sequentially
+                ),
+                delete_file_cache_max_bytes=(
+                    data_context.iceberg_config.read_delete_file_cache_max_bytes
                 ),
             )
         )

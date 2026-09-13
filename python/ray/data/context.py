@@ -248,6 +248,10 @@ DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S = env_integer(
     "RAY_DATA_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S", 32
 )
 
+DEFAULT_ICEBERG_READ_DELETE_CACHE_MAX_BYTES = env_integer(
+    "RAY_DATA_ICEBERG_READ_DELETE_CACHE_MAX_BYTES", 64 * 1024 * 1024
+)
+
 DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS = env_integer(
     "RAY_DATA_ICEBERG_CATALOG_MAX_ATTEMPTS", 5
 )
@@ -429,6 +433,10 @@ class IcebergConfig:
             one at a time. Defaults to ``True`` to limit memory use. Set to
             ``False`` for higher throughput when a task has many small files and
             their combined input comfortably fits in memory.
+        read_delete_file_cache_max_bytes: Memory a read task may spend caching the
+            bytes of delete files that several of its data files share, so that such
+            a file is fetched once instead of once per data file. Defaults to 64MiB.
+            Set to ``0`` to disable the cache.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
@@ -439,6 +447,7 @@ class IcebergConfig:
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
     read_file_tasks_sequentially: bool = True
+    read_delete_file_cache_max_bytes: int = DEFAULT_ICEBERG_READ_DELETE_CACHE_MAX_BYTES
 
 
 @DeveloperAPI
