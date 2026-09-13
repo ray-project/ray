@@ -1,4 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://wheels.astral.sh/simple/cu128/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cu128.html
 
 about-time==4.2.1 \
@@ -5646,7 +5647,6 @@ scipy==1.14.1 \
     #   scikit-learn
     #   statsforecast
     #   statsmodels
-    #   torch-cluster
     #   torch-geometric
     #   torch-sparse
 send2trash==2.1.0 \
@@ -6139,13 +6139,9 @@ torch==2.9.0+cu128 \
     #   s3torchconnector
     #   timm
     #   torch-optimizer
+    #   torch-scatter
     #   torchmetrics
     #   torchvision
-torch-cluster==1.6.3+pt29cu128 \
-    --hash=sha256:53d269f1fd489709ad047b6fe253fefe3299616c61888047c7365baab83cf620
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-gpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
@@ -6158,18 +6154,22 @@ torch-optimizer==0.1.0 ; python_full_version < '3.12' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mosaicml
-torch-scatter==2.1.2+pt29cu128 \
-    --hash=sha256:7c6d1c2fa5c950593f83f38a6f880a0de70329af39c4d7aa8e51ed80b35f744f
+torch-scatter==2.1.2+cu.12.8.torch.2.9 \
+    --hash=sha256:35385c774a1792d719608f132c3d50e941aaa3a697dcec72fe54a715d6f6023c \
+    --hash=sha256:57bc485d4d911ad1c88606cf3e6b246ef8d49a448dfc6f03d8e2d19e9be82242 \
+    --hash=sha256:6893a3b00bd6b13e154edb251edd647f00846ca177c53fcc73e3d49c50e76994 \
+    --hash=sha256:97c513c5fb211ff784e7628666c8da648e0605389f4a8c5c8fac84cf06ea9ca2 \
+    --hash=sha256:97cad80ca9d2639988c57003425f92e01d4f9bda522809d0fd38629a1ce3e7fc \
+    --hash=sha256:a3887cef3f3012dc6e3da88116af3bcabbcaaf70c807085659dd3a8bd74ed503 \
+    --hash=sha256:bbc9402c01238cc5671a0b3ff9f055e983e6d2390ff3b56130a715daf5719f55 \
+    --hash=sha256:c835645d889838a09ca4db931783c9260fb5773c3aa569760aae5b887789ddea \
+    --hash=sha256:d60df986a621bd3691e885e814391f38f771de72188a28d930955ff59a78ce83 \
+    --hash=sha256:e6388f4e267cea521d04d10040fdb91fc49e47b0e1489f76764e26aecbcf7c48
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
 torch-sparse==0.6.18+pt29cu128 \
     --hash=sha256:af0a0ea9a902f868e0d40165e331291063f1ead5a0e07565b9d8f3ebe19f3f9b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-gpu-requirements.txt
-torch-spline-conv==1.2.2+pt29cu128 \
-    --hash=sha256:3cd22a139a7f35c57d7297f19a47ca233caf2e86d22d92d2d1a2ee2dd0ccb6b6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
