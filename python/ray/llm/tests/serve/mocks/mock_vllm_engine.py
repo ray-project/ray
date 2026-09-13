@@ -257,6 +257,14 @@ class MockVLLMEngine(LLMEngine):
             check_model(body.model)
             return await to_response(self.completions(body))
 
+        # vLLM's build_app mounts the responses router whenever "generate" is a
+        # supported task, so direct streaming reaches it without the ingress.
+        @app.post("/v1/responses")
+        async def responses(request: Request):
+            body = ResponsesRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.responses(body))
+
         # Real vLLM's build_app returns an app whose middleware stack is already
         # built, which makes Starlette reject add_middleware. Mirror that so tests
         # exercise the same app shape LLMServer sees in reality.
