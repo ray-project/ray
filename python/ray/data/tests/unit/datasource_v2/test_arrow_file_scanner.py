@@ -1,4 +1,4 @@
-"""Unit tests for :meth:`ArrowFileScanner.prune_manifest`."""
+"""Unit tests for :meth:`ArrowFileScanner.prune_input_split`."""
 import pyarrow as pa
 import pytest
 
@@ -13,7 +13,7 @@ from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
-def test_prune_manifest_matching_no_file():
+def test_prune_input_split_matching_no_file():
     """Pruning away every file is an ordinary outcome, not an error."""
     manifest = FileManifest(
         pa.table(
@@ -30,7 +30,7 @@ def test_prune_manifest_matching_no_file():
         partition_predicate=col("year") == "2029",
     )
 
-    assert len(scanner.prune_manifest(manifest)) == 0
+    assert len(scanner.prune_input_split(manifest)) == 0
 
 
 if __name__ == "__main__":

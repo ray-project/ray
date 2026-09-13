@@ -156,7 +156,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List["FilePruner"]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,

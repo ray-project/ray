@@ -201,41 +201,39 @@ class ArrowFileScanner(
     @override
     def pushed_partition_pruner(self) -> Optional["FilePruner"]:
         if self.partition_predicate is None or self.partitioning is None:
-            # No spec, no partition values -- same guard as ``prune_manifest``.
+            # No spec, no partition values -- same guard as ``prune_input_split``.
             return None
         return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
 
     @override
-    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Filter manifest to only files matching ``self.partition_predicate``.
+    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
+        """Keep only the files matching ``self.partition_predicate``.
 
-        Called by :func:`plan_read_files_op.do_read` for every incoming
-        manifest block. No-op when either the predicate or the
-        partitioning spec is absent. Uses
-        :class:`PathPartitionParser` to parse partition values from
-        each file path and evaluate the predicate.
+        No-op when either the predicate or the partitioning spec is absent.
+        Partition values are parsed out of each file path by
+        :class:`PathPartitionParser`.
         """
         if self.partition_predicate is None or self.partitioning is None:
-            return manifest
+            return input_split
 
         parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 
-        for i, path in enumerate(manifest.paths):
+        for i, path in enumerate(input_split.paths):
             if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
                 keep_indices.append(i)
 
-        if len(keep_indices) == len(manifest):
-            return manifest
+        if len(keep_indices) == len(input_split):
+            return input_split
 
-        pruned_count = len(manifest) - len(keep_indices)
+        pruned_count = len(input_split) - len(keep_indices)
         logger.debug(
             "Partition pruning removed %d of %d files",
             pruned_count,
-            len(manifest),
+            len(input_split),
         )
 
-        block = manifest.as_block()
+        block = input_split.as_block()
         # An untyped empty list infers null indices: ArrowNotImplementedError.
         pruned_block = block.take(pa.array(keep_indices, type=pa.int64()))
         return FileManifest(pruned_block)

@@ -21,7 +21,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    List,
+    Literal,
     Optional,
+    Union,
 )
 
 import pyarrow as pa
@@ -40,6 +43,7 @@ if TYPE_CHECKING:
         InMemorySizeEstimator,
     )
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 @DeveloperAPI
@@ -67,19 +71,20 @@ class DatasourceCategory(Enum):
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
-    DataSourceV2 is the entry point for reading data from a source. It provides:
-    1. File listing (for file-based sources) - via _get_file_indexer()
-    2. Schema inference
-    3. Size estimation
-    4. Scanner creation
+    The framework touches a datasource in exactly one place,
+    ``ray.data.read_api._read_datasource_v2``, which builds the
+    ``ListFiles -> ReadFiles`` plan and then drops it. Every attribute that
+    function reads is declared here, so implementing the abstract members is
+    enough to work end to end.
 
-    Subclasses should implement the abstract methods and can optionally
-    override _get_file_indexer(), get_size_estimator(), and optionally
-    get_file_partitioner() for file-based sources.
+    That function always builds a ``ListFiles`` op, which is why ``paths``,
+    ``filesystem`` and ``_get_file_indexer`` live here. A future non-file
+    source (a database scan, say) moves them into a ``FileDataSourceV2``
+    subclass.
 
     Example::
 
-        datasource = ParquetDatasourceV2()
+        datasource = ParquetDatasourceV2(paths)
         indexer = datasource._get_file_indexer()
         # List files with optional sampling
         for manifest in indexer.list_files(paths, filesystem=fs):
@@ -130,15 +135,58 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         return self._supports_distributed_reads
 
-    def _get_file_indexer(self) -> Optional[FileIndexer]:
-        """Return FileIndexer component if applicable.
+    @property
+    @abstractmethod
+    def paths(self) -> List[str]:
+        """Listing inputs, one ``ListFiles`` task each, passed to the indexer
+        unread -- the framework never interprets them.
 
-        Override this for file-based datasources to provide file discovery.
+        File sources return the roots to walk. A catalog- or engine-backed
+        source, whose indexer already knows what to read, returns a single
+        identifier label. Must be non-empty, or ``ListFiles`` schedules no task
+        and the read is silently empty.
+        """
+        ...
 
-        Returns:
-            FileIndexer instance, or None for non-file-based sources.
+    @property
+    @abstractmethod
+    def filesystem(self) -> Optional["FileSystem"]:
+        """PyArrow filesystem the indexer and scanner read through, or ``None``
+        when they do their own IO.
+
+        The framework only forwards it and never dereferences it, so whether
+        ``None`` is acceptable is up to the components this datasource returns.
+        The stock indexers require one -- resolve it in ``__init__``, see
+        ``_resolve_paths_and_filesystem``. A source read through its own library
+        (PyIceberg, Lance, hudi-rs) returns ``None``.
+        """
+        ...
+
+    @property
+    def file_extensions(self) -> Optional[List[str]]:
+        """File extensions to keep while listing; ``None`` keeps every file."""
+        return None
+
+    @property
+    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
+        """File-level shuffle the user asked for; ``None`` means no shuffle.
+
+        ``"files"`` shuffles with a seed drawn per execution; a
+        :class:`FileShuffleConfig` pins the seed.
         """
         return None
+
+    @abstractmethod
+    def _get_file_indexer(self) -> FileIndexer:
+        """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
+        ``FileManifest`` blocks.
+
+        Abstract rather than defaulted, because a default would commit a new
+        format to whole-file chunking without anyone choosing it. Formats
+        without usable file metadata return ``NonSamplingFileIndexer``; Parquet
+        returns ``FooterFileIndexer``.
+        """
+        ...
 
     def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
         """Partitioner that groups this source's listing rows into read units.
