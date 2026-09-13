@@ -14,6 +14,9 @@
 
 #include "ray/util/logging.h"
 
+#include <signal.h>
+
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -378,5 +381,64 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
+
+#ifndef _WIN32
+// Never raised; installed only so its address is observable as a signal disposition.
+void ObservableSignalHandler(int /*signum*/) {}
+
+constexpr std::array<int, 3> kSignalsUnderTest = {SIGTERM, SIGBUS, SIGTRAP};
+
+struct sigaction GetSignalAction(int signum) {
+  struct sigaction current {};
+  EXPECT_EQ(sigaction(signum, /*act=*/nullptr, &current), 0);
+  return current;
+}
+
+void SetSignalHandler(int signum, void (*handler)(int)) {
+  struct sigaction action {};
+  sigemptyset(&action.sa_mask);
+  action.sa_handler = handler;
+  ASSERT_EQ(sigaction(signum, &action, /*oldact=*/nullptr), 0);
+}
+
+// Ray installs first, so the disposition it has to restore is the default one.
+TEST(PrintLogTest, TestUninstallSignalActionRestoresDefault) {
+  ray::RayLog::UninstallSignalAction();
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, SIG_DFL);
+  }
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_NE(GetSignalAction(signal).sa_handler, SIG_DFL);
+  }
+
+  ray::RayLog::UninstallSignalAction();
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_EQ(GetSignalAction(signal).sa_handler, SIG_DFL);
+  }
+}
+
+TEST(PrintLogTest, TestUninstallSignalActionRestoresPreexistingHandler) {
+  ray::RayLog::UninstallSignalAction();
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, ObservableSignalHandler);
+  }
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_NE(GetSignalAction(signal).sa_handler, &ObservableSignalHandler);
+  }
+
+  ray::RayLog::UninstallSignalAction();
+  for (const int signal : kSignalsUnderTest) {
+    EXPECT_EQ(GetSignalAction(signal).sa_handler, &ObservableSignalHandler);
+  }
+
+  for (const int signal : kSignalsUnderTest) {
+    SetSignalHandler(signal, SIG_DFL);
+  }
+}
+#endif
 
 }  // namespace ray
