@@ -70,10 +70,8 @@ def test_sort_sampling_starts_with_upstream_and_forwards_original_inputs(
     op.start(ExecutionOptions(), noop_counter())
 
     assert not op.supports_fusion()
-    assert op.throttling_disabled()
+    assert not op.throttling_disabled()
     op.add_input(bundles[0], 0)
-    # Sampling pipelines with upstream execution instead of waiting for all
-    # input blocks to arrive.
     assert len(op.get_active_tasks()) == 1
     assert op.boundaries is None
     assert not op.has_next()
@@ -97,7 +95,6 @@ def test_sort_sampling_starts_with_upstream_and_forwards_original_inputs(
     run_op_tasks_sync(op)
 
     assert op.boundaries is not None
-    assert not op.throttling_disabled()
     assert len(op.boundaries) == 1
     assert op.internal_input_queue_num_blocks() == 0
     assert op.internal_input_queue_num_bytes() == 0

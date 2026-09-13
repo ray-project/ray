@@ -31,6 +31,10 @@ from ray.types import ObjectRef
 # separately if large block counts make the total sample set too expensive.
 SORT_SAMPLE_ROWS_PER_BLOCK = 20
 
+# Each sampling task reads a handful of rows from one block, so a single CPU is
+# enough; this also drives the per-task budget the resource allocator applies.
+SORT_SAMPLE_TASK_NUM_CPUS = 1.0
+
 
 class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
     """Sample every input block and forward it after boundaries are available.
@@ -106,7 +110,7 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         task_idx = self._next_sample_task_idx
         self._next_sample_task_idx += 1
-        resources = ExecutionResources(cpu=1)
+        resources = ExecutionResources(cpu=SORT_SAMPLE_TASK_NUM_CPUS)
         sample_ref = sample_block.remote(
             block_ref,
             SORT_SAMPLE_ROWS_PER_BLOCK,
@@ -178,18 +182,11 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
     def num_output_rows_total(self) -> Optional[int]:
         return self.input_dependencies[0].num_output_rows_total()
 
-    def throttling_disabled(self) -> bool:
-        # Until boundaries are available, this operator is a materialization
-        # barrier that must consume every upstream block. Throttling it based on
-        # retained object-store memory could prevent the remaining blocks from
-        # arriving, so match the legacy blocking all-to-all behavior here.
-        return self._boundaries is None
-
     def current_logical_usage(self) -> ExecutionResources:
         return self._sample_resource_usage
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(cpu=1)
+        return ExecutionResources(cpu=SORT_SAMPLE_TASK_NUM_CPUS)
 
     def progress_str(self) -> str:
         completed = self._next_sample_task_idx - len(self._sample_tasks)

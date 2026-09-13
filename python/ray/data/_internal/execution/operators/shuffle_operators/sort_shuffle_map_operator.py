@@ -35,27 +35,24 @@ class SortShuffleMapOp(ShuffleMapOp):
             raise ValueError("num_partitions must be positive")
 
         self._sort_key = sort_key
-        self._boundaries = self._user_boundaries(sort_key)
-        if self._boundaries is None and not isinstance(input_op, SortSamplingOp):
+        self._boundaries: Optional[List] = None
+        user_boundaries = self._user_boundaries(sort_key)
+        if user_boundaries is None and not isinstance(input_op, SortSamplingOp):
             raise ValueError(
                 "SortShuffleMapOp requires either user-provided boundaries "
                 "or a SortSamplingOp"
             )
-
-        partition_fn = (
-            make_range_partition_fn(self._boundaries, sort_key, data_context)
-            if self._boundaries is not None
-            else self._uninitialized_partition_fn
-        )
         super().__init__(
             input_op,
             data_context,
             num_partitions=num_partitions,
-            partition_fn=partition_fn,
+            partition_fn=self._uninitialized_partition_fn,
             map_runtime_env=map_runtime_env,
             map_cpus=map_cpus,
             name=name,
         )
+        if user_boundaries is not None:
+            self._set_boundaries(user_boundaries)
 
     @staticmethod
     def _user_boundaries(sort_key: SortKey) -> Optional[List]:
@@ -90,6 +87,9 @@ class SortShuffleMapOp(ShuffleMapOp):
             raise RuntimeError(
                 "SortSamplingOp forwarded input before range boundaries were ready"
             )
+        self._set_boundaries(boundaries)
+
+    def _set_boundaries(self, boundaries: List) -> None:
         self._boundaries = boundaries
         self._partition_fn = make_range_partition_fn(
             boundaries,
