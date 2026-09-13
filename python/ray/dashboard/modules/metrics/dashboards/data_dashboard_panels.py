@@ -103,6 +103,21 @@ GPU_USAGE_PANEL = Panel(
     stack=False,
 )
 
+MEMORY_USAGE_PANEL = Panel(
+    id=92,
+    title="Logical Slots Being Used (Memory)",
+    description="Current amount of logical heap memory in bytes allocated to running tasks per dataset operator. This tracks logical resource allocation, not actual physical memory usage.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_memory_usage_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Memory Usage: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
     id=7,
     title="Bytes Output / Second",
@@ -1510,6 +1525,7 @@ DATA_GRAFANA_ROWS = [
         panels=[
             CPU_USAGE_PANEL,
             GPU_USAGE_PANEL,
+            MEMORY_USAGE_PANEL,
             CPU_BUDGET_PANEL,
             GPU_BUDGET_PANEL,
             MEMORY_BUDGET_PANEL,
