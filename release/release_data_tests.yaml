@@ -42,8 +42,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-        # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
+        # Use a 256 MiB bin-packing target for the network diagnostic.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=268435456
     anyscale_sdk_2026: true
     cluster_compute: read_benchmark_compute.yaml
 
