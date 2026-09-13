@@ -1357,6 +1357,58 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     assert actor_pool_map_op.has_completed()
 
 
+def test_dead_actor_released_and_replaced_e2e(shutdown_only, restore_data_context):
+    """A dead actor must be released from the pool and replaced (#62746).
+
+    With a fixed-size pool and `max_errored_blocks = -1`, an actor that dies
+    mid-pipeline (e.g. `sys.exit(0)` inside the UDF) used to stay in
+    `_running_actors` forever: the pool's size never dropped, the autoscaler
+    never created a replacement, and the pipeline silently hung.
+    """
+    import sys as _sys
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = -1
+
+    @ray.remote(num_cpus=0)
+    class DeathFlag:
+        def __init__(self):
+            self._died = False
+
+        def should_die(self) -> bool:
+            died, self._died = self._died, True
+            return not died
+
+    flag = DeathFlag.remote()
+
+    class DiesOnce:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter == 3 and ray.get(flag.should_die.remote()):
+                _sys.exit(0)
+            return batch
+
+    ds = (
+        ray.data.range(20, override_num_blocks=20)
+        .map_batches(
+            DiesOnce,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+        )
+        .materialize()
+    )
+
+    # The pipeline completes (instead of hanging), with only the blocks that
+    # were in flight on the dead actor dropped.
+    assert ds.count() > 0
+
+
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
