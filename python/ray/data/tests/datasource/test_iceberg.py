@@ -2116,6 +2116,87 @@ class TestUpsertScanMerge:
         )
         assert rows_same(result, expected)
 
+    def test_upsert_write_tasks_do_not_ship_keys_to_the_driver(
+        self, clean_table, monkeypatch
+    ):
+        """Write tasks must hand the driver key bounds, not the keys themselves.
+
+        Returning the key columns of every written row makes driver memory grow with
+        the size of the upsert; the driver only needs the per-column min/max to build
+        the coarse range filter.
+        """
+        from ray.data import SaveMode
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2, 3], "col_b": ["s1", "s2", "s3"], "col_c": [1, 1, 1]}
+            )
+        )
+
+        captured = []
+        original_on_write_complete = IcebergDatasink.on_write_complete
+
+        def _capturing(self, write_result):
+            captured.extend(r for r in write_result.write_returns if r)
+            return original_on_write_complete(self, write_result)
+
+        monkeypatch.setattr(IcebergDatasink, "on_write_complete", _capturing)
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, 4], "col_b": ["u2", "u4"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        assert captured, "no write results reached the driver"
+        with_keys = [r for r in captured if getattr(r, "upsert_keys", None) is not None]
+        assert not with_keys, (
+            "write tasks returned upsert key tables to the driver "
+            f"({[len(r.upsert_keys) for r in with_keys]} rows); the driver only needs "
+            "the per-column bounds"
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["s1", "u2", "s3", "u4"],
+                "col_c": [1, 1, 1, 1],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_row_with_null_join_key_is_inserted(self, clean_table):
+        """A NULL join key matches nothing (NULL != NULL), so the row is inserted."""
+        from ray.data import SaveMode
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2], "col_b": ["s1", "s2"], "col_c": [1, 1]}
+            )
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, None], "col_b": ["u2", "u_null"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, None],
+                "col_b": ["s1", "u2", "u_null"],
+                "col_c": [1, 1, 1],
+            }
+        )
+        assert rows_same(result, expected)
+
     def test_upsert_composite_key_preserves_rows(self, clean_table):
         """Composite-key anti-join must match on all join columns; rows that
         share one column with an upsert key but not the full composite must be

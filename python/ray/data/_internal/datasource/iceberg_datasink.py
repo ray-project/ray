@@ -3,7 +3,17 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 """
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.retry import call_with_retry
@@ -35,6 +45,91 @@ logger = logging.getLogger(__name__)
 _REWRITE_STALL_TIMEOUT_S = 600
 
 
+def _merge_key_bounds(
+    bounds: Dict[str, Tuple[Any, Any]],
+    keys_table: "pa.Table",
+    upsert_cols: List[str],
+) -> Tuple[int, int]:
+    """Fold one block's join keys into running per-column ``(min, max)`` bounds.
+
+    Rows with a NULL in any join column cannot match an existing row (NULL != NULL), so
+    they are left out of the bounds, which is where the driver used to filter them.
+
+    Args:
+        bounds: Per-column bounds accumulated so far; updated in place.
+        keys_table: The block's join key columns.
+        upsert_cols: Names of the join columns.
+
+    Returns:
+        The number of rows folded into the bounds and the number dropped for a NULL key.
+    """
+    import functools
+
+    import pyarrow.compute as pc
+
+    masks = (pc.is_valid(keys_table[col]) for col in upsert_cols)
+    kept = keys_table.filter(functools.reduce(pc.and_, masks))
+    dropped = len(keys_table) - len(kept)
+    if len(kept) == 0:
+        return 0, dropped
+
+    for col in upsert_cols:
+        min_max = pc.min_max(kept[col])
+        col_min, col_max = min_max["min"].as_py(), min_max["max"].as_py()
+        if col_min is None:
+            continue
+        if col in bounds:
+            prev_min, prev_max = bounds[col]
+            bounds[col] = (min(prev_min, col_min), max(prev_max, col_max))
+        else:
+            bounds[col] = (col_min, col_max)
+    return len(kept), dropped
+
+
+@ray.remote
+def _collect_upsert_keys(
+    data_file_paths: List[str],
+    upsert_cols: List[str],
+    io: "FileIO",
+) -> "pa.Table":
+    """Read the join key columns out of the data files this write just produced.
+
+    The keys are columns of the dataset that was written, so they are already in those
+    files and reading them here keeps them off the driver. This is a task return value
+    rather than a ``ray.put``, so Ray can rebuild it by re-running the task if the copy
+    is lost.
+
+    Rows with a NULL in any join column are dropped, and the result is deduplicated to
+    keep the anti-join hash table in the rewrite tasks as small as possible.
+    """
+    import functools
+
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    tables = []
+    for path in data_file_paths:
+        with io.new_input(path).open() as input_stream:
+            tables.append(pq.read_table(input_stream, columns=list(upsert_cols)))
+
+    keys = (
+        pa.concat_tables(tables, promote_options="permissive")
+        if len(tables) > 1
+        else tables[0]
+    )
+    masks = (pc.is_valid(keys[col]) for col in upsert_cols)
+    keys = keys.filter(functools.reduce(pc.and_, masks))
+    deduped = keys.group_by(list(upsert_cols)).aggregate([])
+    logger.info(
+        "[upsert] collected %d key row(s), %d after distinct, from %d data file(s)",
+        len(keys),
+        len(deduped),
+        len(data_file_paths),
+    )
+    return deduped
+
+
 @ray.remote
 def _rewrite_iceberg_file(
     file_scan_task: "FileScanTask",
@@ -46,7 +141,7 @@ def _rewrite_iceberg_file(
     """Read one Iceberg file, anti-join against upsert keys, write preserved rows.
 
     Preserved rows are rows in the file that are not in the upsert batch. The
-    coarse range filter would delete them (see ``IcebergDatasink._build_coarse_range_filter``),
+    coarse range filter would delete them (see ``IcebergDatasink._coarse_filter_from_bounds``),
     so we preserve them by writing them as new data files before the delete.
 
     The file is read in streaming fashion via ``ArrowScan.to_record_batches()``
@@ -168,12 +263,19 @@ class IcebergWriteResult:
 
     Attributes:
         data_files: List of DataFile objects containing metadata about written Parquet files.
-        upsert_keys: PyArrow table containing key columns for upsert operations.
+        upsert_key_bounds: For UPSERT, the (min, max) of each join column over the rows
+            written by this task, ignoring rows with a NULL in any join column. This is
+            all the driver needs to build the coarse range filter, so the keys themselves
+            never travel to the driver.
+        upsert_key_rows: Number of rows this task contributed to those bounds.
+        upsert_null_key_rows: Number of rows dropped because a join column was NULL.
         schemas: List of PyArrow schemas from all non-empty blocks.
     """
 
     data_files: List["DataFile"] = field(default_factory=list)
-    upsert_keys: Optional["pa.Table"] = None
+    upsert_key_bounds: Optional[Dict[str, Tuple[Any, Any]]] = None
+    upsert_key_rows: int = 0
+    upsert_null_key_rows: int = 0
     schemas: List["pa.Schema"] = field(default_factory=list)
 
 
@@ -363,18 +465,18 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         return upsert_cols
 
-    def _build_coarse_range_filter(
+    def _coarse_filter_from_bounds(
         self,
-        keys_table: "pa.Table",
+        key_bounds: Dict[str, Tuple[Any, Any]],
         upsert_cols: List[str],
     ) -> "BooleanExpression":
-        """Build an O(1) coarse range filter covering all upsert key values.
+        """Build an O(1) coarse range filter from the aggregated key bounds.
 
-        For each upsert column computes AND(GTE(col, min), LTE(col, max)).
-        The filter may match rows outside the upsert batch (filter overshoot);
-        callers must anti-join to identify and preserve those rows.
+        For each upsert column computes AND(GTE(col, min), LTE(col, max)). The bounds are
+        aggregated from the write tasks, so this costs the driver nothing. The filter may
+        match rows outside the upsert batch (filter overshoot); callers must anti-join to
+        identify and preserve those rows.
         """
-        import pyarrow.compute as pc
         from pyiceberg.expressions import (
             AlwaysTrue,
             And,
@@ -384,11 +486,10 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         expr = None
         for col_name in upsert_cols:
-            mm = pc.min_max(keys_table[col_name])
-            min_val = mm["min"].as_py()
-            max_val = mm["max"].as_py()
-            if min_val is None:
+            bounds = key_bounds.get(col_name)
+            if bounds is None:
                 continue
+            min_val, max_val = bounds
             col_expr = And(
                 GreaterThanOrEqual(col_name, min_val),
                 LessThanOrEqual(col_name, max_val),
@@ -401,14 +502,14 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        keys_table: "pa.Table",
+        key_bounds: Dict[str, Tuple[Any, Any]],
         upsert_cols: List[str],
     ) -> None:
         """Upsert commit using coarse range filter + per-file distributed anti-join.
 
         ┌─────────────────────────────────────────────────────────────┐
         │  Stage 1: Build coarse filter (driver)                      │
-        │    keys_table ──► min/max per col ──► coarse_filter         │
+        │    per-task key bounds ──► coarse_filter                    │
         └─────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -459,10 +560,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 "[scan-merge] ignoring unsupported upsert_kwargs: %s", sorted(unknown)
             )
 
-        # Dedup keys to minimise per-task anti-join hash table size.
-        keys_table = keys_table.group_by(upsert_cols).aggregate([])
-
-        coarse_filter = self._build_coarse_range_filter(keys_table, upsert_cols)
+        coarse_filter = self._coarse_filter_from_bounds(key_bounds, upsert_cols)
         logger.debug("[scan-merge] coarse_filter=%s", coarse_filter)
 
         # plan_files() reads only manifest metadata, no Parquet data on the driver.
@@ -485,8 +583,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             self._append_and_commit(txn, data_files, branch=branch)
             return
 
-        # Put the deduped keys in the object store once; all tasks share one copy.
-        keys_ref = ray.put(keys_table)
+        # The keys are columns of the data files this write just produced, so a single
+        # task reads them and every rewrite task shares that one result. The reference is
+        # passed on without being resolved, so the keys stay off the driver.
+        keys_ref = _collect_upsert_keys.remote(
+            [data_file.file_path for data_file in data_files], upsert_cols, self._io
+        )
 
         t0 = time.perf_counter()
         refs = [
@@ -592,7 +694,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        upsert_keys: Optional["pa.Table"],
+        key_bounds: Optional[Dict[str, Tuple[Any, Any]]],
     ) -> None:
         """
         Commit upsert transaction with copy-on-write strategy.
@@ -600,45 +702,22 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to commit
-            upsert_keys: PyArrow table containing upsert key columns
+            key_bounds: Per-join-column (min, max) over the rows written, as aggregated
+                from the write tasks. Empty when every row had a NULL join key.
         """
-        import functools
         import time
 
-        import pyarrow as pa
-
-        # Create delete filter if we have join keys
-        if upsert_keys is not None and len(upsert_keys) > 0:
-            # Filter out rows with any NULL values in join columns
-            # (NULL != NULL in SQL semantics)
-            upsert_cols = self._get_upsert_cols()
-            logger.info(
-                "[upsert commit] Filtering NULL keys from %d rows on cols %s",
-                len(upsert_keys),
-                upsert_cols,
+        # Rows whose join column was NULL were excluded from the bounds by the write
+        # tasks, so empty bounds mean nothing existing can match: this is a pure insert.
+        if key_bounds:
+            self._commit_upsert_scan_merge(
+                txn, data_files, key_bounds, self._get_upsert_cols()
             )
-            t0 = time.perf_counter()
-            masks = (pa.compute.is_valid(upsert_keys[col]) for col in upsert_cols)
-            mask = functools.reduce(pa.compute.and_, masks)
-            keys_table = upsert_keys.filter(mask)
-            logger.info(
-                "[upsert commit] NULL filter done in %.2fs: %d -> %d rows (dropped %d NULLs)",
-                time.perf_counter() - t0,
-                len(upsert_keys),
-                len(keys_table),
-                len(upsert_keys) - len(keys_table),
-            )
+            return
 
-            # Only delete if we have non-NULL keys
-            if len(keys_table) > 0:
-                self._commit_upsert_scan_merge(txn, data_files, keys_table, upsert_cols)
-                return
-        else:
-            logger.info("[upsert commit] No upsert keys — skipping delete phase")
-
-        # No non-NULL keys — just append new data files and commit
         logger.info(
-            "[upsert commit] Appending %d data files and committing ...",
+            "[upsert commit] No non-NULL join keys, skipping the delete phase. "
+            "Appending %d data files and committing ...",
             len(data_files),
         )
         t0 = time.perf_counter()
@@ -771,20 +850,27 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         from pyiceberg.io.pyarrow import _dataframe_to_data_files
 
         all_data_files = []
-        upsert_keys_tables = []
         block_schemas = []
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
+        key_bounds: Dict[str, Tuple[Any, Any]] = {}
+        key_rows = 0
+        null_key_rows = 0
 
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
             if pa_table.num_rows > 0:
                 block_schemas.append(pa_table.schema)
 
-                # Extract join key values for copy-on-write upsert
+                # Fold this block's join keys into the running per-column bounds. Only
+                # the bounds leave the task; see IcebergWriteResult.upsert_key_bounds.
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
                     if len(upsert_cols) > 0:
-                        upsert_keys_tables.append(pa_table.select(upsert_cols))
+                        kept, dropped = _merge_key_bounds(
+                            key_bounds, pa_table.select(upsert_cols), upsert_cols
+                        )
+                        key_rows += kept
+                        null_key_rows += dropped
 
                 # Write data files to storage with retry for transient errors
                 def _write_data_files():
@@ -806,14 +892,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 )
                 all_data_files.extend(data_files)
 
-        # Combine all upsert key tables into one
-        from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
-        upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
-
         return IcebergWriteResult(
             data_files=all_data_files,
-            upsert_keys=upsert_keys,
+            upsert_key_bounds=key_bounds or None,
+            upsert_key_rows=key_rows,
+            upsert_null_key_rows=null_key_rows,
             schemas=block_schemas,
         )
 
@@ -862,7 +945,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
-        upsert_keys_tables: List["pa.Table"] = []
+        key_bounds: Dict[str, Tuple[Any, Any]] = {}
+        key_rows = 0
+        null_key_rows = 0
 
         for write_return in write_result.write_returns:
             if not write_return:
@@ -871,42 +956,35 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             if write_return.data_files:  # Only add schema if we have data files
                 all_data_files.extend(write_return.data_files)
                 all_schemas.extend(write_return.schemas)
-                if write_return.upsert_keys is not None:
-                    upsert_keys_tables.append(write_return.upsert_keys)
+                key_rows += write_return.upsert_key_rows
+                null_key_rows += write_return.upsert_null_key_rows
+                for col, (col_min, col_max) in (
+                    write_return.upsert_key_bounds or {}
+                ).items():
+                    if col in key_bounds:
+                        prev_min, prev_max = key_bounds[col]
+                        key_bounds[col] = (
+                            min(prev_min, col_min),
+                            max(prev_max, col_max),
+                        )
+                    else:
+                        key_bounds[col] = (col_min, col_max)
 
         logger.info(
             "[on_write_complete] Collected results: %d data files, %d schema blocks, "
-            "%d upsert key batches from workers (%.2fs)",
+            "key bounds for %d column(s) over %d row(s) (%d dropped for NULL keys) "
+            "(%.2fs)",
             len(all_data_files),
             len(all_schemas),
-            len(upsert_keys_tables),
+            len(key_bounds),
+            key_rows,
+            null_key_rows,
             time.perf_counter() - t_start,
         )
 
         if not all_data_files:
             logger.info("[on_write_complete] No data files written, nothing to commit")
             return
-
-        # Concatenate all upsert keys from all workers into a single table
-        from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
-        if upsert_keys_tables:
-            total_key_rows = sum(len(t) for t in upsert_keys_tables)
-            logger.info(
-                "[on_write_complete] Concatenating %d upsert key batches (%d total rows) ...",
-                len(upsert_keys_tables),
-                total_key_rows,
-            )
-            t0 = time.perf_counter()
-            upsert_keys = concat(upsert_keys_tables)
-            logger.info(
-                "[on_write_complete] upsert key concat done in %.2fs: %d rows, cols=%s",
-                time.perf_counter() - t0,
-                len(upsert_keys),
-                upsert_keys.column_names,
-            )
-        else:
-            upsert_keys = None
 
         # Reconcile all schemas from all blocks across all workers
         # Get table schema and union with reconciled schema using unify_schemas with promotion
@@ -958,7 +1036,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(txn, all_data_files)
         elif self._mode == SaveMode.UPSERT:
-            self._commit_upsert(txn, all_data_files, upsert_keys)
+            self._commit_upsert(txn, all_data_files, key_bounds)
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
         logger.info(
