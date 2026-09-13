@@ -36,7 +36,7 @@ class ObjectReuseStatus(Enum):
     OBJECT_UNRELATED = 4
 
 
-@dataclass
+@dataclass(frozen=True)
 class ChildBlockDependency:
     """
     A tuple to associate a child task to the
@@ -78,7 +78,7 @@ class TaskNode:
 
     # Reconstruction plans that are currently in flight on this task.
     # Maps a plan ID to the child block dependencies the plan must re-produce.
-    plan_to_child_block_lineages: Dict[PlanId, List[ChildBlockDependency]]
+    plan_to_child_block_lineages: Dict[PlanId, Set[ChildBlockDependency]]
 
     def __repr__(self) -> str:
         parent_ids = [task.data_task_id for task in self.parent_tasks]
@@ -104,7 +104,10 @@ class LineageTracker:
         self._data_task_id_to_task_node: Dict[DataTaskId, TaskNode] = {}
 
     def register_task_submission(
-        self, data_task_id: DataTaskId, dependencies: List[ParentBlockOutput]
+        self,
+        data_task_id: DataTaskId,
+        dependencies: List[ParentBlockOutput],
+        plan_id: Optional[PlanId] = None,
     ) -> None:
         """
         Register a newly submitted task with the lineage graph.
@@ -116,22 +119,47 @@ class LineageTracker:
             dependencies: The blocks that the task depends on, each pairing a
                 parent task ID with the output index of that parent the task
                 consumes.
+            plan_id: The plan ID of the reconstruction attempt if the task is a
+                re-execution. If not provided, the task is assumed to be a fresh
+                attempt.
 
         Raises:
             ValueError: If a parent task is not registered.
                         Invariant: a task can only be submitted once all
                         of its parents have been submitted.
+                        If an unregistered task is submitted with a ``plan_id``.
+                        Invariant: only a task that has already been submitted
+                        can be a re-execution of a reconstruction plan.
+                        If ``plan_id`` no longer claims the task, or no longer
+                        owes it one of the blocks it asks a parent for.
+                        Invariant: a plan claims each block it owes exactly
+                        once, so within a plan, for any output block, there can
+                        be at most one reconstruction of it.
         """
         logger.debug(
-            f"Registering task submission for task {data_task_id} with "
-            f"dependencies {dependencies}"
+            "Registering task submission for task %s with dependencies %s",
+            data_task_id,
+            dependencies,
         )
-        if data_task_id in self._data_task_id_to_task_node:
-            logger.debug(
-                f"Repeated submission of data task ID {data_task_id} with "
-                f"dependencies {dependencies}"
-            )
-            return
+
+        re_executed_task_node = self._data_task_id_to_task_node.get(data_task_id)
+        if plan_id is not None:
+            if re_executed_task_node is None:
+                raise ValueError(
+                    f"Task {data_task_id} was submitted as a re-execution "
+                    f"of plan {plan_id}. However, the task is not registered "
+                    "as part of the execution graph. Either the plan was incorrectly "
+                    "attributed to this task, or the task was incorrectly removed "
+                    "from the execution graph."
+                )
+            if plan_id not in re_executed_task_node.plan_to_child_block_lineages:
+                raise ValueError(
+                    f"Task {data_task_id} was submitted as a re-execution "
+                    f"of plan {plan_id}. However, the plan is not registered "
+                    "as a known reconstruction plan for this task. Has the "
+                    "plan been correctly added to all tasks necessary for "
+                    "the reconstruction?"
+                )
 
         # Construct the child to parent edges. A child may depend on several
         # blocks from the same parent, so dedupe parents while grouping all of
@@ -147,12 +175,48 @@ class LineageTracker:
                     f"Expected parent task {dependency.parent_data_task_id} to "
                     f"be registered before child task {data_task_id} but was not."
                 )
-            if dependency.parent_data_task_id not in parent_to_dependencies:
-                parent_task_nodes.append(parent_task_node)
-                parent_to_dependencies[dependency.parent_data_task_id] = []
-            parent_to_dependencies[dependency.parent_data_task_id].append(
-                dependency.output_index
+            child_block_lineages = parent_task_node.plan_to_child_block_lineages
+            # reconstruction task case: remove resolved dependencies from the
+            # plan of the parent.
+            if plan_id is not None:
+                if plan_id in child_block_lineages:
+                    dependency_to_remove = ChildBlockDependency(
+                        child_data_task_id=data_task_id,
+                        output_index=dependency.output_index,
+                    )
+                    if dependency_to_remove not in child_block_lineages[plan_id]:
+                        raise ValueError(
+                            f"Expected dependency {dependency_to_remove} to be "
+                            f"required by plan {plan_id} as part of the parent's "
+                            "dependencies that need to be resubmitted in "
+                            f"{child_block_lineages[plan_id]} but was not. Has "
+                            "the plan been correctly updated to reflect the "
+                            "dependencies needed for the reconstruction?"
+                        )
+                    child_block_lineages[plan_id].remove(dependency_to_remove)
+                    if not child_block_lineages[plan_id]:
+                        del child_block_lineages[plan_id]
+            # fresh task case: add dependencies as edge from parent to child.
+            else:
+                if dependency.parent_data_task_id not in parent_to_dependencies:
+                    parent_task_nodes.append(parent_task_node)
+                    parent_to_dependencies[dependency.parent_data_task_id] = []
+                parent_to_dependencies[dependency.parent_data_task_id].append(
+                    dependency.output_index
+                )
+
+        # Target task case: the plan no longer claims the target once the target
+        # itself is being re-executed.
+        if plan_id is not None and data_task_id == plan_id:
+            del re_executed_task_node.plan_to_child_block_lineages[plan_id]
+
+        if re_executed_task_node is not None:
+            logger.debug(
+                "Repeated submission of data task ID %s with dependencies %s",
+                data_task_id,
+                dependencies,
             )
+            return
 
         task_node = TaskNode(
             data_task_id=data_task_id,
@@ -177,9 +241,9 @@ class LineageTracker:
         Update the task state for the given data task to completed.
 
         Note:
-            On re-execution attempts, ``register_task_complete`` must only be
-            called after the dependencies of the downstream tasks produced by
-            this task are resolved.
+            Completion does not discharge a plan -- submission does -- so on a
+            re-execution attempt a task may complete before the downstream tasks
+            consuming its blocks are resubmitted.
 
         Args:
             data_task_id: The ID of the data task that was completed.
@@ -188,9 +252,8 @@ class LineageTracker:
                 attempt.
 
         Raises:
-            ValueError: If the task is not already registered, or if ``plan_id``
-                is given but no such plan claims the task.
-                Invariant: the task must always be registered before a terminal
+            ValueError: If the task is not already registered.
+                Invariant: the task must always be registered before its terminal
                 state is reached.
         """
         task_node = self._data_task_id_to_task_node.get(data_task_id)
@@ -199,21 +262,7 @@ class LineageTracker:
                 f"Expected task {data_task_id} to be registered before "
                 "completion but was not."
             )
-        logger.debug(f"Registering task complete for task {data_task_id}")
-
-        if plan_id is not None:
-            if plan_id not in task_node.plan_to_child_block_lineages:
-                raise ValueError(
-                    f"Expected plan {plan_id} to be registered before task "
-                    "completion but was not. There should never be more than "
-                    "one instance of a reconstruction targeting the same task "
-                    "in flight at a time. Retries of reconstructions should "
-                    "pass the same plan ID to the same task."
-                )
-            # TODO(Kunchd): When we support fan-ins, we need to only delete
-            # the part of the plan that's submitted to downstream tasks.
-            # Deleting at completion granularity can result in duplicate deletion.
-            del task_node.plan_to_child_block_lineages[plan_id]
+        logger.debug("Registering task complete for task %s", data_task_id)
 
     def register_task_failed(
         self, data_task_id: DataTaskId, plan_id: Optional[PlanId] = None
@@ -245,7 +294,7 @@ class LineageTracker:
                 "a failure status but was not."
             )
         logger.debug(
-            f"Registering failed task for task {data_task_id} with plan id {plan_id}"
+            "Registering failed task for task %s with plan id %s", data_task_id, plan_id
         )
 
         seed_task_ids: Set[DataTaskId] = set()
@@ -272,7 +321,7 @@ class LineageTracker:
             # of the reconstruction has no child to re-produce blocks for, so its
             # lineage for the plan stays empty.
             child_block_lineages = node.plan_to_child_block_lineages.setdefault(
-                plan_id_to_attach, []
+                plan_id_to_attach, set()
             )
 
             if child_node is not None:
@@ -286,18 +335,16 @@ class LineageTracker:
                 for output_index in node.child_task_block_dependencies[
                     child_node.data_task_id
                 ]:
-                    # TODO(Kunchd): As a follow up, we should delete the part of plan
-                    # that's submitted to downstream tasks on register task submission.
-                    # This should prevent duplicate child block lineages from being added.
-                    child_block_lineages.append(
+                    child_block_lineages.add(
                         ChildBlockDependency(
                             child_data_task_id=child_node.data_task_id,
                             output_index=output_index,
                         )
                     )
             logger.debug(
-                f"Task {node.data_task_id} has the following plan: "
-                f"{node.plan_to_child_block_lineages}"
+                "Task %s has the following plan: %s",
+                node.data_task_id,
+                node.plan_to_child_block_lineages,
             )
             if len(node.parent_tasks) == 0:
                 # Idempotent: a seed reached through multiple paths is recorded
@@ -341,7 +388,9 @@ class LineageTracker:
                 "pending children but was not."
             )
 
-        child_block_lineages = task_node.plan_to_child_block_lineages.get(plan_id, [])
+        child_block_lineages = task_node.plan_to_child_block_lineages.get(
+            plan_id, set()
+        )
         child_ids_in_plan = {
             child_block_lineage.child_data_task_id
             for child_block_lineage in child_block_lineages
@@ -362,8 +411,10 @@ class LineageTracker:
             pending_children[child_task_node.data_task_id] = dependencies_by_parent
 
         logger.debug(
-            f"Pending children for task {data_task_id} with plan: {plan_id} -> "
-            f"{child_block_lineages}"
+            "Pending children for task %s with plan: %s -> %s",
+            data_task_id,
+            plan_id,
+            child_block_lineages,
         )
         return pending_children
 
@@ -400,11 +451,14 @@ class LineageTracker:
 
         def _log_and_return(status: ObjectReuseStatus) -> ObjectReuseStatus:
             logger.debug(
-                f"Object reuse status for task {data_task_id} at index "
-                f"{output_index} with plan {plan_id} "
-                f"(target={is_reconstruction_target}) -> "
-                f"{task_node.plan_to_child_block_lineages.get(plan_id, [])} "
-                f"gives {status.name}"
+                "Object reuse status for task %s at index %s with plan %s "
+                "(target=%s) -> %s gives %s",
+                data_task_id,
+                output_index,
+                plan_id,
+                is_reconstruction_target,
+                task_node.plan_to_child_block_lineages.get(plan_id, set()),
+                status.name,
             )
             return status
 

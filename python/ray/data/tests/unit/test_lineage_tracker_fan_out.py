@@ -278,13 +278,7 @@ def _assert_seed_discharged(
     seed_output_indices: Collection[OutputIndex],
     plan_id: PlanId,
 ) -> None:
-    """Assert ``plan_id`` no longer claims the seed at all.
-
-    Once the seed completes for a plan, reconstruction has moved downstream: the
-    seed has no pending children left for that plan and the plan stops claiming
-    it entirely, so all of its outputs report OBJECT_UNRELATED. This holds even
-    when the plan's own child has not been resubmitted yet.
-    """
+    """Assert ``plan_id`` no longer claims the seed at all."""
     assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {}
     _assert_reuse_statuses(
         tracker,
@@ -316,6 +310,7 @@ def _resubmit_child_retry(
     seed_task_id: DataTaskId,
     child_task_id: DataTaskId,
     child_output_indices: Collection[OutputIndex],
+    plan_id: PlanId,
 ) -> None:
     """Resubmit ``child_task_id`` against the recovered seed's fresh outputs."""
     tracker.register_task_submission(
@@ -326,6 +321,7 @@ def _resubmit_child_retry(
             )
             for output_index in child_output_indices
         ],
+        plan_id=plan_id,
     )
 
 
@@ -527,10 +523,10 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         needs are OBJECT_REUSED. Every other output is OBJECT_PRUNED, whatever
         its consumer is doing. A block shared by several children is
         independently OBJECT_REUSED for each plan that needs it re-produced.
-      - Completing the seed for one plan discharges only that plan: the seed
-        stops being claimed by it (OBJECT_UNRELATED) and has no pending children
+      - Resubmitting a child for one plan discharges only that plan: the seed
+        stops being claimed by it and has no pending children
         for it, while every other live plan keeps its pending child and reused
-        outputs untouched.
+        outputs untouched -- including a plan claiming the very same block.
       - Each failed child is the leaf target of its own plan, so it has no
         pending children and reports OBJECT_NEW -- nothing consumes its outputs.
     """
@@ -568,7 +564,9 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         # Recovery resubmits the seed once per reconstruction, and each plan
         # claims just its own child and the outputs that child needs.
         for child_position, plan_id in zip(case.failed_child_positions, plan_ids):
-            tracker.register_task_submission(seed_task_id, dependencies=[])
+            tracker.register_task_submission(
+                seed_task_id, dependencies=[], plan_id=plan_id
+            )
             _assert_plan_claims_only_child(
                 tracker,
                 seed_task_id,
@@ -591,6 +589,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
                 seed_task_id,
                 child_task_id,
                 case.output_indices_for(child_position),
+                plan_id,
             )
 
             _assert_seed_discharged(tracker, seed_task_id, seed_output_indices, plan_id)
@@ -627,7 +626,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         )
 
         # Resubmit the seed to emulate this round's recovery.
-        tracker.register_task_submission(seed_task_id, dependencies=[])
+        tracker.register_task_submission(seed_task_id, dependencies=[], plan_id=plan_id)
         _assert_plan_claims_only_child(
             tracker,
             seed_task_id,
@@ -649,7 +648,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
         # is resubmitted against the recovered outputs.
         tracker.register_task_complete(seed_task_id, plan_id=plan_id)
         _resubmit_child_retry(
-            tracker, seed_task_id, child_task_id, child_output_indices
+            tracker, seed_task_id, child_task_id, child_output_indices, plan_id
         )
 
         _assert_seed_discharged(tracker, seed_task_id, seed_output_indices, plan_id)
@@ -804,9 +803,9 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
         a pending child, and every output along that branch reports
         OBJECT_PRUNED. So exactly half the downstream graph is reconstructed.
       - As reconstruction walks down the failed path, each parent's output flips
-        to OBJECT_UNRELATED once it completes for the plan -- the plan stops
-        claiming that parent entirely -- and the parent has no pending children
-        left, while the surviving branch is still left alone.
+        to OBJECT_UNRELATED once its child is resubmitted for the plan -- the
+        plan stops claiming that parent entirely -- and the parent has no
+        pending children left, while the surviving branch is still left alone.
     """
     tracker = LineageTracker()
     seed_task_id = "seed_task"
@@ -859,7 +858,7 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     assert plan_id is not None
 
     # Resubmit the seed to emulate recovery of the graph root.
-    tracker.register_task_submission(seed_task_id, dependencies=[])
+    tracker.register_task_submission(seed_task_id, dependencies=[], plan_id=plan_id)
 
     # Every task on the failed path is pending reconstruction. Each edge carries
     # output 0 -- including fan_out -> branch_0_task_0 -- so each parent reports
@@ -922,6 +921,7 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
             dependencies=[
                 ParentBlockOutput(parent_data_task_id=parent_task_id, output_index=0)
             ],
+            plan_id=plan_id,
         )
 
         assert tracker.get_pending_children(parent_task_id, plan_id=plan_id) == {}
