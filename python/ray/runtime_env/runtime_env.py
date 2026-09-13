@@ -243,8 +243,8 @@ class RuntimeEnv(dict):
             that is running the driver.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
-            Supported formats for local paths and remote URIs: ``.zip``,
-            ``.tar.gz``, ``.tgz``, and ``.tar.xz``.
+            Supported formats for local archive paths: ``.zip``, ``.tar.gz``,
+            ``.tgz``, and ``.tar.xz``. Remote URIs additionally support ``.tar``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a

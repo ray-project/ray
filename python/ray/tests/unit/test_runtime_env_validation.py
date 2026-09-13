@@ -91,7 +91,7 @@ class TestValidateWorkingDir:
             with pytest.raises(
                 ValueError,
                 match=(
-                    r"Only \.zip, \.tar\.gz, \.tgz, \.tar\.xz files are "
+                    r"Only \.zip, \.tar, \.tar\.gz, \.tgz, \.tar\.xz files are "
                     r"supported for working_dir URIs"
                 ),
             ):
@@ -111,6 +111,8 @@ class TestValidateWorkingDir:
             "https://some_domain.com/path/file.zip",
             "s3://bucket/file.zip",
             "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.tar",
+            "gcs://file.tar",
             "https://some_domain.com/path/file.tar.gz",
             "s3://bucket/file.tar.gz",
             "gs://bucket/file.tgz",
@@ -201,6 +203,10 @@ class TestValidatePyModules:
     def test_unsupported_gcs_format_fails_runtime_env_validation(self):
         with pytest.raises(ValueError, match="supported for py_modules URIs"):
             RuntimeEnv(py_modules=["gcs://package.txt"])
+
+    def test_tar_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for py_modules URIs"):
+            RuntimeEnv(py_modules=["gcs://package.tar"])
 
     def test_validate_path_valid_input(self, test_directory):
         test_dir, _, _, _ = test_directory

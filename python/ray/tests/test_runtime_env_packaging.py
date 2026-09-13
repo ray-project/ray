@@ -1107,6 +1107,22 @@ def test_upload_working_dir_archive_with_upload_fn(tmp_path, extension, mode):
     assert result["working_dir"] == expected_uri
 
 
+def test_upload_working_dir_rejects_local_tar(tmp_path):
+    archive_path = tmp_path / "test_package.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        content = b"print('hello')"
+        info = tarfile.TarInfo(name="hello.py")
+        info.size = len(content)
+        archive.addfile(info, io.BytesIO(content))
+
+    with pytest.raises(ValueError, match="supported archive"):
+        upload_working_dir_if_needed(
+            {"working_dir": str(archive_path)},
+            include_gitignore=True,
+            upload_fn=lambda *args, **kwargs: None,
+        )
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
@@ -1131,7 +1147,9 @@ class TestDownloadAndUnpackPackage:
                     gcs_client=None,
                 )
 
-    @pytest.mark.parametrize("extension,mode", [(".zip", None), (".tar.xz", "w:xz")])
+    @pytest.mark.parametrize(
+        "extension,mode", [(".zip", None), (".tar", "w"), (".tar.xz", "w:xz")]
+    )
     async def test_download_and_unpack_package_with_gcs_uri(
         self, ray_start_regular, extension, mode
     ):
@@ -1214,7 +1232,8 @@ class TestDownloadAndUnpackPackage:
             assert (Path(local_dir) / "file.txt").exists()
 
     @pytest.mark.parametrize(
-        "extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")]
+        "extension,mode",
+        [(".tar", "w"), (".tar.gz", "w:gz"), (".tar.xz", "w:xz")],
     )
     async def test_download_and_unpack_package_with_file_uri_tar(self, extension, mode):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1469,6 +1488,12 @@ def test_get_local_dir_from_uri_tar_gz():
     assert not str(local_dir).endswith(".gz")
 
 
+def test_get_local_dir_from_uri_tar():
+    uri = "s3://bucket/archive.tar"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert not str(local_dir).endswith(".tar")
+
+
 def test_get_local_dir_from_uri_tar_xz():
     uri = "s3://bucket/archive.tar.xz"
     local_dir = get_local_dir_from_uri(uri, "base_dir")
@@ -1486,7 +1511,7 @@ def test_is_tar_gz_uri():
 
 
 def test_is_tar_uri():
-    for extension in [".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"]:
+    for extension in [".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"]:
         assert is_tar_uri(f"s3://bucket/archive{extension}")
     assert not is_tar_uri("s3://bucket/archive.zip")
 
@@ -1544,7 +1569,10 @@ def test_untar_package_with_top_level_dir(tmp_path):
     assert not tar_path.exists()
 
 
-@pytest.mark.parametrize("extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")])
+@pytest.mark.parametrize(
+    "extension,mode",
+    [(".tar", "w"), (".tar.gz", "w:gz"), (".tar.xz", "w:xz")],
+)
 def test_untar_package_path_traversal(tmp_path, extension, mode):
     """Verify that path traversal attacks are blocked."""
     tar_path = tmp_path / f"malicious{extension}"
