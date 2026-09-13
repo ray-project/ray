@@ -74,6 +74,11 @@ std::string GetLocalhostIP();
 /// \return "0.0.0.0" for IPv4 or "::" for IPv6
 std::string GetAllInterfacesIP();
 
+/// Get the IP address to bind to all network interfaces for an address family.
+/// \param ip_address The literal IP address used to select the address family.
+/// \return "0.0.0.0" for an IPv4 address or "::" for an IPv6 address.
+std::string GetAllInterfacesIP(const std::string &ip_address);
+
 /// Check whether the given port is available for the specified address family.
 /// Notice, the check could be non-authentic if there're concurrent port assignments.
 /// \param family The address family to check (AF_INET for IPv4, AF_INET6 for IPv6).

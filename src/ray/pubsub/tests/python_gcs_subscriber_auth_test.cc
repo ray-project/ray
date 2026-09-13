@@ -119,7 +119,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
                                                 0,  // Random port
-                                                true,
+                                                "127.0.0.1",
                                                 1,
                                                 7200000,
                                                 auth_token);

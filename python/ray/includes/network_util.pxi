@@ -100,13 +100,23 @@ def get_localhost_ip() -> str:
     return result.decode('utf-8')
 
 
-def get_all_interfaces_ip() -> str:
+def get_all_interfaces_ip(ip_address: Optional[str] = None) -> str:
     """Get the IP address to bind to all network interfaces.
 
-    Returns "0.0.0.0" for IPv4 or "::" for IPv6, depending on the system's
-    localhost resolution.
+    Args:
+        ip_address: If provided, use this literal IP address to select the address
+            family. If omitted, use the system's localhost resolution.
+
+    Returns:
+        "0.0.0.0" for IPv4 or "::" for IPv6.
     """
-    cdef string result = GetAllInterfacesIP()
+    cdef string result
+    cdef string ip_address_c
+    if ip_address is None:
+        result = GetAllInterfacesIP()
+    else:
+        ip_address_c = ip_address.encode('utf-8')
+        result = GetAllInterfacesIP(ip_address_c)
     return result.decode('utf-8')
 
 

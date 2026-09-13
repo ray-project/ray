@@ -36,6 +36,16 @@ from ray.dashboard.event_loop_monitor import (
 logger = logging.getLogger(__name__)
 
 
+def _build_grpc_address(node_ip_address: str, grpc_port: int) -> str:
+    if node_ip_address == "localhost":
+        grpc_ip = get_localhost_ip()
+    elif is_localhost(node_ip_address):
+        grpc_ip = node_ip_address
+    else:
+        grpc_ip = get_all_interfaces_ip(node_ip_address)
+    return build_address(grpc_ip, grpc_port)
+
+
 class DashboardAgent:
     def __init__(
         self,
@@ -161,11 +171,8 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        grpc_ip = (
-            get_localhost_ip() if is_localhost(self.ip) else get_all_interfaces_ip()
-        )
         self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(grpc_ip, self.grpc_port)
+            self.server, _build_grpc_address(self.ip, self.grpc_port)
         )
 
         persist_port(

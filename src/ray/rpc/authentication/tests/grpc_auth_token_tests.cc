@@ -73,7 +73,8 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
       // Explicitly set empty token (no auth required)
       server_auth_token = std::make_shared<AuthenticationToken>("");
     }
-    grpc_server_.reset(new GrpcServer("test", 0, true, 1, 7200000, server_auth_token));
+    grpc_server_.reset(
+        new GrpcServer("test", 0, "127.0.0.1", 1, 7200000, server_auth_token));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);

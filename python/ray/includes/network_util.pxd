@@ -12,4 +12,5 @@ cdef extern from "ray/util/network_util.h" namespace "ray":
     bool IsIPv6(const string &host)
     string GetLocalhostIP()
     string GetAllInterfacesIP()
+    string GetAllInterfacesIP(const string &ip_address)
     bool IsLocalhost(const string &address)
