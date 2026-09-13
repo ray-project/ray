@@ -1832,6 +1832,7 @@
 - name: autoscaler_scales_up_when_compute_bound
   python: "3.10"
   group: data-autoscaling
+  repeated_run: 3
 
   cluster:
     anyscale_sdk_2026: true
