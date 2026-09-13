@@ -80,7 +80,7 @@ def _rewrite_iceberg_file_by_filter(
         row_filter=AlwaysTrue(),
     ).to_record_batches(tasks=[file_scan_task])
 
-    preserved_rows: Optional["pa.Table"] = None
+    preserved_batches: List["pa.Table"] = []
     total_in_rows = 0
     total_preserved_rows = 0
 
@@ -92,12 +92,7 @@ def _rewrite_iceberg_file_by_filter(
 
         kept = batch_table.filter(preserve_row_filter)
         if len(kept) > 0:
-            if preserved_rows is None:
-                preserved_rows = kept
-            else:
-                preserved_rows = pa.concat_tables(
-                    [preserved_rows, kept], promote_options="permissive"
-                )
+            preserved_batches.append(kept)
             total_preserved_rows += len(kept)
 
     if total_in_rows == 0:
@@ -110,6 +105,10 @@ def _rewrite_iceberg_file_by_filter(
     if total_preserved_rows == total_in_rows:
         # The metrics said the file might match, but no row actually does.
         return (None, [])
+
+    # Concatenate once, rather than per batch: repeated two-table concatenation walks
+    # the accumulated chunk list every time.
+    preserved_rows = pa.concat_tables(preserved_batches, promote_options="permissive")
 
     # Derive a deterministic write_uuid from the source file path so that task retries
     # overwrite the same object rather than leaking orphan files, as in
@@ -178,7 +177,7 @@ def _rewrite_iceberg_file(
         row_filter=AlwaysTrue(),
     ).to_record_batches(tasks=[file_scan_task])
 
-    preserved_rows: Optional["pa.Table"] = None
+    preserved_batches: List["pa.Table"] = []
     total_in_rows = 0
     total_preserved_rows = 0
     n_batches = 0
@@ -198,13 +197,7 @@ def _rewrite_iceberg_file(
         )
 
         if len(preserved_keys) > 0:
-            new_rows = batch_table.take(preserved_keys["__row_idx__"])
-            if preserved_rows is None:
-                preserved_rows = new_rows
-            else:
-                preserved_rows = pa.concat_tables(
-                    [preserved_rows, new_rows], promote_options="permissive"
-                )
+            preserved_batches.append(batch_table.take(preserved_keys["__row_idx__"]))
             total_preserved_rows += len(preserved_keys)
 
     t_read = _time.perf_counter()
@@ -234,6 +227,10 @@ def _rewrite_iceberg_file(
         # No rows in this file match any upsert key — leave it alone entirely.
         logger.debug("[rewrite] %s: 0 rows matched -> untouched", file_name)
         return (None, [])
+
+    # Concatenate once, rather than per batch: repeated two-table concatenation walks
+    # the accumulated chunk list every time.
+    preserved_rows = pa.concat_tables(preserved_batches, promote_options="permissive")
 
     # Derive a deterministic write_uuid from the source file path so that
     # task retries overwrite the same object rather than leaking orphan files.
