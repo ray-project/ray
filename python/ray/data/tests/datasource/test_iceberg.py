@@ -1784,6 +1784,220 @@ class TestOverwriteMode:
         )
         assert rows_same(result, expected)
 
+    @staticmethod
+    def _count_driver_file_reads(monkeypatch) -> Dict[str, int]:
+        """Count data files read by ``ArrowScan`` in this process.
+
+        Ray write tasks run in separate worker processes and never see this patch,
+        so anything counted here was read by the driver itself.
+        """
+        from pyiceberg.io import pyarrow as pyi_pa
+
+        counter = {"files": 0}
+        original_to_table = pyi_pa.ArrowScan.to_table
+
+        def _counting_to_table(self, tasks):
+            tasks = list(tasks)
+            counter["files"] += len(tasks)
+            return original_to_table(self, tasks)
+
+        monkeypatch.setattr(pyi_pa.ArrowScan, "to_table", _counting_to_table)
+        return counter
+
+    @staticmethod
+    def _append_files(table: Table, rows: List[Dict[str, Any]]) -> None:
+        """Append rows straight through PyIceberg, one call per data file.
+
+        The test table is partitioned by ``col_c``, so each distinct ``col_c`` in a
+        call produces its own data file. Building the files here instead of through
+        ``write_iceberg`` keeps the file layout independent of how Ray splits blocks.
+        """
+        arrow_schema = table.schema().as_arrow()
+        table.append(
+            pa.Table.from_pylist([dict(row) for row in rows], schema=arrow_schema)
+        )
+
+    def test_write_overwrite_with_filter_rewrites_off_the_driver(
+        self, clean_table, monkeypatch
+    ):
+        """A filtered overwrite rewrites candidate files in tasks, not on the driver."""
+        from ray.data import SaveMode
+
+        _, table = clean_table
+        # Three data files (one per ``col_c`` partition), each holding one row that
+        # matches ``col_a == 2`` and one that does not, so every candidate file needs a
+        # row-level rewrite rather than a whole-file delete.
+        self._append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "keep_5", "col_c": 5},
+                {"col_a": 2, "col_b": "drop_5", "col_c": 5},
+                {"col_a": 1, "col_b": "keep_6", "col_c": 6},
+                {"col_a": 2, "col_b": "drop_6", "col_c": 6},
+                {"col_a": 1, "col_b": "keep_7", "col_c": 7},
+                {"col_a": 2, "col_b": "drop_7", "col_c": 7},
+            ],
+        )
+
+        driver_reads = self._count_driver_file_reads(monkeypatch)
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by=["col_a", "col_c"])
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 1, 1, 30],
+                "col_b": ["keep_5", "keep_6", "keep_7", "new"],
+                "col_c": [5, 6, 7, 5],
+            }
+        )
+        assert rows_same(result, expected)
+        assert files_read_on_driver == 0, (
+            f"the driver read {files_read_on_driver} data file(s) while committing the "
+            "overwrite; the row-level rewrite belongs in Ray tasks"
+        )
+
+    def test_write_overwrite_with_filter_keeps_whole_file_deletes_metadata_only(
+        self, clean_table, monkeypatch
+    ):
+        """A filter that covers whole files is served from metadata, reading nothing."""
+        from ray.data import SaveMode
+
+        _, table = clean_table
+        # The table is partitioned by ``col_c``, so a filter on ``col_c`` covers whole
+        # files and PyIceberg can drop them without opening any of them.
+        self._append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 1},
+                {"col_a": 2, "col_b": "b", "col_c": 2},
+                {"col_a": 3, "col_b": "c", "col_c": 3},
+            ],
+        )
+
+        driver_reads = self._count_driver_file_reads(monkeypatch)
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [2]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_c") == 2
+        )
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 3, 30],
+                "col_b": ["a", "c", "new"],
+                "col_c": [1, 3, 2],
+            }
+        )
+        assert rows_same(result, expected)
+        assert files_read_on_driver == 0, (
+            "a filter that covers whole files must stay on the metadata-only path, "
+            f"but {files_read_on_driver} data file(s) were read"
+        )
+
+    def test_write_overwrite_with_filter_skips_files_already_dropped(
+        self, clean_table, monkeypatch
+    ):
+        """Only the files the filter covers partially are rewritten.
+
+        A filter can cover some files entirely and others only in part. The files it
+        covers entirely are dropped from metadata, so they must not be rewritten too.
+        """
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+
+        _, table = clean_table
+        # ``col_c == 2`` covers the whole col_c=2 partition file, while ``col_a == 5``
+        # matches only one of the two rows in the col_c=3 partition file.
+        self._append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "p2_a", "col_c": 2},
+                {"col_a": 2, "col_b": "p2_b", "col_c": 2},
+                {"col_a": 5, "col_b": "p3_replaced", "col_c": 3},
+                {"col_a": 6, "col_b": "p3_kept", "col_c": 3},
+            ],
+        )
+
+        real_task = datasink_module._rewrite_iceberg_file_by_filter
+        dispatched = {"tasks": 0}
+
+        class _CountingRemoteFunction:
+            def options(self, **options):
+                dispatched["tasks"] += 1
+                return real_task.options(**options)
+
+        monkeypatch.setattr(
+            datasink_module,
+            "_rewrite_iceberg_file_by_filter",
+            _CountingRemoteFunction(),
+        )
+        driver_reads = self._count_driver_file_reads(monkeypatch)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [2]}
+        )
+        _write_to_iceberg(
+            new_data,
+            mode=SaveMode.OVERWRITE,
+            overwrite_filter=(col("col_c") == 2) | (col("col_a") == 5),
+        )
+        rewrite_tasks = dispatched["tasks"]
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [6, 30], "col_b": ["p3_kept", "new"], "col_c": [3, 2]}
+        )
+        assert rows_same(result, expected)
+        assert rewrite_tasks == 1, (
+            f"{rewrite_tasks} file(s) were rewritten; only the partially covered file "
+            "needs a rewrite, the fully covered one is dropped from metadata"
+        )
+        assert files_read_on_driver == 0
+
+    def test_write_overwrite_with_filter_preserves_null_rows(self, clean_table):
+        """Rows whose filter column is NULL do not match the filter and must survive."""
+        from ray.data import SaveMode
+
+        _, table = clean_table
+        # One data file holding a matching row, a non-matching row and two NULLs.
+        self._append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 2, "col_b": "b", "col_c": 5},
+                {"col_a": None, "col_b": "c", "col_c": 5},
+                {"col_a": None, "col_b": "d", "col_c": 5},
+            ],
+        )
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+
+        # ``col_a == 2`` is unknown for the NULL rows, so only col_a 2 is replaced.
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, None, None, 30],
+                "col_b": ["a", "c", "d", "new"],
+                "col_c": [5, 5, 5, 5],
+            }
+        )
+        assert rows_same(result, expected)
+
 
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),

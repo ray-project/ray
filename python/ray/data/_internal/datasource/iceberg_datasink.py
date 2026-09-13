@@ -36,6 +36,101 @@ _REWRITE_STALL_TIMEOUT_S = 600
 
 
 @ray.remote
+def _rewrite_iceberg_file_by_filter(
+    file_scan_task: "FileScanTask",
+    overwrite_filter: "BooleanExpression",
+    case_sensitive: bool,
+    table_metadata: "TableMetadata",
+    io: "FileIO",
+) -> "tuple[Optional[DataFile], List[DataFile]]":
+    """Read one Iceberg file and write back the rows an overwrite filter does not match.
+
+    Rows matching ``overwrite_filter`` are the ones being replaced, so they are dropped
+    and the rest are written as new data files before the original file is deleted. Row
+    selection uses PyIceberg's complement of the bound filter, so rows whose filter
+    column is NULL -- which do not match the filter -- are preserved.
+
+    The file is read in streaming fashion via ``ArrowScan.to_record_batches()`` so the
+    full file is never materialised at once, matching ``_rewrite_iceberg_file``.
+
+    Returns (original DataFile to delete, list of new DataFiles holding preserved rows).
+    If every row matches, returns (file, []) so the file is deleted outright.
+    If no row matches, returns (None, []) and the file is left untouched.
+    """
+    import hashlib
+    import uuid as _uuid
+
+    import pyarrow as pa
+    from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.expressions.visitors import bind
+    from pyiceberg.io.pyarrow import (
+        ArrowScan,
+        _dataframe_to_data_files,
+        _expression_to_complementary_pyarrow,
+    )
+
+    schema = table_metadata.schema()
+    bound_filter = bind(schema, overwrite_filter, case_sensitive=case_sensitive)
+    preserve_row_filter = _expression_to_complementary_pyarrow(bound_filter, schema)
+
+    record_batches = ArrowScan(
+        table_metadata=table_metadata,
+        io=io,
+        projected_schema=schema,
+        row_filter=AlwaysTrue(),
+    ).to_record_batches(tasks=[file_scan_task])
+
+    preserved_rows: Optional["pa.Table"] = None
+    total_in_rows = 0
+    total_preserved_rows = 0
+
+    for rb in record_batches:
+        batch_table = pa.Table.from_batches([rb])
+        if len(batch_table) == 0:
+            continue
+        total_in_rows += len(batch_table)
+
+        kept = batch_table.filter(preserve_row_filter)
+        if len(kept) > 0:
+            if preserved_rows is None:
+                preserved_rows = kept
+            else:
+                preserved_rows = pa.concat_tables(
+                    [preserved_rows, kept], promote_options="permissive"
+                )
+            total_preserved_rows += len(kept)
+
+    if total_in_rows == 0:
+        return (None, [])
+
+    if total_preserved_rows == 0:
+        # Every row matches the filter, so the whole file goes away.
+        return (file_scan_task.file, [])
+
+    if total_preserved_rows == total_in_rows:
+        # The metrics said the file might match, but no row actually does.
+        return (None, [])
+
+    # Derive a deterministic write_uuid from the source file path so that task retries
+    # overwrite the same object rather than leaking orphan files, as in
+    # ``_rewrite_iceberg_file``.
+    preserved_write_uuid = _uuid.UUID(
+        hashlib.md5(file_scan_task.file.file_path.encode()).hexdigest()
+    )
+    return (
+        file_scan_task.file,
+        list(
+            _dataframe_to_data_files(
+                table_metadata=table_metadata,
+                df=preserved_rows,
+                io=io,
+                write_uuid=preserved_write_uuid,
+            )
+        ),
+    )
+
+
+@ray.remote
 def _rewrite_iceberg_file(
     file_scan_task: "FileScanTask",
     keys_ref: "pa.Table",
@@ -820,7 +915,15 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
     def _commit_overwrite(
         self, txn: "Table.transaction", data_files: List["DataFile"]
     ) -> None:
-        """Commit data files using OVERWRITE mode."""
+        """Commit data files using OVERWRITE mode.
+
+        Follows the same two steps as PyIceberg's ``Transaction.delete()``: drop the
+        files the filter covers entirely using manifest metadata alone, then rewrite the
+        files it covers only partially. The difference is where the rewrite runs --
+        PyIceberg reads and rewrites those files one at a time in the calling process,
+        which here is the driver, so instead one Ray task per file does the work, the
+        way ``_commit_upsert_scan_merge`` already does for UPSERT.
+        """
         from pyiceberg.expressions import AlwaysTrue
 
         # Default - Full overwrite - delete all
@@ -835,15 +938,101 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             visitor = _IcebergExpressionVisitor()
             pyi_filter = visitor.visit(self._overwrite_filter)
 
-        txn.delete(
-            delete_filter=pyi_filter,
-            snapshot_properties=self._snapshot_properties,
-            **self._overwrite_kwargs,
-        )
-
         # Append on the same branch the delete targeted (defaults to "main").
         branch = self._overwrite_kwargs.get("branch", "main")
+        case_sensitive = self._overwrite_kwargs.get("case_sensitive", True)
+        unknown = set(self._overwrite_kwargs) - {"branch", "case_sensitive"}
+        if unknown:
+            logger.warning(
+                "[overwrite] ignoring unsupported overwrite_kwargs: %s", sorted(unknown)
+            )
+
+        # Step 1 (metadata only): drop the files the filter covers entirely. The
+        # producer commits nothing when no whole file is affected.
+        with txn.update_snapshot(
+            snapshot_properties=self._snapshot_properties, branch=branch
+        ).delete() as delete_snapshot:
+            delete_snapshot.delete_by_predicate(pyi_filter, case_sensitive)
+
+        # Step 2: the files the filter only partially covers have to be rewritten
+        # without the matching rows.
+        if delete_snapshot.rewrites_needed:
+            self._rewrite_partially_matched_files(
+                txn, pyi_filter, case_sensitive, branch
+            )
+
         self._append_and_commit(txn, data_files, branch=branch)
+
+    def _rewrite_partially_matched_files(
+        self,
+        txn: "Table.transaction",
+        pyi_filter: "BooleanExpression",
+        case_sensitive: bool,
+        branch: str,
+    ) -> None:
+        """Rewrite files the overwrite filter partially covers, one Ray task per file.
+
+        Each task reads its file, keeps the rows the filter does not match and writes
+        them as new data files. The driver only plans the files (manifest metadata) and
+        commits the resulting deletes and appends as a single OVERWRITE snapshot, which
+        is the same snapshot PyIceberg's own rewrite path produces.
+        """
+        import time
+
+        # Scan through the transaction, not the table, so the files the metadata-only
+        # step already dropped are not planned again. This is what PyIceberg's own
+        # ``Transaction.delete()`` does between its two steps.
+        scan: "DataScan" = txn._scan(
+            row_filter=pyi_filter, case_sensitive=case_sensitive
+        )
+        if branch is not None:
+            scan = scan.use_ref(branch)
+        # plan_files() reads only manifest metadata, no Parquet data on the driver.
+        file_scan_tasks: List["FileScanTask"] = list(scan.plan_files())
+        if not file_scan_tasks:
+            return
+
+        t0 = time.perf_counter()
+        refs = [
+            _rewrite_iceberg_file_by_filter.options(
+                memory=int(
+                    task.file.file_size_in_bytes
+                    * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                    * 3  # Bump memory estimate to account for the preserved rows
+                ),
+                num_cpus=1,
+            ).remote(task, pyi_filter, case_sensitive, self._table_metadata, self._io)
+            for task in file_scan_tasks
+        ]
+        logger.info("[overwrite] dispatched %d rewrite task(s)", len(refs))
+        results = ray.get(refs)
+
+        n_whole_delete = n_partial = n_untouched = 0
+        for old_file, preserved_files in results:
+            if old_file is None:
+                n_untouched += 1
+            elif preserved_files:
+                n_partial += 1
+            else:
+                n_whole_delete += 1
+        logger.info(
+            "[overwrite] rewrote %d file(s) in %.2fs: %d whole-delete, %d partial, "
+            "%d untouched",
+            len(refs),
+            time.perf_counter() - t0,
+            n_whole_delete,
+            n_partial,
+            n_untouched,
+        )
+
+        with txn.update_snapshot(
+            snapshot_properties=self._snapshot_properties, branch=branch
+        ).overwrite() as snap:
+            for old_file, preserved_files in results:
+                if old_file is not None:
+                    snap.delete_data_file(old_file)
+                for preserved_file in preserved_files:
+                    snap.append_data_file(preserved_file)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """
