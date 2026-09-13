@@ -135,6 +135,20 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(
   return death_cause;
 }
 
+const ray::rpc::ActorDeathCause GenActorTaskSpecMissingCause(
+    const ray::rpc::ActorTableData *actor_data) {
+  ray::rpc::ActorDeathCause death_cause;
+  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+  actor_died_error_ctx->set_reason(ray::rpc::ActorDiedErrorContext::UNSPECIFIED);
+  AddActorInfo(actor_data, actor_died_error_ctx);
+  actor_died_error_ctx->set_error_message(
+      "The actor is dead because GCS could not recover it after a restart: its task "
+      "spec is missing from storage. This indicates the actor table and actor task "
+      "spec table were left inconsistent by a torn write or a crash during actor "
+      "teardown.");
+  return death_cause;
+}
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -155,6 +169,8 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
     return false;
   }
 
+  // Loadable actors are guaranteed to have a task spec: `Initialize` marks any
+  // actor whose task spec is missing as dead before reaching this point.
   const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
   ray::ActorID root_detached_actor_id =
       ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
@@ -1761,6 +1777,55 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   std::vector<ActorID> dead_actors;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
+    // Crash consistency: the actor table and the actor task spec table are
+    // written as separate, non-atomic entries, so a torn write across the two
+    // or a head crash during actor teardown can leave a loadable (non-DEAD, or
+    // dead-but-restartable) actor whose task spec is gone. Such an actor cannot
+    // be reconstructed. Instead of aborting the whole GCS with a fatal lookup,
+    // mark it dead and publish the death so that any client still waiting on it
+    // (its owner may still be alive after a GCS failover) unblocks instead of
+    // hanging forever. Already-dead, non-restartable actors take the normal
+    // path below (their task spec is expected to be absent).
+    const bool actor_is_dead_and_not_restartable =
+        actor_table_data.state() == ray::rpc::ActorTableData::DEAD &&
+        !IsActorRestartable(actor_table_data);
+    if (!actor_is_dead_and_not_restartable && !actor_task_specs.contains(actor_id)) {
+      RAY_LOG(ERROR).WithField(actor_id)
+          << "Actor is missing its task spec during GCS initialization; marking it "
+             "dead. This indicates the actor table and actor task spec table were "
+             "left inconsistent by a torn write or a head crash during actor "
+             "teardown.";
+      rpc::ActorTableData dead_actor_table_data = actor_table_data;
+      dead_actor_table_data.set_state(rpc::ActorTableData::DEAD);
+      const auto time = clock_.NowUnixMillis();
+      dead_actor_table_data.set_end_time(time);
+      dead_actor_table_data.set_timestamp(time);
+      dead_actor_table_data.mutable_death_cause()->CopyFrom(
+          GenActorTaskSpecMissingCause(&actor_table_data));
+
+      // Persist the DEAD state so the dangling row self-heals across restarts
+      // and GetActorInfo reports the actor as dead, then publish so any
+      // subscriber is notified.
+      gcs_table_storage_->ActorTable().Put(
+          actor_id,
+          dead_actor_table_data,
+          {[this, actor_id, dead_actor_table_data](Status status) {
+             gcs_publisher_->PublishActor(
+                 actor_id, GenActorDataOnlyWithStates(dead_actor_table_data));
+           },
+           io_context_});
+
+      // Cache it as a destroyed actor (with the DEAD state) so GetActorInfo
+      // returns it as dead, and drop its (already-missing) task spec entry.
+      destroyed_actor_observability_data_.emplace(actor_id, dead_actor_table_data);
+      actor_state_counter_->Increment(
+          {dead_actor_table_data.state(), dead_actor_table_data.class_name()});
+      sorted_destroyed_actor_observability_list_.emplace_back(
+          actor_id, static_cast<int64_t>(dead_actor_table_data.timestamp()));
+      dead_actors.push_back(actor_id);
+      continue;
+    }
+
     // We only load actors which are supposed to be alive:
     //   - Actors whose state != DEAD.
     //   - Non-deatched actors whose owner (job or root_detached_actor) is alive.
