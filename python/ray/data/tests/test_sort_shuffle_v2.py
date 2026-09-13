@@ -22,6 +22,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
     SortShuffleMapOp,
 )
+from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -322,6 +323,18 @@ def test_sort_shuffle_v2_end_to_end(
     )
 
     assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))
+
+
+def test_sort_reduce_fn_keeps_schema_for_empty_partition():
+    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
+    reduce_fn = make_sort_reduce_fn(SortKey("a"), DataContext.get_current())
+
+    empty_shards = [schema.empty_table(), schema.empty_table()]
+    outputs = list(reduce_fn(0, [empty_shards]))
+
+    assert len(outputs) == 1
+    assert outputs[0].num_rows == 0
+    assert outputs[0].schema == schema
 
 
 def test_sort_shuffle_v2_validates_sort_key(

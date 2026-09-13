@@ -40,6 +40,9 @@ def make_sort_reduce_fn(
         tables = tables_by_input[0]
         if not tables:
             return
+        if not any(table.num_rows for table in tables):
+            yield tables[0]
+            return
         with DataContext.current(data_context):
             block, _ = BlockAccessor.for_block(tables[0]).merge_sorted_blocks(
                 tables, sort_key
