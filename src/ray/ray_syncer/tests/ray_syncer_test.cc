@@ -319,8 +319,9 @@ struct SyncerServerTest {
     auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
+    grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
@@ -459,6 +460,7 @@ struct SyncerServerTest {
     return iter->second;
   }
   std::unique_ptr<RaySyncerService> service;
+  std::unique_ptr<RaySyncerGrpcService> grpc_service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
@@ -1104,6 +1106,7 @@ class SyncerAuthenticationTest : public ::testing::Test {
     std::unique_ptr<std::thread> thread;
     std::unique_ptr<RaySyncer> syncer;
     std::unique_ptr<RaySyncerService> service;
+    std::unique_ptr<RaySyncerGrpcService> grpc_service;
     std::unique_ptr<grpc::Server> server;
 
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
@@ -1121,11 +1124,12 @@ class SyncerAuthenticationTest : public ::testing::Test {
           *syncer,
           token.empty() ? nullptr
                         : std::make_shared<const ray::rpc::AuthenticationToken>(token));
+      grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
 
       auto server_address = BuildAddress("0.0.0.0", port);
       grpc::ServerBuilder builder;
       builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-      builder.RegisterService(service.get());
+      builder.RegisterService(grpc_service.get());
       server = builder.BuildAndStart();
     }
 
