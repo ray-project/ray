@@ -1,6 +1,5 @@
 import argparse
 import functools
-import time
 import uuid
 from typing import Callable
 
@@ -87,33 +86,24 @@ def main(args):
         read_fn = get_read_fn(args)
         consume_fn = get_consume_fn(args)
 
-        start_time = time.perf_counter()
         ds = read_fn(args.path)
-        dataset_creation_time_s = time.perf_counter() - start_time
-
-        start_time = time.perf_counter()
         consume_fn(ds)
-        dataset_consumption_time_s = time.perf_counter() - start_time
-
-        if args.min_total_worker_network_receive_gbps is not None:
-            print(f"Ray Dataset stats:\n{ds.stats()}")
 
         # Report arguments for the benchmark.
-        return {
-            **vars(args),
-            "dataset_creation_time_s": round(dataset_creation_time_s, 4),
-            "dataset_consumption_time_s": round(dataset_consumption_time_s, 4),
-        }
+        return vars(args)
 
-    if args.write_delta and args.write_delta_mode == "overwrite":
-        # Populate the table once first (same source/scale as the timed run
-        # below) so "main" genuinely overwrites existing data instead of
-        # creating an empty table -- an OVERWRITE against a not-yet-existing
-        # table is just a create, which isn't the interesting case to time.
-        benchmark.run_fn("setup_populate", benchmark_fn)
+    try:
+        if args.write_delta and args.write_delta_mode == "overwrite":
+            # Populate the table once first (same source/scale as the timed run
+            # below) so "main" genuinely overwrites existing data instead of
+            # creating an empty table -- an OVERWRITE against a not-yet-existing
+            # table is just a create, which isn't the interesting case to time.
+            benchmark.run_fn("setup_populate", benchmark_fn)
 
-    benchmark.run_fn("main", benchmark_fn)
-    benchmark.write_result()
+        benchmark.run_fn("main", benchmark_fn)
+    finally:
+        if benchmark.result:
+            benchmark.write_result()
 
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:

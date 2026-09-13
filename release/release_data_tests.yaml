@@ -42,7 +42,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-        # Use a 256 MiB bin-packing target for the network diagnostic.
+        # Use a 256 MiB bin-packing target for the network assertion.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=268435456
     anyscale_sdk_2026: true
     cluster_compute: read_benchmark_compute.yaml
@@ -53,7 +53,7 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet
       --iter-bundles
-      --min-total-worker-network-receive-gbps 0.001
+      --min-total-worker-network-receive-gbps 50
 
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
@@ -84,7 +84,6 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles --memory 3650722201
-      --min-total-worker-network-receive-gbps 0.001
 
 - name: "read_images_fixed_size"
   python: "3.10"
@@ -97,7 +96,6 @@
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
-      --min-total-worker-network-receive-gbps 0.001
 
 - name: read_tfrecords
   python: "3.10"
@@ -121,7 +119,7 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
-      --iter-bundles --min-total-worker-network-receive-gbps 0.001
+      --iter-bundles
 
 - name: "read_from_uris_fixed_size"
   python: "3.10"

@@ -108,18 +108,15 @@ class WorkerNetworkReceiveStats:
     )
 
 
-def _get_worker_metric_averages(
-    metric_name: str,
-    metric_description: str,
-    start_unix_time: float,
-    end_unix_time: float,
-) -> Dict[str, float]:
-    """Return a Prometheus metric averaged by worker over a benchmark case."""
+def _get_worker_network_receive_stats(
+    start_unix_time: float, end_unix_time: float
+) -> WorkerNetworkReceiveStats:
+    """Return worker network receive throughput averaged over a benchmark case."""
     assert start_unix_time <= end_unix_time, (start_unix_time, end_unix_time)
 
     session_name = ray.get_runtime_context().get_session_name()
     metric_selector = (
-        f"{metric_name}{{"
+        "ray_node_network_receive_speed{"
         f'RayNodeType="worker",SessionName={json.dumps(session_name)}'
         "}"
     )
@@ -131,50 +128,44 @@ def _get_worker_metric_averages(
         end_unix_time,
     )
     if results is None:
-        raise RuntimeError(f"Failed to query Prometheus for {metric_description}.")
+        raise RuntimeError(
+            "Failed to query Prometheus for worker network receive throughput."
+        )
     if not results:
-        raise RuntimeError(f"Prometheus returned no {metric_description} results.")
+        raise RuntimeError(
+            "Prometheus returned no worker network receive throughput results."
+        )
 
-    per_node_values = {}
+    per_node_bytes_per_second = {}
     for result in results:
         try:
             node_ip = result["metric"]["ip"]
             _, raw_value = result["value"]
-            value = float(raw_value)
+            bytes_per_second = float(raw_value)
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError(
-                f"Prometheus returned an invalid {metric_description} result."
+                "Prometheus returned an invalid worker network receive throughput "
+                "result."
             ) from exc
 
         if not isinstance(node_ip, str) or not node_ip:
             raise RuntimeError(
-                f"Prometheus returned an invalid {metric_description} worker IP."
+                "Prometheus returned an invalid worker IP for network receive "
+                "throughput."
             )
-        if not math.isfinite(value) or value < 0:
+        if not math.isfinite(bytes_per_second) or bytes_per_second < 0:
             raise RuntimeError(
-                f"Prometheus returned an invalid {metric_description} value."
+                "Prometheus returned an invalid worker network receive throughput "
+                "value."
             )
-        if node_ip in per_node_values:
+        if node_ip in per_node_bytes_per_second:
             raise RuntimeError(
-                f"Prometheus returned multiple {metric_description} results for "
-                f"worker {node_ip}."
+                "Prometheus returned multiple worker network receive throughput "
+                f"results for worker {node_ip}."
             )
-        per_node_values[node_ip] = value
+        per_node_bytes_per_second[node_ip] = bytes_per_second
 
-    return dict(sorted(per_node_values.items()))
-
-
-def _get_worker_network_receive_stats(
-    start_unix_time: float, end_unix_time: float
-) -> WorkerNetworkReceiveStats:
-    """Return worker network receive throughput averaged over a benchmark case."""
-    per_node_bytes_per_second = _get_worker_metric_averages(
-        "ray_node_network_receive_speed",
-        "worker network receive throughput",
-        start_unix_time,
-        end_unix_time,
-    )
-
+    per_node_bytes_per_second = dict(sorted(per_node_bytes_per_second.items()))
     total_bytes_per_second = sum(per_node_bytes_per_second.values())
     return WorkerNetworkReceiveStats(
         total_bytes_per_second=total_bytes_per_second,
@@ -183,18 +174,6 @@ def _get_worker_network_receive_stats(
         ),
         node_count=len(per_node_bytes_per_second),
         per_node_bytes_per_second=per_node_bytes_per_second,
-    )
-
-
-def _get_worker_cpu_utilization(
-    start_unix_time: float, end_unix_time: float
-) -> Dict[str, float]:
-    """Return CPU utilization averaged by worker over a benchmark case."""
-    return _get_worker_metric_averages(
-        "ray_node_cpu_utilization",
-        "worker CPU utilization",
-        start_unix_time,
-        end_unix_time,
     )
 
 
@@ -370,7 +349,6 @@ class BenchmarkMetric(Enum):
     WORKER_NETWORK_RECEIVE_AVERAGE_GBPS = "worker_network_receive_average_gbps"
     WORKER_NETWORK_RECEIVE_NODE_COUNT = "worker_network_receive_node_count"
     WORKER_NETWORK_RECEIVE_GBPS_BY_NODE = "worker_network_receive_gbps_by_node"
-    WORKER_CPU_UTILIZATION_PERCENT_BY_NODE = "worker_cpu_utilization_percent_by_node"
 
 
 class Benchmark:
@@ -511,9 +489,6 @@ class Benchmark:
             worker_network_receive_stats = _get_worker_network_receive_stats(
                 start_unix_time, end_unix_time
             )
-            worker_cpu_utilization = _get_worker_cpu_utilization(
-                start_unix_time, end_unix_time
-            )
             total_worker_network_receive_gbps = _bytes_per_second_to_gbps(
                 worker_network_receive_stats.total_bytes_per_second
             )
@@ -535,35 +510,13 @@ class Benchmark:
                     worker_network_receive_stats.per_node_bytes_per_second.items()
                 )
             }
-            worker_cpu_utilization_percent_by_node = {
-                node_ip: round(cpu_utilization, 2)
-                for node_ip, cpu_utilization in worker_cpu_utilization.items()
-            }
             curr_case_metrics[
                 BenchmarkMetric.WORKER_NETWORK_RECEIVE_GBPS_BY_NODE.value
             ] = worker_network_receive_gbps_by_node
-            curr_case_metrics[
-                BenchmarkMetric.WORKER_CPU_UTILIZATION_PERCENT_BY_NODE.value
-            ] = worker_cpu_utilization_percent_by_node
 
             print("Worker averages during the benchmark:")
-            for node_ip in sorted(
-                set(worker_network_receive_gbps_by_node)
-                | set(worker_cpu_utilization_percent_by_node)
-            ):
-                network_gbps = worker_network_receive_gbps_by_node.get(node_ip)
-                cpu_percent = worker_cpu_utilization_percent_by_node.get(node_ip)
-                network_text = (
-                    f"{network_gbps:.4f} Gbps"
-                    if network_gbps is not None
-                    else "network unavailable"
-                )
-                cpu_text = (
-                    f"{cpu_percent:.2f}% CPU"
-                    if cpu_percent is not None
-                    else "CPU unavailable"
-                )
-                print(f"  {node_ip}: {network_text}, {cpu_text}")
+            for node_ip, network_gbps in worker_network_receive_gbps_by_node.items():
+                print(f"  {node_ip}: {network_gbps:.4f} Gbps")
             print(
                 "Total worker network receive: "
                 f"{total_worker_network_receive_gbps:.4f} Gbps"
