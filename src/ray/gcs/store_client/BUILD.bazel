@@ -23,6 +23,7 @@ ray_cc_library(
         "redis_async_context.h",
         "redis_context.h",
         "redis_store_client.h",
+        "redis_tcp_keepalive.h",
     ],
     deps = [
         ":store_client",
