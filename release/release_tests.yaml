@@ -1903,6 +1903,14 @@
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --preserve_order=True
 
+    # PROTOTYPE: push-based streaming split (coordinator pushes blocks to
+    # train workers). Manual-only while the push model is experimental.
+    - __suffix__: full_training.parquet.push_based
+      frequency: manual
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --ray_data_push_based_split=True
+
     - __suffix__: full_training.parquet.torch_dataloader
       frequency: manual
       run:
@@ -1919,6 +1927,14 @@
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --preserve_order=True
+
+    # PROTOTYPE: push-based streaming split (coordinator pushes blocks to
+    # train workers). Manual-only while the push model is experimental.
+    - __suffix__: skip_training.parquet.push_based
+      frequency: manual
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --ray_data_push_based_split=True
 
     - __suffix__: skip_training.parquet.torch_dataloader
       frequency: manual
