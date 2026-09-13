@@ -546,7 +546,7 @@ class Benchmark:
             raise AssertionError(
                 f"Benchmark case {name!r} worker network receive throughput "
                 f"({total_worker_network_receive_gbps:.4f} Gbps total, "
-                f"{_bytes_per_second_to_gbps(worker_network_receive_stats.average_bytes_per_second):.4f} "
+                f"{average_worker_network_receive_gbps:.4f} "
                 f"Gbps per worker across {worker_network_receive_stats.node_count} "
                 f"workers) was below the configured minimum "
                 f"({min_total_worker_network_receive_gbps:.4f} Gbps total)."
