@@ -96,7 +96,7 @@ def measure_pipeline(
         np.testing.assert_array_equal(actual_order, expected_order)
     median = statistics.median(durations)
     return {
-        "fast_path_enabled": os.environ.get("RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE", "1"),
+        "fast_path_enabled": os.environ.get("RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE", "0"),
         "shape": workload.shape,
         "rows_per_iteration": workload.rows,
         "source_blocks": workload.blocks,

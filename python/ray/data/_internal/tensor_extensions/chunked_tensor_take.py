@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE",
-    True,
+    False,
 )
 
 # Soft cap for temporary tensor payload produced by each gather subbatch. The
