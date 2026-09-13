@@ -12,6 +12,9 @@ from ray.data._internal.datasource_v2.logical_optimizers import (
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+from ray.data._internal.logical.rules.pushdown_count_files import (
+    CountFilesMapBatches,
+)
 
 __all__ = [
     "DeriveListFilesPushdown",
@@ -38,6 +41,14 @@ class DeriveListFilesPushdown(Rule):
             # downstream; for anything else they must be dropped.
             scanner = node.scanner if isinstance(node, ReadFiles) else None
             pushdown = derive_list_files_pushdown(scanner)
+
+            # One exception: the count rewrite. It deletes the ``ReadFiles``,
+            # but its ``count_rows`` calls ``prune_manifest`` itself, so the
+            # path pruner is still applied downstream and listing may keep it.
+            # Everything else stays cleared -- footer-stat pruning and the
+            # limit have no counterpart in ``count_rows``.
+            if isinstance(node, CountFilesMapBatches):
+                pushdown = replace(pushdown, partition_pruner=node.partition_pruner)
 
             new_inputs: list[LogicalOperator] = []
             changed = False

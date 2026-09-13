@@ -65,17 +65,22 @@ class ArrowFileScanner(
 
     @override
     def metadata_row_count_is_exact(self) -> bool:
-        """``True`` when no row-reducing pushdown is set on this scanner.
+        """``True`` when nothing reduces rows, or only whole files are dropped.
 
         A Parquet footer's ``num_rows`` is the file's total, with nothing in it
-        to say how many rows survive a filter, so for this scanner the question
-        collapses to "is anything reducing rows?". Column projection is
-        deliberately not consulted: it changes the width of the output, never
-        the row count.
+        to say how many rows survive a filter, so a data predicate or a limit
+        rules the count out. A partition predicate is different: it drops whole
+        files, and ``prune_manifest`` drops them before any footer is read, so
+        the surviving footers still sum exactly. That needs a partitioning
+        spec -- without one ``prune_manifest`` no-ops and would silently sum
+        the files it should have dropped.
+
+        Column projection is deliberately not consulted: it changes the width
+        of the output, never the row count.
         """
         return (
             self.predicate is None
-            and self.partition_predicate is None
+            and (self.partition_predicate is None or self.partitioning is not None)
             and self.limit is None
         )
 
