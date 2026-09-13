@@ -192,19 +192,30 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    if (!current_job_id_.IsNil() && job_config_.has_value()) {
-      RAY_CHECK(current_job_id_ == job_id);
-      return;
-    }
-  }
   absl::WriterMutexLock lock(&mutex_);
+  if (!current_job_id_.IsNil() && job_config_.has_value()) {
+    RAY_CHECK(current_job_id_ == job_id);
+    return false;
+  }
+
   current_job_id_ = job_id;
   job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
+  return true;
+}
+
+bool WorkerContext::GetEnableRayDataReconstruction() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return job_config_.has_value() && job_config_->enable_ray_data_reconstruction();
+}
+
+bool WorkerContext::ShouldPinObjectLineage() const {
+  if (GetEnableRayDataReconstruction()) {
+    return false;
+  }
+  return RayConfig::instance().lineage_pinning_enabled();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {

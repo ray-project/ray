@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
@@ -590,6 +591,23 @@ def _default_fixed_shape_tensor_format():
     return FixedShapeTensorFormat.V2
 
 
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
+    """Read this job's ``enable_ray_data_reconstruction`` setting from the core worker."""
+    if not global_worker.connected:
+        return None
+
+    try:
+        return bool(global_worker.core_worker.get_enable_ray_data_reconstruction())
+    except Exception:
+        logger.warning(
+            "Couldn't read `enable_ray_data_reconstruction` from the core worker. "
+            "Ray Data may be running without fault tolerance mechanism."
+            "Is the data reconstruction value correctly propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
+
+
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     # Lazily import to avoid circular dependencies.
     from ray.data._internal.issue_detection.issue_detector_configuration import (
@@ -889,6 +907,11 @@ class DataContext:
             otherwise, the system launches map tasks and actors with no logical
             ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
             for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -1096,6 +1119,8 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    _enable_ray_data_reconstruction: Optional[bool] = None
 
     object_store_reservation_overshoot_ratio: Optional[
         float
@@ -1488,6 +1513,25 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the enable_ray_data_reconstruction value in the cluster. "
+                    "This will cause data reconstruction to fail. Please "
+                    "only set the enable_ray_data_reconstruction value using the job config."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.
