@@ -714,6 +714,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle(
 
     from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
         ResourceRequestPriority,
+        ResourceRequestStrategy,
     )
     from ray.train.v2._internal.execution.scaling_policy import (
         AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
@@ -739,6 +740,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle(
         label_selectors=expected_label_selectors,
         expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         priority=ResourceRequestPriority.HIGH,
+        strategy=ResourceRequestStrategy.PACK,
     )
 
     with patch("ray.get", side_effect=lambda x, **_: x,), patch(
