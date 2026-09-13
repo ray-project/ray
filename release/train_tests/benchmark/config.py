@@ -58,8 +58,9 @@ class RayDataConfig(DataLoaderConfig):
     # PROTOTYPE: use the push-based streaming split (PushBasedDataConfig)
     # instead of the default pull-based streaming_split.
     ray_data_push_based_split: bool = False
-    # Consumer-side buffer target (rows) for the push-based split; -1 uses
-    # the default (DEFAULT_GENERIC_TARGET_BUFFER_ROWS).
+    # Consumer-side buffer target (rows) for the push-based split; -1
+    # derives it from prefetch_batches * batch_size (plus a one-block floor),
+    # mirroring the pull model's prefetch window.
     ray_data_push_target_buffer_rows: int = -1
 
 

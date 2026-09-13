@@ -43,10 +43,12 @@ class PushBasedDataConfig(DataConfig):
             datasets_to_split: Same as :class:`~ray.train.DataConfig`.
             execution_options: Same as :class:`~ray.train.DataConfig`.
             enable_shard_locality: Same as :class:`~ray.train.DataConfig`.
-            target_buffer_rows: How many rows each train worker keeps
-                buffered locally (the push credit). Should cover at least
-                ~2 blocks; defaults to
-                ``DEFAULT_GENERIC_TARGET_BUFFER_ROWS``.
+            target_buffer_rows: Explicit override for how many rows each
+                train worker keeps buffered locally (the push credit). By
+                default the credit is derived per iteration from
+                ``prefetch_batches * batch_size`` (mirroring the pull
+                model's prefetch window), with a one-block floor that keeps
+                pipelining even when a single block exceeds that window.
         """
         super().__init__(
             datasets_to_split=datasets_to_split,

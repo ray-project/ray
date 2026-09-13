@@ -18,10 +18,15 @@ prefetch and resolve stages are skipped entirely; batching, the
 format/collate threadpool, order restore, and finalize (i.e. everything
 ``iter_torch_batches`` needs) are reused unchanged.
 
-Flow control is poll-based: each pusher periodically polls the consumer to
-learn how many rows it has drained from its queue and how many rows it wants
-buffered (``target_buffer_rows``), and only pushes while
-``rows_pushed - rows_consumed < target_buffer_rows``.
+Flow control is poll-based and mirrors the pull model's knobs: each pusher
+periodically polls the consumer for how many rows/blocks it has drained and
+how many rows it wants buffered — by default ``prefetch_batches *
+batch_size`` from the actual ``iter_batches`` call, exactly the pull model's
+prefetch window — and pushes while ``rows_pushed - rows_consumed <
+target_buffer_rows``. Independently, at least ``MIN_PREFETCH_BLOCKS`` whole
+blocks are kept in flight (the analog of the pull model's 1-deep pipelined
+``get``), so flow never degenerates to stop-and-wait when one block exceeds
+the row window.
 
 Ordering: the consumer actor may be multi-threaded, and multi-threaded actors
 execute tasks out of order (dispatch follows argument readiness; see
@@ -121,6 +126,7 @@ class _PollResponse:
 
     rows_consumed: int
     bytes_consumed: int
+    blocks_consumed: int
     target_buffer_rows: int
     iterating: bool
 
@@ -174,6 +180,12 @@ class PushSplitCoordinator:
 
     # How long a pusher sleeps between polls while the consumer has no credit.
     POLL_INTERVAL_S = 0.05
+    # Always keep at least this many blocks in flight (queued/undelivered at
+    # the consumer) regardless of the row credit. This is the push analog of
+    # the pull model's 1-deep RPC pipelining (gen_blocks issues the next
+    # `get` before yielding the current block), and prevents stop-and-wait
+    # when blocks are much larger than prefetch_batches * batch_size.
+    MIN_PREFETCH_BLOCKS = 1
 
     def __init__(self, dataset: "Dataset", n: int):
         # Deep copy so updates to the base dataset's context don't affect this
@@ -487,6 +499,8 @@ class PushSplitCoordinator:
         # actor, so Ray may execute receive tasks out of order (dispatch
         # follows argument readiness); the consumer re-sequences by ``seq``.
         seq = 0
+        # Blocks pushed this epoch (exact; only this thread writes it).
+        blocks_pushed = 0
         try:
             while not stop.is_set():
                 # 1) Poll the consumer.
@@ -511,14 +525,25 @@ class PushSplitCoordinator:
                 # self._update_external_consumer_bytes()
 
                 # 2) Compute credit. Our push counters are exact; the polled
-                # consumed count is stale-low, so credit only under-sends.
+                # consumed counts are stale-low, so credit only under-sends.
+                # Row credit mirrors the pull model's prefetch window
+                # (prefetch_batches * batch_size rows, reported by the
+                # consumer); the block floor mirrors its 1-deep pipelined
+                # `get` so at least MIN_PREFETCH_BLOCKS whole blocks stay in
+                # flight even when a single block exceeds the row window.
                 credit_rows = resp.target_buffer_rows - rows_in_flight
-                if not resp.iterating or credit_rows <= 0:
+                blocks_in_flight = blocks_pushed - resp.blocks_consumed
+                if not resp.iterating or (
+                    credit_rows <= 0 and blocks_in_flight >= self.MIN_PREFETCH_BLOCKS
+                ):
                     stop.wait(self.POLL_INTERVAL_S)
                     continue
 
-                # 3) Push burst: at most credit_rows rows, then re-poll.
-                while credit_rows > 0 and not stop.is_set():
+                # 3) Push burst: until both the row credit is exhausted and
+                # the block floor is satisfied, then re-poll.
+                while (
+                    credit_rows > 0 or blocks_in_flight < self.MIN_PREFETCH_BLOCKS
+                ) and not stop.is_set():
                     # Blocking pull from the executor; bumps
                     # _num_waiting_consumers, preserving liveness/backpressure
                     # semantics of the pull model. Raises StopIteration at
@@ -534,6 +559,11 @@ class PushSplitCoordinator:
                         push_block(seq, entry, num_rows, size_bytes)
                         seq += 1
                         credit_rows -= num_rows
+                        # Local estimate; grows within the burst (the
+                        # consumer may pop meanwhile, which only under-sends
+                        # until the next poll refreshes it).
+                        blocks_in_flight += 1
+                        blocks_pushed += 1
                         # Single-writer (this thread); see __init__.
                         self._rows_pushed[split_idx] += num_rows
                         self._bytes_pushed[split_idx] += size_bytes
@@ -635,11 +665,6 @@ class PushSplitCoordinator:
 # actor (their first argument is the actor instance, unused).
 # ---------------------------------------------------------------------------
 
-# Default consumer-side buffer target for the generic path. Must cover at
-# least ~2 blocks or the credit protocol degenerates to stop-and-wait; a
-# byte-based credit sized against target_max_block_size would be the real fix.
-DEFAULT_GENERIC_TARGET_BUFFER_ROWS = 25_000
-
 _RECEIVER_REGISTRY_LOCK = threading.Lock()
 _RECEIVER_REGISTRY: Dict[str, "_PushReceiver"] = {}
 
@@ -657,6 +682,7 @@ class _PushReceiver:
         self.target_buffer_rows = target_buffer_rows
         self.rows_consumed = 0
         self.bytes_consumed = 0
+        self.blocks_consumed = 0
         self.iterating = False
         self.cur_epoch: Optional[int] = None
         self.reorder_epoch: Optional[int] = None
@@ -671,6 +697,7 @@ class _PushReceiver:
             self.target_buffer_rows = target_buffer_rows
             self.rows_consumed = 0
             self.bytes_consumed = 0
+            self.blocks_consumed = 0
             self.reorder_epoch = None
             self.reorder_next_seq = 0
             self.reorder_pending = {}
@@ -695,6 +722,7 @@ class _PushReceiver:
         with self.lock:
             self.rows_consumed += num_rows
             self.bytes_consumed += size_bytes
+            self.blocks_consumed += 1
 
 
 def _receiver_deliver(
@@ -749,11 +777,12 @@ def _receiver_poll(_actor: Any, key: str) -> _PollResponse:
     if receiver is None:
         # Not created yet (iterator hasn't started): report not-iterating so
         # the pusher waits.
-        return _PollResponse(0, 0, 0, False)
+        return _PollResponse(0, 0, 0, 0, False)
     with receiver.lock:
         return _PollResponse(
             rows_consumed=receiver.rows_consumed,
             bytes_consumed=receiver.bytes_consumed,
+            blocks_consumed=receiver.blocks_consumed,
             target_buffer_rows=receiver.target_buffer_rows,
             iterating=receiver.iterating,
         )
@@ -804,7 +833,9 @@ class PushBasedDataIterator(DataIterator):
         ``split_dataset`` must already be wrapped in a ``StreamingSplit``
         logical op — see ``Dataset.streaming_split_push_based``, which
         mirrors how ``Dataset.streaming_split`` wraps the dataset before
-        calling ``StreamSplitDataIterator.create``.
+        calling ``StreamSplitDataIterator.create``. ``target_buffer_rows``
+        is an explicit credit override; by default the credit follows the
+        iteration's ``prefetch_batches * batch_size`` window.
         """
         coord_actor = PushSplitCoordinator.options(
             # n concurrent start_epoch calls blocked at the barrier + headroom
@@ -830,9 +861,13 @@ class PushBasedDataIterator(DataIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
-        self._target_buffer_rows = (
-            target_buffer_rows or DEFAULT_GENERIC_TARGET_BUFFER_ROWS
-        )
+        # Explicit override; when None the target is derived per iteration
+        # from iter_batches' prefetch_batches * batch_size (mirroring the
+        # pull model's prefetch window) in _create_batch_iterator, with the
+        # coordinator's MIN_PREFETCH_BLOCKS floor guaranteeing pipelining
+        # even when one block exceeds that window.
+        self._target_buffer_rows = target_buffer_rows
+        self._runtime_target_rows = 256
         self._iter_stats = DatasetStats(metadata={}, parent=None)
         # Epoch this split is currently consuming; set by the fetch thread
         # once start_epoch returns, cleared by _on_iteration_end on the
@@ -868,7 +903,7 @@ class PushBasedDataIterator(DataIterator):
                     _RECEIVER_REGISTRY[key] = receiver
             # Reset from any previous epoch BEFORE arriving at the barrier;
             # stragglers are dropped by the epoch check in _receiver_deliver.
-            receiver.reset(self._target_buffer_rows)
+            receiver.reset(self._target_buffer_rows or self._runtime_target_rows)
 
             # Re-registering every epoch is fine (idempotent overwrite).
             ray.get(
@@ -902,6 +937,14 @@ class PushBasedDataIterator(DataIterator):
         return gen_blocks(), self._iter_stats, None
 
     def _create_batch_iterator(self, ref_bundles_iter, **kwargs):
+        # Derive the push credit from the actual iteration parameters, like
+        # the pull model's prefetch window (prefetch_batches * batch_size
+        # rows). This runs on the consumer thread BEFORE the fetch thread
+        # first pulls the (lazy) block generator, which reads it in
+        # receiver.reset().
+        self._runtime_target_rows = kwargs.get("prefetch_batches", 1) * (
+            kwargs.get("batch_size") or 256
+        )
         # The "ref bundles" iterator actually yields ResolvedBlocks (blocks
         # arrive materialized); use the pipeline variant that starts at the
         # batching stage.
