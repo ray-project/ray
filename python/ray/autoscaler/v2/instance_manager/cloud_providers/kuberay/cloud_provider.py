@@ -23,6 +23,8 @@ from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_max_replicas,
     _worker_group_num_of_hosts,
     _worker_group_replicas,
+    finalizer_patch,
+    idle_suspend_patch,
     worker_delete_patch,
     worker_replica_patch,
 )
@@ -42,11 +44,11 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
-# Annotation the KubeRay operator acts on to terminate the cluster.
-NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
-
-AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
-NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
+IDLE_TERMINATION_OPTIONS_KEY = "idleTerminationOptions"
+IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY = "timeoutSeconds"
+IDLE_TERMINATION_OPTIONS_POLICY_KEY = "policy"
+NO_DRIVER_TIMEOUT_FINALIZER = "ray.io/no-driver-idle-termination"
+IDLE_SUSPEND_KEY = "idleSuspend"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -503,16 +505,18 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
-        self._refresh_no_driver_timeout_seconds()
+        self._refresh_no_driver_config()
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
 
-    def _refresh_no_driver_timeout_seconds(self) -> None:
-        """Reads noDriverTimeoutSeconds from the RayCluster CR."""
-        opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
-        secs = opts.get(NO_DRIVER_TIMEOUT_SECONDS_KEY)
+    def _refresh_no_driver_config(self) -> None:
+        """Reads IdleTerminationOptions from the RayCluster CR."""
+        opts = self._ray_cluster["spec"].get(IDLE_TERMINATION_OPTIONS_KEY, {})
+        secs = opts.get(IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY)
         self._no_driver_timeout_seconds = float(secs) if secs is not None else None
+        policy = opts.get(IDLE_TERMINATION_OPTIONS_POLICY_KEY, "Suspend")
+        self._no_driver_policy = policy
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -720,7 +724,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._no_driver_observed_since = now
         if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
             return
-        self._set_no_driver_annotation()
+        self._apply_no_driver_policy()
 
     def _driver_status(self) -> Tuple[bool, int]:
         """Returns whether a non-internal driver is alive and the latest job end time.
@@ -750,39 +754,83 @@ class KubeRayProvider(ICloudInstanceProvider):
                 has_active_driver = True
         return has_active_driver, latest_job_end_time
 
-    def _set_no_driver_annotation(self) -> None:
-        """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.
-
-        Idempotent via the CR cached this reconcile loop; PATCH errors are swallowed.
-        """
-        annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
-        if annotations.get(NO_DRIVER_TTL_EXPIRED_ANNOTATION) == "true":
+    def _apply_no_driver_policy(self) -> None:
+        """Applies the configured no-driver timeout policy to the RayCluster CR."""
+        if self._no_driver_policy not in {"Delete", "Suspend"}:
+            logger.warning(
+                f"Unknown no driver policy {self._no_driver_policy}. Nothing will apply"
+            )
             return
 
         path = f"rayclusters/{self._cluster_name}"
-        # Merge patch covers missing and present annotations in one call.
-        payload = {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
+        if self._no_driver_policy == "Delete":
+            # Append the ray.io/no-driver-idle-termination finalizer
+            # using a read-modify-write to preserve existing finalizers.
+            finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
+            if NO_DRIVER_TIMEOUT_FINALIZER not in finalizers:
+                # metadata.finalizers is an array so we use add-patch to append NO_DRIVER_TIMEOUT_FINALIZER
+                payload = finalizer_patch(NO_DRIVER_TIMEOUT_FINALIZER, finalizers)
+                try:
+                    patched_raycluster = self._k8s_api_client.patch(
+                        path, payload, content_type="application/json-patch+json"
+                    )
+
+                    if NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
+                        "metadata", {}
+                    ).get("finalizers", []):
+                        logger.error(
+                            f"Unable to persist {NO_DRIVER_TIMEOUT_FINALIZER} to metadata.finalizers for {self._cluster_name}"
+                        )
+                        return None
+
+                except Exception:
+                    logger.exception(
+                        f"Failed to MERGE-PATCH finalizers to {self._cluster_name}"
+                    )
+                    return None
+
+            try:
+                # DELETE the idle RayCluster.
+                self._k8s_api_client.delete(path)
+                logger.info(f"Deleted {self._cluster_name}")
+            except requests.HTTPError as e:
+                if e.response.status_code == 404:
+                    # HTTP status code 404 is treated as a successful delete.
+                    logger.info(f"{self._cluster_name} was already deleted.")
+                else:
+                    logger.exception(f"Failed to delete {self._cluster_name}")
+            except Exception:
+                logger.exception(f"Failed to delete {self._cluster_name}")
+
+            return None
+
+        spec_idle_suspend = self._ray_cluster.get("spec", {}).get(IDLE_SUSPEND_KEY)
+        if spec_idle_suspend:
+            logger.info(f"spec.idleSuspend is already true in {self._cluster_name}")
+            return None
+
+        # Merge-patch spec.idleSuspend=true when the policy is Suspend.
+        payload = idle_suspend_patch(True)
+
         try:
-            self._k8s_api_client.patch(
+            patched_raycluster = self._k8s_api_client.patch(
                 path,
                 payload,
                 content_type="application/merge-patch+json",
             )
+            if patched_raycluster.get("spec", {}).get(IDLE_SUSPEND_KEY) is not True:
+                logger.error(
+                    f"Unable to persist {IDLE_SUSPEND_KEY}=true for {self._cluster_name}"
+                )
+                return None
+
         except Exception:
             logger.exception(
-                "Failed to PATCH %s=true on RayCluster %s",
-                NO_DRIVER_TTL_EXPIRED_ANNOTATION,
-                self._cluster_name,
+                f"Failed to MERGE-PATCH {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}",
             )
-            return
+            return None
 
-        logger.info(
-            "Set %s=true on RayCluster %s.",
-            NO_DRIVER_TTL_EXPIRED_ANNOTATION,
-            self._cluster_name,
-        )
+        logger.info(f"Set {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}")
 
     def _get_head_pod_resource_version(self) -> str:
         """

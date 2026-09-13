@@ -23,7 +23,9 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
-    NO_DRIVER_TTL_EXPIRED_ANNOTATION,
+    IDLE_SUSPEND_KEY,
+    IDLE_TERMINATION_OPTIONS_KEY,
+    NO_DRIVER_TIMEOUT_FINALIZER,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -347,6 +349,7 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
         self._ray_cluster = ray_cluster
         self._pod_list = pod_list
         self._patches = {}
+        self._deletes = []
 
     def get(self, path: str) -> Dict[str, Any]:
         if "pods" in path:
@@ -367,6 +370,10 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
     def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        self._deletes.append(path)
+        return {}
 
 
 class KubeRayProviderIntegrationTest(unittest.TestCase):
@@ -830,33 +837,151 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
-    def test_set_no_driver_annotation_adds_when_absent(self):
-        self.provider._set_no_driver_annotation()
+    def _overwrite_patch_to_persist_finalizer(self) -> None:
+        """Overwrite mock_client.patch() to behave like a real K8s API server for
+        the RayCluster finalizer patch. Add the finalizer to the cached CR and
+        return the patched resource.
+        """
+
+        def patch_and_persist(
+            path: str,
+            patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+            content_type="application/json-patch+json",
+        ):
+            self.mock_client._patches[path] = patches  # what the default patch() does
+            self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
+                "finalizers", []
+            ).append(NO_DRIVER_TIMEOUT_FINALIZER)
+            return self.provider._ray_cluster
+
+        self.mock_client.patch = patch_and_persist
+
+    def test_apply_no_driver_policy_delete_adds_finalizer_then_deletes(self):
+        self.provider._no_driver_policy = "Delete"
+        self._overwrite_patch_to_persist_finalizer()
         path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._apply_no_driver_policy()
         patch = self.mock_client.get_patches(path)
-        assert patch == {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
 
-    def test_set_no_driver_annotation_idempotent(self):
-        self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
-            "annotations", {}
-        )[NO_DRIVER_TTL_EXPIRED_ANNOTATION] = "true"
+        assert patch == [
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [NO_DRIVER_TIMEOUT_FINALIZER],
+            }
+        ]
+        assert self.mock_client._deletes == [path]
 
-        self.provider._set_no_driver_annotation()
+    def test_apply_no_driver_policy_delete_finalizer_idempotent(self):
+        self.provider._ray_cluster.setdefault("metadata", {})["finalizers"] = [
+            NO_DRIVER_TIMEOUT_FINALIZER
+        ]
+        self.provider._no_driver_policy = "Delete"
+        self.provider._apply_no_driver_policy()
         path = f"rayclusters/{self.provider._cluster_name}"
+        # Finalizer already present: no patch needed, only the delete.
         assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == [path]
 
-    def test_set_no_driver_annotation_swallows_patch_failure(self):
+    def test_apply_no_driver_policy_delete_finalizer_appends_when_others_present(
+        self,
+    ):
+        other_finalizer = "GCSFTFinalizer"  # e.g. set by kuberay-operator
+        self.provider._ray_cluster.setdefault("metadata", {})["finalizers"] = [
+            other_finalizer
+        ]
+        self._overwrite_patch_to_persist_finalizer()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._no_driver_policy = "Delete"
+        self.provider._apply_no_driver_policy()
+
+        assert self.mock_client.get_patches(path) == [
+            {
+                "op": "add",
+                "path": "/metadata/finalizers/-",
+                "value": NO_DRIVER_TIMEOUT_FINALIZER,
+            }
+        ]
+        # The pre-existing finalizer must survive the append, not get clobbered.
+        assert self.provider._ray_cluster["metadata"]["finalizers"] == [
+            other_finalizer,
+            NO_DRIVER_TIMEOUT_FINALIZER,
+        ]
+        assert self.mock_client._deletes == [path]
+
+    def test_apply_no_driver_policy_delete_swallows_patch_failure(self):
         path = f"rayclusters/{self.provider._cluster_name}"
 
         def failing_patch(*args, **kwargs):
             raise RuntimeError("k8s unreachable")
 
         self.mock_client.patch = failing_patch
-        # Should not raise.
-        self.provider._set_no_driver_annotation()
+        self.provider._no_driver_policy = "Delete"
+        # Should not raise, and should not proceed to delete.
+        self.provider._apply_no_driver_policy()
         assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_no_driver_policy_delete_swallows_delete_failure(self):
+        self._overwrite_patch_to_persist_finalizer()
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        delete_calls = []
+
+        def failing_delete(path):
+            delete_calls.append(path)
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.delete = failing_delete
+        self.provider._no_driver_policy = "Delete"
+        # Should not raise, even though DELETE itself failed.
+        self.provider._apply_no_driver_policy()
+
+        assert delete_calls == [path]
+        assert self.mock_client.get_patches(path) == [
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [NO_DRIVER_TIMEOUT_FINALIZER],
+            }
+        ]
+
+    def test_apply_no_driver_policy_suspend_patches_idle_suspend(self):
+        self.provider._no_driver_policy = "Suspend"
+        self.provider._apply_no_driver_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert self.mock_client.get_patches(path) == {"spec": {IDLE_SUSPEND_KEY: True}}
+        assert self.mock_client._deletes == []
+
+    def test_apply_no_driver_policy_suspend_patches_idempotent(self):
+        self.provider._no_driver_policy = "Suspend"
+        self.provider._ray_cluster.setdefault("spec", {}).setdefault(
+            IDLE_SUSPEND_KEY, True
+        )
+        self.provider._apply_no_driver_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_no_driver_policy_suspend_swallows_patch_failure(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        def failing_patch(*args, **kwargs):
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.patch = failing_patch
+        self.provider._no_driver_policy = "Suspend"
+        # Should not raise.
+        self.provider._apply_no_driver_policy()
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_no_driver_policy_unknown_takes_no_action(self):
+        self.provider._no_driver_policy = "Bogus"
+        self.provider._apply_no_driver_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
 
     # --- No-driver termination predicate + dispatch ---
 
@@ -917,6 +1042,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
     def test_evaluate_no_driver_termination_waits_for_timeout(self):
         self.provider._gcs_client = self._make_gcs()  # no drivers
         self.provider._no_driver_timeout_seconds = 100.0
+        self.provider._no_driver_policy = "Delete"
+
+        self._overwrite_patch_to_persist_finalizer()
 
         def evaluate_at(t):
             with mock.patch("time.monotonic", return_value=t):
@@ -928,9 +1056,14 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         evaluate_at(50.0)
         assert path not in self.mock_client._patches  # still below timeout
         evaluate_at(100.0)
-        assert self.mock_client._patches.get(path) == {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
+        assert self.mock_client._patches.get(path) == [
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [NO_DRIVER_TIMEOUT_FINALIZER],
+            }
+        ]
+        assert self.mock_client._deletes == [path]
 
     def test_evaluate_no_driver_termination_resets_when_driver_attaches(self):
         path = f"rayclusters/{self.provider._cluster_name}"
@@ -965,21 +1098,36 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert self.provider._no_driver_observed_since == 50.0
         assert self.provider._last_seen_job_end_time == 42
 
-    def test_refresh_no_driver_timeout_seconds_reads_value(self):
+    def test_refresh_no_driver_config_reads_value(self):
         self.provider._ray_cluster = {
-            "spec": {"autoscalerOptions": {"noDriverTimeoutSeconds": 1800}}
+            "spec": {
+                "idleTerminationOptions": {
+                    "timeoutSeconds": 1800,
+                    "policy": "Suspend",
+                }
+            }
         }
-        self.provider._refresh_no_driver_timeout_seconds()
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds == 1800.0
+        assert self.provider._no_driver_policy == "Suspend"
 
-    def test_refresh_no_driver_timeout_seconds_unset(self):
-        self.provider._ray_cluster = {"spec": {"autoscalerOptions": {}}}
-        self.provider._refresh_no_driver_timeout_seconds()
+    def test_refresh_no_driver_config_unset(self):
+        self.provider._ray_cluster = {"spec": {IDLE_TERMINATION_OPTIONS_KEY: {}}}
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds is None
+        assert self.provider._no_driver_policy == "Suspend"
 
-    def test_refresh_no_driver_timeout_seconds_no_autoscaler_options(self):
+    def test_refresh_no_driver_config_policy_defaults_to_suspend(self):
+        self.provider._ray_cluster = {
+            "spec": {"idleTerminationOptions": {"timeoutSeconds": 1800}}
+        }
+        self.provider._refresh_no_driver_config()
+        assert self.provider._no_driver_timeout_seconds == 1800.0
+        assert self.provider._no_driver_policy == "Suspend"
+
+    def test_refresh_no_driver_config_no_idle_termination_options(self):
         self.provider._ray_cluster = {"spec": {}}
-        self.provider._refresh_no_driver_timeout_seconds()
+        self.provider._refresh_no_driver_config()
         assert self.provider._no_driver_timeout_seconds is None
 
     def test_scale_down_with_multi_host_group(self):
