@@ -50,6 +50,19 @@
 namespace ray {
 namespace gcs {
 
+namespace {
+
+// The subset of GcsServerMetrics the Redis store client records into. Returned
+// by value: RedisMetrics holds references, and the referents are owned by the
+// GcsServerMetrics the server was constructed with, which outlives it.
+RedisMetrics MakeRedisMetrics(const GcsServerMetrics &metrics) {
+  return RedisMetrics{metrics.redis_request_payload_bytes_sum,
+                      metrics.redis_response_payload_bytes_sum,
+                      metrics.redis_command_count_counter};
+}
+
+}  // namespace
+
 inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
   switch (val) {
   case GcsServer::StorageType::IN_MEMORY:
@@ -190,8 +203,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         clock_);
     break;
   case StorageType::REDIS_PERSIST: {
-    auto redis_store_client =
-        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
+    auto redis_store_client = std::make_shared<RedisStoreClient>(
+        io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
@@ -770,8 +783,8 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    store_client =
-        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
+    store_client = std::make_unique<RedisStoreClient>(
+        io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
     break;
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(

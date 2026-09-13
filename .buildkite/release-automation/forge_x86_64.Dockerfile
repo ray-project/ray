@@ -33,7 +33,7 @@ chmod +x /usr/local/bin/bazelisk
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 # Install uv
-curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 mkdir -p /usr/local/python
 # Install Python using uv

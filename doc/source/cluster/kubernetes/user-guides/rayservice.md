@@ -232,7 +232,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 (step-8-zero-downtime-upgrade-for-ray-clusters)=
 ## Step 8: Zero downtime upgrade for Ray clusters
 
-This section describes the default `NewCluster` upgrade strategy. For large-scale deployments where duplicating resources isn't feasible, see [RayService incremental upgrade](kuberay-rayservice-incremental-upgrade) for the `NewClusterWithIncrementalUpgrade` strategy, which uses fewer resources during upgrades.
+This section describes the default `NewCluster` upgrade strategy. For large-scale deployments where duplicating resources isn't feasible, see [RayService incremental upgrade](kuberay-rayservice-incremental-upgrade) for the `NewClusterWithIncrementalUpgrade` strategy, which uses fewer resources during upgrades. If you enable GCS fault tolerance, see [GCS fault tolerance and zero-downtime upgrades](kuberay-rayservice-ha-upgrades) for how the default storage namespace keeps upgrades working.
 
 In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters. Instead, it reapplies the new configurations to the existing RayCluster. However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters. RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService `rayservice-sample-head-svc` and terminates the old one.
 
