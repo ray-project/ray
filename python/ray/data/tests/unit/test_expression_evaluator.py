@@ -423,6 +423,24 @@ def test_eval_projection_with_common_sub_exprs_pandas():
     assert out["y"].tolist() == [4, 6, 8]
 
 
+def test_eval_projection_with_common_sub_exprs_schema_less_empty_block():
+    """CSE projection must pass a schema-less empty block through unchanged
+    instead of raising a KeyError while evaluating the common subexpressions."""
+    block = pa.table({})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(projection, block, common_sub_exprs=[common])
+
+    assert out.num_rows == 0
+    assert out.num_columns == 0
+
+
 if __name__ == "__main__":
     import sys
 
