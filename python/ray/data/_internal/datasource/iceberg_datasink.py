@@ -107,11 +107,15 @@ def _collect_upsert_keys(
     import pyarrow as pa
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
+    from pyiceberg.utils.concurrent import ExecutorFactory
 
-    tables = []
-    for path in data_file_paths:
+    def _read_keys(path: str) -> "pa.Table":
         with io.new_input(path).open() as input_stream:
-            tables.append(pq.read_table(input_stream, columns=list(upsert_cols)))
+            return pq.read_table(input_stream, columns=list(upsert_cols))
+
+    # Read through PyIceberg's shared executor, the one its own scans use, so the
+    # per-file latency of object storage overlaps and PYICEBERG_MAX_WORKERS applies.
+    tables = list(ExecutorFactory.get_or_create().map(_read_keys, data_file_paths))
 
     keys = (
         pa.concat_tables(tables, promote_options="permissive")

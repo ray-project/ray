@@ -2159,6 +2159,23 @@ class TestUpsertScanMerge:
             "the per-column bounds"
         )
 
+        # Ray is free to split the write across tasks, so check the merged bounds rather
+        # than any single task's: they must cover exactly the keys that were written.
+        merged = {}
+        for write_return in captured:
+            for name, (col_min, col_max) in (
+                write_return.upsert_key_bounds or {}
+            ).items():
+                previous = merged.get(name)
+                merged[name] = (
+                    (min(previous[0], col_min), max(previous[1], col_max))
+                    if previous
+                    else (col_min, col_max)
+                )
+        assert merged == {"col_a": (2, 4)}, merged
+        assert sum(r.upsert_key_rows for r in captured) == 2
+        assert sum(r.upsert_null_key_rows for r in captured) == 0
+
         result = _read_from_iceberg(sort_by="col_a")
         expected = _create_typed_dataframe(
             {
