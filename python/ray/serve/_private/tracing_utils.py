@@ -236,7 +236,7 @@ def tracing_decorator_factory(
 
 
 def validate_tracing_exporter_import_path(
-    tracing_config: "TracingConfig",  # noqa: F821
+    tracing_config: "TracingConfig",
 ) -> None:
     """Eagerly resolve the exporter import path so a bad one fails fast.
 
@@ -264,9 +264,9 @@ def validate_tracing_exporter_import_path(
 def setup_tracing(
     component_name: str,
     component_id: str,
-    component_type: Optional["ServeComponentType"] = None,  # noqa: F821
+    component_type: Optional["ServeComponentType"] = None,
     *,
-    tracing_config: "TracingConfig",  # noqa: F821
+    tracing_config: "TracingConfig",
 ) -> bool:
     """
     Set up tracing for a specific Serve component.
@@ -276,8 +276,10 @@ def setup_tracing(
         component_id: The unique identifier of the component.
         component_type: The type of the component.
         tracing_config: The TracingConfig to set up tracing with. This is the
-            single source of truth; its fields default from the
-            RAY_SERVE_TRACING_* environment variables (see TracingConfig).
+            single source of truth. Its fields default from the
+            RAY_SERVE_TRACING_* environment variables of the controller's
+            process (where the config is now resolved), not of each proxy or
+            replica; see TracingConfig.
 
     Returns:
         bool: True if tracing setup is successful, False otherwise.

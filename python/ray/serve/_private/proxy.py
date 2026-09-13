@@ -1479,7 +1479,6 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        tracing_config: Optional[TracingConfig] = None,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1488,13 +1487,14 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
-            tracing_config: Tracing configuration
             log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
-        self._tracing_config = tracing_config
+        # Tracing is configured after startup via the GLOBAL_TRACING_CONFIG long
+        # poll (see `_update_tracing_config`), not through the constructor.
+        self._tracing_config: Optional[TracingConfig] = None
         # Whether setup_tracing has already succeeded in this process. Tracing is
         # set up at most once: OpenTelemetry only honors the first
         # set_tracer_provider call per process.
