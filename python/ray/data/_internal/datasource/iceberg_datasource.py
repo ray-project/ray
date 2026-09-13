@@ -170,15 +170,17 @@ class _DeleteFileCache:
     deduplicates delete files only within the tasks handed to a single scan call and Ray
     hands it one data file at a time to bound memory. Caching the bytes makes the fetch
     happen once without changing how the data files are scanned. An entry is dropped once
-    every reference to it has been served, and files are only cached while the total stays
-    within ``max_bytes``.
+    every reference to it has been served.
+
+    Which files get here is decided by :func:`_cache_shared_delete_files`, against the sizes
+    the manifest records, so that a file this cache is asked about is one it will keep. A
+    file it cannot keep must not reach it at all: serving that through the cache would read
+    the whole file on every reference and store none of it.
     """
 
-    def __init__(self, references: Dict[str, int], max_bytes: int):
+    def __init__(self, references: Dict[str, int]):
         self._remaining = dict(references)
-        self._max_bytes = max_bytes
         self._entries: Dict[str, bytes] = {}
-        self._cached_bytes = 0
         self._lock = threading.Lock()
 
     def caches(self, location: str) -> bool:
@@ -210,9 +212,8 @@ class _DeleteFileCache:
             if cached is not None:
                 # Another reader got here first; keep its copy and drop ours.
                 payload = cached
-            elif self._cached_bytes + len(payload) <= self._max_bytes:
+            else:
                 self._entries[location] = payload
-                self._cached_bytes += len(payload)
             self._release(location)
         return payload
 
@@ -231,7 +232,7 @@ class _DeleteFileCache:
             self._remaining[location] = remaining
             return
         self._remaining.pop(location, None)
-        self._cached_bytes -= len(self._entries.pop(location, b""))
+        self._entries.pop(location, None)
 
 
 class _CachedInputFile:
@@ -292,22 +293,41 @@ def _cache_shared_delete_files(
     if max_bytes <= 0:
         return table_io
 
-    references = collections.Counter(
-        delete_file.file_path for task in tasks for delete_file in task.delete_files
-    )
     # A delete file only referenced once is read once either way. Counting by path rather
     # than by ``DataFile`` also covers deletion vectors, where each data file gets its own
     # ``DataFile`` entry pointing into one shared Puffin file.
-    shared = {path: count for path, count in references.items() if count > 1}
+    references = collections.Counter(
+        delete_file.file_path for task in tasks for delete_file in task.delete_files
+    )
+    sizes = {
+        delete_file.file_path: delete_file.file_size_in_bytes
+        for task in tasks
+        for delete_file in task.delete_files
+    }
+
+    # Spend the budget on the files that save the most fetches first, and only on files
+    # that fit: caching is all or nothing per file, so a file that cannot be kept has to
+    # be read the way it would have been without a cache.
+    budget = max_bytes
+    shared: Dict[str, int] = {}
+    for path, count in sorted(references.items(), key=lambda item: -item[1]):
+        size = sizes.get(path) or 0
+        if count < 2 or size <= 0 or size > budget:
+            continue
+        budget -= size
+        shared[path] = count
+
     if not shared:
         return table_io
 
     logger.debug(
-        "[iceberg read] caching %d delete file(s) shared by %d data file(s)",
+        "[iceberg read] caching %d of %d delete file(s) for %d data file(s), %d bytes",
         len(shared),
+        len(references),
         len(tasks),
+        max_bytes - budget,
     )
-    return _DeleteCachingFileIO(table_io, _DeleteFileCache(shared, max_bytes))
+    return _DeleteCachingFileIO(table_io, _DeleteFileCache(shared))
 
 
 @dataclass(frozen=True)

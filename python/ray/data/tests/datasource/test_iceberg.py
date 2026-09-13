@@ -538,6 +538,39 @@ def test_get_read_task_caches_shared_delete_file_across_threads():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+def test_delete_file_too_large_for_the_cache_is_not_wrapped():
+    """A file the cache cannot keep must be read exactly as it would be without one.
+
+    Serving it through the cache would read the whole file for every data file that
+    references it and store none of it, which is worse than not caching at all.
+    """
+    from ray.data._internal.datasource.iceberg_datasource import _CachedInputFile
+
+    table = SqlCatalog(
+        _CATALOG_NAME,
+        **{k: v for k, v in _CATALOG_KWARGS.items() if k not in ("name", "type")},
+    ).load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    data_files = [task.file for task in table.scan().plan_files()]
+    delete_file = _shared_positional_delete_file(data_files)
+    tasks = [
+        FileScanTask(data_file, delete_files={delete_file}) for data_file in data_files
+    ]
+
+    fits = _cache_shared_delete_files(tasks, table.io, delete_file.file_size_in_bytes)
+    assert isinstance(fits.new_input(delete_file.file_path), _CachedInputFile)
+
+    # One byte short of the file, so it cannot be kept.
+    too_small = _cache_shared_delete_files(
+        tasks, table.io, delete_file.file_size_in_bytes - 1
+    )
+    assert too_small is table.io
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 def test_cached_input_file_keeps_the_input_file_contract():
     """``len()`` and the other members must still reach the wrapped input file.
 
