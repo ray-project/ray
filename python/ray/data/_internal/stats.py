@@ -29,11 +29,13 @@ from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionStats,
     DistributionTracker,
 )
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
+    MetricDefinition,
     MetricsGroup,
     MetricsType,
     NodeMetrics,
@@ -61,6 +63,76 @@ DISTRIBUTION_METRIC_STATISTICS = ("mean", "max")
 
 
 StatsDict = Dict[str, List[BlockStats]]
+DistributionPrometheusMetrics = Dict[str, Gauge]
+PrometheusMetric = Union[Metric, DistributionPrometheusMetrics]
+PrometheusMetricValue = Union[
+    int,
+    float,
+    RuntimeMetricsHistogram,
+    DistributionStats,
+    None,
+]
+
+
+def _create_prometheus_metric(
+    metric: MetricDefinition, tag_keys: Tuple[str, ...]
+) -> Optional[PrometheusMetric]:
+    if metric.metrics_type == MetricsType.Unsupported:
+        return None
+
+    metric_name = f"data_{metric.name}"
+    if metric.metrics_type == MetricsType.Gauge:
+        return Gauge(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+        )
+    elif metric.metrics_type == MetricsType.Histogram:
+        return Histogram(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+            **metric.metrics_args,
+        )
+    elif metric.metrics_type == MetricsType.Counter:
+        return Counter(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+        )
+    elif metric.metrics_type == MetricsType.Distribution:
+        return {
+            statistic: Gauge(
+                f"{metric_name}_{statistic}",
+                description=f"{metric.description} ({statistic})",
+                tag_keys=tag_keys,
+            )
+            for statistic in DISTRIBUTION_METRIC_STATISTICS
+        }
+
+    return None
+
+
+def _record_prometheus_metric(
+    prom_metric: PrometheusMetric,
+    value: PrometheusMetricValue,
+    tags: Optional[Dict[str, str]] = None,
+) -> None:
+    if isinstance(prom_metric, Gauge):
+        prom_metric.set(value, tags)
+    elif isinstance(prom_metric, Counter):
+        prom_metric.inc(value, tags)
+    elif isinstance(prom_metric, Histogram):
+        if isinstance(value, RuntimeMetricsHistogram):
+            value.export_to(prom_metric, tags)
+    elif isinstance(prom_metric, dict) and isinstance(value, dict):
+        if value.get("num_samples") == 0:
+            return
+
+        for statistic, gauge in prom_metric.items():
+            statistic_value = value.get(statistic)
+            if statistic_value is not None:
+                gauge.set(statistic_value, tags)
 
 
 def fmt(seconds: float) -> str:
@@ -674,43 +746,14 @@ class _StatsActor:
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
-    ) -> Dict[str, Union[Metric, Dict[str, Gauge]]]:
-        metrics = {}
+    ) -> Dict[str, PrometheusMetric]:
+        metrics: Dict[str, PrometheusMetric] = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
-            if metric.metrics_type == MetricsType.Unsupported:
-                continue
-            metric_name = f"data_{metric.name}"
-            metric_description = metric.description
-            if metric.metrics_type == MetricsType.Gauge:
-                metrics[metric.name] = Gauge(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                )
-            elif metric.metrics_type == MetricsType.Histogram:
-                metrics[metric.name] = Histogram(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                    **metric.metrics_args,
-                )
-            elif metric.metrics_type == MetricsType.Counter:
-                metrics[metric.name] = Counter(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                )
-            elif metric.metrics_type == MetricsType.Distribution:
-                metrics[metric.name] = {
-                    statistic: Gauge(
-                        f"{metric_name}_{statistic}",
-                        description=f"{metric_description} ({statistic})",
-                        tag_keys=tag_keys,
-                    )
-                    for statistic in DISTRIBUTION_METRIC_STATISTICS
-                }
+            prom_metric = _create_prometheus_metric(metric, tag_keys)
+            if prom_metric is not None:
+                metrics[metric.name] = prom_metric
         return metrics
 
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
@@ -738,26 +781,6 @@ class _StatsActor:
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, int | float]]] = None,
     ):
-        def _record(
-            prom_metric: Union[Metric, Dict[str, Gauge]],
-            value: Any,
-            tags: Dict[str, str] = None,
-        ):
-            if isinstance(prom_metric, Gauge):
-                prom_metric.set(value, tags)
-            elif isinstance(prom_metric, Counter):
-                prom_metric.inc(value, tags)
-            elif isinstance(prom_metric, Histogram):
-                if isinstance(value, RuntimeMetricsHistogram):
-                    value.export_to(prom_metric, tags)
-            elif isinstance(prom_metric, dict) and isinstance(value, dict):
-                if value.get("num_samples") == 0:
-                    return
-                for statistic, gauge in prom_metric.items():
-                    statistic_value = value.get(statistic)
-                    if statistic_value is not None:
-                        gauge.set(statistic_value, tags)
-
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
@@ -769,21 +792,21 @@ class _StatsActor:
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
             for field_name, prom_metric in self.execution_metrics_inputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_actors.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -802,7 +825,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    _record(prom_metric, metric_value, tags)
+                    _record_prometheus_metric(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
