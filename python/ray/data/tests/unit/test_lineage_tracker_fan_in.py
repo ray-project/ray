@@ -1,6 +1,6 @@
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pytest
 
@@ -39,7 +39,9 @@ class Submit(Action):
     """``register_task_submission``."""
 
     data_task_id: DataTaskId
-    dependencies: Dict[DataTaskId, Sequence[OutputIndex]] = field(default_factory=dict)
+    dependencies: Mapping[DataTaskId, Sequence[OutputIndex]] = field(
+        default_factory=dict
+    )
     plan: Optional[PlanRef] = None
 
     def apply(self, runner: "_ActionRunner") -> None:
@@ -52,7 +54,7 @@ class Submit(Action):
                 for parent_task_id, output_indices in self.dependencies.items()
                 for output_index in output_indices
             ],
-            plan_id=runner.resolve(self.plan),
+            plan_id=runner.resolve_optional(self.plan),
         )
 
 
@@ -66,7 +68,7 @@ class Complete(Action):
 
     def apply(self, runner: "_ActionRunner") -> None:
         runner.tracker.register_task_complete(
-            self.data_task_id, plan_id=runner.resolve(self.plan)
+            self.data_task_id, plan_id=runner.resolve_optional(self.plan)
         )
 
 
@@ -104,7 +106,7 @@ class ExpectPendingChildren(Action):
     plan: PlanRef
     #: Each pending child task ID mapped to the output indices every one of its
     #: parents produced for it.
-    expected: Dict[DataTaskId, Dict[DataTaskId, Sequence[OutputIndex]]]
+    expected: Mapping[DataTaskId, Mapping[DataTaskId, Sequence[OutputIndex]]]
 
     def apply(self, runner: "_ActionRunner") -> None:
         pending_children = runner.tracker.get_pending_children(
@@ -150,14 +152,18 @@ class _ActionRunner:
         """The plan ID bound to ``plan_ref``, or ``None`` if none is yet."""
         return self._plan_ids.get(plan_ref.name)
 
-    def resolve(self, plan_ref: Optional[PlanRef]) -> Optional[PlanId]:
-        """The plan ID ``plan_ref`` stands for, or ``None`` for a fresh attempt."""
-        if plan_ref is None:
-            return None
+    def resolve(self, plan_ref: PlanRef) -> PlanId:
+        """The plan ID ``plan_ref`` stands for. The plan must already be open."""
         assert (
             plan_ref.name in self._plan_ids
         ), f"Plan {plan_ref.name!r} is named before a failure opened it."
         return self._plan_ids[plan_ref.name]
+
+    def resolve_optional(self, plan_ref: Optional[PlanRef]) -> Optional[PlanId]:
+        """The plan ID ``plan_ref`` stands for, or ``None`` for a fresh attempt."""
+        if plan_ref is None:
+            return None
+        return self.resolve(plan_ref)
 
     def bind(self, plan_ref: PlanRef, plan_id: PlanId) -> None:
         """Bind the plan ID a failure just opened to ``plan_ref``."""

@@ -208,6 +208,7 @@ class LineageTracker:
         # Target task case: the plan no longer claims the target once the target
         # itself is being re-executed.
         if plan_id is not None and data_task_id == plan_id:
+            assert re_executed_task_node is not None
             del re_executed_task_node.plan_to_child_block_lineages[plan_id]
 
         if re_executed_task_node is not None:
