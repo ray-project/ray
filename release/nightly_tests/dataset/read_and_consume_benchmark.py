@@ -1,5 +1,6 @@
 import argparse
 import functools
+import time
 import uuid
 from typing import Callable
 
@@ -37,12 +38,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Fail if the workers receive less than this many Gbps in total, on average.",
     )
-    parser.add_argument(
-        "--repeat-reads",
-        type=int,
-        default=1,
-        help="Number of times to read and consume the input.",
-    )
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
     consume_group.add_argument("--iter-bundles", action="store_true")
@@ -78,8 +73,6 @@ def parse_args() -> argparse.Namespace:
         parser.error(
             "--write-delta-mode/--write-delta-partition-by require --write-delta."
         )
-    if args.repeat_reads < 1:
-        parser.error("--repeat-reads must be at least 1.")
     return args
 
 
@@ -94,12 +87,23 @@ def main(args):
         read_fn = get_read_fn(args)
         consume_fn = get_consume_fn(args)
 
-        for _ in range(args.repeat_reads):
-            ds = read_fn(args.path)
-            consume_fn(ds)
+        start_time = time.perf_counter()
+        ds = read_fn(args.path)
+        dataset_creation_time_s = time.perf_counter() - start_time
+
+        start_time = time.perf_counter()
+        consume_fn(ds)
+        dataset_consumption_time_s = time.perf_counter() - start_time
+
+        if args.min_total_worker_network_receive_gbps is not None:
+            print(f"Ray Dataset stats:\n{ds.stats()}")
 
         # Report arguments for the benchmark.
-        return vars(args)
+        return {
+            **vars(args),
+            "dataset_creation_time_s": round(dataset_creation_time_s, 4),
+            "dataset_consumption_time_s": round(dataset_consumption_time_s, 4),
+        }
 
     if args.write_delta and args.write_delta_mode == "overwrite":
         # Populate the table once first (same source/scale as the timed run
