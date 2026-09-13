@@ -11,6 +11,10 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ParquetRowGroupChunkMetadata,
     create_chunk_metadata,
 )
+from ray.data._internal.datasource_v2.chunkers.parquet_decoded_size import (
+    decoded_size_or_fallback,
+    sum_exact,
+)
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     Bin,
     BinItem,
@@ -23,17 +27,37 @@ from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
 logger = logging.getLogger(__name__)
 
 
+def _decoded_bytes(item: BinItem) -> int:
+    """The item's size in the units the bin budget is measured in.
+
+    Parquet's uncompressed size is still dictionary/RLE/bit-packed, so it is a
+    poor proxy for the Arrow block a read task materializes -- which is what the
+    budget is really bounding. Falls back to the pre-existing scaled estimate when
+    the footer could not produce an exact decoded size.
+    """
+    return decoded_size_or_fallback(item.decoded_size, item.uncompressed_size)
+
+
 @dataclass
 class _OpenBin:
     items: List[BinItem] = field(default_factory=list)
+    # Decoded bytes, which is what the cap is enforced against.
     used_bytes: int = 0
+    # Tracked only so a sealed bin can report both numbers; never compared to the
+    # cap.
+    uncompressed_bytes: int = 0
 
     def add(self, item: BinItem) -> None:
         self.items.append(item)
-        self.used_bytes += item.uncompressed_size
+        self.used_bytes += _decoded_bytes(item)
+        self.uncompressed_bytes += item.uncompressed_size
 
     def seal(self) -> Bin:
-        return Bin(tuple(self.items), self.used_bytes)
+        return Bin(
+            items=tuple(self.items),
+            total_uncompressed_size=self.uncompressed_bytes,
+            total_decoded_size=self.used_bytes,
+        )
 
 
 def _prefix_sums(unit_sizes: List[int]) -> List[int]:
@@ -68,6 +92,9 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
     # limit push-down, and rg_idx shifts by ``a`` because the run is contiguous.
     sizes = item.rg_sizes[a:b]
     rows = item.rg_rows[a:b]
+    # Empty when the run had no exact decoded sizing, in which case the slice
+    # inherits that and keeps falling back.
+    decoded_sizes = item.rg_decoded_sizes[a:b]
     count = b - a
     return BinItem(
         path=item.path,
@@ -78,6 +105,8 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         rg_count=count,
         rg_sizes=sizes if count > 1 else (),
         rg_rows=rows if count > 1 else (),
+        decoded_size=sum(decoded_sizes) if decoded_sizes else None,
+        rg_decoded_sizes=decoded_sizes if count > 1 else (),
     )
 
 
@@ -150,7 +179,7 @@ class _SharedBinPool(_BinPool):
         # First Fit on the WHOLE item: place it unsplit in the first bin it fits.
         # Returns False when it fits nowhere, leaving the caller to fall back to
         # the best-fit-per-unit walk.
-        total = item.uncompressed_size
+        total = _decoded_bytes(item)
         target = next(
             (b for b in self._bins if b.used_bytes + total <= self._cap), None
         )
@@ -253,6 +282,11 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
         manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
     ):
         if md is None or "row_group_ids" not in md:
+            # No footer stats, so the only size available is the file's on-disk
+            # (compressed) length. Leaving ``decoded_size`` unset routes it
+            # through the same fallback as a chunk whose footer had no size
+            # statistics, which is the coherent reading now that the bin budget
+            # counts decoded bytes.
             items.append(
                 BinItem(
                     path=str(path),
@@ -263,6 +297,11 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
             )
             continue
         ids = md["row_group_ids"]
+        # ``.get`` rather than ``[]``: a manifest produced by another partitioner,
+        # or by a chunker predating decoded sizing, need not carry these keys.
+        # Tested against None explicitly because manifest columns arrive as numpy
+        # arrays, whose truthiness is ambiguous.
+        rg_decoded_sizes = md.get("rg_decoded_sizes")
         items.append(
             BinItem(
                 path=str(path),
@@ -273,6 +312,10 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
                 rg_count=len(ids),
                 rg_sizes=tuple(md["rg_sizes"]),
                 rg_rows=tuple(md["rg_rows"]),
+                decoded_size=md.get("decoded_size"),
+                rg_decoded_sizes=(
+                    () if rg_decoded_sizes is None else tuple(rg_decoded_sizes)
+                ),
             )
         )
     return items
@@ -316,6 +359,14 @@ class OnlineBinPacker(FilePartitioner):
     def requires_global_input(self) -> bool:
         return True
 
+    @property
+    def max_partition_decoded_bytes(self) -> Optional[int]:
+        # The cap is enforced in decoded bytes (see ``_decoded_bytes``), so it is
+        # a real bound rather than an estimate -- except for the relaxation that
+        # lets a lone row group larger than a whole bin through, which a caller
+        # sizing memory off this should treat as the known outlier it is.
+        return self._cap
+
     # === Feeding ===
 
     def add_input(self, input_manifest: FileManifest) -> None:
@@ -323,16 +374,21 @@ class OnlineBinPacker(FilePartitioner):
             self._place(item)
 
     def _units(self, item: BinItem) -> List[int]:
-        # The row-group boundaries an item may be cut between, as unit sizes. A
-        # splittable coalesced run (split_coalesced and rg_count > 1) yields one
-        # unit per physical row group; anything else yields a single indivisible
-        # unit (the whole item). Placement only ever cuts at unit boundaries.
+        # The row-group boundaries an item may be cut between, as unit sizes in
+        # decoded bytes (the units the cap is in). A splittable coalesced run
+        # (split_coalesced and rg_count > 1) yields one unit per physical row
+        # group; anything else yields a single indivisible unit (the whole item).
+        # Placement only ever cuts at unit boundaries.
         if self._split_coalesced and item.rg_count > 1:
-            return list(item.rg_sizes)
-        return [item.uncompressed_size]
+            if item.rg_decoded_sizes:
+                return list(item.rg_decoded_sizes)
+            # Apply the fallback per row group so the units still sum to the
+            # item's own decoded size.
+            return [decoded_size_or_fallback(None, size) for size in item.rg_sizes]
+        return [_decoded_bytes(item)]
 
     def _place(self, item: BinItem) -> None:
-        item_bytes = item.uncompressed_size
+        item_bytes = _decoded_bytes(item)
         seen_bytes = self._seen_bytes_by_path.get(item.path, 0)
         self._seen_bytes_by_path[item.path] = seen_bytes + item_bytes
 
@@ -340,7 +396,13 @@ class OnlineBinPacker(FilePartitioner):
             # Relaxation: an indivisible chunk bigger than a whole bin gets its own
             # bin. A splittable oversized run instead falls through and is cut into
             # bin-sized pieces by the placers.
-            self._output.append(Bin((item,), item_bytes))
+            self._output.append(
+                Bin(
+                    items=(item,),
+                    total_uncompressed_size=item.uncompressed_size,
+                    total_decoded_size=item_bytes,
+                )
+            )
         elif seen_bytes < self._cap:
             # Prefer keeping a light item whole; fall back to splitting it across
             # the shared bins. This also lets a first, splittable oversized
@@ -377,8 +439,11 @@ class OnlineBinPacker(FilePartitioner):
 
     def next_partition(self) -> FileManifest:
         bin_ = self._output.popleft()
+        # Both totals: the decoded one is what the cap bounded, and the pair makes
+        # the effective inflation ratio visible when a bin looks mis-sized.
         logger.debug(
-            "Emitting bin with %d uncompressed bytes: %s",
+            "Emitting bin with %d decoded bytes (%d uncompressed): %s",
+            bin_.total_decoded_size,
             bin_.total_uncompressed_size,
             [
                 (item.path, item.rg_idx, item.rg_idx + item.rg_count - 1)
@@ -398,35 +463,36 @@ class OnlineBinPacker(FilePartitioner):
         # One manifest row per distinct file in the bin. A file's (possibly-split)
         # items cover disjoint contiguous runs, so union their physical row-group
         # ids into the read unit for that file.
-        ids_by_path: defaultdict = defaultdict(list)
-        rows_by_path: defaultdict = defaultdict(int)
-        size_by_path: defaultdict = defaultdict(int)
-        matched_by_path: dict = {}
+        items_by_path: defaultdict = defaultdict(list)
         for item in bin_.items:
-            ids_by_path[item.path].extend(
-                range(item.rg_idx, item.rg_idx + item.rg_count)
-            )
-            rows_by_path[item.path] += item.num_rows
-            size_by_path[item.path] += item.uncompressed_size
-            matched_by_path[item.path] = (
-                matched_by_path.get(item.path, True) and item.fully_matched
-            )
+            items_by_path[item.path].append(item)
 
         paths: List[str] = []
         sizes: List[int] = []
         chunk_metadatas: List[ParquetRowGroupChunkMetadata] = []
-        for path, ids in ids_by_path.items():
+        for path, items in items_by_path.items():
+            ids = [
+                rg_id
+                for item in items
+                for rg_id in range(item.rg_idx, item.rg_idx + item.rg_count)
+            ]
+            uncompressed_size = sum(item.uncompressed_size for item in items)
             paths.append(path)
-            sizes.append(size_by_path[path])
+            sizes.append(uncompressed_size)
             chunk_metadatas.append(
                 create_chunk_metadata(
                     ParquetRowGroupChunkMetadata,
                     row_group_ids=tuple(sorted(ids)),
-                    num_rows=rows_by_path[path],
-                    uncompressed_size=size_by_path[path],
-                    fully_matched=matched_by_path[path],
+                    num_rows=sum(item.num_rows for item in items),
+                    uncompressed_size=uncompressed_size,
+                    fully_matched=all(item.fully_matched for item in items),
                     rg_sizes=(),
                     rg_rows=(),
+                    # A file's decoded size is exact only if every one of its
+                    # items was (sum_exact); one fallback item makes the whole
+                    # row fall back rather than reporting a mixed total.
+                    decoded_size=sum_exact(item.decoded_size for item in items),
+                    rg_decoded_sizes=(),
                 )
             )
         # TypedDict invariance: ``ParquetRowGroupChunkMetadata`` has extra keys

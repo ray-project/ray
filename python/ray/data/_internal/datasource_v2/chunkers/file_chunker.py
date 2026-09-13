@@ -66,8 +66,9 @@ class ParquetRowGroupChunkMetadata(ChunkMetadata):
     coalescing/splitting the bin packer applied is already expanded away here.
     ``num_rows`` is the summed footer row count of those groups (for sizing /
     limit accounting). ``uncompressed_size`` is their summed, projection-scoped
-    uncompressed byte size, carried so the reader can size batches without
-    re-reading the footer ``ListFiles`` already read.
+    uncompressed byte size, and ``decoded_size`` the corresponding Arrow decoded
+    size, both carried so the reader can size batches without re-reading the
+    footer ``ListFiles`` already read.
     """
 
     row_group_ids: Tuple[int, ...]
@@ -80,6 +81,12 @@ class ParquetRowGroupChunkMetadata(ChunkMetadata):
     # for coalesced runs so a partitioner can split at exact boundaries.
     rg_sizes: Tuple[int, ...]
     rg_rows: Tuple[int, ...]
+    # Arrow decoded size of these groups, and its per-row-group breakdown.
+    # ``None`` / empty when the footer could not yield it exactly, which routes
+    # consumers back to scaling ``uncompressed_size``. See
+    # ``parquet_decoded_size.decoded_size_or_fallback``.
+    decoded_size: Optional[int]
+    rg_decoded_sizes: Tuple[int, ...]
 
 
 @DeveloperAPI
