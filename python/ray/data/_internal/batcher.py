@@ -143,7 +143,7 @@ class Batcher(BatcherInterface):
                 if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
                         transform_pyarrow.try_combine_chunked_columns(
-                            block, min_chunks_to_combine=1
+                            accessor.to_block(), min_chunks_to_combine=1
                         )
                     )
 

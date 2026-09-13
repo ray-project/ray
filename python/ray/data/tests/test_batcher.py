@@ -19,6 +19,32 @@ def gen_block(num_rows):
     return pa.table({"foo": [1] * num_rows})
 
 
+@pytest.mark.parametrize("ensure_copy", [False, True])
+@pytest.mark.parametrize("max_chunksize", [None, 2])
+@pytest.mark.parametrize("prefix_rows", [0, 1])
+def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
+    table = pa.table({"value": [0, None, 2, 3, 4], "label": list("abcde")})
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table, max_chunksize=max_chunksize)
+
+    batcher = Batcher(batch_size=2, ensure_copy=ensure_copy)
+    if prefix_rows:
+        batcher.add(table.slice(0, prefix_rows))
+    batcher.add(sink.getvalue().to_pybytes())
+    batcher.done_adding()
+
+    batches = []
+    while batcher.has_any():
+        batches.append(batcher.next_batch())
+
+    expected = pa.concat_tables([table.slice(0, prefix_rows), table])
+    assert [batch.num_rows for batch in batches] == (
+        [2, 2, 1] if prefix_rows == 0 else [2, 2, 2]
+    )
+    assert pa.concat_tables(batches).equals(expected)
+
+
 def test_shuffling_batcher():
     batch_size = 5
     buffer_size = 20
