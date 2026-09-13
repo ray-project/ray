@@ -92,18 +92,15 @@ def main(args):
         # Report arguments for the benchmark.
         return vars(args)
 
-    try:
-        if args.write_delta and args.write_delta_mode == "overwrite":
-            # Populate the table once first (same source/scale as the timed run
-            # below) so "main" genuinely overwrites existing data instead of
-            # creating an empty table -- an OVERWRITE against a not-yet-existing
-            # table is just a create, which isn't the interesting case to time.
-            benchmark.run_fn("setup_populate", benchmark_fn)
+    if args.write_delta and args.write_delta_mode == "overwrite":
+        # Populate the table once first (same source/scale as the timed run
+        # below) so "main" genuinely overwrites existing data instead of
+        # creating an empty table -- an OVERWRITE against a not-yet-existing
+        # table is just a create, which isn't the interesting case to time.
+        benchmark.run_fn("setup_populate", benchmark_fn)
 
-        benchmark.run_fn("main", benchmark_fn)
-    finally:
-        if benchmark.result:
-            benchmark.write_result()
+    benchmark.run_fn("main", benchmark_fn)
+    benchmark.write_result()
 
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
