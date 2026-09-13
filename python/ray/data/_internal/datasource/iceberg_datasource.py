@@ -196,25 +196,42 @@ class _DeleteFileCache:
         """
         with self._lock:
             payload = self._entries.get(location)
-        if payload is None:
-            with input_file.open() as stream:
-                payload = stream.read()
+            if payload is not None:
+                self._release(location)
+                return payload
+
+        # Read outside the lock: a concurrent miss costs a duplicate read, holding the
+        # lock across the read would cost every other file waiting on this one.
+        with input_file.open() as stream:
+            payload = stream.read()
 
         with self._lock:
-            # ``_remaining`` counts (task, delete file) pairs, which is exact when each
-            # scan call gets one task and an over-estimate when a call gets several, so
-            # an entry is never dropped while a reference to it is still outstanding.
-            remaining = self._remaining.get(location, 0) - 1
-            self._remaining[location] = remaining
-            if remaining <= 0:
-                self._cached_bytes -= len(self._entries.pop(location, b""))
-            elif (
-                location not in self._entries
-                and self._cached_bytes + len(payload) <= self._max_bytes
-            ):
+            cached = self._entries.get(location)
+            if cached is not None:
+                # Another reader got here first; keep its copy and drop ours.
+                payload = cached
+            elif self._cached_bytes + len(payload) <= self._max_bytes:
                 self._entries[location] = payload
                 self._cached_bytes += len(payload)
+            self._release(location)
         return payload
+
+    def _release(self, location: str) -> None:
+        """Account for one served reference, dropping the entry after the last one.
+
+        ``_remaining`` counts (task, delete file) pairs, which is exact when each scan
+        call gets one task and an over-estimate when a call gets several, so an entry is
+        never dropped while a reference to it is still outstanding.
+
+        Args:
+            location: The file whose reference was just served. Called under the lock.
+        """
+        remaining = self._remaining.get(location, 0) - 1
+        if remaining > 0:
+            self._remaining[location] = remaining
+            return
+        self._remaining.pop(location, None)
+        self._cached_bytes -= len(self._entries.pop(location, b""))
 
 
 class _CachedInputFile:
@@ -227,6 +244,10 @@ class _CachedInputFile:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
+
+    def __len__(self) -> int:
+        # Dunder lookups skip __getattr__, and ``InputFile`` defines __len__.
+        return len(self._inner)
 
     def open(self, *args, **kwargs) -> pa.BufferReader:
         return pa.BufferReader(self._cache.read(self._location, self._inner))

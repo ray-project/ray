@@ -26,6 +26,7 @@ from ray.data import read_iceberg
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.iceberg_datasource import (
     IcebergDatasource,
+    _cache_shared_delete_files,
     _estimate_inmemory_file_size,
     _get_read_task,
 )
@@ -487,6 +488,83 @@ def test_get_read_task_fetches_a_shared_delete_file_once(
     assert len(data_opens) == len(data_files)
     # One row per data file is deleted, whether or not the delete file was cached.
     assert rows == rows_before - len(data_files)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_get_read_task_caches_shared_delete_file_across_threads():
+    """The cache must also hold when one scan call reads several data files at once.
+
+    ``read_file_tasks_sequentially=False`` hands every task to one scan call, which reads
+    them in PyIceberg's thread pool, so the cache is used concurrently.
+    """
+    table = SqlCatalog(
+        _CATALOG_NAME,
+        **{k: v for k, v in _CATALOG_KWARGS.items() if k not in ("name", "type")},
+    ).load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    data_files = [task.file for task in table.scan().plan_files()]
+    rows_before = len(table.scan().to_arrow())
+    delete_file = _shared_positional_delete_file(data_files)
+    tasks = [
+        FileScanTask(data_file, delete_files={delete_file}) for data_file in data_files
+    ]
+
+    opened = []
+    rows = sum(
+        len(block)
+        for block in _get_read_task(
+            tasks=tasks,
+            table_io=_CountingFileIO(table.io, opened),
+            table_metadata=table.metadata,
+            row_filter=pyi_expr.AlwaysTrue(),
+            case_sensitive=True,
+            limit=None,
+            schema=table.schema(),
+            read_file_tasks_sequentially=False,
+            delete_file_cache_max_bytes=1 << 26,
+        )
+    )
+
+    assert [location for location in opened if "shared-delete" in location] == [
+        f"file://{_WAREHOUSE_PATH}/{_DB_NAME}/{_TABLE_NAME}/data/shared-delete.parquet"
+    ]
+    assert rows == rows_before - len(data_files)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_cached_input_file_keeps_the_input_file_contract():
+    """``len()`` and the other members must still reach the wrapped input file.
+
+    Dunder lookups skip ``__getattr__``, and PyIceberg's ``InputFile`` defines
+    ``__len__``, so delegating it has to be explicit.
+    """
+    table = SqlCatalog(
+        _CATALOG_NAME,
+        **{k: v for k, v in _CATALOG_KWARGS.items() if k not in ("name", "type")},
+    ).load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    data_files = [task.file for task in table.scan().plan_files()]
+    delete_file = _shared_positional_delete_file(data_files)
+    cached_io = _cache_shared_delete_files(
+        [FileScanTask(f, delete_files={delete_file}) for f in data_files],
+        table.io,
+        1 << 26,
+    )
+
+    plain = table.io.new_input(delete_file.file_path)
+    cached = cached_io.new_input(delete_file.file_path)
+    assert cached is not plain
+    assert len(cached) == len(plain)
+    assert cached.location == plain.location
+    assert cached.exists()
+    with cached.open() as stream:
+        assert len(stream.read()) == len(plain)
 
 
 @pytest.mark.parametrize(
