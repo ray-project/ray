@@ -25,6 +25,7 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -708,6 +709,13 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     assert client.get_serve_details()["proxy_location"] == expected
 
 
+# The Python proxy only sits in the HTTP request path (and emits
+# ``proxy_http_request`` spans) in the default ingress mode. Under HAProxy or
+# direct ingress the data plane bypasses it, so proxy-span assertions do not
+# apply; skip proxy-focused tracing tests in those modes.
+_ALT_INGRESS_ENABLED = RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+
 def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
     """Whether a span file for ``component`` records a span named ``span_name``.
 
@@ -729,6 +737,10 @@ def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
     return False
 
 
+@pytest.mark.skipif(
+    _ALT_INGRESS_ENABLED,
+    reason="Proxy does not emit request spans under HAProxy/direct ingress.",
+)
 def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     """Tracing config passed to ``serve.start()`` reaches the controller and is
     applied to both replicas and proxies (the imperative flow).
@@ -803,6 +815,10 @@ def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
     assert ray.get(client._controller.get_tracing_config.remote()) == updated_config
 
 
+@pytest.mark.skipif(
+    _ALT_INGRESS_ENABLED,
+    reason="Proxy does not emit request spans under HAProxy/direct ingress.",
+)
 def test_serve_tracing_config_enabled_at_runtime_reaches_proxy(ray_shutdown):
     """Enabling tracing at runtime propagates to an already-running proxy.
 
