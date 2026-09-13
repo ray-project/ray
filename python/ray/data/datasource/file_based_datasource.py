@@ -484,19 +484,29 @@ def _add_partitions_to_table(
     for field, value in partitions.items():
         column = pa.array([value] * len(table))
         if field in column_names:
-            # TODO: Handle cast error.
             column_type = table.schema.field(field).type
-            column = column.cast(column_type)
-
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
-
-            if not values_are_equal:
+            is_empty = len(table) == 0
+            if is_empty:
+                column = pa.array([value])
+            try:
+                column = column.cast(column_type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
                 raise ValueError(
-                    f"Partition column {field} exists in table data, but partition "
-                    f"value '{value}' is different from in-data values: "
-                    f"{table[field].unique().to_pylist()}."
-                )
+                    f"Partition value {value!r} for field {field!r} cannot be cast "
+                    f"to target type {column_type}."
+                ) from e
+            if is_empty:
+                column = column.slice(0, 0)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
+
+                if not values_are_equal:
+                    raise ValueError(
+                        f"Partition column {field} exists in table data, but partition "
+                        f"value '{value}' is different from in-data values: "
+                        f"{table[field].unique().to_pylist()}."
+                    )
 
             i = table.schema.get_field_index(field)
             table = table.set_column(i, field, column)
