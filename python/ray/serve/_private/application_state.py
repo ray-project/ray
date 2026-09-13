@@ -240,6 +240,27 @@ class ApplicationTargetState:
     external_scaler_enabled: bool
 
 
+def _deployment_override_options_removed(
+    old_config: ServeApplicationSchema, new_config: ServeApplicationSchema
+) -> bool:
+    """Return whether a deployment override option was removed from the config."""
+
+    def options_by_deployment(config: ServeApplicationSchema) -> Dict[str, set]:
+        overrides: Dict[str, set] = {}
+        for deployment in config.model_dump(exclude_unset=True).get("deployments", []):
+            overrides.setdefault(deployment["name"], set()).update(
+                set(deployment) - {"name"}
+            )
+        return overrides
+
+    old_overrides = options_by_deployment(old_config)
+    new_overrides = options_by_deployment(new_config)
+    return any(
+        old_options - new_overrides.get(deployment_name, set())
+        for deployment_name, old_options in old_overrides.items()
+    )
+
+
 class ApplicationState:
     """Manage single application states with all operations"""
 
@@ -671,7 +692,10 @@ class ApplicationState:
         self._deployment_timestamp = deployment_time
 
         config_version = get_app_code_version(config)
-        if config_version == self._target_state.code_version:
+        if config_version == self._target_state.code_version and not (
+            self._target_state.config
+            and _deployment_override_options_removed(self._target_state.config, config)
+        ):
             # `deployment_infos` is non-None whenever `code_version` is
             # non-None (they are always set together in the target state).
             assert self._target_state.deployment_infos is not None
