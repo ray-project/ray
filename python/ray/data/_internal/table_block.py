@@ -14,12 +14,15 @@ from typing import (
     Union,
 )
 
+import numpy as np
+import pandas as pd
+
 from ray._common.utils import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
     NULL_SENTINEL,
-    find_partition_index,
+    find_insertion_index,
     is_nan,
     keys_equal,
 )
@@ -494,22 +497,69 @@ class TableBlockAccessor(BlockAccessor):
     ):
         partitions = []
 
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        bounds = [
-            find_partition_index(self._table, boundary, sort_key)
-            for boundary in boundaries
+        columns = sort_key.get_columns()
+        descending = sort_key.get_descending()
+
+        key_columns = [
+            BlockColumnAccessor.for_column(self._table[col]).to_numpy()
+            for col in columns
         ]
 
+        # Per-column null check, computed once per block instead of once per
+        # boundary inside ``find_insertion_index``. Arrow's ``null_count`` is
+        # O(1) — the common path. For non-Arrow inputs (e.g. pandas ``Series``,
+        # which has no ``null_count`` attribute), fall back to ``pd.isna`` so
+        # we correctly detect dtype-specific nulls — ``pd.NA`` for nullable
+        # ``Int64``/``StringDtype``, ``NaT`` for datetimes, ``None`` for object
+        # columns. The O(n) scan happens once per column, not per boundary.
+        has_nulls = []
+        for col, np_c in zip(columns, key_columns):
+            arrow_col = self._table[col]
+            if hasattr(arrow_col, "null_count"):
+                has_null = arrow_col.null_count > 0 or (
+                    np_c.dtype.kind == "f" and bool(np.isnan(np_c).any())
+                )
+            else:
+                has_null = bool(pd.isna(np_c).any())
+            has_nulls.append(has_null)
+
+        # To obtain partition indices from boundaries we employ following algorithm:
+        #
+        #   1. For every boundary value we determine insertion index into the
+        #      list of key column values (ie, for boundary value ``b`` we determine
+        #      an index i, such that ``key_column[i] <= b < key_column[i+1]``, thus
+        #      determining the boundary of 2 partitions established by b).
+        #
+        #   2. Subsequently, list of such insertion indexes is traversed to derive
+        #      partitions as ``table[insertion_index[i], insertion_index[i+1]``
+        #
+        insertion_indices = np.arange(len(boundaries))
+
+        for idx, boundary in enumerate(boundaries):
+            # Avoid repeating insertion index search for duplicated boundaries
+            #
+            # NOTE: Boundaries currently are not de-duplicated and hence we have
+            #       to skip repeating insertion point searches here.
+            if idx > 0 and boundary == boundaries[idx - 1]:
+                insertion_indices[idx] = insertion_indices[idx - 1]
+            else:
+                insertion_indices[idx] = find_insertion_index(
+                    key_columns,
+                    boundary,
+                    descending,
+                    has_nulls=has_nulls,
+                    # NOTE: Search for next insertion index could be started off the
+                    #       last one, rather than 0
+                    _start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
+                )
+
         last_idx = 0
-        for idx in bounds:
+        for idx in insertion_indices:
             partitions.append(self._table[last_idx:idx])
             last_idx = idx
+
         partitions.append(self._table[last_idx:])
+
         return partitions
 
     @classmethod
