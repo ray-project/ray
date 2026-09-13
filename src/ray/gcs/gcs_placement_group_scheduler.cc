@@ -16,7 +16,6 @@
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -129,7 +128,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .second);
 
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
-  AcquireBundleResources(bundle_locations, lease_status_tracker);
+  AcquireBundleResources(bundle_locations);
 
   // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -377,17 +376,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       node_id,
                                       schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
-      auto commited_bundle_locations = std::make_shared<BundleLocations>();
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-        (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
-      }
-
-      if (status.ok()) {
-        // Commit the bundle resources on the remote node to the cluster resources.
-        // If status is not OK, no need to call ReturnBundleResources because the
-        // OnAllBundleCommitRequestReturned function calls it.
-        CommitBundleResources(commited_bundle_locations, lease_status_tracker);
       }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
@@ -718,91 +708,14 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
   }
 }
 
-void LeaseStatusTracker::SetBundleAllocation(const BundleID &bundle_id,
-                                             ResourceAllocation allocation) {
-  acquired_resource_allocations_[bundle_id] = std::move(allocation);
-}
-
-const ResourceAllocation *LeaseStatusTracker::GetBundleAllocation(
-    const BundleID &bundle_id) const {
-  auto it = acquired_resource_allocations_.find(bundle_id);
-  return it != acquired_resource_allocations_.end() ? &it->second : nullptr;
-}
-
 void GcsPlacementGroupScheduler::AcquireBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations,
-    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   for (auto &bundle : *bundle_locations) {
-    auto allocation = cluster_resource_manager.SubtractNodeAvailableResources(
+    cluster_resource_manager.SubtractNodeAvailableResources(
         scheduling::NodeID(bundle.second.first.Binary()),
         bundle.second.second->GetRequiredResources());
-    if (allocation.has_value() && lease_status_tracker) {
-      lease_status_tracker->SetBundleAllocation(bundle.first, std::move(*allocation));
-    }
-  }
-}
-
-absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMap(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  absl::flat_hash_map<scheduling::NodeID, ResourceRequest> node_bundle_resources_map;
-  for (const auto &bundle : *bundle_locations) {
-    auto node_id = scheduling::NodeID(bundle.second.first.Binary());
-    const auto &bundle_spec = *bundle.second.second;
-    auto bundle_resource_request = ResourceMapToResourceRequest(
-        bundle_spec.GetFormattedResources(), /*requires_object_store_memory=*/false);
-    node_bundle_resources_map[node_id] += bundle_resource_request;
-  }
-  return node_bundle_resources_map;
-}
-
-bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
-    const std::string &resource_name) {
-  std::string_view resource_name_view(resource_name);
-  std::string_view pattern("_group_");
-
-  // The length of {placement_group_id} is fixed, so we just need to check that if the
-  // length and the pos of `_group_` match.
-  if (resource_name_view.size() < pattern.size() + 2 * PlacementGroupID::Size()) {
-    return false;
-  }
-
-  auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
-  return resource_name_view.substr(idx, pattern.size()) == pattern;
-}
-
-void GcsPlacementGroupScheduler::CommitBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations,
-    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
-  auto &cluster_resource_manager =
-      cluster_resource_scheduler_.GetClusterResourceManager();
-
-  for (const auto &[bundle_id, location] : *bundle_locations) {
-    const auto &node_id = scheduling::NodeID(location.first.Binary());
-    const auto &bundle_spec = *location.second;
-
-    const auto *bundle_alloc = lease_status_tracker->GetBundleAllocation(bundle_id);
-
-    const auto &resources = bundle_spec.GetFormattedResources();
-    for (const auto &[resource_name, capacity] : resources) {
-      auto resource_id = scheduling::ResourceID(resource_name);
-      auto original_name = GetOriginalResourceName(resource_name);
-
-      if (bundle_alloc != nullptr) {
-        auto alloc_it = bundle_alloc->find(scheduling::ResourceID(original_name));
-        if (alloc_it != bundle_alloc->end()) {
-          cluster_resource_manager.AddResourceInstances(
-              node_id, resource_id, alloc_it->second);
-          continue;
-        }
-      }
-      // Two cases reach here:
-      // 1. Synthetic resources like bundle_group have no physical allocation.
-      // 2. GCS restart loses the in-memory tracker; syncer corrects within ~100ms.
-      cluster_resource_manager.AddResourceInstances(
-          node_id, resource_id, {FixedPoint(capacity)});
-    }
   }
 }
 
@@ -813,7 +726,6 @@ LeaseStatusTracker::LeaseStatusTracker(
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
-  committed_bundle_locations_ = std::make_shared<BundleLocations>();
   bundle_locations_ = std::make_shared<BundleLocations>();
   for (const auto &bundle : unplaced_bundles) {
     const auto &iter = schedule_map.find(bundle->BundleId());
@@ -894,12 +806,9 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
     const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
-  // If the request succeeds, record it.
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-  } else {
-    committed_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
 }
 
@@ -927,11 +836,6 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
 const std::shared_ptr<BundleLocations>
     &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
-}
-
-const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetCommittedBundleLocations()
-    const {
-  return committed_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations() const {

@@ -204,11 +204,6 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
-  /// This method returns bundle locations that success to commit resources.
-  ///
-  /// \return Location of bundles that success to commit resources on a node.
-  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
-
   /// This method returns bundle locations.
   ///
   /// \return Location of bundles.
@@ -226,11 +221,6 @@ class LeaseStatusTracker {
   /// There's no need to mark commit phase is done because in that case, we won't need the
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
-
-  void SetBundleAllocation(const BundleID &bundle_id, ResourceAllocation allocation);
-
-  /// Returns nullptr if not found.
-  const ResourceAllocation *GetBundleAllocation(const BundleID &bundle_id) const;
 
  private:
   /// Method to update leasing states.
@@ -260,9 +250,6 @@ class LeaseStatusTracker {
   /// Location of bundles that commit requests failed.
   std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
 
-  /// Location of bundles that committed requests success.
-  std::shared_ptr<BundleLocations> committed_bundle_locations_;
-
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::PREPARING;
 
@@ -275,11 +262,6 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
-
-  /// Per-bundle per-instance resource allocations (original resources, not
-  /// PG-formatted), e.g. {GPU: [0, 1, 0, 0]} meaning GPU instance 1 was used.
-  absl::flat_hash_map<BundleID, ResourceAllocation, pair_hash>
-      acquired_resource_allocations_;
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
@@ -456,14 +438,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// broadcast to reconcile its view. Per-instance allocation is saved in
   /// the tracker so CommitBundleResources can create PG resources with the
   /// correct GPU topology.
-  void AcquireBundleResources(
-      const std::shared_ptr<BundleLocations> &bundle_locations,
-      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
-
-  /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(
-      const std::shared_ptr<BundleLocations> &bundle_locations,
-      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
+  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
@@ -472,11 +447,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy);
-
-  /// Help function to check if the resource_name has the pattern
-  /// {original_resource_name}_group_{placement_group_id}, which means
-  /// wildcard resource.
-  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   instrumented_io_context &io_context_;
 
@@ -503,7 +473,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 
   friend class GcsPlacementGroupSchedulerTest;
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
 };
 
 }  // namespace gcs
