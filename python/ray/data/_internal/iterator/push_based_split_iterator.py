@@ -398,12 +398,10 @@ class PushSplitCoordinator:
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )
-                    # TODO(push-split): external-consumer-bytes reporting is
-                    # disabled for now — see _update_external_consumer_bytes.
-                    # Registering with 0 and never updating would stall
-                    # DownstreamCapacityBackpressurePolicy, so the
-                    # registration is commented out together with the updates.
-                    # self._current_executor.set_external_consumer_bytes(0)
+                    # Register the external consumers with the executor's
+                    # resource manager (same as SplitCoordinator); the
+                    # pushers keep the value updated from poll responses.
+                    self._current_executor.set_external_consumer_bytes(0)
                     self._spawn_pushers()
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} "
@@ -521,8 +519,7 @@ class PushSplitCoordinator:
 
                 self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
                 rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
-                # TODO(push-split): disabled; see _update_external_consumer_bytes.
-                # self._update_external_consumer_bytes()
+                self._update_external_consumer_bytes()
 
                 # 2) Compute credit. Our push counters are exact; the polled
                 # consumed counts are stale-low, so credit only under-sends.
@@ -567,9 +564,7 @@ class PushSplitCoordinator:
                         # Single-writer (this thread); see __init__.
                         self._rows_pushed[split_idx] += num_rows
                         self._bytes_pushed[split_idx] += size_bytes
-                    # TODO(push-split): disabled; see
-                    # _update_external_consumer_bytes.
-                    # self._update_external_consumer_bytes()
+                    self._update_external_consumer_bytes()
         except StopIteration:
             if not stop.is_set():
                 logger.debug(
@@ -618,8 +613,7 @@ class PushSplitCoordinator:
                 and self._current_executor is not None
             ):
                 executor_to_shutdown = self._current_executor
-        # TODO(push-split): disabled; see _update_external_consumer_bytes.
-        # self._update_external_consumer_bytes()
+        self._update_external_consumer_bytes()
         # Shut down outside the lock (joins the scheduling thread).
         if executor_to_shutdown is not None:
             logger.debug(
@@ -630,17 +624,16 @@ class PushSplitCoordinator:
     def _update_external_consumer_bytes(self) -> None:
         """Report bytes in flight + buffered at consumers to the executor.
 
-        Push-model analog of SplitCoordinator._report_prefetched_bytes_to_executor;
-        would keep DownstreamCapacityBackpressurePolicy working.
-
-        TODO(push-split): CURRENTLY DISABLED — every call site (and the
-        set_external_consumer_bytes(0) registration in _try_start_new_epoch)
-        is commented out to check whether this feed is needed at all under
-        push: the pushers already gate consumption with credit and only block
-        in get_next when a consumer wants data, so the executor's natural
-        output-queue backpressure may suffice. Re-enable (registration +
-        call sites together) if slow-consumer runs show unbounded producer
-        run-ahead.
+        Push-model analog of SplitCoordinator._report_prefetched_bytes_to_executor.
+        This is what paces the PRODUCER: the credit protocol only stops the
+        pushers from popping the executor's output queues, not the read/map
+        tasks from filling them. Without this feed,
+        DownstreamCapacityBackpressurePolicy never engages for the terminal
+        op and a producer that outruns slow consumers parks the whole epoch
+        in the object store (observed: 50GB spilled in the full_training
+        release benchmark). To trade more producer run-ahead for throughput,
+        tune data_context.downstream_capacity_backpressure_ratio rather than
+        disabling the feed.
         """
         executor = self._current_executor
         if executor is None:
