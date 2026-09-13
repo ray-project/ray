@@ -1317,9 +1317,11 @@ class ServeController:
         self._target_capacity = config.target_capacity
 
         # If a global tracing config is provided in the declarative config,
-        # apply it: this checkpoints it and broadcasts it via long poll so
-        # already-running proxies pick up the change at runtime. Replicas read
-        # the config when they start, so they pick it up on their next start.
+        # apply it: this checkpoints it and broadcasts it via long poll.
+        # Proxies that have not yet set up tracing (started before it was
+        # enabled, or created afterward) pick it up; a proxy already tracing
+        # keeps its config for the life of its process (OpenTelemetry sets the
+        # tracer provider once). Replicas read the config when they start.
         if config.tracing_config is not None:
             self.reconfigure_global_tracing_config(config.tracing_config)
 

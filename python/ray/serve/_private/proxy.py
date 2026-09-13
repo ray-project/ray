@@ -1624,18 +1624,26 @@ class ProxyActorInterface(ABC):
     def _update_tracing_config(self, tracing_config: TracingConfig):
         """Set up tracing from a TracingConfig broadcast by the controller.
 
-        Called with the initial long-poll snapshot and again whenever the global
-        tracing config changes at runtime.
+        Tracing can only be *set up* once per proxy process: OpenTelemetry
+        honors just the first ``set_tracer_provider`` call. So this enables
+        tracing on a proxy that started before tracing was configured, but once
+        a proxy is tracing, later config changes (sampling ratio, disabling, or
+        the exporter) do not take effect in that process -- they only apply to
+        proxies started afterward.
         """
         if self._tracing_setup_succeeded:
             # OpenTelemetry only honors the first set_tracer_provider call in a
-            # process, so re-running setup here would keep the old sampler and
-            # attach duplicate span processors. Surface the ignored change
-            # instead of silently misapplying it.
+            # process, so a changed config cannot be applied here: re-running
+            # setup would keep the original sampler and duplicate span
+            # processors. Store the new config first so this warns only once
+            # (not on every controller-recovery re-broadcast), then surface
+            # that the change is not applied rather than silently dropping it.
             if tracing_config != self._tracing_config:
+                self._tracing_config = tracing_config
                 logger.warning(
-                    "Tracing is already set up in this proxy, so the updated "
-                    "tracing config will only take effect once it restarts."
+                    "Tracing is already set up in this proxy; the updated "
+                    "tracing config does not take effect in this process. It "
+                    "applies only to proxies started afterward."
                 )
             return
 
