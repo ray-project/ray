@@ -50,10 +50,13 @@
 # at all.
 #
 # The path set matches the prose skip rule in test.rules.txt so the two files
-# agree on what prose is. Keep them in sync when either changes. doc/.claude/
-# holds Claude Code skills and agent files, which participate in no build and
-# define no targets.
+# agree on what prose is. Keep them in sync when either changes. Both cover the
+# doc subtree (doc/.claude/) and the repo-root .claude/, which is Markdown plus
+# a settings JSON: Claude Code skills and agent files that participate in no
+# build and define no targets, so they carry `always` without `lint` just like
+# the prose below.
 doc/.claude/
+.claude/
 doc/*.md
 doc/*.rst
 doc/*.png

@@ -894,14 +894,6 @@ cython==0.29.37 \
     # via
     #   -r docker/base-deps/requirements.in
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
-daft==0.6.2 \
-    --hash=sha256:15255efeea9125ebf96059c79cc2b13325ca6ee4bbe5ab874095df6678806ab2 \
-    --hash=sha256:32715f6ae22adf183828e6ffa662959e3c76ddf1b080c4322c80445c8c9c0911 \
-    --hash=sha256:3fb7a2205cd5a32de84767d4fa1504190a64f28a30a6528585139de9b0d57541 \
-    --hash=sha256:52a524ea9ee304cd5b86dc3556953b9b223ba4f2bd921b62aeaf8f9f5255471e \
-    --hash=sha256:62611f550ce9462c6705c96430611f8fd721f46c74bd76a9ccc8874e9e9a88cd \
-    --hash=sha256:b999ae174b92c82994a93eaff3f7735560cff83af10d0e9d349dc2434839099f
-    # via -r release/nightly_tests/multimodal_inference_benchmarks/image_classification/requirements.in
 datasketches==5.2.0 \
     --hash=sha256:0208fb7bf40edca3f8cfcd9d1acdb95798abc10b685341b39557f59eb5bd862e \
     --hash=sha256:177e9545aafd7359c44e7935b995b0b0f9b08704a78f53e7840a7125d2d1fc9e \
@@ -1233,7 +1225,6 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   adlfs
-    #   daft
     #   gcsfs
     #   petastorm
     #   ray
@@ -1974,6 +1965,7 @@ jinja2==3.1.6 \
     #   nbclassic
     #   nbconvert
     #   notebook
+    #   ray
     #   torch
 jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
@@ -3502,7 +3494,6 @@ pyarrow==19.0.1 \
     --hash=sha256:fd44d66093a239358d07c42a91eebf5015aa54fccba959db899f932218ac9cc8
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
-    #   daft
     #   petastorm
     #   ray
 pyasn1==0.5.1 \
@@ -4358,7 +4349,6 @@ tqdm==4.67.1 \
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
     #   anyscale
-    #   daft
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
     --hash=sha256:b74e89e397b1ed28cc831db7aea759ba6640cb3de13090ca145426688ff1ac4f
@@ -4403,7 +4393,6 @@ typing-extensions==4.15.0 \
     #   azure-core
     #   azure-identity
     #   azure-storage-blob
-    #   daft
     #   exceptiongroup
     #   fastapi
     #   gymnasium

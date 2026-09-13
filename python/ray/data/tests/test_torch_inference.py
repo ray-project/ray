@@ -485,6 +485,62 @@ def test_e2e_cuda_default_collate_and_finalize(shutdown_only):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_e2e_cuda_ragged_output(shutdown_only):
+    # `process_on_device` may return `Dict[str, List[Tensor]]` with
+    # independently shaped tensors (e.g. detection masks): the managed D2H
+    # moves each tensor individually and preserves the structure instead of
+    # concatenating.
+    ray.init(num_cpus=2, num_gpus=1)
+
+    class RaggedPredictor(TorchInference):
+        def collate(self, input_batch):
+            return {"data": torch.from_numpy(input_batch["data"])}
+
+        def process_on_device(self, input_batch, collated_tensors, collated_other):
+            x = collated_tensors["data"]
+            # One differently shaped "mask" per row: row with global id `g`
+            # gets a (g % 3 + 1, g % 5 + 1) tensor filled with its row value.
+            return {
+                "masks": [
+                    torch.full(
+                        (int(g) % 3 + 1, int(g) % 5 + 1),
+                        float(row[0]),
+                        device=x.device,
+                    )
+                    for g, row in zip(input_batch["id"], x)
+                ]
+            }
+
+        def finalize(self, input_batch, output_tensors, output_other):
+            masks = output_tensors["masks"]
+            # Structure preserved: still a list of CPU tensors, ragged shapes
+            # intact.
+            assert isinstance(masks, list)
+            assert all(mask.device.type == "cpu" for mask in masks)
+            return {
+                "id": input_batch["id"],
+                "mask_rows": np.asarray([mask.shape[0] for mask in masks]),
+                "mask_val": np.asarray([float(mask[0, 0]) for mask in masks]),
+            }
+
+    ds = _make_gpu_source().map_batches(
+        RaggedPredictor,
+        batch_size=GPU_BATCH_SIZE,
+        batch_format="numpy",
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_gpus=1,
+    )
+
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    ids = np.asarray([row["id"] for row in rows], dtype=np.int64)
+    mask_rows = np.asarray([row["mask_rows"] for row in rows])
+    mask_vals = np.asarray([row["mask_val"] for row in rows])
+    assert np.array_equal(ids, np.arange(GPU_NUM_ROWS, dtype=np.int64))
+    assert np.array_equal(mask_rows, ids % 3 + 1)
+    assert np.array_equal(mask_vals, (1.0 + ids).astype(np.float32))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 def test_collate_output_must_be_cpu(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)
 

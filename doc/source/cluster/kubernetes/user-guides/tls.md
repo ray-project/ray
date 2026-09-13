@@ -15,6 +15,10 @@ This document provides detailed instructions for generating a public-private key
 > Warning: Enabling TLS will cause a performance hit due to the extra
 overhead of mutual authentication and encryption. Testing has shown that this overhead is large for small workloads and becomes relatively smaller for large workloads. The exact overhead will depend on the nature of your workload.
 
+# Using mTLS with RayClusters
+
+For information on how to configure KubeRay to automatically provision and rotate certificates for mutual TLS, see the [KubeRay mTLS guide](kuberay-mtls.md).
+
 # Prerequisites
 
 To fully understand this document, it's highly recommended that you have a solid understanding of the following concepts:

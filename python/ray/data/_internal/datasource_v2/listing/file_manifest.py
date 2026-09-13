@@ -125,6 +125,7 @@ class FileManifest:
     @classmethod
     def construct_manifest(
         cls,
+        *,
         paths: List[str],
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],

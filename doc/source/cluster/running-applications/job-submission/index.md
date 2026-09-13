@@ -46,5 +46,6 @@ sdk
 jobs-package-ref
 cli
 rest
+api
 ray-client
 ```

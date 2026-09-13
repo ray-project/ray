@@ -18,6 +18,9 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    UDFTimeScope,
+)
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
@@ -183,6 +186,35 @@ class TestCheckpointConfig:
         ):
             CheckpointConfig(id_column, local_path)
 
+    def test_id_column_and_generated_id_column_mutually_exclusive(self, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Cannot specify both",
+        ):
+            CheckpointConfig(ID_COL, local_path, generated_id_column="generated_id_col")
+
+    def test_id_column_or_generated_id_column_required(self, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Either `id_column` or `generated_id_column`",
+        ):
+            CheckpointConfig(checkpoint_path=local_path)
+
+    def test_generated_id_column_aliases_id_column(self, local_path):
+        """Downstream code (write 2PC, filters) keys off ``id_column``, so a
+        generated-ID config must expose the generated name there too."""
+        config = CheckpointConfig(
+            checkpoint_path=local_path, generated_id_column="generated_id_col"
+        )
+        assert config.id_column == "generated_id_col"
+        assert config.generated_id_column == "generated_id_col"
+        assert config.has_generated_id_column
+
+    def test_id_column_config_is_not_generated_id(self, local_path):
+        config = CheckpointConfig(ID_COL, local_path)
+        assert config.generated_id_column is None
+        assert not config.has_generated_id_column
+
     def test_override_backend_emits_deprecation_warning(self):
         with pytest.warns(FutureWarning, match="deprecated"):
             CheckpointConfig(
@@ -277,6 +309,149 @@ class TestCheckpointConfig:
         )
         assert config.filesystem is fs
         assert config.backend is CheckpointBackend.CLOUD_OBJECT_STORAGE
+
+    @pytest.mark.parametrize("filter_cls", [1, "not_a_class", int])
+    def test_invalid_checkpoint_filter_cls(self, filter_cls, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="`checkpoint_filter_cls` must be a subclass of `CheckpointFilter`",
+        ):
+            CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=filter_cls)
+
+    def test_valid_checkpoint_filter_cls(self, local_path):
+        assert CheckpointConfig(ID_COL, local_path).checkpoint_filter_cls is None
+
+        config = CheckpointConfig(
+            ID_COL, local_path, checkpoint_filter_cls=NumpyArrayBasedCheckpointFilter
+        )
+        assert config.checkpoint_filter_cls is NumpyArrayBasedCheckpointFilter
+
+    @pytest.mark.parametrize("manager_cls", [1, "not_a_class", int])
+    def test_invalid_checkpoint_manager_cls(self, manager_cls, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="`checkpoint_manager_cls` must be a subclass of `CheckpointManager`",
+        ):
+            CheckpointConfig(ID_COL, local_path, checkpoint_manager_cls=manager_cls)
+
+    def test_valid_checkpoint_manager_cls(self, local_path):
+        assert CheckpointConfig(ID_COL, local_path).checkpoint_manager_cls is None
+
+        config = CheckpointConfig(
+            ID_COL, local_path, checkpoint_manager_cls=IdColumnCheckpointManager
+        )
+        assert config.checkpoint_manager_cls is IdColumnCheckpointManager
+
+    def test_abstract_checkpoint_filter_cls(self, local_path):
+        """The abstract base class (or a still-abstract subclass) is rejected
+        at config construction instead of failing inside a filter actor."""
+        from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
+
+        class StillAbstractFilter(CheckpointFilter):
+            pass
+
+        for cls in [CheckpointFilter, StillAbstractFilter]:
+            with pytest.raises(
+                InvalidCheckpointingConfig,
+                match="`checkpoint_filter_cls` must be a concrete class",
+            ):
+                CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
+
+
+def _collect_physical_op_names(physical_plan) -> List[str]:
+    names = []
+    to_visit = [physical_plan.dag]
+    while to_visit:
+        op = to_visit.pop()
+        names.append(op.name)
+        to_visit.extend(op.input_dependencies)
+    return names
+
+
+def test_generated_id_rerun_rereads_all_rows(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Generated struct IDs can't go through the numpy-based restore path, so
+    only the write side is planned: a rerun that finds committed checkpoint
+    files must re-read every row (at-least-once) instead of crashing during
+    checkpoint load."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        # Keep the committed checkpoint so the second run sees it.
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(os.path.join(tmp_path, "out1"))
+
+    committed = [
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    ]
+    assert committed, "first run should have committed checkpoint files"
+
+    # No filter op is planned for generated IDs; the checkpoint is only written.
+    ds = ray.data.read_parquet(f_dir)
+    write_op = Write(
+        ParquetDatasink(os.path.join(tmp_path, "unused")),
+        input_dependencies=[ds._logical_plan.dag],
+    )
+    physical_plan, _ = get_execution_plan(LogicalPlan(write_op, ctx))
+    assert not any(
+        "CheckpointFilter" in name for name in _collect_physical_op_names(physical_plan)
+    )
+
+    # The rerun must complete and rewrite every input row.
+    out2 = os.path.join(tmp_path, "out2")
+    ray.data.read_parquet(f_dir).write_parquet(out2)
+    result = pq.read_table(out2)
+    assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_generated_id_pending_cleanup_before_rerun(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Pending-checkpoint cleanup doesn't depend on the ID type: a generated-ID
+    rerun after a mid-write crash must delete leftover pending checkpoints and
+    their partially written data files before writing again."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "generated_id_ckpt")
+    out = os.path.join(tmp_path, "out")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id_col",
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+    committed_before = {
+        f
+        for f in os.listdir(ckpt_path)
+        if f.endswith(".parquet") and ".pending" not in f
+    }
+    assert committed_before
+
+    # Simulate a crashed run: a pending checkpoint whose 2PC never committed,
+    # plus the matching partially written data file.
+    stale_base = "crashed_write_0000"
+    pq.write_table(
+        pa.table({"generated_id_col": ["fake"]}),
+        os.path.join(ckpt_path, f"{stale_base}{PENDING_CHECKPOINT_SUFFIX}.parquet"),
+    )
+    stale_data_file = os.path.join(out, f"{stale_base}.parquet")
+    pq.write_table(pa.table({ID_COL: [-1]}), stale_data_file)
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+
+    remaining = os.listdir(ckpt_path)
+    assert not any(PENDING_CHECKPOINT_SUFFIX in f for f in remaining)
+    assert committed_before <= set(remaining)
+    assert not os.path.exists(stale_data_file)
 
 
 @pytest.mark.parametrize(
@@ -376,6 +551,91 @@ def test_checkpoint_end_to_end(
         f"Expected only non-checkpointed IDs {expected_remaining_ids}, "
         f"but got {actual_output}"
     )
+
+
+def test_custom_checkpoint_filter_cls(
+    ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
+):
+    """A custom `checkpoint_filter_cls` replaces the default filter during restore."""
+    from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
+
+    # Subclasses the ABC directly without defining `__init__`, so this also
+    # verifies that the inherited base constructor accepts the
+    # `(checkpoint_config, checkpoint_ref)` call from the filter actor.
+    class NoOpCheckpointFilter(CheckpointFilter):
+        def filter_rows_for_block(self, block):
+            # Keep every row, including already-checkpointed ones.
+            return block
+
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        checkpoint_filter_cls=NoOpCheckpointFilter,
+    )
+
+    csv_file = generate_sample_data_csv()
+
+    # Pre-populate the checkpoint dir. The default filter would drop these IDs
+    # on restore; the no-op filter must keep them.
+    checkpointed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    os.makedirs(ckpt_path, exist_ok=True)
+    pq.write_table(
+        pa.table({ID_COL: checkpointed_ids}),
+        os.path.join(ckpt_path, "pre_checkpoint.parquet"),
+    )
+
+    output_path = os.path.join(tmp_path, "output")
+    ds = ray.data.read_csv(csv_file)
+    ds.write_parquet(output_path)
+
+    # Disable checkpointing before reading back to avoid filtering.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(output_path)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_custom_checkpoint_manager_cls(
+    ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
+):
+    """A custom `checkpoint_manager_cls` replaces the default manager during restore."""
+
+    class EmptyCheckpointManager(IdColumnCheckpointManager):
+        def load_checkpoint(self, data_file_dir=None, data_file_filesystem=None):
+            # Report no checkpoint data, so no filter operator is added.
+            return None, 0
+
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        checkpoint_manager_cls=EmptyCheckpointManager,
+    )
+
+    csv_file = generate_sample_data_csv()
+
+    # Pre-populate the checkpoint dir. The default manager would load these
+    # IDs and filter them out on restore; the custom manager reports no
+    # checkpoint data, so every row must be written.
+    checkpointed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    os.makedirs(ckpt_path, exist_ok=True)
+    pq.write_table(
+        pa.table({ID_COL: checkpointed_ids}),
+        os.path.join(ckpt_path, "pre_checkpoint.parquet"),
+    )
+
+    output_path = os.path.join(tmp_path, "output")
+    ds = ray.data.read_csv(csv_file)
+    ds.write_parquet(output_path)
+
+    # Disable checkpointing before reading back to avoid filtering.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(output_path)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == list(range(SAMPLE_DATA_NUM_ROWS))
 
 
 @pytest.mark.parametrize(
@@ -1417,6 +1677,7 @@ def test_checkpoint_map_transformer(
     filtered_blocks = map_transformer.apply_transform(
         input_blocks=[block],
         ctx=TaskContext(task_idx=0, op_name="test_checkpoint"),
+        udf_time_scope=UDFTimeScope(),
     )
 
     filtered_block = next(iter(filtered_blocks))

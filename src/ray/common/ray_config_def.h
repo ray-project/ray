@@ -391,6 +391,16 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether the GCS records per-command Redis payload byte metrics
+/// (gcs_redis_request_payload_bytes, gcs_redis_response_payload_bytes,
+/// gcs_redis_command_count). Recording costs two ray::stats::Metric::Record
+/// calls for the first accepted submission, using a snapshot captured under the
+/// Redis mutex and recorded after unlocking. The successful reply adds one
+/// recording call under the Redis IO mutex. Set to false to
+/// skip label construction, payload accounting, and these recording calls if
+/// that overhead is measurable in a high-throughput GCS.
+RAY_CONFIG(bool, gcs_redis_payload_metrics_enabled, true)
+
 /// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
 /// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
 /// DEL reclaims memory synchronously; Redis operators can configure DEL itself
@@ -472,13 +482,27 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
-/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
-/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
+/// ActorTableData entry ≈ 200-400B serialized (~600B-1.5KB deserialized),
+/// plus `previous_incarnations` for actors that have restarted: up to ~600B
+/// serialized (~2KB deserialized) at the default
+/// `maximum_actor_previous_incarnations` of 10. An actor sitting at that cap
+/// is therefore ≈ 800B-1KB serialized (~2.4-4KB deserialized).
+/// Worst-case footprint: 100,000 x ~2.4-4KB =~ 240-400MB, which assumes every
+/// cached actor exhausted its restart history; actors that never restarted
+/// are unchanged at ~600B-1.5KB.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead workers in GCS server memory cache.
 /// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
 /// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
+/// Maximum number of previous incarnations retained on `ActorTableData` for
+/// looking up logs from prior actor incarnations. When exceeded, the
+/// oldest entry is evicted FIFO. Set to 0 to disable history tracking.
+/// PreviousActorIncarnation entry ≈ ~60B serialized. Worst-case added
+/// footprint per actor: 10 x ~60B =~ 600B, which also multiplies against
+/// `maximum_gcs_destroyed_actor_cached_count` in the GCS destroyed-actor
+/// cache — see the footprint note there before raising this.
+RAY_CONFIG(uint32_t, maximum_actor_previous_incarnations, 10)
 /// Maximum number of dead nodes in GCS server memory cache.
 /// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
 /// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB

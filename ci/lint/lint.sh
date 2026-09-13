@@ -58,11 +58,6 @@ code_format() {
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
 }
 
-semgrep_lint() {
-  pip install -c python/requirements_compiled.txt semgrep pre-commit
-  pre-commit run semgrep --all-files --show-diff-on-failure
-}
-
 # Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
   /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils

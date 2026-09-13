@@ -4,7 +4,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
-from ray._common.runtime_env_uri import parse_uri
+from ray._common.runtime_env_package import PY_MODULES, validate_package_extension
+from ray._common.runtime_env_uri import Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -21,7 +22,6 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
@@ -36,13 +36,8 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    supported_extensions = (".zip", ".whl", ".tar.gz", ".tgz")
-    if protocol in Protocol.remote_protocols() and not any(
-        path.endswith(ext) for ext in supported_extensions
-    ):
-        raise ValueError(
-            "Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs."
-        )
+    if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
+        validate_package_extension(path, PY_MODULES, display_path=s.split("?", 1)[0])
 
     return protocol is not None
 

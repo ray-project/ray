@@ -59,4 +59,5 @@ pyOpenSSL
 celery
 taskiq
 mmh3
+jinja2
 ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'

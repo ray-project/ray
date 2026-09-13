@@ -1534,8 +1534,14 @@ def iterate_with_retry(
     If the iterable raises an exception, this function recreates and re-iterates
     through the iterable, while skipping the items that have already been yielded.
 
+    ``iterable_factory`` must therefore produce the same sequence from the start on
+    every call. A factory that resumes where the previous attempt stopped, such as
+    one that reads from an already-advanced file handle, silently drops data,
+    because the items skipped here are not the ones already yielded.
+
     Args:
-        iterable_factory: A no-argument function that creates the iterable.
+        iterable_factory: A no-argument function that creates the iterable. It must
+            replay the same items from the start on every call.
         description: An imperitive description of the function being retried. For
             example, "open the file".
         match: A list of patterns to match in the exception message. Each pattern

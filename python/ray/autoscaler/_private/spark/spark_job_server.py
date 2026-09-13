@@ -14,8 +14,6 @@ from ray.util.spark.cluster_init import _start_ray_worker_nodes
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
     def setup(self) -> None:
         super().setup()
-        self._handler_lock = threading.RLock()
-        self._created_node_id_set = set()
         self._logger = logging.getLogger(__name__)
         if "RAY_ON_SPARK_JOB_SERVER_VERBOSE" in os.environ:
             self._logger.setLevel(logging.DEBUG)
@@ -30,10 +28,9 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
     def handle_POST(self, path, data):
         path_parts = Path(path).parts[1:]
 
-        spark_job_group_id = data["spark_job_group_id"]
-
         if path_parts[0] == "create_node":
             assert len(path_parts) == 1, f"Illegal request path: {path}"
+            spark_job_group_id = data["spark_job_group_id"]
             spark_job_group_desc = data["spark_job_group_desc"]
             using_stage_scheduling = data["using_stage_scheduling"]
             ray_head_ip = data["ray_head_ip"]
@@ -45,8 +42,18 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
             collect_log_to_path = data["collect_log_to_path"]
-            node_id = data["node_id"]
-            self._created_node_id_set.add(node_id)
+            node_id = str(data["node_id"])
+            node_type = data["node_type"]
+
+            created, node = self.server.register_node(
+                node_id=node_id,
+                spark_job_group_id=spark_job_group_id,
+                tags=data["tags"],
+            )
+            if not created:
+                return {"node": node}
+
+            request_logger = self._logger
 
             def start_ray_worker_thread_fn():
                 try:
@@ -66,21 +73,19 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         worker_node_options=worker_node_options,
                         collect_log_to_path=collect_log_to_path,
                         node_id=node_id,
+                        node_type=node_type,
                     )
                     if err_msg:
-                        self._logger.warning(
+                        request_logger.warning(
                             f"Spark job {spark_job_group_id} hosting Ray worker node "
                             f"launching failed, error:\n{err_msg}"
                         )
                 except Exception:
-                    if spark_job_group_id in self.server.task_status_dict:
-                        self.server.task_status_dict.pop(spark_job_group_id)
-
                     msg = (
                         f"Spark job {spark_job_group_id} hosting Ray worker node exit."
                     )
-                    if self._logger.level > logging.DEBUG:
-                        self._logger.warning(
+                    if request_logger.level > logging.DEBUG:
+                        request_logger.warning(
                             f"{msg} To see details, you can set "
                             "'RAY_ON_SPARK_JOB_SERVER_VERBOSE' environmental variable "
                             "to '1' before calling 'ray.util.spark.setup_ray_cluster'."
@@ -90,52 +95,44 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         # User can configure 'RAY_ON_SPARK_JOB_SERVER_VERBOSE'
                         # environment variable to make the spark job server logging
                         # showing full exception stack here.
-                        self._logger.debug(msg, exc_info=True)
+                        request_logger.debug(msg, exc_info=True)
+                finally:
+                    self.server.mark_node_terminated(node_id)
 
             threading.Thread(
                 target=inheritable_thread_target(start_ray_worker_thread_fn),
                 args=(),
                 daemon=True,
             ).start()
-
-            self.server.task_status_dict[spark_job_group_id] = "pending"
-            return {}
+            return {"node": node}
 
         elif path_parts[0] == "check_node_id_availability":
-            node_id = data["node_id"]
-            with self._handler_lock:
-                if node_id in self._created_node_id_set:
-                    # If the node with the node id has been created,
-                    # it shouldn't be created twice so fail fast here.
-                    # The case happens when a Ray node is down unexpected
-                    # caused by spark worker node down and spark tries to
-                    # reschedule the spark task, so it triggers node
-                    # creation with duplicated node id.
-                    return {"available": False}
-                else:
-                    self._created_node_id_set.add(node_id)
-                    return {"available": True}
+            return {
+                "available": self.server.check_node_id_availability(
+                    str(data["node_id"])
+                )
+            }
 
         elif path_parts[0] == "terminate_node":
             assert len(path_parts) == 1, f"Illegal request path: {path}"
-            self.server.spark.sparkContext.cancelJobGroup(spark_job_group_id)
-            if spark_job_group_id in self.server.task_status_dict:
-                self.server.task_status_dict.pop(spark_job_group_id)
+            self.server.terminate_node(str(data["node_id"]), data["spark_job_group_id"])
             return {}
 
         elif path_parts[0] == "notify_task_launched":
-            if spark_job_group_id in self.server.task_status_dict:
-                # Note that if `spark_job_group_id` not in task_status_dict,
-                # the task has been terminated
-                self.server.task_status_dict[spark_job_group_id] = "running"
+            spark_job_group_id = data["spark_job_group_id"]
+            if self.server.mark_node_running(str(data["node_id"]), spark_job_group_id):
                 self._logger.info(f"Spark task in {spark_job_group_id} has started.")
             return {}
 
         elif path_parts[0] == "query_task_status":
-            if spark_job_group_id in self.server.task_status_dict:
-                return {"status": self.server.task_status_dict[spark_job_group_id]}
-            else:
-                return {"status": "terminated"}
+            return {"status": self.server.query_task_status(data["spark_job_group_id"])}
+
+        elif path_parts[0] == "query_nodes":
+            return self.server.query_nodes()
+
+        elif path_parts[0] == "set_node_tags":
+            self.server.set_node_tags(str(data["node_id"]), data["tags"])
+            return {}
 
         elif path_parts[0] == "query_last_worker_err":
             return {"last_worker_err": self.server.last_worker_error}
@@ -152,8 +149,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
         path = self.path
         post_body = self.rfile.read(content_len).decode("utf-8")
         post_body_json = json.loads(post_body)
-        with self._handler_lock:
-            response_body_json = self.handle_POST(path, post_body_json)
+        response_body_json = self.handle_POST(path, post_body_json)
         response_body = json.dumps(response_body_json)
         self.wfile.write(response_body.encode("utf-8"))
 
@@ -216,12 +212,98 @@ class SparkJobServer(ThreadingHTTPServer):
         # and value is the corresponding spark task status.
         # each spark task holds a ray worker node.
         self.task_status_dict = {}
+        self.node_registry = {}
+        self.node_registry_lock = threading.RLock()
+        self.spark_task_started_node_ids = set()
+        self.max_node_id = 0
         self.last_worker_error = None
         self.ray_node_custom_env = ray_node_custom_env
 
+    def register_node(self, node_id, spark_job_group_id, tags):
+        with self.node_registry_lock:
+            if node_id in self.node_registry:
+                node = self.node_registry[node_id]
+                if node["spark_job_group_id"] != spark_job_group_id:
+                    raise ValueError(f"Ray worker node id {node_id} cannot be reused.")
+                return False, node.copy()
+
+            node = {
+                "node_id": node_id,
+                "spark_job_group_id": spark_job_group_id,
+                "status": "pending",
+                "tags": tags.copy(),
+            }
+            self.node_registry[node_id] = node
+            self.task_status_dict[spark_job_group_id] = "pending"
+            self.max_node_id = max(self.max_node_id, int(node_id))
+            return True, node.copy()
+
+    def check_node_id_availability(self, node_id):
+        with self.node_registry_lock:
+            if node_id in self.spark_task_started_node_ids:
+                return False
+            self.spark_task_started_node_ids.add(node_id)
+            return True
+
+    def mark_node_running(self, node_id, spark_job_group_id):
+        with self.node_registry_lock:
+            node = self.node_registry.get(node_id)
+            if (
+                node is None
+                or node["spark_job_group_id"] != spark_job_group_id
+                or node["status"] == "terminated"
+            ):
+                return False
+            node["status"] = "running"
+            self.task_status_dict[spark_job_group_id] = "running"
+            return True
+
+    def mark_node_terminated(self, node_id):
+        with self.node_registry_lock:
+            node = self.node_registry.get(node_id)
+            if node is None:
+                return
+            node["status"] = "terminated"
+            self.task_status_dict.pop(node["spark_job_group_id"], None)
+
+    def terminate_node(self, node_id, spark_job_group_id):
+        with self.node_registry_lock:
+            node = self.node_registry.get(node_id)
+            if node is not None and node["status"] == "terminated":
+                return
+            if node is not None:
+                node["status"] = "terminating"
+
+        self.spark.sparkContext.cancelJobGroup(spark_job_group_id)
+        self.mark_node_terminated(node_id)
+
+    def set_node_tags(self, node_id, tags):
+        with self.node_registry_lock:
+            node = self.node_registry.get(node_id)
+            if node is not None:
+                node["tags"].update(tags)
+
+    def query_task_status(self, spark_job_group_id):
+        with self.node_registry_lock:
+            return self.task_status_dict.get(spark_job_group_id, "terminated")
+
+    def query_nodes(self):
+        with self.node_registry_lock:
+            nodes = [
+                {
+                    **node,
+                    "tags": node["tags"].copy(),
+                }
+                for node in self.node_registry.values()
+                if node["status"] != "terminated"
+            ]
+            return {"nodes": nodes, "max_node_id": self.max_node_id}
+
     def shutdown(self) -> None:
         super().shutdown()
-        for spark_job_group_id in list(self.task_status_dict.keys()):
+        with self.node_registry_lock:
+            spark_job_group_ids = list(self.task_status_dict.keys())
+        for spark_job_group_id in spark_job_group_ids:
             self.spark.sparkContext.cancelJobGroup(spark_job_group_id)
         # Sleep 1 second to wait for all spark job cancellation
         # The spark job cancellation will do things asyncly in a background thread,

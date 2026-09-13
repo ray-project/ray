@@ -2725,13 +2725,6 @@ class TestAutoscale:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        r1.to_full_id_str(): 3,
-                        r2.to_full_id_str(): 3,
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
@@ -2745,7 +2738,6 @@ class TestAutoscale:
             for i in [1, 2]:
                 replica_report = ReplicaMetricReport(
                     replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]
                     },
@@ -2872,7 +2864,6 @@ class TestAutoscale:
         for replica_id in app1_d1_replicas + app1_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2882,7 +2873,6 @@ class TestAutoscale:
         for replica_id in app2_d1_replicas + app2_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 0},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 0)]},
                 timestamp=time.time(),
             )
@@ -2946,7 +2936,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -3027,7 +3016,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 4},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 4)]},
                 timestamp=time.time(),
             )
@@ -3156,7 +3144,6 @@ class TestAutoscale:
             for replica in replicas:
                 replica_report = ReplicaMetricReport(
                     replica_id=replica,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: load},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, load)]
                     },
@@ -3231,7 +3218,6 @@ class TestAutoscale:
         for i in range(3):
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 10},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 10)]
                 },
@@ -3368,13 +3354,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d1_r1.to_full_id_str(): d1_load,
-                    d1_r2.to_full_id_str(): d1_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d1_r1.to_full_id_str(): [
@@ -3398,13 +3377,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d2_r3.to_full_id_str(): d2_load,
-                    d2_r4.to_full_id_str(): d2_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d2_r3.to_full_id_str(): [
@@ -3427,7 +3399,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d1_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d1_load)]
                 },
@@ -3439,7 +3410,6 @@ class TestAutoscale:
         for i in [3, 4]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d2_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d2_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d2_load)]
                 },

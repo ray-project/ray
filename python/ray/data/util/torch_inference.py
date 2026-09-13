@@ -193,7 +193,9 @@ class TorchInference:
             The resulting Torch tensors, optionally with side data:
 
             - ``tensors``: the tensors must be on the device; Ray Data moves
-              them back to the CPU before calling :meth:`finalize`.
+              them back to the CPU before calling :meth:`finalize`. Unlike
+              the input transfer, the output transfer preserves nested
+              sequences as-is.
             - ``(tensors, other)``: additionally hand ``other`` — any
               non-tensor side value, passed through untouched — to
               :meth:`finalize` as ``output_other``. When only ``tensors`` is

@@ -80,9 +80,9 @@ class RoundRobinPartitioner(FilePartitioner):
         partition = self._partitioner.next_partition()
         paths, file_sizes, file_chunk_metadatas = zip(*partition)
         return FileManifest.construct_manifest(
-            list(paths),
-            list(file_sizes),
-            list(file_chunk_metadatas),
+            paths=list(paths),
+            sizes=list(file_sizes),
+            chunk_metadatas=list(file_chunk_metadatas),
         )
 
     def finalize(self):

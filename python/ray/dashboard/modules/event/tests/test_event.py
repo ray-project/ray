@@ -342,7 +342,7 @@ async def test_monitor_events():
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_autoscaler_cluster_events(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
+        head_resources={"CPU": 2, "GPU": 0},
         worker_node_types={
             "cpu_node": {
                 "resources": {
