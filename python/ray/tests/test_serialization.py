@@ -837,6 +837,31 @@ def test_inspect_func_serialization_prints_qualname():
     ), f"Expected inner closure qualname in output, got:\n{output}"
 
 
+def test_inspect_serializability_initializes_colorama_once(mocker):
+    import threading
+
+    from ray.util.check_serialize import inspect_serializability
+
+    lock = threading.Lock()
+
+    def inner():
+        return lock
+
+    def outer():
+        return inner()
+
+    init = mocker.patch("ray.util.check_serialize.colorama.init")
+    just_fix_windows_console = mocker.patch(
+        "ray.util.check_serialize.colorama.just_fix_windows_console"
+    )
+
+    serializable, _ = inspect_serializability(outer, print_file=io.StringIO())
+
+    assert not serializable
+    just_fix_windows_console.assert_called_once_with()
+    init.assert_not_called()
+
+
 def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypatch):
     """The STREAMING_GENERATOR_REPLAY_INCONSISTENT error type must deserialize
     to StreamingGeneratorReplayInconsistentError carrying the C++-side
