@@ -43,7 +43,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -sSL -o- https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Determine the architecture of the host
 if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then

@@ -93,11 +93,6 @@ Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
 .. note::
 
-    For installation on computers running Apple Silicon, such as M1,
-    `follow instructions here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
-
-.. note::
-
     To be able to run the Atari or MuJoCo examples, you also need to do:
 
     .. code-block:: bash

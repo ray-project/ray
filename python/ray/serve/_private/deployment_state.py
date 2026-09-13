@@ -3833,9 +3833,11 @@ class DeploymentState:
         ):
             return True
 
+        # Reuse the aggregate from this tick's autoscaling decision instead of
+        # recomputing it just to format the log.
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_last_decision_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )

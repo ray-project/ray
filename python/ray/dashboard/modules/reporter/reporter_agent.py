@@ -565,6 +565,11 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        # One worker preserves OTLP report order without blocking the event loop.
+        self._otlp_ingest_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reporter_agent_otlp_ingest",
+        )
         self._gcs_pid = None
         self._gcs_proc = None
 
@@ -774,6 +779,18 @@ class ReporterAgent(
                 data_point.as_double,
             )
 
+    def _ingest_exported_metrics(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+    ) -> None:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    if metric.WhichOneof("data") == "histogram":
+                        self._export_histogram_data(metric)
+                    else:
+                        self._export_number_data(metric)
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -785,13 +802,11 @@ class ReporterAgent(
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
-        for resource_metrics in request.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+        await get_or_create_event_loop().run_in_executor(
+            self._otlp_ingest_executor,
+            self._ingest_exported_metrics,
+            request,
+        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 

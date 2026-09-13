@@ -39,6 +39,8 @@ from ray.serve.tests.test_metrics import (
 METRICS_FIRST_EXPORT_TIMEOUT_S = 90
 METRICS_WAIT_TIMEOUT_S = 45
 METRICS_RETRY_INTERVAL_MS = 1000
+# Comfortably longer than the metric waits a held-open request has to survive.
+QUEUED_REQUEST_TIMEOUT_S = 300
 
 
 def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
@@ -807,7 +809,9 @@ class TestHandleMetrics:
 
         @ray.remote(num_cpus=0)
         def do_request():
-            r = httpx.get("http://localhost:8000/", timeout=10)
+            # These requests are torn down by the ray.cancel below, so the client
+            # timeout only has to outlast the metric waits between here and there.
+            r = httpx.get("http://localhost:8000/", timeout=QUEUED_REQUEST_TIMEOUT_S)
             r.raise_for_status()
             return r
 
