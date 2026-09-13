@@ -390,6 +390,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   FRIEND_TEST(ClusterLeaseManagerTest, FeasibleToNonFeasible);
   FRIEND_TEST(LocalLeaseManagerTest, TestLeaseGrantingOrder);
   friend size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager);
+  friend size_t GetPinnedLeaseArgumentCount(const LocalLeaseManager &local_lease_manager);
 };
 }  // namespace raylet
 }  // namespace ray

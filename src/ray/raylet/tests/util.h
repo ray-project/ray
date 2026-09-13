@@ -144,7 +144,13 @@ class MockWorker : public WorkerInterface {
     return lease_->GetLeaseSpecification().IsDetachedActor();
   }
 
-  const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
+  const std::shared_ptr<ClientConnection> Connection() const override {
+    return connection_;
+  }
+  // Test-only: lets a test drive code paths that operate on the worker's connection.
+  void SetConnection(std::shared_ptr<ClientConnection> connection) {
+    connection_ = std::move(connection);
+  }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
@@ -202,6 +208,7 @@ class MockWorker : public WorkerInterface {
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
+  std::shared_ptr<ClientConnection> connection_;
   ClockInterface &clock_;
 };
 

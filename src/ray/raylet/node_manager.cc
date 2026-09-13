@@ -1048,7 +1048,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
     RAY_LOG(INFO)
             .WithField(worker->WorkerId())
             .WithField("owner_worker_id", owner_worker_id)
-        << "Killing leased worker because its owner died.";
+        << "Killing leased worker and cleaning up its lease because its owner died.";
+    local_lease_manager_.CleanupLease(worker);
     worker->KillAsync(io_service_);
   }
 
@@ -1551,16 +1552,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const LeaseID &lease_id = worker->GetGrantedLeaseId();
-    // If the worker was granted a lease, clean up the lease and push an
-    // error to the driver, unless the worker is already dead.
-    if ((!lease_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
+    // Clean up the lease regardless of whether the worker is already dead: a worker
+    // the raylet reaped still holds pinned lease arguments and granted-lease state
+    // that nothing else releases. Only the failure reporting below is suppressed
+    // for a worker we killed ourselves.
+    if (!lease_id.IsNil() || !actor_id.IsNil()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
         local_lease_manager_.CleanupLease(worker);
       }
 
-      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+      if (!worker->IsDead() && disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
         // TODO(rkn): Define this constant somewhere else.
