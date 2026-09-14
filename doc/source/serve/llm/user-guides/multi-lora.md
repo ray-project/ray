@@ -39,8 +39,6 @@ export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-Body forwarding can increase time to first token. See {doc}`Direct streaming <direct-streaming>` for details.
-
 
 ## Configure Ray Serve LLM with multi-LoRA
 
