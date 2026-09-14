@@ -417,7 +417,7 @@ RLModules
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional
    feature extraction tailored to the environment's visual observations.
 
-- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
+- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
    Uses a custom LSTM within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, allowing for temporal sequence processing,
    beneficial for partially observable environments with sequential dependencies.
 

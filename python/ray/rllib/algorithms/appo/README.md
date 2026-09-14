@@ -12,7 +12,7 @@ critic network (value function).
 ### Distributed baseline PPO
 [See implementation here](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/ppo.py)
 
-### Asychronous PPO (APPO) ..
+### Asynchronous PPO (APPO) ..
 
 .. opts to imitate IMPALA as its distributed execution plan.
 Data collection nodes gather data asynchronously, which are collected in a circular replay
@@ -31,4 +31,4 @@ to enforce training stability in the asynchronous data-collection setting.
 
 **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#appo)**
 
-**[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/appo.py)**
+**[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/appo.py)**

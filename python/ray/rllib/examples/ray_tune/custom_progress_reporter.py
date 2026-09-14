@@ -19,7 +19,7 @@ the total number of episodes run thus far.
 NOTE that a custom progress reporter is different from a custom `Logger`, which defines,
 how the (frequent) results are being formatted and written to e.g. a logfile.
 To see an example on how to write your own Logger, see:
-https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/ray_tune/custom_logger.py
+https://github.com/ray-project/ray/tree/blob/python/ray/rllib/examples/ray_tune/custom_logger.py
 
 
 How to run this script
