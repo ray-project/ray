@@ -563,7 +563,7 @@ def test_the_annotation_is_job_scoped_and_keyed_on_the_test():
     assert f"--context={ANNOTATION_CONTEXT_PREFIX}test_name" in command
     assert "--style=info" in command
     # --scope is what decides where buildkite shows the annotation; without it
-    # the default is "build", which is what the first real run produced.
+    # the default is "build", which would put it on the build page instead.
     assert f"--scope={ANNOTATION_SCOPE}" in command
     assert ANNOTATION_SCOPE == "job"
     # --scope is what puts the annotation on the job; --job names which job it
