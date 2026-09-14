@@ -405,6 +405,8 @@ def _row_group_manifest(path, row_group_ids, num_rows):
                 fully_matched=True,
                 rg_sizes=(),
                 rg_rows=(),
+                decoded_size=None,
+                rg_decoded_sizes=(),
             )
         ],
     )
