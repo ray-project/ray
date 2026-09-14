@@ -1141,6 +1141,7 @@ class ActorReplicaWrapper:
                 deployment_info.ingress,
                 deployment_info.route_prefix,
                 deployment_info.ingress_request_router,
+                deployment_info.direct_http,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -5666,12 +5667,19 @@ class DeploymentState:
     def is_ingress_request_router(self) -> bool:
         return self._deployed_info.ingress_request_router
 
+    def is_direct_http(self) -> bool:
+        return self._deployed_info.direct_http
+
     def owns_direct_ingress_ports(self) -> bool:
         """Whether this deployment owns direct-ingress ports -- i.e. it is an
-        ingress deployment or an ingress request router. These are exactly the
-        deployments the direct-ingress port reconcile (and its membership-version
-        gate) manages."""
-        return self.is_ingress() or self.is_ingress_request_router()
+        ingress deployment, an ingress request router, or opted in with
+        `_direct_http`. These are exactly the deployments the direct-ingress port
+        reconcile (and its membership-version gate) manages."""
+        return (
+            self.is_ingress()
+            or self.is_ingress_request_router()
+            or self.is_direct_http()
+        )
 
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
