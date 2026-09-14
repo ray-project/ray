@@ -187,7 +187,6 @@ class EventTracker {
 
   /// Global stats, across all handlers.
   std::shared_ptr<GuardedGlobalStats> global_stats_;
-  const std::optional<std::string> context_name_;
 
   /// Table of per-handler post stats.
   /// We use a std::shared_ptr value in order to ensure pointer stability.

@@ -68,7 +68,6 @@ class ObjectManagerGrpcService : public GrpcService {
   ObjectManagerGrpcService(instrumented_io_context &io_service,
                            ObjectManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler) {}
-  //  metric_context_(metric_context){};
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
