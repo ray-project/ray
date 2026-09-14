@@ -35,12 +35,16 @@ COMMAND_FAILURE_RETURN_CODES = (
 )
 
 # Whether the failures in COMMAND_FAILURE_RETURN_CODES are skipped instead of
-# handed to the observability agent.
-# TODO: off until the reviewers of this change decide whether the agent should
-# look at command failures. Note that with the trigger statuses as they are, a
-# result with the ERROR or TIMEOUT status always carries one of those return
-# codes, so turning this on leaves only the RUNTIME_ERROR and UNKNOWN statuses
-# triggering.
+# handed to the observability agent. Off: a command failure is still a failure
+# somebody has to explain, and the agent sees the job's metrics and logs, which
+# the exit code alone does not carry.
+#
+# Left here as a switch rather than deleted, because that judgement depends on
+# traffic nobody has seen yet. If these turn out to be mostly straightforward
+# errors whose cause is already plain from the log, turning this on skips them.
+# Note what that costs: with the trigger statuses as they are, an ERROR or
+# TIMEOUT result always carries one of these return codes, so switching it on
+# leaves only RUNTIME_ERROR and UNKNOWN triggering the agent at all.
 SKIP_COMMAND_FAILURES = False
 
 # The debug session is always asked the same question; the agent itself decides
@@ -71,8 +75,8 @@ class ObservabilityAgentReporter(Reporter):
     It creates a debug session for the Anyscale job of the failed test run, then
     queries that session. This is a no-op for test runs that did not fail with
     one of OBSERVABILITY_AGENT_TRIGGER_STATUSES, for failures that never got as
-    far as creating an Anyscale job, and, once SKIP_COMMAND_FAILURES is enabled,
-    for failures raised by the test command itself.
+    far as creating an Anyscale job, and, if SKIP_COMMAND_FAILURES is ever
+    turned on, for failures raised by the test command itself.
     """
 
     def report_result(self, test: Test, result: Result) -> None:
