@@ -37,8 +37,9 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
+* **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/).
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64.
 
 ## Usage patterns and examples
 
@@ -184,7 +185,7 @@ ray.get(pool.close.remote())
 
 ### Pass custom OCI configurations to gVisor
 
-For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
+For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
 
 :::{note}
 `_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. To help shape them, open an issue describing your use case.
@@ -193,8 +194,9 @@ For advanced workloads, you might need to configure low-level runtime options su
 The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary. It can mutate the dictionary in place or return a modified one. Common use cases include the following:
 
 * **Host mounts**: Mount host directories, read-only datasets, or model weights into the sandbox container.
-* **Networking and DNS**: Set up DNS resolution by mounting host configuration files such as `/etc/resolv.conf` and `/etc/hosts`, or modify network namespace parameters when using `network="sandbox"`.
-* **Linux capabilities**: Add or restrict Linux process capabilities such as `CAP_NET_RAW` or `CAP_SYS_PTRACE` under `spec["process"]["capabilities"]`.
+* **Namespace and mount details**: Configure namespace or mount behavior that the first-class options don't cover.
+
+Internet access, DNS, and Linux capabilities each have a first-class option: `network`, `dns`, and `capabilities`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
 
 ```python
 import ray
@@ -214,23 +216,6 @@ def configure_oci_spec(spec: dict) -> dict:
         }
     )
 
-    # Configure networking and DNS resolution
-    spec["mounts"].append(
-        {
-            "destination": "/etc/resolv.conf",
-            "source": "/etc/resolv.conf",
-            "type": "bind",
-            "options": ["rbind", "ro"],
-        }
-    )
-
-    # Grant additional Linux process capabilities
-    caps = spec.setdefault("process", {}).setdefault("capabilities", {})
-    for cap_set in ["bounding", "effective", "permitted"]:
-        caps.setdefault(cap_set, [])
-        if "CAP_NET_RAW" not in caps[cap_set]:
-            caps[cap_set].append("CAP_NET_RAW")
-
     return spec
 
 
@@ -238,7 +223,6 @@ def configure_oci_spec(spec: dict) -> dict:
 sb = sandbox.create(
     image="python:3.10-slim",
     workdir="/workspace",
-    network="sandbox",  # Enable network isolation namespace in gVisor
     _oci_spec_transform_fn=configure_oci_spec,
 )
 
@@ -253,6 +237,67 @@ print(result.stdout)
 # Clean up resources
 ray.get(sb.delete.remote())
 ```
+
+## Container images
+
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and caches it for reuse by subsequent sandboxes on that node using the same image. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem.
+
+### Bound the image cache
+
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+
+### Route Docker Hub pulls through a mirror
+
+Because image pulls are anonymous, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.
+
+Set `RAY_SANDBOX_REGISTRY_MIRROR` to route Docker Hub pulls through a registry mirror. Ray rewrites only Docker Hub image references. Pulls from other registries, such as GHCR or a private registry, are left unchanged.
+
+The value is `host[:port][/repo-prefix]`. Ray prepends the repository prefix to the repository path, which is the form pull-through caches expect:
+
+| Mirror | Example value | `python:3.10-slim` resolves to |
+| --- | --- | --- |
+| [ECR pull-through cache](https://docs.aws.amazon.com/AmazonECR/latest/userguide/pull-through-cache.html) | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub` | `<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub/library/python` |
+| [Artifact Registry remote repository](https://cloud.google.com/artifact-registry/docs/repositories/remote-repo) | `<region>-docker.pkg.dev/<project>/<repo>` | `<region>-docker.pkg.dev/<project>/<repo>/library/python` |
+| In-cluster [`registry:2`](https://distribution.github.io/distribution/recipes/mirror/) proxy | `http://registry.default.svc.cluster.local:5000` | `http://registry.default.svc.cluster.local:5000/library/python` |
+
+Keep the following in mind:
+
+* **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
+* **The mirror is authoritative.** Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
+* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
+
+## Networking and DNS
+
+Sandboxes support four network modes. The default is `none`, which follows the safe-defaults principle. Use `public` when a sandbox needs internet access.
+
+| Mode | Network access | `/etc/resolv.conf` | Security property |
+| --- | --- | --- | --- |
+| `none` *(default)* | None | untouched | No egress. This is the recommended setting for untrusted code. |
+| `public` | Internet egress from a network namespace private to the sandbox, bridged by [slirp4netns](https://github.com/rootless-containers/slirp4netns) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox inherits nothing from the host's resolver configuration. The sandbox can still reach any network address the node can reach, including other Ray nodes and internal services. The sandbox's own address is `198.18.0.100` (RFC 2544 benchmarking space, chosen not to overlap pod or service ranges). Requires `slirp4netns` on the node. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
+| `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
+
+:::{warning}
+`public` isolates sandboxes from each other and from the node's own services, not from the network the node sits on. slirp4netns relays every outbound connection through the node, so a `public` sandbox can reach other Ray nodes, including the head node's GCS and dashboard ports, other Kubernetes Pods, and any internal service the node can reach. Use `network="none"` for untrusted code.
+:::
+
+To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
+
+```python
+from ray.experimental import sandbox
+from ray.experimental.sandbox import DOCKER_DEFAULT_CAPABILITIES
+
+sb = sandbox.create(
+    image="python:3.10-slim",
+    network="public",
+    capabilities=DOCKER_DEFAULT_CAPABILITIES,
+    readonly=False,
+)
+```
+
+### DNS in locked-down networks
+
+Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `public` DNS settings can't resolve queries. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture
 
@@ -308,7 +353,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **System call interception**: gVisor's Sentry application kernel intercepts system calls in user space, isolating untrusted code from the host Linux kernel.
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
-* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network.
+* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
 ## API reference
@@ -319,7 +364,10 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
-* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`.
+* **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
+* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
+* **`slirp4netns` not found for `network="public"`**: Install the slirp4netns package (or a [static build](https://github.com/rootless-containers/slirp4netns/releases)) on worker nodes.
+* **`public` sandboxes fail to start with a tap or namespace error**: slirp4netns needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The slirp4netns error appears in the sandbox's `runsc.stderr.log` and in the creation error message.
 
 ## Next steps
 

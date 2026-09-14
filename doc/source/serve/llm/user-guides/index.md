@@ -23,15 +23,20 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 ## Optimize latency and throughput
 
 - {doc}`Prefill/decode disaggregation <prefill-decode>`: split prompt processing and token generation onto separate replicas to tune each independently.
-- {doc}`KV cache offloading <kv-cache-offloading>`: extend KV cache capacity with LMCache and tiered storage backends.
-- {doc}`Prefix-aware routing <prefix-aware-routing>`: route requests to replicas that already hold a matching prefix to maximize cache hits.
 - {doc}`Direct streaming <direct-streaming>`: bypass the ingress when streaming tokens to cut per-token latency.
+- {doc}`Approximate prefix cache aware routing <prefix-aware-routing>`: route requests to replicas that already hold a matching prefix to maximize cache hits.
+- {doc}`Exact KV cache aware routing <kv-aware-routing>`: route requests to replicas based on KV cache overlap and token load, accounting for uncached prefill tokens and ongoing decode load.
+- {doc}`KV cache offloading <kv-cache-offloading>`: extend KV cache capacity with native vLLM CPU offloading, LMCache, or tiered storage backends. Pair it with a router that accounts for KV caches across storage tiers.
 
 ## Choose an engine
 
 - {doc}`vLLM compatibility <vllm-compatibility>`: use vLLM features such as embeddings, structured outputs, vision, and reasoning through Ray Serve LLM.
 - {doc}`Custom vLLM models <custom-vllm>`: serve an out-of-tree architecture with a vLLM plugin, using a Qwen3 reward model as the example.
 - {doc}`SGLang integration <sglang>`: run SGLang as the inference engine instead of vLLM.
+
+## Accelerator-specific serving
+
+- {doc}`TPU serving <tpu>`: serve a model on single-host or multi-host TPU slices with topology-aware placement.
 
 ## Operate in production
 
@@ -48,11 +53,13 @@ Cross-node parallelism <cross-node-parallelism>
 Data parallel attention <data-parallel-attention>
 Fractional GPU serving <fractional-gpu>
 Prefill/decode disaggregation <prefill-decode>
-KV cache offloading <kv-cache-offloading>
-Prefix-aware routing <prefix-aware-routing>
 Direct streaming <direct-streaming>
+Prefix-aware routing <prefix-aware-routing>
+KV-aware routing <kv-aware-routing>
+KV cache offloading <kv-cache-offloading>
 vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
 SGLang integration <sglang>
+TPU serving <tpu>
 Observability and monitoring <observability>
 ```

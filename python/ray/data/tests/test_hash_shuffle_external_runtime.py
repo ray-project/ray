@@ -8,11 +8,12 @@ import contextlib
 import os
 import socket
 import struct
-from typing import cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.execution.operators.shuffle_operators import (
     external_shuffle_runtime as _runtime,
 )
@@ -25,6 +26,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     ShuffleFileServerAnomalyError,
     _chunk_members_by_bytes,
     _compute_prefetch_layout,
+    _counts_to_array,
     _encode_shard,
     _Endpoint,
     _fetch_from_file_server,
@@ -48,10 +50,14 @@ def _make_file_server(tmp_path, shuffle_id="shuffle-0", node_id="node-1"):
     """Create a named (not detached) ShuffleFileServer; return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
-        name=_file_server_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-    ).remote(str(tmp_path))
+    actor_cls = cast(ActorClass[Any], ShuffleFileServer)
+    actor = cast(
+        ActorHandle[Any],
+        actor_cls.options(
+            name=_file_server_name(shuffle_id, node_id),
+            namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
+        ).remote(str(tmp_path)),
+    )
     endpoint = cast(_Endpoint, ray.get(actor.endpoint.remote()))
     return actor, endpoint
 
@@ -536,6 +542,33 @@ def test_partition_writer_combine_path():
     w2.flush_all()
     assert w2._combine_native_ok is False
     assert w2.index[0][0][1] > 0
+
+
+def test_decoded_stats_tracks_rows_when_nbytes_zero():
+    """A null-typed table has rows with tbl.nbytes == 0. num_rows must
+    record those rows; decoded_bytes stays nbytes-only.
+    """
+    import io
+
+    import pyarrow as pa
+
+    tbl = pa.table({"k": pa.nulls(10)})
+    assert tbl.num_rows == 10
+    assert tbl.nbytes == 0
+
+    buf = io.BytesIO()
+    w = _PartitionWriter(buf, map_id=0, compression="none")
+    w.add_shard(0, tbl)
+    w.flush_all()
+
+    rows = _counts_to_array(w.rows_per_partition, num_partitions=4)
+    nbytes = _counts_to_array(w.decoded_bytes_per_partition, num_partitions=4)
+    assert rows.shape == (4,)
+    assert rows[0] == 10
+    assert (rows[1:] == 0).all()
+    assert nbytes.shape == (4,)
+    assert nbytes[0] == 0
+    assert (nbytes[1:] == 0).all()
 
 
 # --------------------------------------------------- error class sanity checks

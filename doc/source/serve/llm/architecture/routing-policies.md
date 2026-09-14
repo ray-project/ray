@@ -84,6 +84,12 @@ The routing strategy:
 
 For more details, see {ref}`prefix-aware-routing-guide`.
 
+### KV-aware routing
+
+The `KVAwareRouter` combines KV cache locality with token load to make routing decisions. Engine replicas publish KV cache events, allowing the router to maintain a global view of the KV cache blocks on each replica. For each request, the router estimates the potential uncached prefill work from KV cache overlap, combines it with each replica's active prefill and decode load into single token load estimate. It then routes the request to the replica with the lowest estimated token load.
+
+For more details, see {ref}`kv-aware-routing-guide`.
+
 ## Design patterns for custom routing policies
 
 Customizing request routers is a feature in Ray Serve's native APIs that you can define per deployment. For each deployment, you can customize the routing logic that executes every time you call `.remote()` on the deployment handle from a caller. Because deployment handles are globally available objects across the cluster, you can call them from any actor or task in the Ray cluster. For more details on this API, see {ref}`custom-request-router-guide`.

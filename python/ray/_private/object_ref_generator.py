@@ -343,10 +343,11 @@ class ObjectRefGenerator:
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
-            _, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))], timeout=timeout_s
-            )
-            if len(unready) > 0:
+            try:
+                await asyncio.wait_for(
+                    self._suppress_exceptions(ref), timeout=timeout_s
+                )
+            except asyncio.TimeoutError:
                 return ray.ObjectRef.nil()
 
         try:

@@ -1,6 +1,29 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
+# Shared env for the python/ray/air/tests targets. ``RAY_DATA_PARQUET_FOOTER_
+# NUM_ACTORS=1`` keeps the Parquet footer-reader pool tiny: the production
+# default of 32 actors times out and trips Ray's "too many worker processes"
+# warning when many test targets run in parallel under CI. Mirrored by a
+# setdefault in python/ray/air/tests/conftest.py for non-bazel pytest runs.
+_AIR_TEST_ENV = {
+    "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS": "1",
+    "RAY_TRAIN_V2_ENABLED": "1",
+}
+
+# Same, for the targets that pin Train V1 telemetry/behaviour.
+_AIR_TEST_ENV_TRAIN_V1 = {
+    "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS": "1",
+    "RAY_TRAIN_V2_ENABLED": "0",
+}
+
+# Same, plus legacy Keras for the Keras callback test.
+_AIR_TEST_ENV_TF = {
+    "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS": "1",
+    "RAY_TRAIN_V2_ENABLED": "1",
+    "TF_USE_LEGACY_KERAS": "1",
+}
+
 doctest(
     name = "py_doctest[air]",
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
@@ -31,7 +54,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_air_usage.py"],
     # NOTE: This tests Train V1 telemetry.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = _AIR_TEST_ENV_TRAIN_V1,
     tags = [
         "exclusive",
         "team:ml",
@@ -44,23 +67,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_new_dataset_config.py"],
     # NOTE: Relevant tests moved to train/v2/tests/test_data_integration.py
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [":ml_lib"],
-)
-
-py_test(
-    name = "test_experiment_restore",
-    size = "large",
-    srcs = [
-        "tests/_test_experiment_restore_run.py",
-        "tests/test_experiment_restore.py",
-    ],
-    # NOTE: This tests Tune and Train V1 restoration.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = _AIR_TEST_ENV_TRAIN_V1,
     tags = [
         "exclusive",
         "team:ml",
@@ -73,7 +80,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_errors.py"],
     # NOTE: This tests Tune (Train V1) error propagation logic.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = _AIR_TEST_ENV_TRAIN_V1,
     tags = [
         "exclusive",
         "team:ml",
@@ -86,7 +93,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
     # NOTE: This tests the Tune Comet callback.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = _AIR_TEST_ENV_TRAIN_V1,
     tags = [
         "exclusive",
         "team:ml",
@@ -99,7 +106,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
     # NOTE: This tests the Tune wandb callback.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = _AIR_TEST_ENV_TRAIN_V1,
     tags = [
         "exclusive",
         "team:ml",
@@ -112,7 +119,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_integration_mlflow.py"],
     # NOTE: This tests the Tune mlflow callback.
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -124,10 +131,7 @@ py_test(
     name = "test_keras_callback",
     size = "medium",
     srcs = ["tests/test_keras_callback.py"],
-    env = {
-        "RAY_TRAIN_V2_ENABLED": "1",
-        "TF_USE_LEGACY_KERAS": "1",
-    },
+    env = _AIR_TEST_ENV_TF,
     tags = [
         "exclusive",
         "team:ml",
@@ -139,7 +143,7 @@ py_test(
     name = "test_remote_storage_hdfs",
     size = "small",
     srcs = ["tests/test_remote_storage_hdfs.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "hdfs",
@@ -152,7 +156,7 @@ py_test(
     name = "test_tracebacks",
     size = "small",
     srcs = ["tests/test_tracebacks.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -164,7 +168,7 @@ py_test(
     name = "test_utils",
     size = "small",
     srcs = ["tests/test_utils.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -183,7 +187,7 @@ py_test(
     name = "test_barrier",
     size = "small",
     srcs = ["tests/execution/test_barrier.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -195,7 +199,7 @@ py_test(
     name = "test_e2e_train_flow",
     size = "medium",
     srcs = ["tests/execution/test_e2e_train_flow.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -207,7 +211,7 @@ py_test(
     name = "test_e2e_tune_flow",
     size = "medium",
     srcs = ["tests/execution/test_e2e_tune_flow.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -219,7 +223,7 @@ py_test(
     name = "test_event_manager",
     size = "medium",
     srcs = ["tests/execution/test_event_manager.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -231,7 +235,7 @@ py_test(
     name = "test_resource_manager_fixed",
     size = "small",
     srcs = ["tests/execution/test_resource_manager_fixed.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -243,7 +247,7 @@ py_test(
     name = "test_resource_manager_placement_group",
     size = "medium",
     srcs = ["tests/execution/test_resource_manager_placement_group.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -255,7 +259,7 @@ py_test(
     name = "test_resource_request",
     size = "small",
     srcs = ["tests/execution/test_resource_request.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -267,7 +271,7 @@ py_test(
     name = "test_tracked_actor",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -279,7 +283,7 @@ py_test(
     name = "test_tracked_actor_task",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor_task.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _AIR_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",

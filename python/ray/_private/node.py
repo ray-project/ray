@@ -1778,16 +1778,35 @@ class Node:
             str(p[0].process.pid) for p in self.all_processes.values()
         ]
 
-        # If the dashboard api server was started on the head node, then include all of the api server's
-        # child processes.
+        # The lookup has to be recursive. On POSIX the api server launches its subprocess
+        # modules through a forkserver, so the modules are its grandchildren; asking for
+        # direct children finds the forkserver alone and leaves every module outside the
+        # system cgroup.
         if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
             dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
                 0
             ].process.pid
-            dashboard_process = psutil.Process(dashboard_pid)
-            system_process_pids += [str(p.pid) for p in dashboard_process.children()]
+            # The dashboard may already have exited by now, since by default it starts
+            # with raise_on_failure=False and a dead one is not meant to stop the node
+            # from starting. Raising here would stop it.
+            try:
+                dashboard_process = psutil.Process(dashboard_pid)
+                system_process_pids += [
+                    str(p.pid) for p in dashboard_process.children(recursive=True)
+                ]
+            except psutil.Error:
+                logger.warning(
+                    "Could not enumerate the descendants of the dashboard process "
+                    f"(pid {dashboard_pid}), so they will not be moved into the system "
+                    "cgroup and will run without resource isolation.",
+                    exc_info=True,
+                )
 
-        return ",".join(system_process_pids)
+        # The raylet fails fatally if it cannot move a pid into the system cgroup, and a
+        # system process is allowed to have died by now, so drop the ones that are gone.
+        return ",".join(
+            pid for pid in system_process_pids if psutil.pid_exists(int(pid))
+        )
 
     def _kill_process_type(
         self,

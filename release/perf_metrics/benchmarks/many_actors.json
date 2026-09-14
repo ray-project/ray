@@ -1,31 +1,31 @@
 {
-    "_dashboard_memory_usage_mb": 103.878656,
+    "_dashboard_memory_usage_mb": 120.651776,
     "_dashboard_test_success": true,
-    "_peak_memory": 4.24,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n4039\t1.65GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n6384\t0.81GiB\tpython distributed/test_many_actors.py\n3153\t0.69GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n4247\t0.29GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4704\t0.16GiB\tray::DashboardAgent\n3359\t0.12GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/_main/infra/dataplane/web\n1398\t0.12GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n4168\t0.09GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n4706\t0.09GiB\tray::RuntimeEnvAgent\n6512\t0.08GiB\tray::DashboardTester.run",
-    "actors_per_second": 575.2367632651517,
+    "_peak_memory": 4.17,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1681\t4.54GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n4119\t1.5GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n5432\t0.81GiB\tpython distributed/test_many_actors.py\n3293\t0.79GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n4335\t0.31GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n601\t0.27GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n4791\t0.19GiB\tray::DashboardAgent\n3493\t0.13GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/_main/infra/dataplane/web\n4250\t0.12GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n4793\t0.09GiB\tray::RuntimeEnvAgent",
+    "actors_per_second": 575.4552115567288,
     "num_actors": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "actors_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 575.2367632651517
+            "perf_metric_value": 575.4552115567288
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 9.881
+            "perf_metric_value": 9.378
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 1495.388
+            "perf_metric_value": 1604.549
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 5021.808
+            "perf_metric_value": 3575.026
         }
     ],
-    "time": 17.384146213531494
+    "time": 17.377547025680542
 }

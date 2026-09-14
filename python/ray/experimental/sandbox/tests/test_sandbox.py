@@ -9,7 +9,9 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 def test_sandbox_runtime_interface(tmp_path):
     rt = SandboxRuntime()
-    instance_id = rt.create(image="busybox:latest", workdir="/workspace")
+    instance_id = rt.create(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
     assert instance_id.startswith("ray-sandbox-")
 
     res = rt.exec(instance_id, "echo 'Hello world'")
@@ -34,7 +36,9 @@ def test_sandbox_actor_wrapper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    actor = Sandbox.remote(image="busybox:latest", workdir="/workspace")
+    actor = Sandbox.remote(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
     instance_id = ray.get(actor.get_instance_id.remote())
     assert instance_id.startswith("ray-sandbox-")
 
@@ -59,7 +63,7 @@ def test_custom_sandbox_actor_with_sandbox_runtime():
         def __init__(self):
             self.runtime = SandboxRuntime()
             self.instance_id = self.runtime.create(
-                image="busybox:latest", workdir="/workspace"
+                image="busybox:latest", shell="/bin/sh", workdir="/workspace"
             )
 
         def exec(self, command, timeout=None, env=None):
@@ -87,7 +91,9 @@ def test_ray_remote_sandbox_runtime():
     rt_actor = remote_rt_cls.remote()
 
     instance_id = ray.get(
-        rt_actor.create.remote(image="busybox:latest", workdir="/workspace")
+        rt_actor.create.remote(
+            image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+        )
     )
     assert instance_id.startswith("ray-sandbox-")
 
@@ -104,7 +110,7 @@ def test_sandbox_actor_resource_translation():
         ray.init(ignore_reinit_error=True)
 
     actor = Sandbox.options(num_cpus=2.0).remote(
-        image="busybox:latest", cpu=2.0, workdir="/workspace"
+        image="busybox:latest", shell="/bin/sh", cpu=2.0, workdir="/workspace"
     )
 
     ret_config = ray.get(actor.get_config.remote())
@@ -123,7 +129,7 @@ def test_sandbox_runtime_create_variants():
     rt.delete(id1)
 
     # Pass image as keyword arg
-    id2 = rt.create(image="busybox:latest", workdir="/workspace")
+    id2 = rt.create(image="busybox:latest", shell="/bin/sh", workdir="/workspace")
     assert id2.startswith("ray-sandbox-")
     rt.delete(id2)
 

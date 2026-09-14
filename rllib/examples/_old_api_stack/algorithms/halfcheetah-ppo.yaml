@@ -1,6 +1,6 @@
 # @OldAPIStack
 halfcheetah-ppo:
-    env: HalfCheetah-v2
+    env: HalfCheetah-v4
     run: PPO
     stop:
         env_runners/episode_return_mean: 9800
