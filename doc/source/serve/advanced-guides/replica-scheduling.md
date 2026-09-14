@@ -71,15 +71,13 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 - Balances load across the cluster
 - Helps prevent resource contention between replicas
 
-### Scheduling priority
+### Scheduling pipeline
 
-When scheduling a replica, the scheduler evaluates strategies in the following priority order:
+The scheduler places each pending replica in three steps, largest resource request first:
 
-1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources. If you specify `placement_group_bundle_label_selector`, the scheduler will only select nodes with the required labels for each bundle.
-2. **Pack scheduling with node affinity**: If pack scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
-  - **With labels**: If a `label_selector` is provided, the scheduler strictly filters candidate nodes to match the labels before selecting the best fit.
-  - **With fallback**: If a `fallback_strategy` is provided, the scheduler first attempts to pack on nodes matching the labels. If no matching nodes are available, it retries using the next fallback option.
-3. **Default strategy**: Falls back to `SPREAD` when pack scheduling isn't enabled.
+1. **Filter**: Drop nodes that break a hard rule. A `label_selector` removes nodes without matching labels. While a deployment covers fewer nodes than its floor (see `RAY_SERVE_MIN_REPLICA_NODES`), nodes already hosting that deployment are removed as well.
+2. **Score**: Rank the remaining nodes with the active scorer. The spread scorer (default) prefers the node with the fewest replicas of the same deployment, then the most free resources. The pack scorer (`RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1`) prefers nodes that already run replicas and picks the tightest fit to minimize fragmentation. If a `fallback_strategy` is provided, the scheduler tries the primary labels first and then each fallback in order.
+3. **Bind**: Launch the replica on the chosen node with a soft `NodeAffinitySchedulingStrategy`. For deployments with `placement_group_bundles` and the `STRICT_PACK` strategy, the placement group is created with the chosen node as a soft target. Placement groups with other strategies are handed to Ray Core, which decides where the bundles land. If no node passed filtering, the replica is launched without a target so the autoscaler can add a node. If it was filtered out only by the floor, the launch carries a hard `ray.io/node-id` exclusion, so the replica waits for a new node instead of doubling up.
 
 ### Downscaling behavior
 
@@ -88,6 +86,7 @@ When Ray Serve scales down a deployment, it intelligently selects which replicas
 1. **Non-running replicas first**: Pending, launching, or recovering replicas are stopped before running replicas.
 2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
 3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
+4. **Keep the floor**: A replica is skipped if stopping it would leave the deployment on fewer nodes than `RAY_SERVE_MIN_REPLICA_NODES` allows for the new replica count, so downscaling never collapses a spread deployment onto one node.
 
 :::{note}
 Running replicas on the head node isn't recommended for production deployments. The head node runs critical cluster processes such as the GCS and Serve controller, and replica workloads can compete for resources.
@@ -258,6 +257,19 @@ Label selectors and fallback strategies offer several advantages for Ray Serve d
 
 These environment variables modify Ray Serve's scheduling behavior. Set them before starting Ray.
 
+### `RAY_SERVE_MIN_REPLICA_NODES`
+
+**Default**: `1`
+
+The minimum number of distinct nodes each deployment's replicas must cover before the scheduler is free to pack them. The effective floor is the smaller of this value and the deployment's replica count, so a single-replica deployment is never blocked. The floor is enforced when placing replicas, when choosing replicas to stop during downscaling, and for either scorer.
+
+```bash
+export RAY_SERVE_MIN_REPLICA_NODES=2
+ray start --head
+```
+
+**When to use it:** You run small clusters and need a service to survive the loss of any one node without giving up pack scheduling on the rest of the replicas. With a floor of `2`, six replicas of one CPU each on two eight-CPU nodes land as `3/3` or `5/1` instead of `6/0`, and all sixteen CPUs stay usable. Compare this with `max_replicas_per_node`, which caps replicas per node and must be recomputed whenever the node size or replica count changes.
+
 ### `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY`
 
 **Default**: `0` (disabled)
@@ -277,7 +289,7 @@ ray start --head
 **When to avoid pack scheduling:** High availability is critical and you want replicas spread across nodes
 
 :::{note}
-Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
+Replicas whose placement groups use the `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies are placed by Ray Core rather than by the Serve scheduler, because their bundles can land on several nodes and Serve can't predict which. With `STRICT_PACK`, all bundles are guaranteed to land on one node, so Serve chooses that node. Other deployments in the same cluster are unaffected and keep using the pipeline above.
 :::
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
