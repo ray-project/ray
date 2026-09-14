@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -36,6 +37,8 @@ namespace gcs {
 // Typed key to avoid forgetting to prepend external_storage_namespace.
 struct RedisKey {
   const std::string external_storage_namespace;
+  // This becomes a TableName metric label. Keep it in the fixed GCS table-name
+  // domain and never put user-controlled data here.
   const std::string table_name;
   std::string ToString() const;
 };
@@ -130,9 +133,15 @@ class RedisStoreClient : public StoreClient {
   ///
   /// \param io_service The event loop for this client. Must be single threaded.
   /// \param options The options for connecting to Redis.
+  /// \param metrics Payload byte metrics for the commands this client issues,
+  /// or nullopt to record none. Ignored (treated as nullopt) when
+  /// RAY_gcs_redis_payload_metrics_enabled is false, so the config is read once
+  /// here rather than at every recording site. Ownership moves to the
+  /// RedisContext, which can outlive this client.
   explicit RedisStoreClient(instrumented_io_context &io_service,
                             const RedisClientOptions &options,
-                            ClockInterface &clock);
+                            ClockInterface &clock,
+                            std::optional<RedisMetrics> metrics = std::nullopt);
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
