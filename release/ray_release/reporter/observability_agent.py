@@ -110,6 +110,20 @@ class ObservabilityAgentReporter(Reporter):
         try:
             debug_session_id = self._create_debug_session(job_id)
             response = self._query_debug_session(debug_session_id)
+
+            # The full analysis also holds the findings, issues and next steps
+            # that back the summary; those stay out of the logs to keep them
+            # readable.
+            logger.debug(f"Observability agent response: {json.dumps(response)}")
+
+            # Parsed in here rather than below, because reading the response is
+            # as able to raise as fetching it was: `or {}` covers a null field,
+            # but not a response whose shape is nothing like the one documented
+            # on _query_debug_session. glue.py does not guard the reporting
+            # loop, so anything that escapes changes the result of the test.
+            query_result = response.get("result") or {}
+            summary = (query_result.get("analysis") or {}).get("summary")
+            slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
         except Exception:
             # The analysis is supplementary information; failing to obtain it
             # should never change the outcome of the test run.
@@ -117,16 +131,6 @@ class ObservabilityAgentReporter(Reporter):
                 f"Could not obtain an observability agent analysis for job {job_id}"
             )
             return
-
-        # The full analysis also holds the findings, issues and next steps that
-        # back the summary; those stay out of the logs to keep them readable.
-        logger.debug(f"Observability agent response: {json.dumps(response)}")
-
-        # `or {}` guards against nulls in the response: raising here would
-        # escape the reporter, and glue.py does not guard the reporting loop.
-        query_result = response.get("result") or {}
-        summary = (query_result.get("analysis") or {}).get("summary")
-        slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
 
         message = f"Observability agent analysis of job {job_id}:\n{summary}"
         if slack_thread:
@@ -144,7 +148,7 @@ class ObservabilityAgentReporter(Reporter):
 
     def _create_debug_session(self, job_id: str) -> str:
         """Create a debug session for the job and return its id."""
-        response = self._post(
+        response = self._post_json(
             f"debug_sessions/job/{job_id}",
             timeout=CREATE_DEBUG_SESSION_TIMEOUT,
         )
@@ -181,18 +185,25 @@ class ObservabilityAgentReporter(Reporter):
                 }
             }
         """
-        return self._post(
+        return self._post_json(
             f"debug_sessions/{debug_session_id}/messages",
             json_data={"query": DEBUG_SESSION_QUERY},
             timeout=QUERY_DEBUG_SESSION_TIMEOUT,
         )
 
-    def _post(
+    def _post_json(
         self,
         path: str,
         timeout: int,
         json_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """POST to the observability agent api and return the json object sent
+        back.
+
+        Named for what it returns rather than for the verb: the json object is
+        the postcondition the two callers are written against, so it is checked
+        here rather than left for whichever `.get()` reaches it first.
+        """
         token = os.environ.get("ANYSCALE_CLI_TOKEN")
         if not token:
             raise RuntimeError(
@@ -206,6 +217,10 @@ class ObservabilityAgentReporter(Reporter):
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-Customer-Id": "anyscale-internal",
+                # The `json=` argument sets Content-Type, which describes the
+                # body being sent; Accept is what asks for json back. Without
+                # it nothing on the wire says what this expects in return.
+                "Accept": "application/json",
             },
             timeout=timeout,
         )
@@ -216,4 +231,23 @@ class ObservabilityAgentReporter(Reporter):
                 f"POST {url} returned {response.status_code}: {response.text}"
             )
 
-        return response.json()
+        # Asking is not receiving: a proxy or a load balancer in front of the
+        # api can still answer 200 with an html error page, and .json() raises
+        # on that. Nor does valid json promise an object -- `null`, a list and a
+        # bare string are all valid at the top level, and .json() returns each
+        # of them happily, leaving an AttributeError for whoever calls .get()
+        # next. Both are turned into a RuntimeError naming the body, so that the
+        # caller's `except` logs what the agent actually sent.
+        try:
+            body = response.json()
+        except ValueError as e:
+            raise RuntimeError(
+                f"POST {url} returned a body that is not json: {response.text}"
+            ) from e
+
+        if not isinstance(body, dict):
+            raise RuntimeError(
+                f"POST {url} returned json that is not an object: {response.text}"
+            )
+
+        return body

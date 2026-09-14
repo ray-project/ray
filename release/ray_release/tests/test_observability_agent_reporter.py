@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
+import requests
 
 from ray_release.exception import ExitCode
 from ray_release.logger import logger
@@ -44,13 +45,23 @@ QUERY_RESPONSE = {
 
 
 class FakeResponse:
-    def __init__(self, json_data: Dict[str, Any], status_code: int = 200):
+    def __init__(
+        self,
+        json_data: Any = None,
+        status_code: int = 200,
+        text: Optional[str] = None,
+    ):
         self._json_data = json_data
         self.status_code = status_code
         self.ok = status_code < 400
-        self.text = json.dumps(json_data)
+        # `text` is what a response carries when it is not json at all; passing
+        # it makes json() raise, as requests does for a body it cannot parse.
+        self._raises = text is not None
+        self.text = text if self._raises else json.dumps(json_data)
 
-    def json(self) -> Dict[str, Any]:
+    def json(self) -> Any:
+        if self._raises:
+            raise requests.exceptions.JSONDecodeError("Expecting value", self.text, 0)
         return self._json_data
 
 
@@ -141,6 +152,9 @@ def test_trigger_on_error_statuses():
             assert request["headers"] == {
                 "Authorization": "Bearer test_token",
                 "X-Customer-Id": "anyscale-internal",
+                # What asks for json back; Content-Type only describes the body
+                # being sent, and is not set at all on the create call.
+                "Accept": "application/json",
             }
 
 
@@ -273,7 +287,7 @@ def test_query_is_constant():
     ids=["null_result", "null_analysis", "null_metadata"],
 )
 def test_null_fields_in_the_query_response_do_not_raise(query_response, caplog):
-    """The agent sends explicit nulls, and this parsing is outside the try."""
+    """The agent sends explicit nulls, and `or {}` covers each of them."""
     with caplog.at_level("INFO", logger=logger.name):
         _report(
             _result(ResultStatus.ERROR.value),
@@ -295,6 +309,44 @@ def test_null_result_in_the_create_response_is_reported_clearly(caplog):
     assert len(fake_post.requests) == 1
     assert "contains no debug_session_id" in caplog.text
     assert "AttributeError" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, [{"result": {}}], "a string", 42],
+    ids=["null", "list", "string", "number"],
+)
+def test_a_response_that_is_not_an_object_is_reported_clearly(body, caplog):
+    """Every one of these is valid json, and none of them has .get()."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(_result(ResultStatus.ERROR.value), [FakeResponse(body)])
+
+    assert "returned json that is not an object" in caplog.text
+    assert "AttributeError" not in caplog.text
+
+
+def test_a_response_that_is_not_json_is_reported_clearly(caplog):
+    """A proxy in front of the api answers 200 with an html error page."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(text="<html>502 Bad Gateway</html>")],
+        )
+
+    assert "returned a body that is not json" in caplog.text
+    assert "502 Bad Gateway" in caplog.text
+
+
+def test_a_misshapen_query_response_does_not_escape_the_reporter(caplog):
+    """The create call succeeds; the query answers something unparseable."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse({"result": "not an object"})],
+        )
+
+    # Caught and logged, rather than raised out into glue.py's reporting loop.
+    assert "Could not obtain an observability agent analysis" in caplog.text
 
 
 if __name__ == "__main__":
