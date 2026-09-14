@@ -158,6 +158,11 @@ class TestValidateWorkingDir:
         with pytest.raises(ValueError, match="the path must be absolute"):
             parse_and_validate_working_dir(uri)
 
+    @pytest.mark.parametrize("uri", ["local:C:/app", "local:/app", "local:app"])
+    def test_validate_local_uri_requires_scheme_separator(self, uri):
+        with pytest.raises(ValueError, match="must start with local://"):
+            parse_and_validate_working_dir(uri)
+
 
 class TestValidatePyModules:
     def test_validate_not_a_list(self):

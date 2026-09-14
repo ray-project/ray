@@ -103,7 +103,14 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     if protocol == Protocol.LOCAL:
         # There is no package to name: the directory is used in place, so return
         # the path itself.
-        path = pkg_uri[len(f"{Protocol.LOCAL.value}://") :]
+        prefix = f"{Protocol.LOCAL.value}://"
+        if not pkg_uri.startswith(prefix):
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": a local URI must '
+                "start with local://. Write local:///path/in/image, or "
+                "local://C:/path/in/image on Windows."
+            )
+        path = pkg_uri[len(prefix) :]
         if path.startswith("/") and _WINDOWS_DRIVE_PATH.match(path[1:]):
             # A drive spelled with file://'s empty authority: "local:///C:/app".
             path = path[1:]
