@@ -15,9 +15,14 @@
 #include "ray/gcs/store_client/redis_context.h"
 
 #include <cerrno>
+#include <charconv>
+#include <cstddef>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -30,6 +35,8 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/functional/function_ref.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -39,6 +46,61 @@ extern "C" {
 namespace ray {
 
 namespace gcs {
+
+namespace {
+
+constexpr size_t kMaxRedisCommandLabelLength = 16;
+
+}  // namespace
+
+size_t ResponsePayloadBytes(const redisReply &reply) {
+  switch (reply.type) {
+  case REDIS_REPLY_STRING:
+  case REDIS_REPLY_STATUS:
+  // Only reachable for an error nested inside an aggregate reply; a top-level
+  // error is retried before it gets here. See the header.
+  case REDIS_REPLY_ERROR:
+  case REDIS_REPLY_VERB:
+  case REDIS_REPLY_BIGNUM:
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_INTEGER: {
+    char buffer[std::numeric_limits<long long>::digits10 + 3];
+    const auto [end, error] =
+        std::to_chars(buffer, buffer + sizeof(buffer), reply.integer);
+    RAY_CHECK(error == std::errc{});
+    return static_cast<size_t>(end - buffer);
+  }
+  case REDIS_REPLY_DOUBLE:
+    // hiredis preserves the original RESP3 decimal representation in `str`.
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_BOOL:
+    // RESP3 encodes booleans as one application byte: `t` or `f`.
+    return 1;
+  case REDIS_REPLY_NIL:
+    return 0;
+  case REDIS_REPLY_ARRAY:
+  case REDIS_REPLY_MAP:
+  case REDIS_REPLY_SET:
+  case REDIS_REPLY_PUSH: {
+    // hiredis leaves `element` uninitialized when `elements` is 0, so the loop
+    // bound is what keeps this from dereferencing garbage.
+    size_t total = 0;
+    for (size_t i = 0; i < reply.elements; ++i) {
+      total += ResponsePayloadBytes(*reply.element[i]);
+    }
+    return total;
+  }
+  default:
+    // Unknown reply types have no payload definition.
+    return 0;
+  }
+}
+
+std::string NormalizeRedisCommandLabel(std::string_view verb) {
+  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
+  absl::AsciiStrToUpper(&label);
+  return label;
+}
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
     : reply_type_(redis_reply.type) {
@@ -163,7 +225,9 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
                                          RedisAsyncContext *context,
                                          std::vector<std::string> args,
-                                         ClockInterface &clock)
+                                         ClockInterface &clock,
+                                         RedisMetrics *metrics,
+                                         std::string_view table_label)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
@@ -173,12 +237,23 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       callback_(std::move(callback)),
       start_time_(clock.Now()),
       redis_cmds_(std::move(args)),
-      clock_(clock) {
+      clock_(clock),
+      metrics_(metrics) {
+  RAY_CHECK(!redis_cmds_.empty());
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
     argv_.push_back(redis_cmds_[i].data());
     argc_.push_back(redis_cmds_[i].size());
+  }
+  if (metrics_ != nullptr) {
+    command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
+    table_label_ = std::string(table_label);
+    // This context owns the argument buffers, so their sizes remain valid even
+    // when a caller moved a value into the command on the way here.
+    for (const auto &command_arg : redis_cmds_) {
+      request_payload_bytes_ += command_arg.size();
+    }
   }
 }
 
@@ -204,6 +279,15 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
+    // Measure while hiredis still owns the reply, and before anything is posted
+    // to the io_service: `request_cxt` is deleted at the end of this branch, so
+    // every read of it has to happen above the post.
+    if (request_cxt->metrics_ != nullptr) {
+      request_cxt->metrics_->response_payload_bytes_sum.Record(
+          static_cast<double>(ResponsePayloadBytes(*redis_reply)),
+          {{"Command", request_cxt->command_label_},
+           {"TableName", request_cxt->table_label_}});
+    }
     auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
@@ -228,12 +312,50 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
+  struct AcceptedRequestMetrics {
+    RedisMetrics metrics;
+    std::string command_label;
+    std::string table_label;
+    size_t request_payload_bytes;
+  };
+  std::optional<AcceptedRequestMetrics> accepted;
+  auto capture_acceptance = [&]() {
+    if (request_metrics_claimed_) {
+      return;
+    }
+    // The submission lock keeps this request alive while copying its labels.
+    // Claim the records now: a retry may run before the records finish below.
+    accepted.emplace(AcceptedRequestMetrics{
+        *metrics_, command_label_, table_label_, request_payload_bytes_});
+    request_metrics_claimed_ = true;
+  };
   Status status = redis_context_->RedisAsyncCommandArgv(
-      RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
-
-  if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+      RedisResponseFn,
+      this,
+      argv_.size(),
+      argv_.data(),
+      argc_.data(),
+      metrics_ != nullptr
+          ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
+          : std::nullopt);
+  if (status.ok()) {
+    // The submission lock has been released, so a reply on the IO thread may
+    // already have deleted this request. Only use the independent local snapshot,
+    // and do not hold the Redis mutex while acquiring metric recorder locks.
+    if (accepted.has_value()) {
+      const std::vector<std::pair<std::string_view, std::string>> tags{
+          {"Command", accepted->command_label}, {"TableName", accepted->table_label}};
+      accepted->metrics.request_payload_bytes_sum.Record(
+          static_cast<double>(accepted->request_payload_bytes), tags);
+      accepted->metrics.command_count_counter.Record(1, tags);
+    }
+    return;
   }
+
+  // A rejected submission has no hiredis callback. Use the owned Status for
+  // diagnostics; the raw context may have been freed since submission returned.
+  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
+  RedisResponseFn(nullptr, nullptr, this);
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
@@ -244,9 +366,12 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
-RedisContext::RedisContext(instrumented_io_context &io_service, ClockInterface &clock)
+RedisContext::RedisContext(instrumented_io_context &io_service,
+                           ClockInterface &clock,
+                           std::optional<RedisMetrics> metrics)
     : io_service_(io_service),
       clock_(clock),
+      metrics_(std::move(metrics)),
       context_(nullptr),
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
@@ -832,13 +957,18 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 }
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
-                                RedisCallback redis_callback) {
+                                RedisCallback redis_callback,
+                                std::string_view table_label) {
   RAY_CHECK(redis_async_context_);
-  auto request_context = new RedisRequestContext(io_service_,
-                                                 std::move(redis_callback),
-                                                 redis_async_context_.get(),
-                                                 std::move(args),
-                                                 clock_);
+  RAY_CHECK(!args.empty());
+  auto request_context =
+      new RedisRequestContext(io_service_,
+                              std::move(redis_callback),
+                              redis_async_context_.get(),
+                              std::move(args),
+                              clock_,
+                              metrics_.has_value() ? &*metrics_ : nullptr,
+                              table_label);
   // RedisRequestContext is thread safe.
   request_context->Run();
 }
