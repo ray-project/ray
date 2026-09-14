@@ -89,7 +89,6 @@ bool ClusterResourceManager::UpdateNode(
   const auto resources_total =
       MapFromProtobuf(resource_view_sync_message.resources_total());
   auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
@@ -184,6 +183,8 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   // Only init available for new resources. Existing resources' available can't be
   // correctly adjusted from a scalar total (don't know which instances to update).
   if (!local_view->HasAvailableResource(resource_id)) {
+    // Build per-instance vector: unit-instance resources get N x 1.0, others
+    // get a single element.
     std::vector<FixedPoint> instances;
     if (resource_id.IsUnitInstanceResource()) {
       size_t num = static_cast<size_t>(std::max(new_total.Double(), 0.0));
@@ -197,19 +198,6 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
       local_view->SetAvailableResource(resource_id, std::move(instances));
     }
   }
-}
-
-void ClusterResourceManager::AddResourceInstances(
-    scheduling::NodeID node_id,
-    scheduling::ResourceID resource_id,
-    const std::vector<FixedPoint> &instances) {
-  auto it = nodes_.find(node_id);
-  RAY_CHECK(it != nodes_.end()) << "Node " << node_id.ToInt() << " not found.";
-
-  auto *local_view = it->second.GetMutableLocalView();
-  auto total_add = FixedPoint::Sum(instances);
-  local_view->total.Set(resource_id, local_view->total.Get(resource_id) + total_add);
-  local_view->AddAvailableInstances(resource_id, instances);
 }
 
 bool ClusterResourceManager::DeleteResources(

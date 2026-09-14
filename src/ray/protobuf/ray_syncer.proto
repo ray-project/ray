@@ -32,9 +32,6 @@ message ResourceInstances {
 }
 
 message ResourceViewSyncMessage {
-  // Resource capacity currently available on this node manager.
-  // Deprecated: use resources_available_instances instead.
-  map<string, double> resources_available = 1;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 2;
   // Whether this node has object pulls queued. This can happen if

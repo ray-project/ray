@@ -80,12 +80,6 @@ class ClusterResourceManager {
                               scheduling::ResourceID resource_id,
                               double resource_total);
 
-  /// Add per-instance capacity to a resource. Updates both total (scalar sum
-  /// of instances added) and available (element-wise addition).
-  void AddResourceInstances(scheduling::NodeID node_id,
-                            scheduling::ResourceID resource_id,
-                            const std::vector<FixedPoint> &instances);
-
   /// Delete a given resource from a given node.
   ///
   /// \param node_id: Node whose resource we want to delete.
