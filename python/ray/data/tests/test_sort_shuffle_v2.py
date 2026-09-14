@@ -1,4 +1,5 @@
 import random
+from unittest import mock
 
 import pyarrow as pa
 import pytest
@@ -289,10 +290,14 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     sampling_op = map_op.input_dependencies[0]
     assert isinstance(sampling_op, SortSamplingOp)
     assert not sampling_op.supports_fusion()
-    # Follow the other hash-shuffle-v2 planners: without explicit boundaries,
-    # the configured default determines partition count rather than the
-    # estimated number of upstream blocks.
-    assert map_op._num_partitions == ctx.default_hash_shuffle_parallelism
+    assert map_op._num_partitions == 2
+
+    read_op_cls = type(ds._logical_plan.dag.input_dependencies[0])
+    with mock.patch.object(read_op_cls, "estimated_num_outputs", return_value=None):
+        dag = get_execution_plan(ds._logical_plan)[0].dag
+    assert dag.input_dependencies[0]._num_partitions == (
+        ctx.default_hash_shuffle_parallelism
+    )
 
     ds_with_boundaries = ray.data.range(10, override_num_blocks=2).sort(
         "id", boundaries=[5]
