@@ -775,9 +775,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                         path, payload, content_type="application/json-patch+json"
                     )
 
-                    if NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
+                    if not isinstance(
+                        patched_raycluster, dict
+                    ) or NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
                         "metadata", {}
-                    ).get("finalizers", []):
+                    ).get(
+                        "finalizers", []
+                    ):
                         logger.error(
                             f"Unable to persist {NO_DRIVER_TIMEOUT_FINALIZER} to metadata.finalizers for {self._cluster_name}"
                         )
@@ -818,7 +822,10 @@ class KubeRayProvider(ICloudInstanceProvider):
                 payload,
                 content_type="application/merge-patch+json",
             )
-            if patched_raycluster.get("spec", {}).get(IDLE_SUSPEND_KEY) is not True:
+            if (
+                not isinstance(patched_raycluster, dict)
+                or patched_raycluster.get("spec", {}).get(IDLE_SUSPEND_KEY) is not True
+            ):
                 logger.error(
                     f"Unable to persist {IDLE_SUSPEND_KEY}=true for {self._cluster_name}"
                 )

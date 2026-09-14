@@ -449,7 +449,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             verify=verify,
             cert=cert,
         )
-        if not result.status_code == 200:
+        if result.status_code not in (200, 202):
             result.raise_for_status()
         return result.json()
 
