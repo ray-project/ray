@@ -1215,8 +1215,19 @@ def start_log_monitor(
         )
         command.append(f"--logging-format={logging_format}")
 
-    stdout_file = subprocess.DEVNULL if stdout_filepath else None
-    stderr_file = subprocess.DEVNULL if stderr_filepath else None
+    # StreamRedirector can only tee to the streams inherited by the log monitor.
+    # Preserve them when teeing is enabled instead of attaching the child to
+    # DEVNULL before redirection is configured.
+    stdout_file = (
+        subprocess.DEVNULL
+        if stdout_filepath and not ray_constants.LOG_MONITOR_TEE_STDOUT
+        else None
+    )
+    stderr_file = (
+        subprocess.DEVNULL
+        if stderr_filepath and not ray_constants.LOG_MONITOR_TEE_STDOUT
+        else None
+    )
 
     process_info = start_ray_process(
         command,
