@@ -21,7 +21,7 @@ from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.block import Block
+from ray.data.block import Block, Schema
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -125,13 +125,15 @@ def _make_join_reduce_fn(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
-    left_schema: Optional[Any] = None,
-    right_schema: Optional[Any] = None,
+    left_schema: Optional[Schema] = None,
+    right_schema: Optional[Schema] = None,
 ) -> ReduceFn:
     """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
     import pyarrow as pa
 
-    def _side_table(tables: List[Block], schema: Optional[Any]) -> Optional["pa.Table"]:
+    def _side_table(
+        tables: List[Block], schema: Optional[Schema]
+    ) -> Optional["pa.Table"]:
         if tables:
             return _combine(tables)
         if isinstance(schema, pa.Schema):
