@@ -3208,6 +3208,7 @@ class DeploymentState:
             self._deployed_info.replica_config,
             is_gang=self._deployed_info.deployment_config.gang_scheduling_config
             is not None,
+            pins_replicas=self._deployed_info.ingress_request_router,
         )
         if self._deployed_info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
@@ -3744,6 +3745,7 @@ class DeploymentState:
             deployment_info.replica_config,
             is_gang=deployment_info.deployment_config.gang_scheduling_config
             is not None,
+            pins_replicas=deployment_info.ingress_request_router,
         )
 
         # Determine if the updated target state simply scales the current state.

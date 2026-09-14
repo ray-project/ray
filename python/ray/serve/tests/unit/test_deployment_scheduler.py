@@ -2912,6 +2912,39 @@ def test_get_node_to_compact_skips_gang_deployments():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
+def test_get_node_to_compact_skips_pinned_deployments():
+    pinned_dep_id = DeploymentID(name="pinned")
+    filler_dep_id = DeploymentID(name="filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 4})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(pinned_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        pinned_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), pins_replicas=True
+    )
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 3})
+    )
+    scheduler.on_replica_running(ReplicaID("p0", pinned_dep_id), "node1")
+    scheduler.on_replica_running(ReplicaID("f0", filler_dep_id), "node2")
+
+    # A pinned replica can't move, so node1 isn't compactable.
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    scheduler.on_deployment_deployed(
+        pinned_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), pins_replicas=False
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node1"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
     d_id = DeploymentID(name="deployment1")
     pg_id = DeploymentID(name="pg")
