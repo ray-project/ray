@@ -146,21 +146,36 @@ _ReplicaEntry = Tuple[str, str, Optional["DirectTargetConfig"]]
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
-) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[_ReplicaEntry]]]":
     """Per-backend router pool and replica map, restricted to backends with both.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
     is co-located.
+
+    Each replica entry is `(replica_id, server_name, direct_target_config)`. The
+    third element is `None` for the app's own ingress replicas and the owning
+    `DirectTargetConfig` for `_direct_http` replicas -- that is how the Lua learns
+    which backend to route to without the router having to say so.
     """
     routers: Dict[str, List[ServerConfig]] = {}
-    targets: Dict[str, List[Tuple[str, str]]] = {}
+    targets: "Dict[str, List[_ReplicaEntry]]" = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
             continue
-        entries = [
-            (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
+        # Annotated because the ingress comprehension alone would narrow the
+        # third element to None, rejecting the direct-HTTP entries below.
+        entries: "List[_ReplicaEntry]" = [
+            (s.replica_id, s.name, None)  # Defaults to ingress deployment
+            for s in backend.servers
+            if s.replica_id is not None
         ]
+        entries.extend(
+            (s.replica_id, s.name, direct)
+            for direct in backend.direct_target_configs
+            for s in direct.servers
+            if s.replica_id is not None
+        )
         if not entries:
             continue
         candidates = backend.ingress_request_router_servers
@@ -191,14 +206,29 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
 
 
 def _format_replica_targets_lua(
-    targets: "Dict[str, List[Tuple[str, str]]]",
+    targets: "Dict[str, List[_ReplicaEntry]]",
 ) -> str:
-    """Render {backend_name: {replica_id: server_name}} as nested Lua tables."""
+    """Render {backend_name: {replica_id: entry}} as nested Lua tables.
+
+    Each entry is `{ s = "<server name>" }`, plus `b = "<backend name>"` and
+    `d = "<deployment name>"` when the replica belongs to a `_direct_http`
+    deployment that has its own backend. The Lua resolves both the server to pin
+    and the backend to route to from this one lookup, so `/internal/route` only
+    ever has to name a replica.
+    """
+
+    def _entry_lua(rid: str, sname: str, direct: "Optional[DirectTargetConfig]") -> str:
+        fields = [f"s = {json.dumps(sname)}"]
+        if direct is not None:
+            fields.append(f"b = {json.dumps(direct.name)}")
+            # Raw deployment name, used to relabel the per-request metric.
+            fields.append(f"d = {json.dumps(direct.deployment_name)}")
+        return f"        [{json.dumps(rid)}] = {{ {', '.join(fields)} }}"
+
     backends_lua = []
     for backend_name, entries in targets.items():
         inner = ",\n".join(
-            f"        [{json.dumps(rid)}] = {json.dumps(sname)}"
-            for rid, sname in entries
+            _entry_lua(rid, sname, direct) for rid, sname, direct in entries
         )
         backends_lua.append(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
