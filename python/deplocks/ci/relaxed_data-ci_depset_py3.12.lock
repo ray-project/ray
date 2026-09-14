@@ -1941,9 +1941,7 @@ grpcio==1.75.0 \
 grpcio-status==1.75.0 \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   google-api-core
+# via google-api-core
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \
     --hash=sha256:f04ec362b1fdf73a8b327db5ef89384a3f2ba411e05d3521513414fbbb2199c8
@@ -2887,7 +2885,6 @@ numcodecs==0.15.1 \
 #   -r python/requirements/ml/data-test-requirements.txt
 #   zarr
 # via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   accelerate
 #   bokeh
 #   contourpy
@@ -3564,7 +3561,6 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
 # via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   google-api-core
 #   google-cloud-bigquery-storage
 #   googleapis-common-protos
@@ -4972,7 +4968,7 @@ tenacity==9.1.4 \
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
 # via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   -r python/requirements/ml/dl-cpu-requirements.txt
 #   tensorflow
 tensorboard-data-server==0.7.2 \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
@@ -5009,7 +5005,6 @@ tensorflow==2.20.0 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
 # via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/data-test-requirements.txt
 #   -r python/requirements/ml/dl-cpu-requirements.txt
 #   tf-keras
@@ -5052,7 +5047,6 @@ tf-keras==2.20.0 \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
 # via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/data-test-requirements.txt
 #   -r python/requirements/ml/dl-cpu-requirements.txt
 threadpoolctl==3.1.0 \

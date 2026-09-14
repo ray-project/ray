@@ -322,6 +322,14 @@ DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
     "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
 )
 
+DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO = env_float(
+    "RAY_DATA_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO", None
+)
+
+DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION = env_float(
+    "RAY_DATA_OBJECT_STORE_MEMORY_PRESSURE_FRACTION", None
+)
+
 DEFAULT_MAX_ERRORED_BLOCKS = 0
 
 # Use this to prefix important warning messages for the user.
@@ -719,6 +727,24 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        object_store_reservation_overshoot_ratio: An operator loses its share of the
+            shared object-store memory pool once its object-store usage exceeds this
+            multiple of its total reservation. The headroom above 1x absorbs the
+            ordinary fluctuation of an operator's own output buffer under steady
+            load. Only object-store memory is withheld: the operator keeps its full
+            CPU/GPU share so it can still drain what it already holds. Has no effect
+            unless ``object_store_memory_pressure_fraction`` is also set. Defaults to
+            None, which disables the overshoot throttle.
+        object_store_memory_pressure_fraction: Once this execution's object-store
+            usage exceeds this fraction of its memory limit, an idle operator with
+            queued input may run one task despite an exhausted object-store budget
+            for task outputs. This keeps the pipeline moving without releasing more
+            upstream output. Only one such task runs at a time per operator, since
+            the allowance requires the operator to have no task in flight; CPU/GPU
+            limits are always enforced. Leaving this unset disables the allowance
+            entirely, which keeps object-store backpressure strict on the default
+            path. Set together with ``object_store_reservation_overshoot_ratio`` it
+            additionally enables the overshoot throttle. Defaults to None.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
@@ -1070,6 +1096,13 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    object_store_reservation_overshoot_ratio: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO
+    object_store_memory_pressure_fraction: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
