@@ -1369,8 +1369,11 @@ class Learner(Checkpointable):
 
         Called once per `update()` with the train batch (after modules not in
         `policies_to_train` have been removed). By default an update is skipped when
-        the batch holds no data for any module, which happens e.g. when all sampled
-        episodes were lost to EnvRunner or node failures.
+        there are no timesteps to train on for any module, which happens e.g. when
+        all sampled episodes were lost to EnvRunner or node failures. Note that a
+        batch can carry ModuleIDs and still hold nothing: `ShardBatchIterator` keeps
+        every ModuleID when it splits a batch, so a Learner's shard can come out with
+        zero rows for each of them.
 
         Override to add conditions, based on any information available on this
         Learner -- it need not be consistent across Learners. In a multi-Learner
@@ -1387,7 +1390,9 @@ class Learner(Checkpointable):
         Returns:
             True to skip this update.
         """
-        return not batch.policy_batches
+        return not any(
+            len(module_batch) for module_batch in batch.policy_batches.values()
+        )
 
     def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
         """Makes this update's plan identical on every Learner of the group.

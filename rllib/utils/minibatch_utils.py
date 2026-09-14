@@ -113,6 +113,16 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch of `minibatch_size` timesteps corresponds to proportionally many
         sequences.
         """
+        if len(module_batch) == 0:
+            # `__iter__` refuses to cycle a batch with nothing in it; raise the same
+            # way here, since the count is computed before the loop starts. A batch
+            # with NO timesteps at all is handled earlier (`Learner._should_skip_update`
+            # skips the update), so reaching this means only some of the modules are
+            # empty, which the iterator cannot make equal-sized minibatches from.
+            raise ValueError(
+                "One of the module batches is empty! Minibatches need "
+                "`minibatch_size` samples from every module_id."
+            )
         if module_batch._slice_seq_lens_in_B:
             assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
                 "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"

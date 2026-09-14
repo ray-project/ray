@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pytest
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -34,6 +35,78 @@ CONFIGS = [
         "padding": True,
     },
 ]
+
+
+def _multi_agent_batch(rows_per_module):
+    """A batch holding `rows_per_module` rows of dummy observations per ModuleID."""
+    return MultiAgentBatch(
+        {
+            module_id: SampleBatch({"obs": np.zeros((rows, 2), dtype=np.float32)})
+            for module_id, rows in rows_per_module.items()
+        },
+        env_steps=max(rows_per_module.values()),
+    )
+
+
+@pytest.mark.parametrize(
+    "rows_per_module, minibatch_size, num_epochs, expected",
+    [
+        ({"p0": 512}, 128, 1, 4),
+        ({"p0": 96}, 16, 2, 12),
+        ({"p0": 100}, 32, 3, 10),
+        ({"p0": 32}, 128, 1, 1),
+        ({"p0": 128, "p1": 64}, 32, 2, 8),
+    ],
+    ids=[
+        "one-epoch",
+        "cycles-the-batch",
+        "rounds-up",
+        "batch-smaller-than-minibatch",
+        "largest-module-governs",
+    ],
+)
+def test_num_minibatches(rows_per_module, minibatch_size, num_epochs, expected):
+    """The iterator terminates purely by count, and derives that count when it is not
+    given one: ceil(num_epochs * rows / minibatch_size), governed by the largest
+    module.
+    """
+    batch = _multi_agent_batch(rows_per_module)
+    assert expected == MiniBatchCyclicIterator.num_minibatches(
+        batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+    )
+
+    minibatches = list(
+        MiniBatchCyclicIterator(
+            batch,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=False,
+        )
+    )
+    assert expected == len(minibatches)
+    # Every minibatch is full, ...
+    for minibatch in minibatches:
+        for module_id in rows_per_module:
+            assert minibatch_size == len(minibatch[module_id])
+    # ... and the run covers the largest module at least `num_epochs` times, but not
+    # by a whole extra minibatch.
+    most_rows = max(rows_per_module.values())
+    assert expected * minibatch_size >= num_epochs * most_rows
+    assert (expected - 1) * minibatch_size < num_epochs * most_rows
+
+
+def test_explicit_num_total_minibatches_wins():
+    """A count passed in by the caller overrides the one derived from the data."""
+    minibatches = list(
+        MiniBatchCyclicIterator(
+            _multi_agent_batch({"p0": 512}),
+            num_epochs=1,
+            minibatch_size=128,
+            shuffle_batch_per_epoch=False,
+            num_total_minibatches=3,
+        )
+    )
+    assert 3 == len(minibatches)
 
 
 class TestMinibatchUtils(unittest.TestCase):
@@ -125,72 +198,6 @@ class TestMinibatchUtils(unittest.TestCase):
                 if not seq_lens:
                     check(iteration_counter, expected_iteration_counter)
                 print(f"iteration_counter: {iteration_counter}")
-
-    def test_minibatch_cyclic_iterator_num_minibatches(self):
-        """The iterator terminates purely by count. Without an explicit count it
-        derives the one that covers every module's data `num_epochs` times:
-        ceil(num_epochs * rows / minibatch_size), governed by the largest module.
-        The expected values below are independent of that formula."""
-
-        def mab(**rows_per_module):
-            return MultiAgentBatch(
-                {
-                    mid: SampleBatch({"obs": np.zeros((n, 2), dtype=np.float32)})
-                    for mid, n in rows_per_module.items()
-                },
-                env_steps=max(rows_per_module.values()),
-            )
-
-        cases = [  # (rows per module, minibatch_size, num_epochs, expected count)
-            (dict(p0=512), 128, 1, 4),
-            (dict(p0=96), 16, 2, 12),
-            (dict(p0=32), 16, 2, 4),
-            (dict(p0=100), 32, 3, 10),  # not a multiple -> ceil
-            (dict(p0=32), 128, 1, 1),  # batch smaller than a minibatch -> 1
-            (dict(p0=128, p1=64), 32, 2, 8),  # the largest module governs
-        ]
-        for rows, minibatch_size, num_epochs, expected in cases:
-            batch = mab(**rows)
-            self.assertEqual(
-                expected,
-                MiniBatchCyclicIterator.num_minibatches(
-                    batch, minibatch_size=minibatch_size, num_epochs=num_epochs
-                ),
-                (rows, minibatch_size, num_epochs),
-            )
-            minibatches = list(
-                MiniBatchCyclicIterator(
-                    batch,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=False,
-                )
-            )
-            self.assertEqual(expected, len(minibatches), (rows, minibatch_size))
-            # Every minibatch is full, and the total covers the largest module at
-            # least `num_epochs` times but not a whole extra minibatch more.
-            for minibatch in minibatches:
-                for mid in rows:
-                    self.assertEqual(minibatch_size, len(minibatch[mid]))
-            n_max = max(rows.values())
-            self.assertGreaterEqual(expected * minibatch_size, num_epochs * n_max)
-            self.assertLess((expected - 1) * minibatch_size, num_epochs * n_max)
-
-        # An explicit count wins over the derived one.
-        self.assertEqual(
-            3,
-            len(
-                list(
-                    MiniBatchCyclicIterator(
-                        mab(p0=512),
-                        num_epochs=1,
-                        minibatch_size=128,
-                        shuffle_batch_per_epoch=False,
-                        num_total_minibatches=3,
-                    )
-                )
-            ),
-        )
 
     def test_shard_episodes_iterator(self):
         class DummyEpisode:

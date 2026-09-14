@@ -129,13 +129,12 @@ FAKE_MA_EPISODES_WO_P1 = [
 ]
 FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 
-# What an AggregatorActor hands to one Learner: a ready-made train batch. The batch
-# whose EnvRunners were all lost carries no data for any module.
+# We use this to emulate situations where some learners receive empty batches.
 NO_DATA = MultiAgentBatch(policy_batches={}, env_steps=0)
 
 
-def fake_batch(num_timesteps, seed):
-    rng = np.random.default_rng(seed)
+def fake_batch(num_timesteps):
+    rng = np.random.default_rng(0)
     return MultiAgentBatch(
         {
             DEFAULT_MODULE_ID: SampleBatch(
@@ -321,12 +320,12 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             ]
 
         try:
-            # The EnvRunners feeding the second Learner were lost, so it is handed a
+            # Act as if the EnvRunners feeding the second Learner were lost, so it is handed a
             # batch without any data while its peer has a full one. Both must skip:
             # nobody trains, and each Learner reports why it skipped.
             before = weights()
             with_data, starved = MetricsLogger.peek_results(
-                learner_group.update(batches=[fake_batch(128, seed=0), NO_DATA])
+                learner_group.update(batches=[fake_batch(128), NO_DATA])
             )
             check(before, weights())
             self.assertEqual(
@@ -344,7 +343,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             # the group settles on the average, 5, and stays in sync.
             results = MetricsLogger.peek_results(
                 learner_group.update(
-                    batches=[fake_batch(256, seed=1), fake_batch(64, seed=2)],
+                    batches=[fake_batch(256), fake_batch(64)],
                     minibatch_size=32,
                     num_epochs=1,
                 )
@@ -359,7 +358,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             # A minibatch count passed in by the caller is used by both as-is.
             results = MetricsLogger.peek_results(
                 learner_group.update(
-                    batches=[fake_batch(256, seed=3), fake_batch(64, seed=4)],
+                    batches=[fake_batch(256), fake_batch(64)],
                     minibatch_size=32,
                     num_epochs=1,
                     num_total_minibatches=3,

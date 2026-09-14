@@ -8,7 +8,7 @@ import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner, UpdatePlan
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -378,6 +378,14 @@ class TestLearner(unittest.TestCase):
         self.assertTrue(
             learner._should_skip_update(MultiAgentBatch(policy_batches={}, env_steps=0))
         )
+        # A shard can carry ModuleIDs and still hold no timesteps: `ShardBatchIterator`
+        # keeps every ModuleID when it splits a batch too small to give each Learner a
+        # row. That is just as empty, and skipping it is what keeps the group in sync.
+        empty_module_batch = MultiAgentBatch(
+            {DEFAULT_MODULE_ID: SampleBatch({"obs": np.zeros((0, 4), np.float32)})},
+            env_steps=0,
+        )
+        self.assertTrue(learner._should_skip_update(empty_module_batch))
         reader = get_cartpole_dataset_reader(batch_size=64)
         self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
         for plan in (
