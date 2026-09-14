@@ -137,6 +137,11 @@ def _load_lua_template() -> string.Template:
         ) from e
 
 
+# (replica_id, haproxy server name, owning direct-HTTP deployment or None).
+# `DirectTargetConfig` is defined below, hence the forward reference.
+_ReplicaEntry = Tuple[str, str, Optional["DirectTargetConfig"]]
+
+
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
@@ -459,6 +464,26 @@ class ServerConfig:
 
 
 @dataclass
+class DirectTargetConfig:
+    """A non-ingress deployment that owns HTTP ports, rendered as its own backend.
+
+    Deployments marked `_direct_http` are reachable directly by HAProxy. Each gets
+    its own backend so HAProxy's retry/redispatch can never move a request from one
+    deployment's replicas onto another's -- which for Serve LLM would mean answering
+    with the wrong model.
+    """
+
+    # Serve deployment name, e.g. "LLMServer:model-a". Unsanitized.
+    deployment_name: str
+
+    # Generated HAProxy backend name for this deployment.
+    name: str
+
+    # Replicas of this deployment only.
+    servers: List[ServerConfig] = field(default_factory=list)
+
+
+@dataclass
 class BackendConfig:
     """Configuration for a single application backend."""
 
@@ -518,6 +543,10 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+
+    # Non-ingress `_direct_http` deployments of this app, each rendered as its own
+    # backend. Selected by the Lua routing action, never by path.
+    direct_target_configs: List[DirectTargetConfig] = field(default_factory=list)
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
