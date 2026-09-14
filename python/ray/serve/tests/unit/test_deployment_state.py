@@ -10917,6 +10917,77 @@ def test_compaction_keeps_external_draining_nodes(mock_deployment_state_manager)
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
+def test_compaction_keeps_starting_replica_on_target_node(
+    mock_deployment_state_manager,
+):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info1, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # node1: 2/3 CPUs, node2: 1/3 CPUs -> compact node2
+    dsm.update()
+    for replica, node in zip(ds._replicas.get(), [node1, node1, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
+
+    info2, _ = deployment_info(num_replicas=4, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 2, None),
+        ],
+    )
+
+    # Ray Core places the 4th replica on node2 while it's still starting. It
+    # must keep starting instead of being stopped as if node2 were draining.
+    starting = ds._replicas.get([ReplicaState.STARTING])
+    starting[1]._actor.set_node_id(node2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=5,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 2, None),
+        ],
+    )
+    assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
+
+    # Once it's RUNNING on node2, the compaction is cancelled.
+    starting[1]._actor.set_ready()
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node is None
+    check_counts(
+        ds,
+        total=5,
+        by_state=[(ReplicaState.RUNNING, 4, None), (ReplicaState.STOPPING, 1, None)],
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_compaction_keeps_drain_deadline_of_compacting_node(
     mock_deployment_state_manager,
 ):

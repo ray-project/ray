@@ -5526,7 +5526,22 @@ class DeploymentState:
 
         return to_stop, remaining
 
-    def migrate_replicas_on_draining_nodes(self, draining_nodes: Mapping[str, float]):
+    def migrate_replicas_on_draining_nodes(
+        self,
+        draining_nodes: Mapping[str, float],
+        compacting_node_id: Optional[str] = None,
+    ):
+        # Compaction only moves RUNNING replicas of non gang deployments. The
+        # scheduler never compacts a node that runs a gang, and a gang that lands
+        # on the compacting node while starting cancels the compaction once it's
+        # RUNNING, so a gang never migrates for compaction.
+        if self._is_gang_deployment and compacting_node_id is not None:
+            draining_nodes = {
+                node: deadline
+                for node, deadline in draining_nodes.items()
+                if node != compacting_node_id
+            }
+
         # Fast path: no draining nodes and deployment is in steady state —
         # no PENDING_MIGRATION replicas to move back and no replicas to
         # migrate, so skip the O(N) pop-and-readd.
@@ -5604,6 +5619,12 @@ class DeploymentState:
                     "created on another node."
                 )
                 self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            # Ray Core placed this replica on the compacting node while it was
+            # starting. Leave it alone: once it's RUNNING the scheduler sees a
+            # new replica on the target and cancels the compaction. Stopping it
+            # here would restart it every update until the compaction times out.
+            elif replica.actor_node_id == compacting_node_id:
+                self._replicas.add(replica.actor_details.state, replica)
             # For replicas that are STARTING or UPDATING, might as
             # well terminate them immediately to allow replacement
             # replicas to start. Otherwise we need to wait for them
@@ -6567,6 +6588,7 @@ class DeploymentStateManager:
             self._last_became_stable_at = time.time()
         self._all_deployments_healthy = all_deployments_healthy
 
+        compacting_node_id: Optional[str] = None
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
             allow_new_compaction = (
                 len(draining_nodes) == 0
@@ -6584,10 +6606,14 @@ class DeploymentStateManager:
             if node_info:
                 target_node_id, deadline = node_info
                 # A real drain of the compacting node keeps its own deadline.
-                draining_nodes = {target_node_id: deadline, **draining_nodes}
+                if target_node_id not in draining_nodes:
+                    compacting_node_id = target_node_id
+                    draining_nodes = {**draining_nodes, target_node_id: deadline}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
+            deployment_state.migrate_replicas_on_draining_nodes(
+                draining_nodes, compacting_node_id=compacting_node_id
+            )
 
         # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
