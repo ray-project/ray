@@ -4871,7 +4871,7 @@
   cluster:
     byod:
       type: llm-cu130
-      post_build_script: byod_llm_runai_streamer.sh
+      python_depset: llm_serve/llm_serve_runai_streamer_py312_cu130.lock
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets

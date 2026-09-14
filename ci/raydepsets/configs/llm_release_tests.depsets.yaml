@@ -5,29 +5,53 @@ build_arg_sets:
     CUDA_CODE: cu130
 
 
+# Release-test BYOD layers for the llm-cu130 image. Each depset *expands* the
+# image's own depset (compiled_ray_llm_depset in rayllm.depsets.yaml, which
+# already contains vllm and its closure) with a test's extra requirements, and
+# is *constrained* to the image's lock. The constraint is what matters: `expand`
+# re-resolves from the source depset's requirement files and applies only the
+# `constraints:` listed here, so without it every shared package is free to
+# land on a different version -- and the BYOD layer installs the lock with
+# --no-deps on top of the image, silently overwriting the image's copy. An
+# earlier version of this file had no constraint and expanded a subset that
+# also dropped vllm; the batch benchmark lock ended up disagreeing with the
+# image on 64 packages (cupy, cryptography, fastapi, cuda-pathfinder, ...).
+# vllm itself stopped depending on ray in 0.7 (0.6.x declared ray>=2.9), so
+# there is no longer a reason to keep it out of these locks; --unsafe-package
+# ray still keeps ray itself unpinned, since the image supplies it.
 .common_settings: &common_settings
   append_flags:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
+    # Same two flags as rayllm.depsets.yaml, for the same reasons: expansions of
+    # the full LLM lock hit torch's nvidia-nccl-cu13 pin without the override,
+    # and must not pick up the cu12 nixl binary.
+    - --unsafe-package nixl-cu12
+    - --override python/requirements/llm/nccl_overrides.txt
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cu130
 
 depsets:
-  - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
-    operation: subset
-    source_depset: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
-    <<: *common_settings
-    requirements:
-      - python/requirements.txt
-    output: python/deplocks/llm/rayllm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
-
   - name: llm_batch_single_node_benchmark_${PYTHON_VERSION}_${CUDA_CODE}
     operation: expand
     depsets:
-      - subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+      - compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
     <<: *common_settings
+    constraints:
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
     requirements:
       - release/llm_tests/batch/requirements.in
     output: release/ray_release/byod/llm_batch/llm_batch_single_node_benchmark_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+  - name: llm_serve_runai_streamer_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: expand
+    depsets:
+      - compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    constraints:
+      - python/deplocks/llm/rayllm_${PYTHON_VERSION}_${CUDA_CODE}.lock
+    requirements:
+      - release/llm_tests/serve/requirements_runai_streamer.in
+    output: release/ray_release/byod/llm_serve/llm_serve_runai_streamer_${PYTHON_VERSION}_${CUDA_CODE}.lock
