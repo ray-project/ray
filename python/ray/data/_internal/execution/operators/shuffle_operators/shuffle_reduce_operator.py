@@ -428,7 +428,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._output_queue.finalize(key=partition_id)
 
     def has_execution_finished(self) -> bool:
-        if self._shuffle_reduce_tasks or self._output_queue or self._pending_inputs:
+        if (
+            self._shuffle_reduce_tasks
+            or len(self._output_queue) > 0
+            or self._pending_inputs
+        ):
             return False
         return super().has_execution_finished()
 

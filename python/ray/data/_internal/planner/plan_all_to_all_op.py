@@ -183,13 +183,14 @@ def _plan_sort_v2(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     sort_key = logical_op.sort_key
-    if sort_key.boundaries:
-        num_partitions = len(sort_key.boundaries) + 1
+    user_boundaries = sort_key.boundaries
+    if user_boundaries:
+        num_partitions = len(user_boundaries) + 1
     else:
         num_partitions = data_context.default_hash_shuffle_parallelism
 
     map_input_op = input_physical_op
-    if not sort_key.boundaries:
+    if not user_boundaries:
         map_input_op = SortSamplingOp(
             input_physical_op,
             data_context,

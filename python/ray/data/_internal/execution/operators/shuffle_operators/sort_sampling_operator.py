@@ -45,7 +45,6 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
 
     This is a custom operator instead of a ``MapOperator`` because sampling produces
     driver-side metadata while forwarding the original block references unchanged.
-    It intentionally does not support operator fusion for now.
     """
 
     def __init__(
