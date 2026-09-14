@@ -3833,9 +3833,11 @@ class DeploymentState:
         ):
             return True
 
+        # Reuse the aggregate from this tick's autoscaling decision instead of
+        # recomputing it just to format the log.
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_last_decision_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -6839,11 +6841,16 @@ class DeploymentStateManager:
     def get_active_node_ids(self) -> Set[str]:
         """Return set of node ids with running replicas of any deployment.
 
-        This is used to determine which node has replicas. Only nodes with replicas and
-        head node should have active proxies.
+        This is used to determine which nodes should have active proxies. Ingress
+        request router replicas are excluded because they are created on proxy nodes;
+        counting them here would make a proxy node retain itself after all application
+        replicas on the node have stopped.
         """
         node_ids = set()
         for deployment_state in self._deployment_states.values():
+            info = deployment_state.target_info
+            if info is not None and info.ingress_request_router:
+                continue
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 

@@ -14,7 +14,6 @@ sudo apt-get update \
         libosmesa6 \
         libosmesa6-dev \
         libglfw3 \
-        patchelf \
         unzip \
         unrar \
         zlib1g-dev
@@ -54,12 +53,3 @@ sudo apt-get clean
 
 # requirements_compiled.txt will be kept.
 sudo rm ./*requirements.txt requirements_compiled_gpu.txt
-
-# MuJoCo Installation.
-export MUJOCO_GL=osmesa
-wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
-mkdir -p ~/.mujoco
-mv mujoco-2.1.1-linux-x86_64.tar.gz ~/.mujoco/.
-cd ~/.mujoco || exit
-tar -xf ~/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin

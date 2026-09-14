@@ -1,0 +1,23 @@
+# Torch version for the py3.14 ray-torch image.
+#
+# python/requirements_compiled_py3.14.txt cannot be used as the constraints file
+# for this image: it pins torch 2.7.0, which publishes no cp314 wheels, so the
+# resolve fails outright ("no wheels with a matching Python ABI tag (e.g.
+# cp314)"). These versions are what the image already resolves to in CI.
+#
+# Pinning at all is needed because torch is unpinned in torch-requirements.txt
+# and the compile offers both PyPI and download.pytorch.org/whl/cu128 under
+# --index-strategy unsafe-best-match; resolved against public PyPI it lands a
+# CUDA 13 nvidia-* stack inside an image based on cu12.8.1-cudnn. The plain
+# local-version-free pins below still select the +cu128 builds.
+torch==2.10.0
+torchvision==0.25.0
+
+# The versions requirements_compiled_py3.14.txt would have supplied for the
+# packages that need a 3.14-capable release. They live here rather than in
+# torch-requirements.txt because that file is shared with py3.11, whose
+# compiled requirements pin older versions.
+cupy-cuda12x==14.0.1
+llvmlite==0.47.0
+numba==0.65.0
+dm-tree==0.1.10

@@ -2117,6 +2117,7 @@ jinja2==3.1.6 \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
+    #   -r python/requirements.txt
     #   fastapi
     #   humming-kernels
     #   jupyter-server

@@ -17,13 +17,25 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture(
     autouse=True,
-    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2],
-    ids=["shufflev1", "shufflev2"],
+    params=[
+        (ShuffleStrategy.HASH_SHUFFLE, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+    ids=["shufflev1", "shufflev2", "shufflev2external"],
 )
 def hash_shuffle_version(request, restore_data_context):
-    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
-    DataContext.get_current().shuffle_strategy = request.param
-    return request.param
+    """Run every join test on v1 (old actor-based), v2 (object-store), and v2
+    external (on-disk, file-transport) shuffle."""
+    strategy, use_external = request.param
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = strategy
+    ctx.use_external_hash_shuffle = use_external
+    if strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
+    return strategy
 
 
 @pytest.mark.parametrize(
