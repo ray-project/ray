@@ -385,6 +385,42 @@ def test_no_partial_batch_mid_stream():
     assert total == 35
 
 
+def test_no_partial_batch_when_uncompacted_rows_available():
+    """Rows waiting in the builder must be merged instead of yielding a short batch.
+
+    Regression test: `has_batch()` gates on the total number of unyielded rows, but
+    `next_batch()` used to only recompact once the compacted buffer fell to
+    `_min_rows_to_yield_batch`. When the compacted buffer held more than that but
+    fewer than `batch_size` rows, it was sliced on its own and yielded a short batch
+    mid-stream, even though more rows were already waiting in the builder.
+
+    With ``batch_size=8`` and blocks of ``[30, 10]``, the 30-row block drains to a
+    remainder of 6, which must be merged with the 10 pending rows rather than emitted
+    as a batch of 6.
+    """
+    batch_size = 8
+    batcher = ShufflingBatcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=batch_size,
+        shuffle_seed=0,
+    )
+
+    sizes = []
+    for block_size in (30, 10):
+        batcher.add(gen_block(block_size))
+        while batcher.has_batch():
+            sizes.append(len(batcher.next_batch()))
+    batcher.done_adding()
+    while batcher.has_batch() or batcher.has_any():
+        sizes.append(len(batcher.next_batch()))
+
+    short_mid_stream = [size for size in sizes[:-1] if size != batch_size]
+    assert not short_mid_stream, f"expected only the last batch to be short: {sizes}"
+    assert sum(sizes) == 40
+    # 40 rows in batches of 8 is 5 batches, whatever the blocking.
+    assert sizes == [batch_size] * 5
+
+
 if __name__ == "__main__":
     import sys
 
