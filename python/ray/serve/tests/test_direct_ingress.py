@@ -382,6 +382,44 @@ def test_direct_http_non_ingress_deployment_gets_own_server(
         assert r.text == "from-ingress"
 
 
+def test_direct_http_replicas_published_in_target_groups(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """A `_direct_http` deployment is published under `direct_http_targets`.
+
+    It stays out of the app's data-plane `targets`, which remain the ingress
+    replicas: this is an inventory for HAProxy to build a per-deployment backend
+    from, not a change to what the app's route prefix resolves to.
+    """
+    serve.run(ParentIngress.bind(DirectChild.options(_direct_http=True).bind()))
+
+    child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
+    assert child_port is not None
+
+    http_target_group = next(
+        tg
+        for tg in get_target_groups(app_name=SERVE_DEFAULT_APP_NAME)
+        if tg.protocol == RequestProtocol.HTTP
+    )
+
+    assert list(http_target_group.direct_http_targets) == ["DirectChild"]
+    assert [t.port for t in http_target_group.direct_http_targets["DirectChild"]] == [
+        child_port
+    ]
+    # The child's port is not a data-plane target of the app itself.
+    assert child_port not in [t.port for t in http_target_group.targets]
+
+
+def test_without_direct_http_no_targets_published(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """Without the flag, the app's target groups are unchanged."""
+    serve.run(ParentIngress.bind(DirectChild.bind()))
+
+    for target_group in get_target_groups(app_name=SERVE_DEFAULT_APP_NAME):
+        assert target_group.direct_http_targets == {}
+
+
 def test_without_direct_http_non_ingress_has_no_port(
     _skip_if_ff_not_enabled, serve_instance
 ):

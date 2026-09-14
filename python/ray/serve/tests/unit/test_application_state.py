@@ -239,6 +239,7 @@ def deployment_params(
     num_replicas: int = 1,
     ingress_request_router: bool = False,
     ray_actor_options: Optional[Dict] = None,
+    direct_http: bool = False,
 ):
     return {
         "deployment_name": name,
@@ -255,6 +256,7 @@ def deployment_params(
         "route_prefix": route_prefix,
         "ingress": route_prefix is not None,
         "ingress_request_router": ingress_request_router,
+        "direct_http": direct_http,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -267,6 +269,7 @@ def deployment_info(
     num_replicas: int = 1,
     ingress_request_router: bool = False,
     ray_actor_options: Optional[Dict] = None,
+    direct_http: bool = False,
 ):
     params = deployment_params(
         name,
@@ -275,6 +278,7 @@ def deployment_info(
         num_replicas,
         ingress_request_router,
         ray_actor_options,
+        direct_http=direct_http,
     )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
@@ -480,6 +484,52 @@ def test_application_state_clears_stale_ingress_request_router(
         target_config=None,
     )
     assert application_state.ingress_request_router_deployment is None
+
+
+def test_application_state_tracks_direct_http_deployments(
+    mocked_application_state,
+):
+    """`_direct_http` deployments are discovered and reported sorted by name."""
+    application_state, _ = mocked_application_state
+
+    application_state._set_target_state(
+        {
+            "Ingress": deployment_info("Ingress", route_prefix="/"),
+            "ServerB": deployment_info("ServerB", direct_http=True),
+            "ServerA": deployment_info("ServerA", direct_http=True),
+            "Plain": deployment_info("Plain"),
+        },
+        api_type=APIType.IMPERATIVE,
+        code_version="1",
+        target_config=None,
+    )
+
+    # Sorted, so the target groups built from these names don't churn between
+    # ticks and cause spurious HAProxy reloads.
+    assert application_state.direct_http_deployments == ["ServerA", "ServerB"]
+
+
+def test_application_state_clears_stale_direct_http_deployments(
+    mocked_application_state,
+):
+    """Direct-HTTP deployments dropped from the target state stop being reported."""
+    application_state, _ = mocked_application_state
+
+    application_state._set_target_state(
+        {"Server": deployment_info("Server", direct_http=True)},
+        api_type=APIType.IMPERATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.direct_http_deployments == ["Server"]
+
+    application_state._set_target_state(
+        {"Main": deployment_info("Main")},
+        api_type=APIType.IMPERATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.direct_http_deployments == []
 
 
 class TestApplicationStatusInfo:
