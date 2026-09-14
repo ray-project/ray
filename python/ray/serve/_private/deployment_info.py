@@ -22,6 +22,7 @@ class DeploymentInfo:
         route_prefix: Optional[str] = None,
         ingress: bool = False,
         ingress_request_router: bool = False,
+        direct_http: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -41,6 +42,7 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        self.direct_http = direct_http
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -72,6 +74,7 @@ class DeploymentInfo:
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
             ingress_request_router=self.ingress_request_router,
+            direct_http=self.direct_http,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
@@ -147,6 +150,7 @@ class DeploymentInfo:
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
             "ingress_request_router": proto.ingress_request_router,
+            "direct_http": proto.direct_http,
         }
 
         return cls(**data)
@@ -171,6 +175,7 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         data["ingress_request_router"] = self.ingress_request_router
+        data["direct_http"] = self.direct_http
         return DeploymentInfoProto(**data)
 
     def to_dict(self):
