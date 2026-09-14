@@ -699,8 +699,8 @@ class DataContext:
             matches one of them (checked as substring first, then as regex).
             Bounded by ``max_map_retries``.
         max_map_retries: Maximum number of retry attempts per map task for user
-            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
-            empty.
+            exceptions. Default is 0 (no retries). Retries also require
+            ``retried_map_errors`` to be ``True`` or a non-empty pattern list.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for

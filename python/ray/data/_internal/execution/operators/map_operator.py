@@ -862,7 +862,7 @@ def _map_task(
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
-            match=None if retry_on is True else retry_on,
+            match=[] if retry_on is True else retry_on,
             max_attempts=data_context.max_map_retries + 1,
             unwrap_cause=True,
         )
