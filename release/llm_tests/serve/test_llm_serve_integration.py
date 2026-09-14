@@ -1,4 +1,5 @@
 import os
+import openai
 import pytest
 import requests
 import sys
@@ -127,6 +128,85 @@ async def test_engine_metrics_with_spec_decode():
 
         async for _ in results:
             pass
+
+
+@direct_streaming_only
+def test_lora_requests():
+    """Serve cold and cached LoRA requests through the public HTTP endpoints."""
+    model_id = "llama-test"
+    adapter_id = f"{model_id}:llama-3.2-216M-lora-dummy"
+    config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_id,
+            model_source=dict(bucket_uri="s3://air-example-data/llama-3.2-216M-dummy"),
+        ),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enable_lora=True,
+            max_lora_rank=16,
+            max_model_len=256,
+            gpu_memory_utilization=0.4,
+            enforce_eager=True,
+        ),
+        lora_config=dict(dynamic_lora_loading_path="s3://air-example-data"),
+    )
+    try:
+        serve.run(build_openai_app({"llm_configs": [config]}), blocking=False)
+        wait_for_condition(is_default_app_running, timeout=300)
+
+        with openai.OpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="unused",
+            timeout=60,
+            max_retries=0,
+        ) as client:
+            # Load the adapter through the public completions endpoint.
+            response = client.completions.create(
+                model=adapter_id,
+                prompt="Hello",
+                max_tokens=4,
+                temperature=0,
+                stream=False,
+                extra_body={"ignore_eos": True},
+            )
+            assert response.model == adapter_id
+            assert response.usage.completion_tokens == 4
+            assert response.choices[0].finish_reason == "length"
+
+            # Confirm the native API exposes the loaded adapter.
+            assert adapter_id in {model.id for model in client.models.list().data}
+
+            # Exercise base and cached adapter requests across both APIs.
+            for create, prompt in [
+                (client.completions.create, {"prompt": "Hello"}),
+                (
+                    client.chat.completions.create,
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                ),
+            ]:
+                for stream in (False, True):
+                    for requested_model in (model_id, adapter_id):
+                        response = create(
+                            model=requested_model,
+                            **prompt,
+                            max_tokens=4,
+                            temperature=0,
+                            stream=stream,
+                            extra_body={"ignore_eos": True},
+                        )
+                        if stream:
+                            chunks = list(response)
+                            assert chunks
+                            assert {chunk.model for chunk in chunks} == {
+                                requested_model
+                            }
+                            assert chunks[-1].choices[0].finish_reason == "length"
+                        else:
+                            assert response.model == requested_model
+                            assert response.usage.completion_tokens == 4
+                            assert response.choices[0].finish_reason == "length"
+    finally:
+        shutdown_serve_and_wait_for_controller()
 
 
 def is_default_app_running():

@@ -368,7 +368,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
     async def build_asgi_app(self):
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+        from vllm.entrypoints.openai.api_server import build_app
 
         supported_tasks = ("generate",)
         if hasattr(self._engine_client, "get_supported_tasks"):
@@ -382,12 +382,11 @@ class VLLMEngine(LLMEngine):
             supported_tasks=supported_tasks,
             model_config=self._engine_client.model_config,
         )
-        await init_app_state(
-            self._engine_client,
-            app.state,
-            self._vllm_args,
-            supported_tasks=supported_tasks,
-        )
+        # HTTP handlers and resolve_lora() must share the same model registry.
+        app.state._state.update(self._app_state._state)
+        # build_app() attaches plugins after start() initializes the serving state.
+        for plugin in getattr(app.state, "endpoint_plugins", []):
+            await plugin.init_state(self._engine_client, app.state, self._vllm_args)
         app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
         # Apply Ray's replacement handler when FastAPI builds the ASGI stack.
         # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
@@ -468,6 +467,7 @@ class VLLMEngine(LLMEngine):
             init_kwargs["vllm_config"] = vllm_engine_config
 
         await init_app_state(self._engine_client, **init_kwargs)
+        self._app_state = state
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
