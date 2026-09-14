@@ -424,22 +424,36 @@ def test_anti_join_no_matches(
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
-@pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
-def test_anti_join_preserves_rows_with_unknown_schema_empty_side(
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+@pytest.mark.parametrize("empty_side", ["left", "right"])
+def test_join_with_unknown_schema_empty_side(
     ray_start_regular_shared_2_cpus,
     hash_shuffle_version,
     join_type,
+    empty_side,
 ):
     if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
         pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
 
-    preserved = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    non_empty = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
     unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
 
-    if join_type == "left_anti":
-        left, right = preserved, unknown_schema_empty
+    if empty_side == "left":
+        left, right = unknown_schema_empty, non_empty
     else:
-        left, right = unknown_schema_empty, preserved
+        left, right = non_empty, unknown_schema_empty
 
     result = left.join(
         right,
@@ -448,10 +462,19 @@ def test_anti_join_preserves_rows_with_unknown_schema_empty_side(
         num_partitions=1,
     ).take_all()
 
-    assert sorted(result, key=lambda row: row["id"]) == [
-        {"id": 1, "value": "a"},
-        {"id": 2, "value": "b"},
-    ]
+    preserves_non_empty_side = (
+        join_type == "full_outer"
+        or join_type in ("left_outer", "left_anti")
+        and empty_side == "right"
+        or join_type in ("right_outer", "right_anti")
+        and empty_side == "left"
+    )
+    expected = (
+        [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+        if preserves_non_empty_side
+        else []
+    )
+    assert sorted(result, key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
