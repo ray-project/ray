@@ -10,6 +10,7 @@ import starlette
 from starlette.middleware import Middleware
 
 import ray
+import ray.serve._private.controller
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError

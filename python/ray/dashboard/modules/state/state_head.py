@@ -12,7 +12,10 @@ from aiohttp.web import Response
 import ray
 from ray import ActorID
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+    env_integer,
+)
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
@@ -20,6 +23,11 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
 from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.dashboard.optional_utils import rest_response
+from ray.dashboard.runtime_env_redaction import (
+    redact_state_rows,
+    should_redact_runtime_env,
+)
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
     do_reply,
@@ -108,11 +116,15 @@ class StateHead(SubprocessModule, RateLimitedModule):
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
         try:
-            result = await self._state_api.list_jobs(option=options_from_req(req))
+            result = asdict(
+                await self._state_api.list_jobs(option=options_from_req(req))
+            )
+            if should_redact_runtime_env(req):
+                result["result"] = redact_state_rows(result["result"])
             return do_reply(
                 status_code=HTTPStatusCode.OK,
                 error_message="",
-                result=asdict(result),
+                result=result,
             )
         except DataSourceUnavailable as e:
             return do_reply(
@@ -158,6 +170,17 @@ class StateHead(SubprocessModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await handle_list_api(self._state_api.list_runtime_envs, req)
+
+    @routes.get("/api/v0/runtime_env_redaction")
+    async def runtime_env_redaction(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Report whether `runtime_env` secrets are redacted for browser clients."""
+        return rest_response(
+            status_code=HTTPStatusCode.OK,
+            message="",
+            redaction_enabled=RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+        )
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls

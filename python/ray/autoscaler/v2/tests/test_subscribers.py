@@ -313,6 +313,61 @@ class TestCloudInstanceUpdater:
 
         wait_for_condition(verify)
 
+    def test_terminate_instances_deduplicates_cloud_instance_ids(self):
+        mock_provider = mock.MagicMock()
+        launcher = CloudInstanceUpdater(mock_provider)
+        launcher.notify(
+            [
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-1",
+                    cloud_instance_id="c1",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-2",
+                    cloud_instance_id="c1",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-3",
+                    cloud_instance_id="c2",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-4",
+                    cloud_instance_id="",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-5",
+                ),
+            ]
+        )
+
+        mock_provider.terminate.assert_called_once_with(
+            ids=["c1", "c2"], request_id=mock.ANY
+        )
+
+    def test_terminate_instances_with_no_cloud_instance_ids(self):
+        mock_provider = mock.MagicMock()
+        launcher = CloudInstanceUpdater(mock_provider)
+        launcher.notify(
+            [
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-1",
+                    cloud_instance_id="",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-2",
+                ),
+            ]
+        )
+
+        mock_provider.terminate.assert_not_called()
+
     def test_count_stopped_instances_on_terminated(self):
         mock_provider = mock.MagicMock()
         metrics_reporter = AutoscalerMetricsReporter(

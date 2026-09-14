@@ -269,7 +269,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
+    def test_set_keep_alive_timeout_in_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive
@@ -288,9 +288,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_timeout_keep_alive_in_both_config_and_env(
-        self, ray_instance, ray_shutdown
-    ):
+    def test_set_timeout_keep_alive_in_both_config_and_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in both http configs and env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive

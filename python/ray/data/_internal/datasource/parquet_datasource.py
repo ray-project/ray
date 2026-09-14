@@ -191,6 +191,22 @@ def check_for_legacy_tensor_type(schema):
             )
 
 
+def combine_predicates(left: Optional[Expr], right: Optional[Expr]) -> Optional[Expr]:
+    """``AND`` two optional predicates; ``None`` means "nothing to apply".
+
+    ``&`` builds a logical-``AND`` node (Python can't overload ``and``), and an
+    ``AND`` chain is order-independent, so conjuncts of one chain can be
+    recombined in any order.
+    """
+    if left is None and right is None:
+        return None
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return left & right
+
+
 @dataclass
 class _SplitPredicateResult:
     """Result of splitting a predicate by column type.
@@ -299,13 +315,6 @@ def _split_predicate_by_columns(
     if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
         left_result = _split_predicate_by_columns(predicate.left, partition_columns)
         right_result = _split_predicate_by_columns(predicate.right, partition_columns)
-
-        def combine_predicates(
-            left: Optional[Expr], right: Optional[Expr]
-        ) -> Optional[Expr]:
-            if left and right:
-                return left & right
-            return left or right
 
         return _SplitPredicateResult(
             data_predicate=combine_predicates(

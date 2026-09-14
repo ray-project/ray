@@ -39,7 +39,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.6.0  # update this as necessary
+    targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -88,7 +88,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.6.0  # update this as necessary
+    targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are already installed in Step 1
@@ -162,7 +162,7 @@ spec:
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
-    targetRevision: "1.6.0"
+    targetRevision: "1.7.0"
     helm:
       releaseName: raycluster
       valuesObject:
@@ -363,15 +363,15 @@ See the [ArgoCD diff customization documentation](https://argo-cd.readthedocs.io
 
 By ignoring these differences, ArgoCD allows the Ray Autoscaler to dynamically manage worker replicas without interference.
 
-## Step 4: Access the Ray Dashboard
+## Step 4: Access the Ray dashboard
 
-To access the Ray Dashboard, port-forward the head service:
+To access the Ray dashboard, port-forward the head service:
 
 ```sh
 kubectl port-forward -n ray-cluster svc/raycluster-kuberay-head-svc 8265:8265
 ```
 
-Navigate to `http://localhost:8265` in your browser to view the Ray Dashboard.
+Navigate to `http://localhost:8265` in your browser to view the Ray dashboard.
 
 ## Customizing the Configuration
 
@@ -401,7 +401,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.6.0  # update this as necessary
+    targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -422,7 +422,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.6.0  # update this as necessary
+    targetRevision: v1.7.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are installed in the first Application
@@ -458,7 +458,7 @@ spec:
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
-    targetRevision: "1.4.1"
+    targetRevision: "1.7.0"
     helm:
       releaseName: raycluster  # this affects the ignoreDifferences field
       valuesObject:

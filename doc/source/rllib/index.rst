@@ -93,11 +93,6 @@ Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
 .. note::
 
-    For installation on computers running Apple Silicon, such as M1,
-    `follow instructions here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
-
-.. note::
-
     To be able to run the Atari or MuJoCo examples, you also need to do:
 
     .. code-block:: bash
@@ -126,7 +121,7 @@ You first create a `config` for the algorithm, which defines the :ref:`RL enviro
     )
 
 
-Next, ``build`` the algorithm and ``train`` it for a total of five iterations.
+Next, ``build`` the algorithm and ``train`` it for a total of 2 iterations.
 One training iteration includes parallel, distributed sample collection by the
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, followed by loss calculation
 on the collected data, and a model update step.

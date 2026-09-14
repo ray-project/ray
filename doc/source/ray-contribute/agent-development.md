@@ -28,7 +28,7 @@ The Ray repository includes shared Claude Code configuration that is version-con
 - `.claude/CLAUDE.md`: root instructions loaded in every session
 - `<library>/.claude/CLAUDE.md`: library-specific instructions loaded on-demand (for example, `python/ray/data/.claude/CLAUDE.md`)
 - `.claude/rules/`: coding rules scoped by file type
-- `.claude/skills/`: reusable workflows (rebuild, lint, fetch CI logs)
+- `.claude/skills/`: reusable workflows (rebuild, lint, fetch CI logs, backport docs)
 - `.claude/agents/`: project-specific subagents
 
 Personal configuration lives in files that are **not** version-controlled:
@@ -92,6 +92,7 @@ The `/fetch-buildkite-logs` skill requires a Buildkite API token to fetch CI log
 
    - `read_builds`
    - `read_build_logs`
+   - `read_artifacts`
 
 3. Add it to your shell profile:
 
@@ -109,6 +110,7 @@ Shared skills available in every session:
 - `/rebuild`: guided Ray rebuild based on what files changed
 - `/lint`: run linting and formatting checks
 - `/fetch-buildkite-logs`: fetch and analyze Buildkite CI logs
+- `/backport-docs`: cherry-pick merged docs onto a release branch so they appear on `docs.ray.io/en/latest`
 
 ### Adding team rules
 

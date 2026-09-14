@@ -559,22 +559,34 @@ std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Publisher:";
-  for (const auto &it : cum_pub_message_count_) {
-    auto channel_type = it.first;
-    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-    const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
-    result << "\n" << channel_name;
-    result << "\n- cumulative published messages: " << it.second;
+  // Total long-polling RPCs into this publisher. One SubscriberState
+  // per subscriber process, regardless of how many channels or keys it
+  // subscribes to, so this is the channel-agnostic connection count.
+  result << "\n- current long-polling subscribers: " << subscribers_.size();
+  // Iterate the subscription indexes (one per registered channel) rather
+  // than the cumulative publish counters so channels that have subscribers
+  // but no publishes yet are still reported.
+  for (const auto &[channel_type, subscription_index] : subscription_index_map_) {
+    result << "\n" << rpc::ChannelType_Name(channel_type);
+
+    auto message_count_it = cum_pub_message_count_.find(channel_type);
+    result << "\n- cumulative published messages: "
+           << (message_count_it != cum_pub_message_count_.end() ? message_count_it->second
+                                                                : 0);
 
     auto bytes_count_it = cum_pub_message_bytes_count_.find(channel_type);
-    if (bytes_count_it != cum_pub_message_bytes_count_.end()) {
-      result << "\n- cumulative published bytes: " << bytes_count_it->second;
-    }
+    result << "\n- cumulative published bytes: "
+           << (bytes_count_it != cum_pub_message_bytes_count_.end()
+                   ? bytes_count_it->second
+                   : 0);
 
-    auto index_it = subscription_index_map_.find(channel_type);
-    if (index_it != subscription_index_map_.end()) {
-      result << "\n- current buffered bytes: " << index_it->second.GetNumBufferedBytes();
-    }
+    result << "\n- current buffered bytes: " << subscription_index.GetNumBufferedBytes();
+    result << "\n- current all-entity subscribers: "
+           << subscription_index.GetNumAllEntitySubscribers();
+    result << "\n- current keyed subscription keys: "
+           << subscription_index.GetNumKeySubscriptions();
+    result << "\n- current keyed subscribers: "
+           << subscription_index.GetNumKeyedSubscribers();
   }
   return result.str();
 }

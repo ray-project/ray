@@ -31,6 +31,7 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
@@ -464,6 +465,28 @@ def _resolve_filesystem(
     return fs, fs_root, video_root_uri, video_storage_options
 
 
+def _raise_on_pickle_object_meta_parquet(local_meta_dir: str, root_uri: str) -> None:
+    """Reject ``meta/**/*.parquet`` files that store pickled-object columns.
+
+    lerobot reads ``meta/tasks.parquet`` (and ``subtasks.parquet``,
+    ``episodes/**/*.parquet``) itself via pandas and HF datasets, which would
+    unpickle ``ray.data.arrow_pickled_object`` columns on the driver. Only parquet
+    footers are read here; no row data is decoded.
+    """
+    meta_dir = Path(local_meta_dir)
+    for path in sorted(meta_dir.rglob("*.parquet")):
+        # Read the schema outside the ``try`` so a corrupt file's ``ArrowInvalid``
+        # (a ``ValueError`` subclass) isn't relabeled as a pickle rejection.
+        schema = pq.read_schema(path)
+        try:
+            # Unpickling untrusted data can execute arbitrary code. Reject object
+            # columns unless the user has explicitly opted in.
+            raise_on_pickle_object_columns(schema.empty_table())
+        except ValueError as e:
+            rel = path.relative_to(meta_dir).as_posix()
+            raise ValueError(f"{root_uri!r}: meta/{rel}: {e}") from e
+
+
 def _load_lerobot_metadata(
     root: Union[str, Path],
     fs: "fsspec.AbstractFileSystem",
@@ -484,12 +507,20 @@ def _load_lerobot_metadata(
     # target); we pass the root itself so any fallback fails clearly.
     if "://" not in root_uri:
         # Local path: lerobot reads it directly.
+        _raise_on_pickle_object_meta_parquet(os.path.join(root_uri, "meta"), root_uri)
         return LeRobotDatasetMetadata(repo_id=root_uri, root=root_uri)
 
     # Remote URI: copy meta/ locally and let lerobot parse the local copy.
     local_root = tempfile.mkdtemp(prefix="ray_data_lerobot_")
-    fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
-    meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
+    try:
+        fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
+        _raise_on_pickle_object_meta_parquet(os.path.join(local_root, "meta"), root_uri)
+        meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
+    except Exception:
+        # The finalizer below is attached to ``meta``, which doesn't exist yet, so
+        # drop the temp copy here instead of leaking it.
+        shutil.rmtree(local_root, ignore_errors=True)
+        raise
     # lerobot may read meta files lazily, and `meta` is exposed via
     # ``source.meta``; drop the temp copy when the object is garbage-collected.
     weakref.finalize(meta, shutil.rmtree, local_root, ignore_errors=True)
@@ -676,7 +707,7 @@ def _resolve_root(
 def _build_lerobot_read_task(
     segments: List[tuple],
     roots: List[_LeRobotRoot],
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
     episodes: List[pa.Table],
     max_block_bytes: int,
     per_task_row_limit: Optional[int] = None,
@@ -686,10 +717,13 @@ def _build_lerobot_read_task(
 
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
-    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
-    function fetches it once. ``episodes`` is the driver-side list of projected
-    episode tables, used here only to cut each segment's slice -- it is NOT
-    shipped; only the per-segment slice travels with the task.
+    to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
+    which the task captures refs for only the roots its segments touch,
+    the read function fetches just those. Roots split
+    across several tasks still share one object. ``episodes`` is the
+    driver-side list of projected episode tables, used here only to cut each
+    segment's slice, it is NOT shipped; only the per-segment slice travels
+    with the task.
     """
     total_rows = 0
     size_bytes = 0
@@ -716,23 +750,27 @@ def _build_lerobot_read_task(
         input_files=all_input_files,
         exec_stats=None,
     )
+    needed_root_indices = sorted({root_idx for root_idx, _, _ in segments})
+    task_root_refs = [root_refs[root_idx] for root_idx in needed_root_indices]
     read_fn = functools.partial(
-        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+        _read_lerobot_task,
+        task_root_refs,
+        needed_root_indices,
+        resolved,
+        max_block_bytes,
     )
     return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
 
 
 def _read_lerobot_task(
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
+    root_indices: List[int],
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
-    """Stream decoded rows as Arrow tables, iterating over all segments.
-
-    Runs on a worker: fetches the shared slim per-root state once, then reads
-    each pre-resolved segment.
-    """
-    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    """Stream decoded rows as Arrow tables, iterating over all segments."""
+    # Get only the roots this task needs.
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],
@@ -811,7 +849,11 @@ def _read_lerobot_segment(
     pq_tables = []
     for path in parquet_segs:
         with fs.open(path, "rb") as f:
-            pq_tables.append(pq.read_table(f, filters=filters))
+            table = pq.read_table(f, filters=filters)
+        # Unpickling untrusted data can execute arbitrary code. Reject object
+        # columns unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        pq_tables.append(table)
     full = pa.concat_tables(pq_tables) if pq_tables else None
     if full is None or full.num_rows == 0:
         return
@@ -1825,13 +1867,13 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self.distilled_metas)
+        root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _build_lerobot_read_task(
                 segments,
                 self.distilled_metas,
-                roots_ref,
+                root_refs,
                 self._episodes,
                 max_block_bytes,
                 per_task_row_limit,

@@ -431,6 +431,21 @@ FAILED_TASKS_PANEL = Panel(
     stack=False,
 )
 
+MAX_USS_PER_TASK_PANEL = Panel(
+    id=91,
+    title="Max Task USS Memory per Operator",
+    description="Maximum unique set size (USS) memory usage in bytes among completed tasks for each operator.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='max(ray_data_max_uss_bytes_max{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Max Task USS: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     id=46,
     title="Task Throughput (by Node)",
@@ -1479,6 +1494,7 @@ DATA_GRAFANA_ROWS = [
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
+            MAX_USS_PER_TASK_PANEL,
             TASK_THROUGHPUT_BY_NODE_PANEL,
             TASKS_WITH_OUTPUT_PANEL,
             SUBMITTED_TASKS_PANEL,

@@ -446,6 +446,29 @@ def test_read_webdataset_chunked_heterogeneous_keys(ray_start_2_cpus, tmp_path):
     pd.testing.assert_frame_equal(actual[["__key__", "cls", "aux"]], expected)
 
 
+def test_read_webdataset_forwards_ray_remote_args(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with wds.TarWriter(path) as writer:
+        writer.write({"__key__": "000000", "cls": b"0"})
+
+    ds = ray.data.read_webdataset(
+        [path],
+        suffixes=["cls"],
+        decoder=None,
+        num_cpus=1,
+        memory=512,
+        ray_remote_args={"max_retries": 5},
+    )
+
+    read_op = ds._logical_plan.dag
+    assert read_op.ray_remote_args["num_cpus"] == 1
+    assert read_op.ray_remote_args["memory"] == 512
+    assert read_op.ray_remote_args["max_retries"] == 5
+
+    # smoke run
+    assert len(ds.take_all()) == 1
+
+
 if __name__ == "__main__":
     import sys
 

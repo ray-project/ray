@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
+PRIORITY_KEY = "priority"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
@@ -222,6 +223,10 @@ def _node_type_from_group_spec(
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
         node_type["idle_timeout_s"] = float(idle_timeout_s)
+
+    priority = group_spec.get(PRIORITY_KEY)
+    if priority is not None:
+        node_type[PRIORITY_KEY] = int(priority)
 
     return node_type
 

@@ -17,12 +17,12 @@ const GpuTooltip = ({ gpu }: { gpu: GPUStats }) => {
   return (
     <Box>
       <Typography variant="body2">Name: {gpu.name}</Typography>
-      {gpu.temperatureC !== undefined && (
+      {gpu.temperatureC !== undefined && gpu.temperatureC !== null && (
         <Typography variant="body2">
           Temperature: {gpu.temperatureC}°C
         </Typography>
       )}
-      {gpu.powerMw !== undefined && (
+      {gpu.powerMw !== undefined && gpu.powerMw !== null && (
         <Typography variant="body2">
           Power Draw: {(gpu.powerMw / 1000).toFixed(1)} W
         </Typography>
@@ -67,7 +67,8 @@ export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
     <Tooltip title={title}>
       <Box sx={{ display: "flex", minWidth: 120 }}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
-        {accelerator.utilization !== undefined ? (
+        {accelerator.utilization !== undefined &&
+        accelerator.utilization !== null ? (
           <UsageBar
             percent={accelerator.utilization}
             text={`${accelerator.utilization.toFixed(1)}%`}
