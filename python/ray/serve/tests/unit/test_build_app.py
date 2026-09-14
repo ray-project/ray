@@ -893,5 +893,64 @@ def test_build_app_haproxy_allows_custom_router_on_non_ingress_deployment(monkey
     }
 
 
+def test_direct_http_survives_build_app():
+    """`_direct_http` must survive the rebuild that `build_app` performs.
+
+    `_build_app_recursive` re-invokes `options()` on every deployment to assign
+    names and bind args, which reconstructs the `Deployment`. Without an explicit
+    carry-forward in `options()`, the flag would be silently dropped here and the
+    replica would never start its HTTP server.
+    """
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, downstream):
+            self._downstream = downstream
+
+    @serve.deployment
+    class Downstream:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(Downstream.options(_direct_http=True).bind()),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    by_name = {d.name: d for d in built_app.deployments}
+    assert by_name["Downstream"]._direct_http is True
+    # The ingress is untouched: the two flags are independent.
+    assert by_name["Ingress"]._direct_http is False
+
+
+def test_direct_http_defaults_to_false():
+    @serve.deployment
+    class Ingress:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert built_app.deployments[0]._direct_http is False
+
+
+def test_direct_http_not_recorded_as_user_configured_option():
+    """The flag is structural, not a user-tunable option.
+
+    `user_configured_option_names` drives config-override precedence, so an
+    internal flag leaking into it would change how YAML overrides are applied.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    d = D.options(_direct_http=True).bind()._bound_deployment
+    assert "_direct_http" not in d._deployment_config.user_configured_option_names
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
