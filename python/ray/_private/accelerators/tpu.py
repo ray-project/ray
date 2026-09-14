@@ -803,6 +803,12 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
+        TPU_VISIBLE_CHIPS has whole-chip granularity, so an allocation covering
+        part of a chip is masked to the whole chip and sees every device on it.
+        Frameworks that bind one process per device (TorchTPU) overwrite this
+        mask with their own; frameworks that claim every visible device (JAX)
+        need whole-chip allocations to avoid contending for the same chip.
+
         Args:
             visible_tpu_chips: List of str representing TPU chips, or device IDs
                 for TPUs with multiple logical devices per chip.
@@ -823,8 +829,6 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
         # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
-        # An allocation may cover only part of a chip, and a chip is not
-        # maskable below whole-chip granularity.
         resource_per_chip = get_tpu_resource_per_chip()
         if resource_per_chip == 1:
             physical_chips = visible_tpu_chips
@@ -832,14 +836,6 @@ class TPUAcceleratorManager(AcceleratorManager):
             physical_chips = sorted(
                 {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
             )
-            if len(visible_tpu_chips) != len(physical_chips) * resource_per_chip:
-                logger.info(
-                    f"TPU allocation {list(visible_tpu_chips)} covers part of a "
-                    f"chip. {TPU_VISIBLE_CHIPS_ENV_VAR} masks whole chips only, "
-                    f"so this process is masked to chips {physical_chips} and "
-                    "sees every device on them. The ML framework selects which "
-                    "device it drives."
-                )
 
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
