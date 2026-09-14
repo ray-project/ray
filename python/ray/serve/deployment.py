@@ -106,6 +106,7 @@ class Deployment:
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
         _internal: bool = False,
+        _direct_http: bool = False,
     ) -> None:
         """Construct a Deployment. Should only be called by Serve internals.
 
@@ -120,6 +121,10 @@ class Deployment:
             _internal: Internal flag; ``Deployment`` instances must be created
                 via the ``@serve.deployment`` decorator, which sets this to
                 ``True``.
+            _direct_http: Internal flag; when direct ingress is enabled, give
+                this deployment's replicas their own HTTP server even though
+                the deployment is not the application's ingress. Unstable and
+                not part of the public Serve API. TODO (celinaky): review and write a better docstring
         """
         if not _internal:
             raise RuntimeError(
@@ -134,6 +139,7 @@ class Deployment:
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
+        self._direct_http = _direct_http
 
     def _validate_name(self, name: str):
         if not isinstance(name, str):
@@ -251,6 +257,7 @@ class Deployment:
         ] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+        _direct_http: Default[bool] = DEFAULT.VALUE,
         _internal: bool = False,
         max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
         gang_scheduling_config: Default[
@@ -292,7 +299,7 @@ class Deployment:
         user_configured_option_names = [
             option
             for option, value in locals().items()
-            if option not in {"self", "func_or_class", "_internal"}
+            if option not in {"self", "func_or_class", "_internal", "_direct_http"}
             and value is not DEFAULT.VALUE
         ]
 
@@ -352,6 +359,9 @@ class Deployment:
 
         if _init_kwargs is DEFAULT.VALUE:
             _init_kwargs = self._replica_config.init_kwargs
+
+        if _direct_http is DEFAULT.VALUE:
+            _direct_http = self._direct_http
 
         if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._replica_config.ray_actor_options
@@ -453,6 +463,7 @@ class Deployment:
             new_replica_config,
             version=version,
             _internal=True,
+            _direct_http=_direct_http,
         )
 
     def __eq__(self, other):
@@ -465,6 +476,7 @@ class Deployment:
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
                 self._replica_config.ray_actor_options
                 == other._replica_config.ray_actor_options,
+                self._direct_http == other._direct_http,
             ]
         )
 
