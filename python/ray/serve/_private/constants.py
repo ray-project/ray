@@ -915,6 +915,31 @@ RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
     "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
+# Manage replica membership through HAProxy's Runtime API instead of haproxy.cfg.
+# Each backend renders a fixed number of `server-template` slots and replicas
+# are assigned to them over the admin socket, so replica scale-up and scale-down
+# do not reload HAProxy. Reloads still happen for real config changes (routes,
+# health, draining) and when a backend runs out of slots.
+RAY_SERVE_HAPROXY_DYNAMIC_SERVERS_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_DYNAMIC_SERVERS_ENABLED", "0"
+)
+
+# Run HAProxy in master-worker mode. A long-lived master owns the workers:
+# reloads signal the master (SIGUSR2), which re-reads the config, starts a new
+# worker, and soft-stops the old one, instead of Serve spawning a new HAProxy
+# process with `-sf` on every reload. The master CLI (`show proc`) is used to
+# verify the takeover and to detect a failed reload.
+RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED", "0"
+)
+
+# Minimum `server-template` slots per backend when dynamic servers are enabled.
+# Capacity doubles from here when a backend needs more slots than it has, which
+# is the only membership change that reloads HAProxy.
+RAY_SERVE_HAPROXY_MIN_SERVER_SLOTS = get_env_int_positive(
+    "RAY_SERVE_HAPROXY_MIN_SERVER_SLOTS", 16
+)
+
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
 # used when RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED is set; a successful
 # connection resets the counter.
