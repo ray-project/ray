@@ -59,10 +59,12 @@ DEBUG_SESSION_QUERY = "Why did this job fail?"
 # with the other reporters and the traceback.
 ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
 
-# The annotation is keyed on the test name rather than the job id, because a
-# buildkite retry is a new job with a new id: keying on the job would create a
-# separate annotation per attempt instead of appending to one. `step_key` is
-# null for release test jobs, so it is not usable either.
+# An annotation is identified by its context within its scope, and buildkite
+# defaults that context to "default". Scope already separates the attempts of a
+# retried test -- a retry is a new job, so it annotates separately whatever this
+# value is -- so the context is not what keeps their reports apart. It is the
+# test name to make the annotation identifiable in the buildkite UI, and to keep
+# it clear of anything else annotating the same job.
 ANNOTATION_CONTEXT_PREFIX = "obs-agent-"
 
 # info rather than warning or error: the analysis is advisory, and error is what
@@ -212,11 +214,16 @@ class ObservabilityAgentReporter(Reporter):
         summary: Optional[str],
         slack_thread: Optional[str],
     ) -> None:
-        """Append this attempt's analysis to the job's buildkite annotation.
+        """Annotate the buildkite job with this attempt's analysis.
 
-        Appending rather than replacing keeps every attempt's report, and the
-        context outlives the job id so that a retry adds to the same annotation
-        instead of opening a new one.
+        The annotation is scoped to the job, so each attempt of a retried test
+        annotates its own job and buildkite shows them together on the build
+        page: every attempt's report is kept, attributed to the attempt that
+        produced it.
+
+        `--append` is passed for the case of a job annotating twice under this
+        context. That does not happen today -- one release test job runs one
+        test once -- but replacing would be the wrong behaviour if it ever did.
         """
         if not os.environ.get("BUILDKITE"):
             return

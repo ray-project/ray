@@ -550,7 +550,7 @@ def _report_annotating(result, responses, env=None):
     return calls
 
 
-def test_annotation_is_appended_to_a_context_that_outlives_the_job():
+def test_the_annotation_is_job_scoped_and_keyed_on_the_test():
     calls = _report_annotating(
         _result(ResultStatus.ERROR.value),
         [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
@@ -566,8 +566,8 @@ def test_annotation_is_appended_to_a_context_that_outlives_the_job():
     # the default is "build", which is what the first real run produced.
     assert f"--scope={ANNOTATION_SCOPE}" in command
     assert ANNOTATION_SCOPE == "job"
-    # The job is named for attribution, but it is not the identity of the
-    # annotation: a retry is a new job, and the context has to survive that.
+    # --scope is what puts the annotation on the job; --job names which job it
+    # came from. A retry is a new job, so it annotates separately either way.
     assert command[command.index("--job") + 1] == "01a0691c-job"
 
     body = command[-1]
