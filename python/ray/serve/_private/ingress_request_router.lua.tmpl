@@ -202,17 +202,30 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
-    local server_name = replica_map[replica_id]
-    if not server_name then
+    local entry = replica_map[replica_id]
+    if not entry then
         -- Pin-miss: router named a replica not in HAProxy's server map, a
         -- transient gap between the router view and HAProxy's config snapshot.
-        -- Arm `failed`. The frontend recovers it via the fallback proxy.
+        -- Arm `failed`. The frontend recovers it via the fallback proxy, except
+        -- for apps with `_direct_http` deployments, which fail closed with a 503
+        -- -- the fallback proxy cannot serve a model deployment's traffic.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
 
     set_router_response_headers(txn, response_body)
-    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.ingress_request_router_target", entry.s)
+    -- `b` is present only for replicas of a `_direct_http` deployment, which
+    -- lives in its own backend. The router names a replica, not a deployment;
+    -- the map resolves the owning backend because a replica belongs to exactly
+    -- one deployment and the controller publishes targets keyed by deployment.
+    if entry.b then
+        txn:set_var("txn.ingress_request_router_backend", entry.b)
+        -- The frontend set txn.serve_deployment to the app's *ingress*
+        -- deployment; this request is served by a different one, so relabel it
+        -- or HAProxy's per-request metrics attribute it to the wrong deployment.
+        txn:set_var("txn.serve_deployment", entry.d)
+    end
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
