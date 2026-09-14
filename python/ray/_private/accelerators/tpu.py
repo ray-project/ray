@@ -630,8 +630,8 @@ def get_tpu_resource_per_chip() -> int:
     """Return the number of Ray TPU resources per physical chip (defaults to 1).
 
     Some generations expose 2 logical XLA devices per chip (e.g. v7x). Counting
-    per device would change the TPU resource count of existing nodes, so
-    per-device allocation is opt-in via RAY_TPU_RESOURCE_PER_CHIP.
+    per device would change the TPU resource count of existing nodes, so it is
+    opt-in via RAY_TPU_RESOURCE_PER_CHIP.
     """
     value = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
     if value is None:
@@ -823,6 +823,8 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
         # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
+        # An allocation may cover only part of a chip, and a chip is not
+        # maskable below whole-chip granularity.
         resource_per_chip = get_tpu_resource_per_chip()
         if resource_per_chip == 1:
             physical_chips = visible_tpu_chips
@@ -831,12 +833,12 @@ class TPUAcceleratorManager(AcceleratorManager):
                 {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
             )
             if len(visible_tpu_chips) != len(physical_chips) * resource_per_chip:
-                # Otherwise two tasks would end up driving the same chip.
-                raise ValueError(
-                    f"TPU allocation {list(visible_tpu_chips)} does not map onto "
-                    f"whole chips ({RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR}="
-                    f"{resource_per_chip}). A chip is only maskable as a whole, "
-                    f"so TPU must be requested in multiples of {resource_per_chip}."
+                logger.info(
+                    f"TPU allocation {list(visible_tpu_chips)} covers part of a "
+                    f"chip. {TPU_VISIBLE_CHIPS_ENV_VAR} masks whole chips only, "
+                    f"so this process is masked to chips {physical_chips} and "
+                    "sees every device on them. The ML framework selects which "
+                    "device it drives."
                 )
 
         os.environ[

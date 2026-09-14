@@ -415,15 +415,26 @@ def test_set_tpu_visible_ids_and_bounds_dual_device(
 
 
 @patch("glob.glob")
-def test_set_tpu_visible_ids_rejects_partial_chip(mock_glob):
-    """A chip is only maskable as a whole, so half a chip must not be handed out."""
+def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
+    """A sub-chip allocation is masked to the chip containing it, not rejected.
+
+    TPU_VISIBLE_CHIPS has whole-chip granularity, so either device of a
+    dual-device chip resolves to the same mask.
+    """
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
-    with patch.dict(
-        "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
-    ):
-        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-        with pytest.raises(ValueError, match="does not map onto whole chips"):
-            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+    for device_id in ("0", "1"):
+        with patch.dict(
+            "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
+        ):
+            TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                [device_id]
+            )
+            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0"
+            assert (
+                os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
+                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            )
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
