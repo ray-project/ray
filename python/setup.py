@@ -385,7 +385,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             [
                 "vllm[audio]==0.29.0",
-                "transformers>=5.10.4,<5.17",
+                "transformers>=5.10.4",
                 "nixl==1.3.2",
                 "nixl-cu13==1.3.2",
                 "jsonref>=1.1.0",
