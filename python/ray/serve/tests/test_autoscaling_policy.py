@@ -776,7 +776,9 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
     signal.send.remote()
 
-    wait_for_condition(check_num_replicas_lte, name="A", target=1, timeout=30)
+    # Wait for zero, not <= 1: the last replica stays routable until the
+    # controller's stop reaches it, and would admit the requests below.
+    wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=30)
     signal.send.remote(clear=True)
 
     [handle.remote() for _ in range(50)]
