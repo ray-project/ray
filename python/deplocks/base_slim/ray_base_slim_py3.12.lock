@@ -2099,7 +2099,6 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   cupy-cuda12x
     #   dm-tree
     #   gymnasium
@@ -2498,7 +2497,6 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   google-api-core
     #   googleapis-common-protos
     #   opentelemetry-proto
