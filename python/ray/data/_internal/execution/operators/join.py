@@ -158,22 +158,22 @@ def _make_join_reduce_fn(
         left_table = _side_table(tables_by_input[0], left_schema)
         right_table = _side_table(tables_by_input[1], right_schema)
 
+        if left_table is None and right_table is None:
+            return
+
         # Synthesize an unknown empty side's join-key schema from the known side.
-        if left_table is None and right_table is not None:
+        if left_table is None:
             left_table = _empty_table_with_key_schema(
                 right_table,
                 right_key_col_names,
                 left_key_col_names,
             )
-        elif right_table is None and left_table is not None:
+        elif right_table is None:
             right_table = _empty_table_with_key_schema(
                 left_table,
                 left_key_col_names,
                 right_key_col_names,
             )
-
-        if left_table is None or right_table is None:
-            return
         yield join_tables(
             left_table,
             right_table,
