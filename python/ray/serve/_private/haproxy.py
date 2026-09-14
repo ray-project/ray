@@ -1091,6 +1091,11 @@ class HAProxyApi(ProxyApi):
             # to zero for backends that have a fallback.
             if backend_config.fallback_server is not None:
                 expected.add((backend_name, backend_config.fallback_server.name))
+            # Direct-HTTP deployments render their own backends, so their servers
+            # show up in `reported`; without this the gauge never converges to 0.
+            for direct in backend_config.direct_target_configs:
+                for server in direct.servers:
+                    expected.add((direct.name, server.name))
 
         # Note that if an entire backend scaled down (when an app is removed),
         # get_all_stats will filter out that entire backend, so there could be
@@ -1119,6 +1124,13 @@ class HAProxyApi(ProxyApi):
         stats = self._parse_haproxy_csv_stats(
             await self._send_socket_command("show stat")
         )
+        # Direct-HTTP backend names carry a hash suffix and so cannot be stripped
+        # back to their app the way the via-router suffix can; map them explicitly.
+        direct_backend_to_app = {
+            direct.name: app_backend_name
+            for app_backend_name, backend_config in self.backend_configs.items()
+            for direct in backend_config.direct_target_configs
+        }
         total = 0
         for backend_name, servers in stats.items():
             # The via-router backend is rendered from its app's BackendConfig but
@@ -1126,7 +1138,7 @@ class HAProxyApi(ProxyApi):
             base = (
                 backend_name[: -len(suffix)]
                 if backend_name.endswith(suffix)
-                else backend_name
+                else direct_backend_to_app.get(backend_name, backend_name)
             )
             backend_config = self.backend_configs.get(base)
             if (
@@ -1522,16 +1534,30 @@ class HAProxyApi(ProxyApi):
             logger.error(f"Failed to initialize and start HAProxy configuration: {e}")
             raise
 
+    def _configured_backend_names(self) -> Set[str]:
+        """Every backend name this config renders, including direct-HTTP backends.
+
+        `backend_configs` holds one entry per application, but an app with
+        `_direct_http` deployments renders an extra backend per deployment. Stats
+        and readiness logic keyed only on `backend_configs` would drop those.
+        """
+        names = set(self.backend_configs)
+        for backend_config in self.backend_configs.values():
+            names.update(direct.name for direct in backend_config.direct_target_configs)
+        return names
+
     async def get_all_stats(self) -> Dict[str, Dict[str, ServerStats]]:
         """Get statistics for all servers in all backends (implements abstract method).
 
         Returns only application backends configured in self.backend_configs,
         excluding HAProxy internal components (frontends, default_backend, stats).
         Also excludes BACKEND aggregate entries, returning only individual servers.
+        TODO (celinaky): update docstring to reflect changes
         """
         try:
             stats_output = await self._send_socket_command("show stat")
             all_stats = self._parse_haproxy_csv_stats(stats_output)
+            configured_backend_names = self._configured_backend_names()
 
             # Filter to only return application backends (ones in backend_configs)
             # Exclude HAProxy internal components like frontends, default_backend, stats
@@ -1543,7 +1569,7 @@ class HAProxyApi(ProxyApi):
                     if server_name != "BACKEND"
                 }
                 for backend_name, servers in all_stats.items()
-                if backend_name in self.backend_configs
+                if backend_name in configured_backend_names
             }
         except Exception as e:
             logger.error(f"Failed to get HAProxy stats: {e}")
@@ -1710,7 +1736,8 @@ class HAProxyApi(ProxyApi):
         self.backend_configs = backend_configs
 
         self.cfg.has_received_servers = self.cfg.has_received_servers or any(
-            len(bc.servers) > 0 for bc in backend_configs.values()
+            bc.servers or any(direct.servers for direct in bc.direct_target_configs)
+            for bc in backend_configs.values()
         )
 
     def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
@@ -1992,6 +2019,17 @@ class HAProxyManager(ProxyActorInterface):
                 }
                 for tg in self._target_groups
             }
+            # `_direct_http` deployments render their own backends. Without them
+            # here, `serving()` reports ready while a model backend still has no
+            # UP server, and the first request to that model 503s.
+            for tg in self._target_groups:
+                app_backend_name = self._generate_backend_name(tg)
+                for deployment_name, targets in tg.direct_http_targets.items():
+                    desired_backend_servers[
+                        self._generate_direct_backend_name(
+                            app_backend_name, deployment_name
+                        )
+                    ] = {self._generate_server_name(target) for target in targets}
             fallback_servers = {
                 self._generate_server_name(target)
                 for target in (
@@ -2164,15 +2202,31 @@ class HAProxyManager(ProxyActorInterface):
             for target in target_group.ingress_request_router_targets
         ]
 
+        backend_name = self._generate_backend_name(target_group)
+
+        # Sorted so the rendered config is byte-stable across reconciles;
+        # `_write_if_changed` and reload avoidance depend on that.
+        direct_target_configs = [
+            DirectTargetConfig(
+                deployment_name=deployment_name,
+                name=self._generate_direct_backend_name(backend_name, deployment_name),
+                servers=[self._target_to_server(target) for target in targets],
+            )
+            for deployment_name, targets in sorted(
+                target_group.direct_http_targets.items()
+            )
+        ]
+
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
-            name=self._generate_backend_name(target_group),
+            name=backend_name,
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            direct_target_configs=direct_target_configs,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
