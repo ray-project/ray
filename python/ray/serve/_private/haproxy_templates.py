@@ -228,7 +228,7 @@ frontend http_frontend
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}
-    {%- if backend.ingress_request_router_servers and backend.fallback_server %}
+    {%- if backend.ingress_request_router_servers and backend.fallback_server and not backend.direct_target_configs %}
     http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     {%- endfor %}
@@ -239,6 +239,9 @@ frontend http_frontend
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
+    {%- for direct in backend.direct_target_configs %}
+    use_backend {{ direct.name }} if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_backend) -m str "{{ direct.name }}" }
+    {%- endfor %}
     use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
     {%- if backend.fallback_server %}
     # Pin-miss recovery: route into the router backend, which picks the fallback.
@@ -336,6 +339,45 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} track {{ backend.name or 'unknown' }}/{{ backend.fallback_server.name }} backup
     {%- endif %}
+{%- endif %}
+{%- if has_ingress_request_router %}
+{%- for direct in backend.direct_target_configs %}
+backend {{ direct.name }}
+    log global
+    http-reuse always
+    # One backend per `_direct_http` deployment, holding only that deployment's
+    # replicas. Keeping them separate is the point: a retry or redispatch must
+    # never move a request onto a different deployment's replica, which for
+    # Serve LLM would mean answering with the wrong model.
+    #
+    # Unlike the `-via-ingress-request-router` companion there is no `track`
+    # here, because these replicas appear in no other backend -- this one owns
+    # their health checks.
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_http_keep_alive_s is not none %}
+    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
+    {%- endif %}
+    # Same health-check policy as the app's own backend; `default-server ... check`
+    # is what actually arms the checks on the server lines below.
+    {%- if hc.health_path %}
+    option httpchk GET {{ hc.health_path }}
+    http-check expect status 200
+    {%- endif %}
+    {{ hc.default_server_directive }}
+    {%- for server in direct.servers %}
+    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
+    {%- endfor %}
+    {%- for server in direct.servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }}{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
+    {%- endfor %}
+{%- endfor %}
 {%- endif %}
 {%- endfor %}
 {%- if config.grpc_enabled %}
