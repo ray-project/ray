@@ -23,6 +23,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
@@ -297,6 +298,41 @@ class GcsServerTest : public ::testing::Test {
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), client_timeout_ms_);
+  }
+
+  // Reads a key from the shared KV store, or nullopt if it is absent.
+  std::optional<std::string> InternalKVGet(const std::string &ns,
+                                           const std::string &key) {
+    rpc::InternalKVGetRequest request;
+    request.set_namespace_(ns);
+    request.set_key(key);
+    std::promise<bool> promise;
+    std::optional<std::string> value;
+    client_->InternalKVGet(
+        std::move(request),
+        [&promise, &value](const Status &status, const rpc::InternalKVGetReply &reply) {
+          if (status.ok()) {
+            value = reply.value();
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    return value;
+  }
+
+  void InternalKVDel(const std::string &ns, const std::string &key) {
+    rpc::InternalKVDelRequest request;
+    request.set_namespace_(ns);
+    request.set_key(key);
+    request.set_del_by_prefix(false);
+    std::promise<bool> promise;
+    client_->InternalKVDel(
+        std::move(request),
+        [&promise](const Status &status, const rpc::InternalKVDelReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
   }
 
  protected:
@@ -608,6 +644,184 @@ TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
   release.set_value();
   EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
                                   std::chrono::seconds(30)));
+}
+
+// Owns a GcsServer plus the io_context and thread it runs on, so several servers can
+// coexist in one test process.
+class GcsServerWithThread {
+ public:
+  GcsServerWithThread(const gcs::GcsServerConfig &config,
+                      const gcs::GcsServerMetrics &metrics)
+      : server_(std::make_unique<gcs::GcsServer>(config, metrics, io_service_)) {}
+
+  ~GcsServerWithThread() { Stop(); }
+
+  void Start() {
+    server_->Start();
+    thread_ = std::make_unique<std::thread>([this] {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
+      io_service_.run();
+    });
+  }
+
+  void Stop() {
+    if (!server_) {
+      return;
+    }
+    io_service_.stop();
+    server_->Stop();
+    if (thread_ && thread_->joinable()) {
+      thread_->join();
+    }
+    server_.reset();
+  }
+
+  // Polls until the server finishes DoStart() or the timeout elapses.
+  bool WaitForStarted(std::chrono::seconds timeout) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (server_->IsStarted()) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return server_->IsStarted();
+  }
+
+  gcs::GcsServer &server() { return *server_; }
+  instrumented_io_context &io_service() { return io_service_; }
+
+ private:
+  instrumented_io_context io_service_;
+  std::unique_ptr<gcs::GcsServer> server_;
+  std::unique_ptr<std::thread> thread_;
+};
+
+gcs::GcsServerConfig MakeGcsServerConfig(const std::string &name, bool leader_elect) {
+  gcs::GcsServerConfig config;
+  config.grpc_server_port = 0;
+  config.grpc_server_name = name;
+  config.grpc_server_thread_num = 1;
+  config.redis_address = "127.0.0.1";
+  config.node_ip_address = "127.0.0.1";
+  config.enable_sharding_conn = false;
+  config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+  config.ray_leader_elect_enabled = leader_elect;
+  return config;
+}
+
+// Guards the WriteGcsPid()/WriteAutoscalerV2Flag() extraction: an active GCS must still
+// perform both shared-storage writes during startup.
+TEST_F(GcsServerTest, TestActiveWritesSharedStorage) {
+  EXPECT_TRUE(InternalKVGet("", kGcsPidKey).has_value());
+  EXPECT_TRUE(InternalKVGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey)
+                  .has_value());
+}
+
+// A passive GCS must not perform the active-only shared-storage writes. Both keys are
+// deleted first, so if the passive GCS wrote either one it would reappear: the GCS pid
+// during InitKVManager, the autoscaler-v2 flag during DoStart. Reaching DoStart requires
+// a cluster ID to already exist, which is why the cluster ID itself is covered separately
+// by GcsServerPassiveBootTest below.
+TEST_F(GcsServerTest, TestPassiveDefersSharedStorageWrites) {
+  ASSERT_TRUE(InternalKVGet("", kGcsPidKey).has_value());
+  InternalKVDel("", kGcsPidKey);
+  InternalKVDel(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey);
+  ASSERT_FALSE(InternalKVGet("", kGcsPidKey).has_value());
+
+  GcsServerWithThread passive(MakeGcsServerConfig("MockedPassiveGcsServer",
+                                                  /*leader_elect=*/true),
+                              fake_metrics_);
+  passive.Start();
+  ASSERT_TRUE(passive.WaitForStarted(std::chrono::seconds(30)));
+
+  EXPECT_FALSE(InternalKVGet("", kGcsPidKey).has_value());
+  EXPECT_FALSE(InternalKVGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey)
+                   .has_value());
+
+  passive.Stop();
+}
+
+// A passive GCS boots against storage that an active GCS has already initialized: it
+// adopts the existing cluster ID, serves health checks, and reports is_leader=false.
+TEST_F(GcsServerTest, TestPassiveServerReadiness) {
+  // The fixture's active GCS has already written the cluster ID.
+  ASSERT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
+                                  std::chrono::seconds(10)));
+
+  gcs::GcsServerConfig passive_config =
+      MakeGcsServerConfig("MockedPassiveGcsServer", /*leader_elect=*/true);
+
+  GcsServerWithThread passive(passive_config, fake_metrics_);
+  passive.Start();
+  ASSERT_TRUE(passive.WaitForStarted(std::chrono::seconds(30)));
+
+  EXPECT_FALSE(passive.server().IsLeader());
+  // It adopted the active GCS's cluster ID rather than minting a new one.
+  EXPECT_EQ(passive.server().GetClusterId(), gcs_server_->GetClusterId());
+
+  rpc::ClientCallManager passive_call_manager(
+      passive.io_service(), /*record_stats=*/false, /*local_address=*/"");
+  rpc::GcsRpcClient passive_client(
+      "0.0.0.0", passive.server().GetPort(), passive_call_manager);
+
+  std::promise<bool> promise;
+  std::optional<bool> is_leader;
+  passive_client.CheckAlive(
+      rpc::CheckAliveRequest(),
+      [&promise, &is_leader](const Status &status, const rpc::CheckAliveReply &reply) {
+        RAY_CHECK_OK(status);
+        if (reply.has_is_leader()) {
+          is_leader = reply.is_leader();
+        }
+        promise.set_value(true);
+      });
+  ASSERT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  ASSERT_TRUE(is_leader.has_value());
+  EXPECT_FALSE(*is_leader);
+
+  passive.Stop();
+}
+
+// Fixture with no active GCS, so storage starts without a cluster ID. Without the base
+// fixture there is no RPC client either, so tests here assert on server state rather
+// than by reading the KV store.
+class GcsServerPassiveBootTest : public GcsServerTest {
+ public:
+  // Skip the base SetUp: it starts an active GCS, which would write the cluster ID.
+  void SetUp() override { TestSetupUtil::FlushAllRedisServers(); }
+  void TearDown() override {}
+};
+
+// A passive GCS must never write the cluster ID. With no active leader it stays
+// unstarted, and it only proceeds once a leader writes one.
+TEST_F(GcsServerPassiveBootTest, TestPassiveWaitsForClusterIdAndNeverWritesIt) {
+  GcsServerWithThread passive(MakeGcsServerConfig("MockedPassiveGcsServer",
+                                                  /*leader_elect=*/true),
+                              fake_metrics_);
+  passive.Start();
+
+  // Had the passive GCS written a cluster ID, it would have finished starting. The
+  // cluster-ID retry runs every second, so this window covers several attempts.
+  EXPECT_FALSE(passive.WaitForStarted(std::chrono::seconds(5)));
+
+  GcsServerWithThread active(MakeGcsServerConfig("MockedActiveGcsServer",
+                                                 /*leader_elect=*/false),
+                             fake_metrics_);
+  active.Start();
+  ASSERT_TRUE(active.WaitForStarted(std::chrono::seconds(30)));
+  ASSERT_TRUE(active.server().IsLeader());
+
+  // The passive GCS picks up the ID the active leader wrote and finishes starting.
+  EXPECT_TRUE(passive.WaitForStarted(std::chrono::seconds(30)));
+  EXPECT_FALSE(passive.server().IsLeader());
+  EXPECT_EQ(passive.server().GetClusterId(), active.server().GetClusterId());
+
+  passive.Stop();
+  active.Stop();
+  rpc::DrainServerCallExecutor();
+  rpc::ResetServerCallExecutor();
 }
 
 }  // namespace ray
