@@ -146,9 +146,9 @@ def _make_join_reduce_fn(
         target_key_col_names: Tuple[str, ...],
     ) -> "pa.Table":
         return (
-            table.select(source_key_col_names)
+            table.select(list(source_key_col_names))
             .schema.empty_table()
-            .rename_columns(target_key_col_names)
+            .rename_columns(list(target_key_col_names))
         )
 
     def _reduce(
