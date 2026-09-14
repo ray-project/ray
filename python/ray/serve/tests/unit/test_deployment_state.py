@@ -10914,5 +10914,50 @@ def test_compaction_keeps_external_draining_nodes(mock_deployment_state_manager)
     } == {compacting_node, other_node}
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_keeps_drain_deadline_of_compacting_node(
+    mock_deployment_state_manager,
+):
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # node1: 2/3, node2: 1/3 -> node2 gets compacted.
+    dsm.update()
+    replicas = ds._replicas.get()
+    for replica, node in zip(replicas, [node1, node1, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
+
+    # The compacting node starts a real drain. Its deadline must win over the
+    # compaction's infinite deadline.
+    cluster_node_info_cache.draining_nodes = {node2: 10**12}
+    with patch.object(
+        ds,
+        "migrate_replicas_on_draining_nodes",
+        wraps=ds.migrate_replicas_on_draining_nodes,
+    ) as migrate:
+        dsm.update()
+    migrate.assert_called_once()
+    assert migrate.call_args.args[0] == {node2: 10**12}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

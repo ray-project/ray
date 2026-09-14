@@ -6581,7 +6581,8 @@ class DeploymentStateManager:
             )
             if node_info:
                 target_node_id, deadline = node_info
-                draining_nodes = {**draining_nodes, target_node_id: deadline}
+                # A real drain of the compacting node keeps its own deadline.
+                draining_nodes = {target_node_id: deadline, **draining_nodes}
 
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
