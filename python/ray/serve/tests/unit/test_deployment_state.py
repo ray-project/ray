@@ -9779,6 +9779,50 @@ class TestGangDraining:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    def test_unplaced_starting_replicas_stopped(self, mock_deployment_state_manager):
+        """A STARTING gang member with no node yet is stopped with its gang."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        create_dsm, timer, cache, _ = mock_deployment_state_manager
+        cache.add_node(node_1)
+        cache.add_node(node_2)
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        timer.reset(0)
+        info, v1 = deployment_info(
+            num_replicas=num_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock()],
+                    gang_ids=["gang_0"],
+                    gang_pg_names=["SERVE_GANG::pg-0"],
+                )
+            }
+        )
+        dsm.update()
+
+        # Only one member has a node so far. The other is still unplaced.
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        replicas[0]._actor.set_node_id(None)
+        replicas[1]._actor.set_node_id(node_2)
+        assert replicas[0].actor_node_id is None
+
+        # Draining node_2 must stop the whole gang, the unplaced member included.
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == gang_size
+        assert ds._replicas.count(states=[ReplicaState.STARTING]) == 0
+
     def test_gang_excess_migration_stops_complete_gangs(
         self, mock_deployment_state_manager
     ):

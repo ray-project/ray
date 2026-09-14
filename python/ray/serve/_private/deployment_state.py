@@ -5623,7 +5623,10 @@ class DeploymentState:
             # starting. Leave it alone: once it's RUNNING the scheduler sees a
             # new replica on the target and cancels the compaction. Stopping it
             # here would restart it every update until the compaction times out.
-            elif replica.actor_node_id == compacting_node_id:
+            elif (
+                compacting_node_id is not None
+                and replica.actor_node_id == compacting_node_id
+            ):
                 self._replicas.add(replica.actor_details.state, replica)
             # For replicas that are STARTING or UPDATING, might as
             # well terminate them immediately to allow replacement
