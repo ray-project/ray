@@ -64,17 +64,14 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
-# Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e.
-# This happens to match SINGLE_CORE_TPU_TYPES today, but the two are independent facts.
+# Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 
 # Topologies that are always sub-host or single-host
 TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
-# Generations with a single TensorCore per chip. This also decides how the
-# accelerator type suffix is read: it counts TensorCores for the two-core
-# generations (v3-8 and v4-8 are both 4 chips) and chips for these
-# single-core ones (v6e-8 is 8 chips). See get_total_chips_from_accelerator_type.
+# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
+# Accelerators that are 1 core per chip: v5e, v6e
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 
 # The valid TPU types.
@@ -618,35 +615,28 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
-    """Normalize a TPU accelerator type string to the standard 'v{gen}' format."""
+    """Rewrite a TPU generation prefix to its canonical "v{gen}" spelling.
+
+    Only the prefix changes: "TPU-V7X" -> "v7x", "tpu7x-8" -> "v7x-8". Ray's
+    topology tables are keyed by that spelling, and its accelerator resource
+    names are built from it.
+    """
     if not accelerator_type:
         return ""
-    s = str(accelerator_type).strip().lower()
-    if s.startswith("tpu-v"):
-        return s[4:]
-    if s.startswith("tpu-"):
-        return "v" + s[4:]
-    if s.startswith("tpuv"):
-        return s[3:]
-    if s.startswith("tpu"):
-        return "v" + s[3:]
-    return s
+    return re.sub(r"^tpu-?v?", "v", accelerator_type.strip().lower())
 
 
 def get_tpu_resource_per_chip() -> int:
     """Return the number of Ray TPU resources per physical chip (defaults to 1).
 
-    A chip does not always expose a single logical XLA device: v4 and v5p fuse
-    their two TensorCores into one device (MegaCore) and v5e and v6e have one
-    TensorCore, but v2, v3, and v7x expose two devices per chip. Ray does not
-    infer this, since accounting per device would double the TPU resource count
-    of existing nodes. Workloads that want to allocate per logical device opt in
-    by setting RAY_TPU_RESOURCE_PER_CHIP.
+    Some generations expose 2 logical XLA devices per chip (e.g. v7x). Counting
+    per device would change the TPU resource count of existing nodes, so
+    per-device allocation is opt-in via RAY_TPU_RESOURCE_PER_CHIP.
     """
     value = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
     if value is None:
         return 1
-    if not value.isdigit() or int(value) < 1:
+    if not value.isdecimal() or int(value) < 1:
         raise ValueError(
             f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, "
             f"got: {value!r}"
@@ -823,6 +813,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         num_accelerators_on_node = (
             TPUAcceleratorManager.get_current_node_num_accelerators()
         )
+        # When autodetected, resource_and_label_spec caps a node's TPU resources
+        # at this count, so an allocation matching it holds the whole node.
         if len(visible_tpu_chips) == num_accelerators_on_node:
             # Let the ML framework use the defaults
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
@@ -830,8 +822,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
-        # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1 (e.g. v7x exposes
-        # 2 devices per chip), so collapse the IDs back onto their chips.
+        # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
         resource_per_chip = get_tpu_resource_per_chip()
         if resource_per_chip == 1:
             physical_chips = visible_tpu_chips
@@ -840,14 +831,14 @@ class TPUAcceleratorManager(AcceleratorManager):
                 {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
             )
             if len(visible_tpu_chips) != len(physical_chips) * resource_per_chip:
-                # A chip can only be masked as a whole, so handing out part of
-                # one would let two tasks drive the same chip.
+                # Otherwise two tasks would end up driving the same chip.
                 raise ValueError(
                     f"TPU allocation {list(visible_tpu_chips)} does not map onto "
                     f"whole chips ({RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR}="
                     f"{resource_per_chip}). A chip is only maskable as a whole, "
                     f"so TPU must be requested in multiples of {resource_per_chip}."
                 )
+
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join(str(chip) for chip in physical_chips)
@@ -995,24 +986,13 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         """
 
-        def tpu_pod_type_to_ray_accelerator_type(
-            tpu_pod_type: str,
-        ) -> str:
-            gen = normalize_tpu_accelerator_type(tpu_pod_type).split("-")[0]
-            return f"TPU-{gen.upper()}"
-
-        ray_accelerator_type = None
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
-
-        if tpu_pod_type is not None:
-            ray_accelerator_type = tpu_pod_type_to_ray_accelerator_type(
-                tpu_pod_type=tpu_pod_type
-            )
-
-        if ray_accelerator_type is None:
+        if tpu_pod_type is None:
             logging.info("Failed to auto-detect TPU type.")
+            return None
 
-        return ray_accelerator_type
+        tpu_version = normalize_tpu_accelerator_type(tpu_pod_type).split("-")[0]
+        return f"TPU-{tpu_version.upper()}"
 
     @staticmethod
     def get_current_node_additional_resources() -> Optional[Dict[str, float]]:

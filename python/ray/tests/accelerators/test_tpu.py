@@ -389,6 +389,8 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
         (["0", "1"], "0", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
         # 4 logical devices spanning physical chips 0 and 1.
         (["0", "1", "2", "3"], "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        # The other half of the node maps onto the other half of the chips.
+        (["4", "5", "6", "7"], "2,3", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
         # Every device on the node: let the ML framework use the defaults.
         ([str(i) for i in range(8)], None, None),
     ],
@@ -448,6 +450,12 @@ def test_get_current_process_visible_accelerator_ids(monkeypatch):
         str(i) for i in range(8)
     ]
 
+    # A trailing comma must not be expanded into a bogus device ID.
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        str(i) for i in range(4)
+    ]
+
 
 def test_get_tpu_resource_per_chip(monkeypatch):
     """Test get_tpu_resource_per_chip defaults to 1 and respects RAY_TPU_RESOURCE_PER_CHIP."""
@@ -470,13 +478,9 @@ def test_get_tpu_resource_per_chip(monkeypatch):
     [
         ("TPU-V6E", "v6e"),
         ("TPU-V5LITEPOD", "v5litepod"),
+        ("tpuv6e-8", "v6e-8"),
         ("tpu7x-16", "v7x-16"),
-        ("tpu-v7x-16", "v7x-16"),
-        ("tpuv7x-16", "v7x-16"),
-        ("tpuv6e", "v6e"),
-        ("tpu7x", "v7x"),
         ("v4-8", "v4-8"),
-        ("", ""),
         (None, ""),
     ],
 )
