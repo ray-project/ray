@@ -1528,8 +1528,8 @@ def _annotate_exception_with_retry_context(
     max_attempts: int,
     total_backoff_s: float,
     exception_str: str,
-) -> None:
-    """Append retry context to ``exc`` in place, preserving its type and traceback."""
+) -> BaseException:
+    """Append retry context to ``exc``, preserving its type and traceback."""
     suffix = (
         f"Failed to {description} after {attempts}/{max_attempts} "
         f"attempts (total backoff {total_backoff_s:.1f}s)."
@@ -1551,8 +1551,17 @@ def _annotate_exception_with_retry_context(
             exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
         else:
             exc.args = exc.args + (suffix,)
+        return exc
     except Exception:
-        pass
+        try:
+            new = type(exc)(f"{exc}\n{suffix}")
+            new.__traceback__ = exc.__traceback__
+            new.__cause__ = exc.__cause__
+            new.__context__ = exc.__context__
+            new.__suppress_context__ = exc.__suppress_context__
+            return new
+        except Exception:
+            return exc
 
 
 def iterate_with_retry(
@@ -1612,7 +1621,7 @@ def iterate_with_retry(
                 )
                 time.sleep(backoff)
             else:
-                _annotate_exception_with_retry_context(
+                e = _annotate_exception_with_retry_context(
                     e,
                     description=description,
                     attempts=attempt + 1,
