@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import functools
+import hashlib
 import io
 import json
 import logging
@@ -2101,6 +2102,23 @@ class HAProxyManager(ProxyActorInterface):
         # allowed characters, e.g. `#` -> `-`.
         return self.get_safe_name(
             f"{target_group.protocol.value.lower()}-{target_group.app_name}"
+        )
+
+    def _generate_direct_backend_name(
+        self, app_backend_name: str, deployment_name: str
+    ) -> str:
+        """Backend name for one `_direct_http` deployment of an app.
+
+        The digest is taken over the *raw* deployment name because
+        `get_safe_name` is not injective -- `a:b`, `a b` and `a!b` all collapse to
+        `a_b`, and deployment names carry user-supplied model IDs that routinely
+        contain `/` and `:`. Two backends sharing a name is a fatal HAProxy parse
+        error, which would wedge the node on a stale config, so the collision has
+        to be designed out rather than checked for.
+        """
+        digest = hashlib.sha1(deployment_name.encode()).hexdigest()[:8]
+        return self.get_safe_name(
+            f"{app_backend_name}-direct-{deployment_name}-{digest}"
         )
 
     def _create_backend_config(
