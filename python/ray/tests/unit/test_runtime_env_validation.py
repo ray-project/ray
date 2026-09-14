@@ -146,6 +146,7 @@ class TestValidateWorkingDir:
             "local:///app",
             "local:///path/in/image",
             "local:///app/subdir",
+            "LOCAL:///app",
         ],
     )
     def test_validate_local_uri_valid_input(self, uri):

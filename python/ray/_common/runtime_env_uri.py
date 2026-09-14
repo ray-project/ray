@@ -104,7 +104,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         # There is no package to name: the directory is used in place, so return
         # the path itself.
         prefix = f"{Protocol.LOCAL.value}://"
-        if not pkg_uri.startswith(prefix):
+        if pkg_uri[: len(prefix)].lower() != prefix:
             raise ValueError(
                 f'Invalid "local://" runtime_env URI "{pkg_uri}": a local URI must '
                 "start with local://. Write local:///path/in/image, or "
