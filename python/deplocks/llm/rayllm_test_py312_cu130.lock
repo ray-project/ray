@@ -6190,7 +6190,6 @@ transformers==5.17.0 \
     --hash=sha256:78ec1ce21579b38dfb83950a0658cd119f87212a2fcfdff478096ce9d6c03801 \
     --hash=sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000
     # via
-    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar

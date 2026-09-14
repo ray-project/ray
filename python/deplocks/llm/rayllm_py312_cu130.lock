@@ -5461,7 +5461,6 @@ transformers==5.17.0 \
     --hash=sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
-    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar
