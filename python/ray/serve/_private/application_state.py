@@ -273,6 +273,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._direct_http_deployment_names: List[str] = []
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -350,6 +351,10 @@ class ApplicationState:
         return self._ingress_request_router_deployment_name
 
     @property
+    def direct_http_deployments(self) -> List[str]:
+        return self._direct_http_deployment_names
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -417,6 +422,7 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        direct_http_deployment_names = []
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
@@ -424,6 +430,13 @@ class ApplicationState:
                     ingress_deployment_name = name
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
+                if info.direct_http:
+                    direct_http_deployment_names.append(name)
+
+        # Sorted so the target groups the controller builds from these names are
+        # stable across ticks. Broadcasts are deduped by whole-object equality, so
+        # an unstable order would churn HAProxy reloads.
+        direct_http_deployment_names.sort()
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -451,6 +464,7 @@ class ApplicationState:
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name
         )
+        self._direct_http_deployment_names = direct_http_deployment_names
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -1455,6 +1469,18 @@ class ApplicationStateManager:
             return None
 
         return self._application_states[name].ingress_request_router_deployment
+
+    def get_direct_http_deployment_names(self, name: str) -> List[str]:
+        """Names of the app's deployments that opted in with `_direct_http`.
+
+        These are non-ingress deployments whose replicas own their own HTTP port.
+        Returned sorted; empty for an unknown app or one with no such deployments.
+        """
+        if name not in self._application_states:
+            return []
+
+        # Copied so a caller can't mutate the application's target state.
+        return list(self._application_states[name].direct_http_deployments)
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type

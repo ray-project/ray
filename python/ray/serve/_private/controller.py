@@ -1484,6 +1484,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name="",
                 )
             )
@@ -1497,6 +1498,7 @@ class ServeController:
                         ),
                         app_name="",
                         ingress_request_router_targets=[],
+                        direct_http_targets={},
                         ingress_deployment_name="",
                     )
                 )
@@ -1631,6 +1633,10 @@ class ServeController:
         bypass), its replicas go into ``ingress_request_router_targets`` for Lua
         routing decisions and the app's ingress replicas remain the main
         targets for data plane traffic.
+
+        Non-ingress deployments marked ``_direct_http`` own their own HTTP port;
+        their replicas go into ``direct_http_targets``, keyed by deployment name.
+        TODO (celinaky): better docstring.
         """
         ingress_request_router_deployment_name = (
             self.application_state_manager.get_ingress_request_router_deployment_name(
@@ -1661,9 +1667,28 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        # Deployments that opted in with `_direct_http` own their own HTTP port.
+        # They are published per deployment name so HAProxy can give each its own
+        # backend; a deployment whose replicas have no allocated port yet is left
+        # out entirely rather than published with an empty target list.
+        direct_http_deployment_names = (
+            self.application_state_manager.get_direct_http_deployment_names(app_name)
+        )
+        direct_http_targets = {}
+        for deployment_name in direct_http_deployment_names:
+            targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
+            if targets:
+                direct_http_targets[deployment_name] = targets
+
         target_groups = []
 
         # Create targets for each protocol
+        # TODO (celinaky): possibly rename replica_details variable to specify ingress
         http_targets = self._get_targets_for_protocol(
             replica_details, RequestProtocol.HTTP
         )
@@ -1675,6 +1700,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    direct_http_targets=direct_http_targets,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
@@ -1692,6 +1718,7 @@ class ServeController:
                         targets=grpc_targets,
                         app_name=app_name,
                         ingress_request_router_targets=[],
+                        direct_http_targets={},
                         ingress_deployment_name=ingress_deployment_name,
                     )
                 )
@@ -1732,6 +1759,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
@@ -1743,6 +1771,7 @@ class ServeController:
                     targets=grpc_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
