@@ -134,11 +134,11 @@ Direct streaming uses the deployment's `request_router_config`, so you select a 
 
 If you set `request_router_config`, direct streaming uses it as-is. Otherwise it falls back to `RoundRobinRouter`. For the available policies and how to write your own, see {ref}`routing-policies-guide` and {ref}`custom-request-router-guide`.
 
-### Body-aware routers
+### Body-aware routers and LoRA
 
-Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token (TTFT). Body-independent policies are unaffected. Round-robin and power of two ignore the body, and session-aware policies key on the header instead.
+Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. Direct streaming with {doc}`multi-LoRA <multi-lora>` also requires body forwarding. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token (TTFT). Body-independent policies are unaffected. Round-robin and power of two ignore the body, and session-aware policies key on the header instead.
 
-If your policy needs the body, enable forwarding:
+Enable forwarding for a body-aware policy or direct-streaming multi-LoRA:
 
 ```bash
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
