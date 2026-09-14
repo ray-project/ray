@@ -5,7 +5,7 @@ import requests
 import sys
 
 from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
+from ray.serve.llm import LLMConfig, build_openai_app, build_pd_openai_app
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -205,6 +205,75 @@ def test_lora_requests():
                             assert response.model == requested_model
                             assert response.usage.completion_tokens == 4
                             assert response.choices[0].finish_reason == "length"
+    finally:
+        shutdown_serve_and_wait_for_controller()
+
+
+@direct_streaming_only
+def test_pd_lora_requests():
+    """Serve cold and cached LoRA requests through direct-streaming P/D."""
+    model_id = "llama-test"
+    adapter_id = f"{model_id}:llama-3.2-216M-lora-dummy"
+    config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_id,
+            model_source=dict(bucket_uri="s3://air-example-data/llama-3.2-216M-dummy"),
+        ),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enable_lora=True,
+            max_lora_rank=16,
+            max_model_len=256,
+            gpu_memory_utilization=0.4,
+            enforce_eager=True,
+            kv_transfer_config=dict(kv_connector="NixlConnector", kv_role="kv_both"),
+        ),
+        lora_config=dict(dynamic_lora_loading_path="s3://air-example-data"),
+    )
+    # P/D assigns decode a separate NIXL port.
+    decode_config = config.model_copy(deep=True)
+    try:
+        serve.run(
+            build_pd_openai_app(
+                {
+                    "prefill_config": config,
+                    "decode_config": decode_config,
+                }
+            ),
+            blocking=False,
+        )
+        wait_for_condition(is_default_app_running, timeout=300)
+
+        with openai.OpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="unused",
+            timeout=60,
+            max_retries=0,
+        ) as client:
+            # Resolve the adapter through prefill and decode.
+            response = client.completions.create(
+                model=adapter_id,
+                prompt="Hello",
+                max_tokens=4,
+                temperature=0,
+                stream=False,
+                extra_body={"ignore_eos": True},
+            )
+            assert response.model == adapter_id
+
+            # Exercise a cached adapter in a streamed request.
+            chunks = list(
+                client.completions.create(
+                    model=adapter_id,
+                    prompt="Hello",
+                    max_tokens=4,
+                    temperature=0,
+                    stream=True,
+                    extra_body={"ignore_eos": True},
+                )
+            )
+            assert chunks
+            assert {chunk.model for chunk in chunks} == {adapter_id}
     finally:
         shutdown_serve_and_wait_for_controller()
 
