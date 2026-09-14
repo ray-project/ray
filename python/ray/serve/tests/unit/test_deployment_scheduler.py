@@ -2353,6 +2353,34 @@ class TestActiveCompaction:
         assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
         assert scheduler._compacting_node is None
 
+    def test_compaction_dropped_when_target_node_dies(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # The node goes away with its replica. That's neither a success nor a
+        # failure, so nothing is counted and no backoff starts.
+        cluster_node_info_cache.alive_node_ids.discard("node2")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 0
+        assert scheduler._next_allowed_compaction_timestamp_s == 0
+
     def test_compaction_cancelled(self):
         d_id = DeploymentID(name="deployment1")
 

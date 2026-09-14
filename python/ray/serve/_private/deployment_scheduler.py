@@ -1553,7 +1553,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         new_replicas = current_replicas - info.cached_running_replicas_on_target_node
         now = time.time()
 
-        if new_replicas:
+        if target_node not in self._cluster_node_info_cache.get_active_node_ids():
+            # The node died or a real drain took over, so there is nothing
+            # left to compact and nothing to count as a success or failure.
+            logger.info(
+                f"Dropping compaction of {target_node} because the node is "
+                "no longer active."
+            )
+            self._compacting_node = None
+        elif new_replicas:
             logger.info(
                 f"Canceling compaction of {target_node} because new replicas "
                 f"have been scheduled on {target_node}: {new_replicas}."
