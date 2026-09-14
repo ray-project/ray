@@ -1,4 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.astral.sh/simple/cpu/
 --find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 absl-py==2.4.0 \
@@ -704,7 +705,6 @@ databricks-sdk==0.103.0 \
     --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
     --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   mlflow-tracing
 decorator==5.2.1 \
@@ -2551,7 +2551,6 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
     #   ale-py
     #   contourpy
@@ -3311,7 +3310,6 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   databricks-sdk
     #   google-api-core
     #   googleapis-common-protos
@@ -4284,7 +4282,6 @@ scipy==1.17.1 \
     #   ray
     #   scikit-learn
     #   skops
-    #   torch-cluster
     #   torch-geometric
     #   torch-sparse
     #   xgboost
@@ -4544,7 +4541,7 @@ taskiq-dependencies==1.5.7 \
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
 tensorboard-data-server==0.7.2 \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
@@ -4581,7 +4578,6 @@ tensorflow==2.20.0 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tf-keras
 tensorflow-estimator==2.15.0 \
@@ -4610,7 +4606,6 @@ tf-keras==2.20.0 \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0 \
@@ -4697,32 +4692,32 @@ torch==2.9.0+cpu \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
+    #   torch-scatter
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt29cpu \
-    --hash=sha256:562d2ea316ba0e9173915ae9bc9906eb35455969e6414fa0fe63d08023222a12
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-scatter==2.1.2+pt29cpu \
-    --hash=sha256:ff4aa866c5fde07fa153622df4f833af19ec2335736c1072e8c2c1f48f7d5745
+torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
+    --hash=sha256:2e34f7d83b32512b349e93355b18b1db48e317f30828d7ab717df6628825e000 \
+    --hash=sha256:34a11594df5338600a3fd55986fed088e4186ba56f2524a0a962cc3e40f75a4d \
+    --hash=sha256:51bcef861b61095f1b00f8451fe179fbfa48dc7f03af80dd01f29635090d66eb \
+    --hash=sha256:53ea146be456e3defaec4e70ad482a7c257db9eb8499865dc76ffe8310212cb1 \
+    --hash=sha256:6f9c0cce6e58e94aa9d0db24f9c579c1189973e03e9e1aa57f1e6492694af48d \
+    --hash=sha256:a2ef52eb9376db18986499b226ee54b94e8c1c39bfdf7f0d0a093a95dd3d3f4a \
+    --hash=sha256:b158c84bbff4554fc244f89e920ccfb2a437e13eb905d16d8b53c911dab467ad \
+    --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
+    --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
+    --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt29cpu \
+torch-sparse==0.6.18+pt29cpu ; sys_platform == 'linux' \
     --hash=sha256:e1434c9ebe78727576ddbd279b2322a81e97060c31ef97145f47db173d81ef93
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2+pt29cpu \
-    --hash=sha256:2155b53ae8bf02d40522a4567eb8a7ba8e1c26d605323b3774fd7b0055ec3400
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt

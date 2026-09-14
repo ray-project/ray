@@ -1,10 +1,13 @@
+import asyncio
 import copy
 import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +16,7 @@ import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
@@ -1908,6 +1912,40 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=20)
+
+
+def test_export_processes_metrics_off_event_loop() -> None:
+    request = metrics_service_pb2.ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+    histogram = scope_metrics.metrics.add()
+    histogram.histogram.data_points.add().count = 1
+    gauge = scope_metrics.metrics.add()
+    gauge.gauge.data_points.add().as_double = 1.0
+
+    agent = object.__new__(ReporterAgent)
+    metric_calls: list[tuple[str, int]] = []
+
+    def record_histogram(_: object) -> None:
+        metric_calls.append(("histogram", threading.get_ident()))
+
+    def record_number(_: object) -> None:
+        metric_calls.append(("number", threading.get_ident()))
+
+    agent._export_histogram_data = record_histogram
+    agent._export_number_data = record_number
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        agent._otlp_ingest_executor = executor
+        asyncio.run(
+            ReporterAgent.Export(
+                agent,
+                request=request,
+                context=MagicMock(),
+            )
+        )
+
+    assert [kind for kind, _ in metric_calls] == ["histogram", "number"]
+    assert all(thread_id != threading.get_ident() for _, thread_id in metric_calls)
 
 
 if __name__ == "__main__":

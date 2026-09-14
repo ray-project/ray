@@ -1,7 +1,7 @@
 """End-to-end reads through the footer-based Parquet chunking path.
 
-Drives ``FooterFileIndexer`` via ``ray.data.read_parquet`` with the opt-in flag
-on, covering predicate / limit / projection push-down. The pure-logic pieces
+Drives ``FooterFileIndexer`` via ``ray.data.read_parquet``, covering
+predicate / limit / projection push-down. The pure-logic pieces
 (coalescing, bin packing) are unit-tested in
 ``python/ray/data/tests/unit/datasource_v2/test_online_bin_packer.py``.
 """
@@ -18,13 +18,12 @@ _N_FILES = 3
 
 @pytest.fixture
 def footer_parquet(tmp_path, monkeypatch):
-    """Write a small multi-row-group Parquet dataset; enable the footer path."""
+    """Write a small multi-row-group Parquet dataset."""
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     from ray.data.context import DataContext
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "2")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
 
@@ -96,7 +95,6 @@ def nullable_parquet(tmp_path, monkeypatch):
 
     from ray.data.context import DataContext
 
-    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "2")
     monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
 

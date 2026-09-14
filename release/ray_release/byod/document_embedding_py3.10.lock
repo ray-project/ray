@@ -901,14 +901,6 @@ cython==0.29.37 \
     # via
     #   -r docker/base-deps/requirements.in
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
-daft==0.6.2 \
-    --hash=sha256:15255efeea9125ebf96059c79cc2b13325ca6ee4bbe5ab874095df6678806ab2 \
-    --hash=sha256:32715f6ae22adf183828e6ffa662959e3c76ddf1b080c4322c80445c8c9c0911 \
-    --hash=sha256:3fb7a2205cd5a32de84767d4fa1504190a64f28a30a6528585139de9b0d57541 \
-    --hash=sha256:52a524ea9ee304cd5b86dc3556953b9b223ba4f2bd921b62aeaf8f9f5255471e \
-    --hash=sha256:62611f550ce9462c6705c96430611f8fd721f46c74bd76a9ccc8874e9e9a88cd \
-    --hash=sha256:b999ae174b92c82994a93eaff3f7735560cff83af10d0e9d349dc2434839099f
-    # via -r release/nightly_tests/multimodal_inference_benchmarks/document_embedding/requirements.in
 dataclasses-json==0.5.14 \
     --hash=sha256:5ec6fed642adb1dbdb4182badb01e0861badfd8fda82e3b67f44b2d1e9d10d21 \
     --hash=sha256:d82896a94c992ffaf689cd1fafc180164e2abdd415b8f94a7f78586af5886236
@@ -1246,7 +1238,6 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   adlfs
-    #   daft
     #   gcsfs
     #   huggingface-hub
     #   petastorm
@@ -3631,7 +3622,6 @@ pyarrow==19.0.1 \
     --hash=sha256:fd44d66093a239358d07c42a91eebf5015aa54fccba959db899f932218ac9cc8
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
-    #   daft
     #   petastorm
     #   ray
 pyasn1==0.5.1 \
@@ -4719,7 +4709,6 @@ tqdm==4.67.1 \
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
     #   anyscale
-    #   daft
     #   huggingface-hub
     #   sentence-transformers
     #   transformers
@@ -4773,7 +4762,6 @@ typing-extensions==4.15.0 \
     #   azure-core
     #   azure-identity
     #   azure-storage-blob
-    #   daft
     #   exceptiongroup
     #   fastapi
     #   gymnasium

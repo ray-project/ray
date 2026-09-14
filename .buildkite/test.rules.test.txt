@@ -229,8 +229,13 @@ doc/test_myst_doc.py: core_doc
 doc/source/_intersphinx/python.inv: doc
 doc/source/_intersphinx/refresh.py: doc
 doc/source/_intersphinx/README.md:
-python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
-ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
+# A docs-only deplock change runs the docbuild, the API-consistency checks, and
+# the `raydepsets --check` lock-consistency job (via `deplock_check`), but not
+# the wheel/image build matrix: the docs lock feeds only the Sphinx docbuild
+# image and is never installed into a Ray wheel, so it emits `deplock_check`
+# rather than `python_dependencies`.
+python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
+ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
 # Redirect YAML selects the dedicated lightweight check and nothing else: no
 # docbuild, no API checks, no per-team doc tests. The README beside it is prose
 # and stays unrouted, which is what the second case locks in.
