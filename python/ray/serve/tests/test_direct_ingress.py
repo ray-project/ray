@@ -315,6 +315,104 @@ def test_basic(_skip_if_ff_not_enabled, serve_instance):
         channel.close()
 
 
+def _replica_details(app_name: str, deployment_name: str):
+    """Running replica details for one deployment, via the controller."""
+    client = _get_global_client()
+    return ray.get(
+        client._controller._get_running_replica_details_for_deployment.remote(
+            app_name, deployment_name
+        )
+    )
+
+
+def _replica_http_port(app_name: str, deployment_name: str):
+    """The direct-ingress HTTP port the controller tracks for a replica."""
+    client = _get_global_client()
+    details = _replica_details(app_name, deployment_name)
+    assert len(details) == 1, details
+    replica_detail = details[0]
+    if not ray.get(
+        client._controller._is_port_allocated.remote(
+            replica_detail, RequestProtocol.HTTP
+        )
+    ):
+        return None
+    return ray.get(
+        client._controller._get_port.remote(replica_detail, RequestProtocol.HTTP)
+    )
+
+
+@serve.deployment
+class DirectChild:
+    def __call__(self, request):
+        return PlainTextResponse("from-direct-child")
+
+
+@serve.deployment
+class ParentIngress:
+    def __init__(self, child):
+        self._child = child
+
+    def __call__(self, request):
+        return PlainTextResponse("from-ingress")
+
+
+def test_direct_http_non_ingress_deployment_gets_own_server(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """A non-ingress deployment marked `_direct_http` serves HTTP on its own port.
+
+    Nothing routes to that port yet (it is absent from the target groups), but the
+    replica owns a real socket and the controller tracks its port.
+    """
+    serve.run(
+        ParentIngress.bind(DirectChild.options(_direct_http=True).bind()),
+        name=SERVE_DEFAULT_APP_NAME,
+    )
+
+    child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
+    assert child_port is not None
+
+    # The child answers directly on its own socket, bypassing the ingress.
+    r = httpx.get(f"http://localhost:{child_port}/")
+    r.raise_for_status()
+    assert r.text == "from-direct-child"
+
+    # The app's front door still routes to the ingress deployment.
+    for http_url in get_application_urls("HTTP"):
+        r = httpx.get(http_url)
+        r.raise_for_status()
+        assert r.text == "from-ingress"
+
+
+def test_direct_http_port_not_in_target_groups(_skip_if_ff_not_enabled, serve_instance):
+    """Scope boundary: the flag grants a port, not HAProxy routing.
+
+    Wiring these replicas into target groups is a later phase; this test pins the
+    current boundary so that change is deliberate rather than accidental.
+    """
+    serve.run(
+        ParentIngress.bind(DirectChild.options(_direct_http=True).bind()),
+        name=SERVE_DEFAULT_APP_NAME,
+    )
+
+    child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
+    assert child_port is not None
+    assert child_port not in get_http_ports(first_only=False)
+
+
+def test_without_direct_http_non_ingress_has_no_port(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """Negative control: the same app without the flag gives the child no port."""
+    serve.run(
+        ParentIngress.bind(DirectChild.bind()),
+        name=SERVE_DEFAULT_APP_NAME,
+    )
+
+    assert _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild") is None
+
+
 def test_internal_server_error(_skip_if_ff_not_enabled, serve_instance):
     serve.run(Hybrid.bind(raise_error=True))
 

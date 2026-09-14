@@ -603,6 +603,10 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def http_port(self) -> Optional[int]:
+        return self._http_port
+
+    @property
     def node_ip(self) -> Optional[str]:
         return None
 
@@ -676,6 +680,9 @@ class MockReplicaActorWrapper:
 
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
+
+    def set_http_port(self, http_port: int):
+        self._http_port = http_port
 
     def start(
         self,
