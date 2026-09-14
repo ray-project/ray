@@ -341,13 +341,17 @@ class TestLearner(unittest.TestCase):
         timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
 
         def check_skipped(results):
-            results = results[ALL_MODULES]
-            self.assertEqual(1, results[LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME])
+            all_modules = results[ALL_MODULES]
             self.assertEqual(
-                0, results.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
+                1, all_modules[LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
             )
-            self.assertEqual(0, results[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
-            self.assertTrue(learner.TOTAL_LOSS_KEY not in results[DEFAULT_MODULE_ID])
+            self.assertEqual(
+                0, all_modules.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
+            )
+            self.assertEqual(0, all_modules[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
+            # The module is still reported on (its learning rate is logged every
+            # update), but with no gradient step there is no loss.
+            self.assertNotIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
 
         # Both ways an empty batch reaches `update()`.
         check_skipped(
