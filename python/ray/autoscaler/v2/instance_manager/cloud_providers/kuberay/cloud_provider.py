@@ -698,7 +698,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         return self._k8s_api_client.patch(remote_path, payload)
 
     def _evaluate_no_driver_termination(self) -> None:
-        """Patches the no-driver-TTL annotation once no driver held for the timeout.
+        """Apply idleTerminationOptions.policy once no driver held for the timeout.
 
         Detached actors do not count as a driver.
         """
