@@ -245,6 +245,14 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Persist this GCS server's pid to shared storage (used for GCS process metrics).
+  /// Active GCS only; a passive GCS defers this until promotion.
+  void WriteGcsPid();
+
+  /// Persist the autoscaler-v2 feature flag to shared storage.
+  /// Active GCS only; a passive GCS defers this until promotion.
+  void WriteAutoscalerV2Flag();
+
   /// Initialize KV service.
   void InitKVService();
 
