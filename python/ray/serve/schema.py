@@ -1777,6 +1777,15 @@ class ControllerHealthMetrics(BaseModel):
             "(rolling window, ms)."
         ),
     )
+
+    columnar_decode_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decode time for columnar metric reports (rolling window, ms). "
+            "Separate from metrics_decompress_duration_ms so the two wire formats "
+            "stay comparable."
+        ),
+    )
     handle_reports_received: int = Field(
         default=0, description="Total handle metric reports ingested since start."
     )
