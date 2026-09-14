@@ -8,7 +8,7 @@ index 5ea35f4cb..000000000 100644
                  sampling_params.max_tokens = self.model_config.max_model_len - seq_len
 
 +            generation_config = self.generation_config_fields
-+            model_eos_token_ids = self.model_config.hf_config.eos_token_id
++            model_eos_token_ids = self.model_config.hf_text_config.eos_token_id
 +            if (
 +                self.model_config.generation_config == "auto"
 +                and model_eos_token_ids is not None
