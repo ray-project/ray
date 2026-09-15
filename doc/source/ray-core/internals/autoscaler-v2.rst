@@ -89,19 +89,24 @@ Bin Packing and Worker Group Selection
 The autoscaler applies the following scoring logic to evaluate each existing node. It selects the node with the highest score and assigns it a subset of feasible demands.
 It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
 
-`Scoring <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L430>`__ is based on a tuple of four values:
+`Scoring <https://github.com/ray-project/ray/blob/d3febe7397071c9993aafc1b33a0d5059ea2cc4c/python/ray/autoscaler/v2/scheduler.py#L631>`__ in the current implementation is based on a tuple of five values, compared in order:
 
-1. Whether the node is a GPU node and whether feasible requests require GPUs:
+1. Whether the node's labels match the feasible requests' label selectors:
+
+   - ``0`` if no label selectors match or no label selectors are provided.
+   - ``len(label_selectors) - i`` for a matching selector at index ``i`` (zero-based), giving earlier selectors higher priority.
+2. Whether the node is a GPU node and whether feasible requests require GPUs:
 
    - ``0`` if the node is a GPU node and requests do **not** require GPUs.
    - ``1`` if the node isn't a GPU node or requests do require GPUs.
-2. The number of resource types on the node used by feasible requests.
-3. The minimum `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
-4. The average `utilization rate <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L481-L489>`__ across all resource types used by feasible requests.
+3. The number of resource types on the node used by feasible requests.
+4. The minimum `weighted utilization <https://github.com/ray-project/ray/blob/d3febe7397071c9993aafc1b33a0d5059ea2cc4c/python/ray/autoscaler/v2/scheduler.py#L691-L700>`__ across the node's resource types with nonzero total capacity.
+5. The average `weighted utilization <https://github.com/ray-project/ray/blob/d3febe7397071c9993aafc1b33a0d5059ea2cc4c/python/ray/autoscaler/v2/scheduler.py#L691-L700>`__ across the node's resource types with nonzero total capacity.
 
 .. note::
 
    Utilization rate used by feasible requests is calculated as the difference between the total and available resources divided by the total resources.
+   The scoring uses ``total * utilization_rate ** 3`` for each resource type, including unused resource types with a utilization rate of zero.
 
 
 In other words:
@@ -117,7 +122,7 @@ Example:
   - A: [GPU: 6]
   - B: [GPU: 2, TPU: 1]
 
-Node type **A** should be selected, since node B would leave an unused TPU (with a utilization rate of 0% on TPU), making it less favorable with respect to the third scoring criterion.
+Node type **A** should be selected, since node B would leave an unused TPU (with a utilization rate of 0% on TPU), making it less favorable with respect to the fourth scoring criterion.
 
 This process repeats until all feasible pending demands are packed or the maximum cluster size is reached.
 

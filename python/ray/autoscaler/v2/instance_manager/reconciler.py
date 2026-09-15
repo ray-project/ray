@@ -259,9 +259,8 @@ class Reconciler:
         that are needed and updating the instance manager's state.
 
         Specifically, we will:
-            1. Shut down leak cloud instances
-                Leaked cloud instances that are not managed by the instance manager.
-            2. Terminating instances with ray stopped or ray install failure.
+            1. Reconcile IM instances whose ray nodes are missing from GCS.
+            2. Handle any stuck instances with timeouts.
             3. Scale down the cluster:
               (* -> RAY_STOP_REQUESTED/TERMINATING)
                 b. Extra cloud due to max nodes config.
@@ -270,13 +269,13 @@ class Reconciler:
               (new QUEUED)
                 Create new instances based on the IResourceScheduler's decision for
                 scaling up.
-            5. Request cloud provider to launch new instances.
+            5. Terminating instances with ray stopped or ray install failure.
+            6. Request cloud provider to launch new instances.
               (QUEUED -> REQUESTED)
-            6. Install ray
+            7. Install ray
               (ALLOCATED -> RAY_INSTALLING)
                 When ray could be installed and launched.
-            7. Reconcile IM instances whose ray nodes are missing from GCS.
-            8. Handle any stuck instances with timeouts.
+            8. Populate the autoscaling state for reporting.
 
         Args:
             autoscaling_state: The autoscaling state populated by this reconcile loop.
