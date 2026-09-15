@@ -14,6 +14,7 @@
 
 #include "ray/stats/metric.h"
 
+#include <chrono>
 #include <memory>
 
 #include "opencensus/stats/measure_registry.h"
@@ -241,6 +242,15 @@ void Sum::RegisterView() {
           .set_aggregation(opencensus::stats::Aggregation::Sum());
 
   internal::RegisterAsView(view_descriptor, tag_keys_);
+}
+
+bool FlushMetrics(int64_t timeout_ms) {
+  if (StatsConfig::instance().IsStatsDisabled() ||
+      !RayConfig::instance().enable_open_telemetry()) {
+    return false;
+  }
+  return OpenTelemetryMetricRecorder::GetInstance().ForceFlush(
+      std::chrono::milliseconds(timeout_ms));
 }
 
 }  // namespace stats

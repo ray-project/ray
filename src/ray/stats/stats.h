@@ -127,6 +127,10 @@ static inline void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
+// A short report cadence must not shrink the per-export deadline: the exporter uses
+// delta temporality, so a timed-out export drops its samples rather than retrying.
+constexpr int64_t kMinMetricsExportTimeoutMs = 5000;
+
 static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
@@ -141,10 +145,11 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=, set the timeout to be half of the interval to avoid potential request
-         queueing.*/
-      std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
+      /*timeout=, half the interval avoids request queueing, floored so a short
+         report cadence cannot leave the export deadline too tight to meet.*/
+      std::chrono::milliseconds(std::max(
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval()),
+          kMinMetricsExportTimeoutMs)));
 }
 
 static inline void ConnectOpenCensusExporter(const int metrics_agent_port) {
