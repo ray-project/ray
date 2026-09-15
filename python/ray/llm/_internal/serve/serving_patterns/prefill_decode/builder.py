@@ -187,7 +187,8 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                server=decode_deployment, llm_config=pd_config.decode_config
+                servers={pd_config.decode_config.model_id: decode_deployment},
+                llm_config=pd_config.decode_config,
             )
         )
 
