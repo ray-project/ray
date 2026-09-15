@@ -3,30 +3,27 @@
 Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
 
-The usage payload for each execution is assembled by :class:`UsageCallback`
-this module owns the process-global buffer of recent executions and the builder functions
-collecting usage data.
+The usage payload for each execution is assembled by :class:`UsageCallback`;
+this module owns the builder functions collecting usage data and forwards each
+entry to the cluster-wide :class:`UsageCollectionActor`, which owns the buffer of
+recent executions and is the single writer of the GCS tag.
 """
 
 import hashlib
 import importlib.metadata
-import json
 import logging
 import os
-import threading
 from collections import OrderedDict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
-from ray._common.usage.usage_lib import (
-    TagKey,
-    record_extra_usage_tag,
-    usage_stats_enabled,
-)
+import ray
+from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
+from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
 from ray.data._internal.usage.util import (
     anonymize_op_name,
     query_prometheus_counter,
@@ -136,14 +133,6 @@ OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
 
-# Bounded buffer of recent executions. OrderedDict so eviction picks the
-# oldest-inserted entry
-_MAX_EXECUTIONS_TO_TRACK = 100
-
-# Module state. Mutations are serialized through ``_lock``.
-_executions: "OrderedDict[str, UsageInfo]" = OrderedDict()
-_lock = threading.Lock()
-
 
 def usage_collection_disabled() -> bool:
     """True when the user has opted out of usage stats (via
@@ -222,7 +211,8 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
 
 
 def record_usage_info(info: UsageInfo) -> None:
-    """Buffer ``info`` (evicting the oldest entry when full) and flush the whole
+    """Forward ``info`` to the cluster-wide ``UsageCollectionActor``, which
+    buffers it (evicting the oldest entry when full) and flushes the merged
     buffer to GCS via ``record_extra_usage_tag``.
 
     The callback calls this both before execution starts (so attempted
@@ -236,17 +226,14 @@ def record_usage_info(info: UsageInfo) -> None:
     if usage_collection_disabled():
         return
     try:
-        with _lock:
-            if (
-                info.id not in _executions
-                and len(_executions) >= _MAX_EXECUTIONS_TO_TRACK
-            ):
-                _executions.popitem(last=False)
-            _executions[info.id] = info
-            payload = _serialize_locked()
-        record_extra_usage_tag(TagKey.DATA_USAGE, payload)
+        _send_to_usage_actor(info)
     except Exception:
         logger.debug("Failed to record usage info", exc_info=True)
+
+
+def _send_to_usage_actor(info: UsageInfo) -> None:
+    """Fire-and-forget the entry to the actor; never blocks the executor."""
+    get_or_create_usage_collection_actor().record_usage_info.remote(info)
 
 
 def build_usage_id_map(
@@ -318,11 +305,6 @@ def collect_issues(
         Issue(issue_type=issue_type.value, operator=operator)
         for issue_type, operator in detected_issues
     ]
-
-
-def _serialize_locked() -> str:
-    """Serialize current state to JSON. Caller must hold ``_lock``."""
-    return json.dumps({"executions": [asdict(e) for e in _executions.values()]})
 
 
 def collect_env() -> EnvInfo:
@@ -446,12 +428,10 @@ def _format_plan_str(
 
 
 def reset_for_testing() -> None:
-    """Reset module state. Tests only."""
-    with _lock:
-        _executions.clear()
+    """Reset the actor's buffer. Tests only; requires a running cluster."""
+    ray.get(get_or_create_usage_collection_actor().reset.remote())
 
 
 def get_executions() -> "OrderedDict[str, UsageInfo]":
-    """Get the current executions. Tests only."""
-    with _lock:
-        return _executions.copy()
+    """Get the actor's current executions. Tests only; requires a running cluster."""
+    return ray.get(get_or_create_usage_collection_actor().get_executions.remote())
