@@ -39,6 +39,19 @@ install_runsc() {
             wget_options="-nv"
         fi
 
+        # bzip2 is required to extract the .tar.bz2 archive but isn't present on
+        # minimal images (e.g. ubuntu:jammy). Install it if missing, otherwise
+        # the extract fails silently and sandbox tests skip instead of running.
+        # This may need sudo independently of INSTALL_DIR (e.g. non-root CI image).
+        if ! command -v bzip2 > /dev/null 2>&1; then
+            local apt_sudo=""
+            if [ "$(id -u)" -ne 0 ]; then
+                apt_sudo="sudo"
+            fi
+            ${apt_sudo} apt-get update
+            ${apt_sudo} apt-get install -y bzip2
+        fi
+
         # Download the tarball to a temp file so the large archive never lands
         # in INSTALL_DIR (e.g. /usr/local/bin).
         local tmp_tarball
