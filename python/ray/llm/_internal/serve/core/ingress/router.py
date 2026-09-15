@@ -170,6 +170,13 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
 
+    # No application ingress to route to, and so no ingress-owned routes to
+    # match against. Class-level defaults for the same reason as the flags
+    # above: a router built without __init__ (as the unit tests do, to skip the
+    # handle setup) still takes the model-selection path rather than raising.
+    _ingress: Optional[DeploymentHandle] = None
+    _ingress_routes = None
+
     async def __init__(
         self,
         servers: Dict[str, DeploymentHandle],
@@ -185,8 +192,7 @@ class LLMRouter:
         # Application ingress, when it is a separate deployment that owns routes
         # of its own (model discovery, control plane). None for the builders
         # whose ingress *is* the model server.
-        self._ingress: Optional[DeploymentHandle] = ingress
-        self._ingress_routes = None
+        self._ingress = ingress
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
