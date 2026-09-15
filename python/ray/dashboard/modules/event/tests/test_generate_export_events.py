@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import sys
 
 import pytest
@@ -9,10 +10,11 @@ import pytest
 # even outside a Ray driver.
 os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
-# RayConfig reads the auth mode once at import; pin a fixed token before
-# importing ray so the cluster and this process agree regardless of ~/.ray.
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses, lets the cluster
+# and this process agree without a hard-coded secret.
 os.environ["RAY_AUTH_MODE"] = "token"
-os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import ray
 from ray._common.test_utils import async_wait_for_condition

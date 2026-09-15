@@ -1,4 +1,5 @@
 import os
+import secrets
 import subprocess
 import sys
 import time
@@ -6,10 +7,11 @@ from typing import Dict
 
 import pytest
 
-# RayConfig reads the auth mode once at import; pin a fixed token before
-# importing ray so the cluster and this process agree regardless of ~/.ray.
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses, lets the cluster
+# and this process agree without a hard-coded secret.
 os.environ["RAY_AUTH_MODE"] = "token"
-os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME

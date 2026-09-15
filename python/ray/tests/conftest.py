@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import secrets
 import shutil
 import socket
 import subprocess
@@ -1675,7 +1676,7 @@ def _restore_token_auth_env(_token_auth_env_baseline):
 def setup_cluster_with_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with token authentication enabled."""
 
-    test_token = "test_token_12345678901234567890123456789012"
+    test_token = secrets.token_hex(32)
     set_auth_mode("token")
     set_env_auth_token(test_token)
     reset_auth_token_state()

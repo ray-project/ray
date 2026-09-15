@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import secrets
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -39,9 +40,9 @@ def set_env_var(key: str, val: Optional[str] = None):
             os.environ[key] = old_val
 
 
-# Fixed token so the `ray start --head` and `ray job submit` subprocesses share
-# the same credential.
-_TEST_AUTH_TOKEN = "test_token_12345678901234567890123456789012"
+# Random token so the `ray start --head` and `ray job submit` subprocesses share
+# the same credential without a hard-coded secret.
+_TEST_AUTH_TOKEN = secrets.token_hex(32)
 
 
 @contextmanager
