@@ -115,6 +115,7 @@ These are the fields per `application`:
 - **`external_scaler_enabled`**: Enables the external scaling API, which lets you scale deployments from outside the Ray cluster using a REST API. When enabled, you can't use built-in autoscaling (`autoscaling_config`) for any deployment in this application. Defaults to `False`. See [External Scaling API](serve-external-scale-api) for details.
 - **`deployments (optional)`**: A list of deployment options that allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the parameters specified in the code. See how to [configure serve deployment options](serve-configure-deployment).
 - **`args`**: Arguments that are passed to the [application builder](serve-app-builder-guide).
+- **`version (optional)`**: An opaque label for this application, such as a release tag or a hash of the config that produced it. Serve stores it and echoes it back in `serve status` and in the `version` field of each application in `GET /api/serve/applications/`, so an external deployer can tell which submitted config a running application corresponds to. Serve never interprets it: changing only `version` doesn't rebuild the application or restart any replica.
 
 ## Example config
 

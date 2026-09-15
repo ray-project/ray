@@ -1240,6 +1240,59 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
+def test_get_serve_instance_details_version(ray_start_stop):
+    """`version` from the config is echoed per application; null when unset."""
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    config = {
+        "applications": [
+            {
+                "name": "labeled",
+                "route_prefix": "/labeled",
+                "import_path": world_import_path,
+                "version": "g3-0123456789ab",
+            },
+            {
+                "name": "unlabeled",
+                "route_prefix": "/unlabeled",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+
+    def both_apps_running():
+        response = requests.get(SERVE_HEAD_URL, timeout=15)
+        assert response.status_code == 200
+        serve_details = ServeInstanceDetails(**response.json())
+        return len(serve_details.applications) == 2 and all(
+            app.status == ApplicationStatus.RUNNING
+            for app in serve_details.applications.values()
+        )
+
+    wait_for_condition(both_apps_running, timeout=15)
+
+    raw = requests.get(SERVE_HEAD_URL, timeout=15).json()
+    assert raw["applications"]["labeled"]["version"] == "g3-0123456789ab"
+    assert raw["applications"]["unlabeled"]["version"] is None
+    serve_details = ServeInstanceDetails(**raw)
+    assert serve_details.applications["labeled"].version == "g3-0123456789ab"
+    assert serve_details.applications["unlabeled"].version is None
+
+    # Relabeling is echoed without redeploying.
+    config["applications"][0]["version"] = "g4-0123456789ab"
+    deploy_config_multi_app(config, SERVE_HEAD_URL)
+    wait_for_condition(
+        lambda: requests.get(SERVE_HEAD_URL, timeout=15).json()["applications"][
+            "labeled"
+        ]["version"]
+        == "g4-0123456789ab"
+    )
+    assert both_apps_running()
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     """
     Test that external_scaler_enabled is correctly returned in the API response.

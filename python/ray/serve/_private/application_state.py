@@ -302,6 +302,11 @@ class ApplicationState:
         return self._target_state.external_scaler_enabled
 
     @property
+    def version(self) -> Optional[str]:
+        config = self._target_state.config
+        return config.version if config is not None else None
+
+    @property
     def docs_path(self) -> Optional[str]:
         # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
@@ -387,6 +392,24 @@ class ApplicationState:
                     **checkpoint_data.config.autoscaling_policy,
                 ),
             )
+
+    def _is_noop_reapply(
+        self,
+        config: ServeApplicationSchema,
+        target_capacity: Optional[float],
+        target_capacity_direction: Optional[TargetCapacityDirection],
+    ) -> bool:
+        """Whether applying `config` would change nothing but its `version`."""
+        current = self._target_state.config
+        if current is None:
+            return False
+        exclude = {"version"}
+        return (
+            current.model_dump(exclude=exclude) == config.model_dump(exclude=exclude)
+            and self._target_state.target_capacity == target_capacity
+            and self._target_state.target_capacity_direction
+            == target_capacity_direction
+        )
 
     def _set_target_state(
         self,
@@ -668,13 +691,26 @@ class ApplicationState:
         the declarative API (i.e., through the REST API).
         """
 
-        self._deployment_timestamp = deployment_time
-
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
             # `deployment_infos` is non-None whenever `code_version` is
             # non-None (they are always set together in the target state).
             assert self._target_state.deployment_infos is not None
+            if self._is_noop_reapply(
+                config, target_capacity, target_capacity_direction
+            ):
+                # Nothing but the `version` label can differ. Echo the new
+                # config without flipping the status back to DEPLOYING or
+                # bumping the deploy timestamp. An earlier `deployment_time`
+                # only arrives when the controller replays the config
+                # checkpoint on recovery, and must be restored.
+                self._target_state.config = config
+                self._deployment_timestamp = min(
+                    self._deployment_timestamp, deployment_time
+                )
+                return
+
+            self._deployment_timestamp = deployment_time
             try:
                 overrided_infos = override_deployment_info(
                     self._target_state.deployment_infos,
@@ -707,6 +743,7 @@ class ApplicationState:
                     ),
                 )
         else:
+            self._deployment_timestamp = deployment_time
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info and not self._build_app_task_info.finished:
                 logger.info(
@@ -1458,6 +1495,12 @@ class ApplicationStateManager:
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
+
+    def get_app_version(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].version
 
     def get_external_scaler_enabled(self, app_name: str) -> bool:
         """Check if external scaler is enabled for the application.
