@@ -2,11 +2,12 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
@@ -37,15 +38,13 @@ _ROUTING_KEY_FIELDS = ("messages", "prompt")
 router_app = FastAPI()
 
 
-def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
-    """Wrap a request body as a namespace a body-aware router routes on.
+def _parse_body(body: bytes) -> Optional[dict]:
+    """Parse a request body as a JSON object.
 
-    Routers read a routing field (``messages`` or ``prompt``) off the first
-    positional routing arg, the parsed request the normal ingress forwards.
-    Direct streaming has only the raw body, so this wraps the parsed body in a
-    namespace exposing every field by attribute, which a router reads the same
-    way regardless of request type. Returns ``None`` for an empty, non-object,
-    unparseable, or keyless body, so the caller falls back to load-balancing.
+    Returns ``None`` for an empty, unparseable (including truncated), or
+    non-object body. Parsed once here and shared by model selection and the
+    routing payload below, so a body with a ``model`` but no routing key (e.g. an
+    embeddings request) can still select a deployment.
     """
     if not body:
         return None
@@ -55,9 +54,29 @@ def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
         return None
     if not isinstance(data, dict):
         return None
+    return data
+
+
+def _routing_payload(data: Optional[dict]) -> Optional[SimpleNamespace]:
+    """Wrap a parsed body as a namespace a body-aware router routes on.
+
+    Routers read a routing field (``messages`` or ``prompt``) off the first
+    positional routing arg, the parsed request the normal ingress forwards.
+    Direct streaming has only the raw body, so this wraps it in a namespace
+    exposing every field by attribute, which a router reads the same way
+    regardless of request type. Returns ``None`` for a missing or keyless body,
+    so the caller falls back to load-balancing.
+    """
+    if data is None:
+        return None
     if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
         return None
     return SimpleNamespace(**data)
+
+
+def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+    """``_routing_payload`` of ``_parse_body``; kept for callers and tests."""
+    return _routing_payload(_parse_body(body))
 
 
 @serve.ingress(router_app)
@@ -68,9 +87,31 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
-    Replica selection is delegated to the underlying deployment's configured
-    request router, and this class translates the resulting pick into a backend
-    HTTP endpoint.
+    The router holds one ``DeploymentHandle`` per served model, keyed by model
+    id (``servers``). A request selects its deployment by the ``model`` field of
+    its body, then replica selection within that deployment is delegated to the
+    deployment's configured request router, and this class translates the
+    resulting pick into a backend HTTP endpoint.
+
+    ``servers`` is an allow-list the builder constructs: it is the only place
+    that both marks deployments ``_direct_http`` and hands them here, so the
+    router never has to know which deployments own HTTP ports. Were a handle to
+    a deployment without one ever passed, HAProxy's map has no entry for it and
+    the request fails closed with ``unknown_deployment``.
+
+    Model selection:
+        * ``model`` names a configured id -> that deployment.
+        * Otherwise its base model id (``get_base_model_id``) is tried, so a
+          LoRA-style ``base:adapter`` id resolves to the base deployment.
+        * No ``model`` and exactly one server -> that server (single-model apps
+          need not send the field).
+        * No ``model`` and several servers -> 400. A body HAProxy truncated or
+          that is not a JSON object has no readable ``model`` and is treated the
+          same way; selection never falls back to an arbitrary deployment.
+        * Unknown ``model`` -> 404.
+        HAProxy treats any non-200 from this endpoint as a routing failure and
+        answers the client with 503 ``X-Serve-Reason: router_non_200``; the
+        status codes above are for logs and direct callers.
 
     /internal/route HTTP contract
     -----------------------------
@@ -123,21 +164,36 @@ class LLMRouter:
 
     async def __init__(
         self,
-        server: DeploymentHandle,
+        servers: Dict[str, DeploymentHandle],
         llm_config: Optional["LLMConfig"] = None,
     ):
-        self._handle: DeploymentHandle = server
+        if not servers:
+            raise ValueError(
+                "LLMRouter requires at least one model id -> deployment handle."
+            )
+        # model id -> handle to the `_direct_http` deployment serving that model.
+        self._servers: Dict[str, DeploymentHandle] = dict(servers)
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
         # engine-facing on_lifecycle_events method can book load into it.
         self._kv_token_tracker = None
         # A non-None llm_config signals pre-routing tokenization, which the
-        # builder binds only for a KV-aware request router.
+        # builder binds only for a KV-aware request router. The tracker is a
+        # process global and the tokenizer is per-model, so this path is
+        # single-model; the builder rejects KV-aware routing with several
+        # models before it can reach here. TODO (celinky): multi model KV-aware
+        # routing support.
         if llm_config is not None:
-            # Build the tracker before _handle._init() below, which initializes
-            # the KVAwareRouter that looks it up. server.deployment_id is the
-            # tracked LLMServer deployment.
+            if len(self._servers) != 1:
+                raise ValueError(
+                    "KV-aware routing (llm_config given) supports exactly one "
+                    f"model per LLMRouter; got {sorted(self._servers)}."
+                )
+            (server,) = self._servers.values()
+            # Build the tracker before the handles' _init() below, which
+            # initializes the KVAwareRouter that looks it up. server.deployment_id
+            # is the tracked LLMServer deployment.
             from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
                 build_kv_token_tracker,
                 get_llm_router_handle,
@@ -161,13 +217,55 @@ class LLMRouter:
             )
 
             self._token_sender = token_channel.TokenSender()
-        self._handle._init()
+        for handle in self._servers.values():
+            handle._init()
+
+    def _select_handle(self, model: Optional[str]) -> DeploymentHandle:
+        """Resolve the request's ``model`` to a deployment handle.
+
+        See the class docstring for the rules. Raises ``HTTPException`` (400 for
+        an ambiguous request, 404 for an unknown model) so ``route`` surfaces a
+        non-200 and HAProxy fails closed rather than picking a deployment the
+        client did not ask for.
+        """
+        if model is None:
+            if (
+                len(self._servers) == 1
+            ):  # By design: its okay if no model is specified for single model.
+                (handle,) = self._servers.values()
+                return handle
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Model parameter is required when multiple models are "
+                    f"configured. Available models: {sorted(self._servers)}"
+                ),
+            )
+        # Exact id first so a configured id that itself contains ':' is not
+        # mistaken for a LoRA id and stripped to a base that does not exist.
+        handle = self._servers.get(model)
+        if handle is None:
+            handle = self._servers.get(get_base_model_id(model))
+        if handle is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f'Got request for model "{model}". Could not find a '
+                    f"configured model with that id or base model id. Available "
+                    f"models: {sorted(self._servers)}"
+                ),
+            )
+        return handle
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        routing_payload = _parse_routing_payload(body)
+        data = _parse_body(body)
+        # Select the deployment before anything else: an unreadable body cannot
+        # name a model, and with several models that is a 400, not a guess.
+        handle = self._select_handle(data.get("model") if data is not None else None)
+        routing_payload = _routing_payload(data)
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
@@ -201,9 +299,8 @@ class LLMRouter:
             (v for k, v in request.headers.items() if _matches_session_id_header(k)),
             None,
         )
-        handle = (
-            self._handle.options(session_id=session_id) if session_id else self._handle
-        )
+        if session_id:
+            handle = handle.options(session_id=session_id)
         try:
             host, port, replica_id, token_endpoint = await self._pick_replica(
                 handle=handle,
@@ -218,7 +315,7 @@ class LLMRouter:
         response = {
             "host": host,
             "port": port,
-            "deployment": self._handle.deployment_id.name,
+            "deployment": handle.deployment_id.name,
             "replica_id": replica_id,
         }
         if request_token_ids:
