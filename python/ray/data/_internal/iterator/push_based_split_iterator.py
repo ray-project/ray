@@ -187,6 +187,12 @@ class PushSplitCoordinator:
 
     # How long a pusher sleeps between polls while the consumer has no credit.
     POLL_INTERVAL_S = 0.05
+    # A failed poll is retried with exponential backoff (transient
+    # GetTimeoutError under load, ActorUnavailableError during restarts);
+    # after this many CONSECUTIVE failures the consumer is treated as dead.
+    # A definitive ActorDiedError skips the retries.
+    POLL_MAX_FAILURES = 3
+    POLL_RETRY_BACKOFF_S = 1.0
     # Always keep at least this many blocks in flight (queued/undelivered at
     # the consumer) regardless of the row credit. This is the push analog of
     # the pull model's 1-deep RPC pipelining (gen_blocks issues the next
@@ -505,12 +511,30 @@ class PushSplitCoordinator:
         seq = 0
         # Blocks pushed this epoch (exact; only this thread writes it).
         blocks_pushed = 0
+        # Consecutive poll failures (reset on any successful poll).
+        poll_failures = 0
         try:
             while not stop.is_set():
                 # 1) Poll the consumer.
                 try:
                     resp: _PollResponse = poll()
+                    poll_failures = 0
                 except Exception as e:
+                    definitely_dead = isinstance(e, ray.exceptions.ActorDiedError)
+                    poll_failures += 1
+                    if not definitely_dead and poll_failures < self.POLL_MAX_FAILURES:
+                        # Possibly transient (e.g. GetTimeoutError under
+                        # load, ActorUnavailableError during a restart):
+                        # retry with exponential backoff.
+                        backoff = self.POLL_RETRY_BACKOFF_S * 2 ** (poll_failures - 1)
+                        logger.warning(
+                            f"Split {split_idx} epoch {epoch_id}: consumer "
+                            f"poll failed ({e}); retry "
+                            f"{poll_failures}/{self.POLL_MAX_FAILURES} in "
+                            f"{backoff:.0f}s."
+                        )
+                        stop.wait(backoff)
+                        continue
                     # Consumer died. PARK instead of draining: keep the
                     # split's remaining data queued in the executor (paced by
                     # the normal backpressure) so replacing the worker stays
