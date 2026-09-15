@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
+from ray.data.aggregate import TopKUnique, Unique
 from ray.data.block import BlockAccessor
 from ray.data.datatype import DataType
 from ray.data.preprocessor import (
@@ -185,16 +186,16 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=self._encode_lists,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=(
+                    Unique.ListEncodingMode.FLATTEN if self._encode_lists else None
+                ),
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -459,17 +460,25 @@ class OneHotEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=False,
-                key_gen=key_gen,
-                max_categories=self._max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=False,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else Unique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=None,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -736,17 +745,25 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=True,
-                key_gen=key_gen,
-                max_categories=self._max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=True,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else Unique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=Unique.ListEncodingMode.FLATTEN,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -890,15 +907,14 @@ class LabelEncoder(SerializablePreprocessorBase):
         return self._output_column
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=[self._label_column],
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=[self._label_column],
         )
         return self
@@ -1094,18 +1110,17 @@ class Categorizer(SerializablePreprocessorBase):
         def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
             return pd.CategoricalDtype(unique_indices.keys())
 
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=columns_to_get,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=col,
             ),
             post_process_fn=make_post_processor(
                 base_fn=unique_post_fn(drop_na_values=True),
                 callbacks=[callback],
             ),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: col,
             columns=columns_to_get,
         )
 
@@ -1169,6 +1184,21 @@ class Categorizer(SerializablePreprocessorBase):
         )
 
 
+def _validate_max_categories(
+    max_categories: Optional[Dict[str, int]], columns: List[str]
+) -> None:
+    """Validate that every ``max_categories`` key is one of ``columns``."""
+    if not max_categories:
+        return
+    columns_set = set(columns)
+    for column in max_categories:
+        if column not in columns_set:
+            raise ValueError(
+                f"You set `max_categories` for {column}, which is not present in "
+                f"{columns}."
+            )
+
+
 def compute_unique_value_indices(
     *,
     dataset: "Dataset",
@@ -1178,6 +1208,12 @@ def compute_unique_value_indices(
     max_categories: Optional[Dict[str, int]] = None,
 ):
     """Compute the set of unique values for each column across the full dataset.
+
+    .. note::
+        This helper is no longer used by the built-in encoders, which now fit
+        via distributed aggregations (:class:`~ray.data.aggregate.Unique` /
+        :class:`~ray.data.aggregate.TopKUnique`). It is kept for backwards
+        compatibility and may be removed in a future release.
 
     Counts value frequencies globally (summed across all partitions) and then,
     if ``max_categories`` is specified for a column, selects only the top-k most
