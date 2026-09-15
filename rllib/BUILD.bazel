@@ -3210,7 +3210,7 @@ py_test(
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_prioritized_episode_buffer.py"],
     tags = [
-        "team::rllib",
+        "team:rllib",
         "utils",
     ],
     deps = [":conftest"],
