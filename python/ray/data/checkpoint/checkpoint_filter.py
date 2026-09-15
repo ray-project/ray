@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pyarrow
+import pyarrow.compute as pc
 from pyarrow.fs import FileSelector, FileType
 
 import ray
@@ -18,8 +19,21 @@ from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
+from ray.data.checkpoint.generated_id import (
+    CHECKPOINTED_FILE_COLUMN_NAME,
+    CHECKPOINTED_FILE_FRAGMENTS_TYPE,
+    CHECKPOINTED_FRAGMENT_TYPE,
+    CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA,
+    FILE_NAME_FIELD,
+    FRAGMENT_FIELD,
+    NUM_FRAGMENTS_FIELD,
+    NUM_ROWS_FIELD,
+    PATH_PREFIX_FIELD,
+    ROW_ID_FIELD,
+    get_struct_field_index,
+)
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -231,11 +245,55 @@ class CheckpointManager(abc.ABC):
             ObjectRef: The ref of checkpointed IDs array. None if no checkpoint was loaded.
             int: the size of the checkpointed IDs array.
         """
+        start_t = time.time()
+
+        loaded = self._load_checkpoint_block(data_file_dir, data_file_filesystem)
+        if loaded is None:
+            return None, 0
+        block_ref, schema, _ = loaded
+
+        # Convert arrow-typed ids to sorted numpy-typed ids.
+        # Note: the convert is very time-consuming.
+        # Get the object ref the checkpointed IDs, because we do not want the IDs
+        # to occupy the memory of the head node.
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = convert_and_sort_checkpointed_ids
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
+        (
+            checkpointed_ids_ref,
+            checkpoint_size_ref,
+        ) = task.remote(block_ref, self.id_column)
+
+        checkpoint_size = ray.get(checkpoint_size_ref)
+
+        logger.info(
+            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
+            type(self).__name__,
+            time.time() - start_t,
+            checkpoint_size,
+            schema.to_string(),
+        )
+        return checkpointed_ids_ref, checkpoint_size
+
+    def _load_checkpoint_block(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> Optional[Tuple[ObjectRef[Block], Schema, BlockMetadata]]:
+        """Clean pending checkpoints, then load committed IDs as one block.
+
+        Shared by :meth:`load_checkpoint` (which converts the block to a
+        sorted numpy array for the actor-pool filter) and
+        ``GeneratedIdColumnCheckpointManager.load_checkpoint_as_block``
+        (which hands the compact block to ``ListFiles`` / the Parquet
+        reader directly).
+
+        Returns None when there is no committed checkpoint data.
+        """
         logger.info(
             "Loading checkpoint from %s, this could take a while.", self.checkpoint_path
         )
-
-        start_t = time.time()
 
         # Clean up pending checkpoints before loading (runs as a Ray task)
         if data_file_dir is not None:
@@ -257,7 +315,7 @@ class CheckpointManager(abc.ABC):
             )
         )
         if not any(f.type == FileType.File for f in entries):
-            return None, 0
+            return None
 
         # Load the checkpoint data
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
@@ -284,9 +342,9 @@ class CheckpointManager(abc.ABC):
 
         assert len(ref_bundles) == 1
 
-        # If there are no valid files under the checkpoint_path, return None, 0.
+        # If there are no valid files under the checkpoint_path, return None.
         if ref_bundles[0].num_rows() == 0:
-            return None, 0
+            return None
 
         ref_bundle: RefBundle = ref_bundles[0]
         schema: Schema = ref_bundle.schema
@@ -295,30 +353,7 @@ class CheckpointManager(abc.ABC):
         metadata: BlockMetadata = ref_bundle.blocks[0].metadata
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
-
-        # Convert arrow-typed ids to sorted numpy-typed ids.
-        # Note: the convert is very time-consuming.
-        # Get the object ref the checkpointed IDs, because we do not want the IDs
-        # to occupy the memory of the head node.
-        ctx_label_selector = self._data_context.execution_options.label_selector
-        task = convert_and_sort_checkpointed_ids
-        if ctx_label_selector:
-            task = task.options(label_selector=ctx_label_selector)
-        (
-            checkpointed_ids_ref,
-            checkpoint_size_ref,
-        ) = task.remote(block_ref, self.id_column)
-
-        checkpoint_size = ray.get(checkpoint_size_ref)
-
-        logger.info(
-            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
-            type(self).__name__,
-            time.time() - start_t,
-            checkpoint_size,
-            schema.to_string(),
-        )
-        return checkpointed_ids_ref, checkpoint_size
+        return block_ref, schema, metadata
 
     def _clean_pending_checkpoints(
         self,
@@ -380,6 +415,261 @@ class CheckpointManager(abc.ABC):
 @DeveloperAPI
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
+
+
+@DeveloperAPI
+class GeneratedIdColumnCheckpointManager(CheckpointManager):
+    """Manager for auto-generated row-ID columns.
+
+    Committed checkpoint files store one struct ID per output row. At load
+    time this manager compacts them into one row per input file
+    (``CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA``): the raw IDs are
+    grouped by file, then per row group either marked fully checkpointed
+    (empty ``checkpointed_row_ids`` list) or given a dense boolean mask of
+    committed positions. ``ListFiles`` uses the compact block to drop
+    fully-done files, and the Parquet reader uses it to skip fully-done row
+    groups and filter partially-done ones — the actor-pool
+    ``CheckpointFilter`` path is not used for generated IDs.
+    """
+
+    def _extract_grouping_fields(self, batch: pyarrow.Table) -> pyarrow.Table:
+        """Project the struct ID column into groupable path columns."""
+        id_col: pyarrow.ChunkedArray = batch[self.id_column]
+
+        path_prefix_idx = get_struct_field_index(id_col, PATH_PREFIX_FIELD)
+        path_prefix = pc.struct_field(id_col, [path_prefix_idx])
+
+        file_name_idx = get_struct_field_index(id_col, FILE_NAME_FIELD)
+        file_name = pc.struct_field(id_col, [file_name_idx])
+
+        return pyarrow.Table.from_arrays(
+            [
+                path_prefix.cast(pyarrow.large_string()),
+                file_name.cast(pyarrow.large_string()),
+                batch[self.id_column],
+            ],
+            names=[PATH_PREFIX_FIELD, FILE_NAME_FIELD, self.id_column],
+        )
+
+    def _process_file_group(self, file_group_batch: pyarrow.Table) -> pyarrow.Table:
+        """Compact one file's committed IDs into a single checkpoint row.
+
+        Args:
+            file_group_batch: Rows of a single ``(path_prefix, file_name)``
+                group.
+
+        Returns:
+            One-row table with ``CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA``.
+        """
+        path_prefix = file_group_batch[PATH_PREFIX_FIELD][0].as_py()
+        file_name = file_group_batch[FILE_NAME_FIELD][0].as_py()
+        file_path = f"{path_prefix}/{file_name}"
+
+        id_columns = file_group_batch[self.id_column]
+
+        # NUM_FRAGMENTS is the file's total row-group count — identical for
+        # every row of the file.
+        num_fragments_field_idx = get_struct_field_index(
+            id_columns[0], NUM_FRAGMENTS_FIELD
+        )
+        num_fragments = pc.struct_field(id_columns, [num_fragments_field_idx])[
+            0
+        ].as_py()
+
+        fragment_field_idx = get_struct_field_index(id_columns[0], FRAGMENT_FIELD)
+        fragments_array = pc.struct_field(id_columns, [fragment_field_idx])
+
+        num_rows_field_idx = get_struct_field_index(id_columns[0], NUM_ROWS_FIELD)
+        num_rows_array = pc.struct_field(id_columns, [num_rows_field_idx])
+
+        row_id_field_idx = get_struct_field_index(id_columns[0], ROW_ID_FIELD)
+        row_ids_array = pc.struct_field(id_columns, [row_id_field_idx])
+
+        # Group committed row IDs by row group.
+        fragment_table = pyarrow.table(
+            {
+                "fragment": fragments_array,
+                "row_id": row_ids_array,
+                "num_rows": num_rows_array,
+            }
+        )
+        grouped = fragment_table.group_by("fragment").aggregate(
+            [
+                ("row_id", "list"),
+                # num_rows is the same for all rows in a row group; min is
+                # just a way to pick it.
+                ("num_rows", "min"),
+            ]
+        )
+
+        fragments_array = grouped["fragment"]
+        row_ids_lists = grouped["row_id_list"]
+        num_rows_array = grouped["num_rows_min"]
+
+        checkpointed_row_counts = pc.cast(
+            pc.list_value_length(row_ids_lists), pyarrow.int32()
+        )
+        fully_checkpointed_mask = pc.equal(checkpointed_row_counts, num_rows_array)
+        num_fragments_fully_checkpointed = pc.sum(fully_checkpointed_mask).as_py() or 0
+
+        # Per row group: empty list when fully committed, else a dense
+        # boolean mask over the row group.
+        checkpointed_row_ids_arrays = []
+        for i in range(len(grouped)):
+            num_rows = num_rows_array[i].as_py()
+            checkpointed_row_count = checkpointed_row_counts[i].as_py()
+            row_ids_list = row_ids_lists[i]
+
+            if checkpointed_row_count == num_rows:
+                checkpointed_row_ids_col = pyarrow.array(
+                    [[]], type=pyarrow.large_list(pyarrow.bool_())
+                )
+            else:
+                row_indices = pyarrow.array(np.arange(num_rows), type=pyarrow.int32())
+                # ``pc.is_in`` requires a sorted value set.
+                row_ids_values = row_ids_list.values
+                sorted_row_ids = row_ids_values.take(pc.sort_indices(row_ids_values))
+                boolean_array = pc.is_in(row_indices, sorted_row_ids)
+                offsets = pyarrow.array([0, len(boolean_array)], type=pyarrow.int64())
+                checkpointed_row_ids_col = pyarrow.LargeListArray.from_arrays(
+                    offsets, boolean_array
+                )
+
+            checkpointed_row_ids_arrays.append(checkpointed_row_ids_col)
+
+        if checkpointed_row_ids_arrays:
+            checkpointed_row_ids_array = pyarrow.concat_arrays(
+                checkpointed_row_ids_arrays
+            )
+        else:
+            checkpointed_row_ids_array = pyarrow.array(
+                [[]], type=pyarrow.large_list(pyarrow.bool_())
+            )
+
+        fragment_structs = pyarrow.StructArray.from_arrays(
+            [
+                pc.cast(fragments_array.combine_chunks(), pyarrow.int32()),
+                pc.cast(num_rows_array.combine_chunks(), pyarrow.int32()),
+                checkpointed_row_counts.combine_chunks(),
+                checkpointed_row_ids_array,
+            ],
+            fields=list(CHECKPOINTED_FRAGMENT_TYPE),
+        )
+
+        if len(fragment_structs) > 0:
+            offsets = pyarrow.array([0, len(fragment_structs)], type=pyarrow.int64())
+            fragments_list = pyarrow.LargeListArray.from_arrays(
+                offsets, fragment_structs
+            )
+        else:
+            fragments_list = pyarrow.array(
+                [[]], type=pyarrow.large_list(CHECKPOINTED_FRAGMENT_TYPE)
+            )
+
+        # The file is fully checkpointed only when every one of its row
+        # groups was seen and fully committed.
+        fully_checkpointed = num_fragments_fully_checkpointed == num_fragments
+        checkpointed_fragment_col = pyarrow.StructArray.from_arrays(
+            [
+                pyarrow.array([len(fragment_structs)], type=pyarrow.int32()),
+                pyarrow.array([fully_checkpointed], type=pyarrow.bool_()),
+                fragments_list,
+            ],
+            fields=list(CHECKPOINTED_FILE_FRAGMENTS_TYPE),
+        )
+
+        logger.debug(
+            "Compacted checkpoint for file %s: %d/%d row groups fully "
+            "checkpointed, fully_checkpointed=%s",
+            file_path,
+            num_fragments_fully_checkpointed,
+            num_fragments,
+            fully_checkpointed,
+        )
+
+        return pyarrow.Table.from_arrays(
+            [pyarrow.array([file_path]), checkpointed_fragment_col],
+            schema=CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA,
+        )
+
+    def _preprocess_data_pipeline(
+        self, checkpoint_ds: "ray.data.Dataset"
+    ) -> "ray.data.Dataset":
+        """Compact raw committed IDs into one row per file, sorted by path."""
+        checkpoint_ds = checkpoint_ds.map_batches(
+            self._extract_grouping_fields,
+            batch_format="pyarrow",
+            batch_size=None,
+        )
+        # The sort-based shuffle materializes every group on one node;
+        # hash shuffle keeps the groupby streaming.
+        checkpoint_ds.context._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+        checkpoint_ds = checkpoint_ds.groupby([PATH_PREFIX_FIELD, FILE_NAME_FIELD])
+        checkpoint_ds = checkpoint_ds.map_groups(
+            self._process_file_group, batch_format="pyarrow"
+        )
+        return checkpoint_ds.sort(CHECKPOINTED_FILE_COLUMN_NAME)
+
+    def _validate_loaded_checkpoint(
+        self, schema: Schema, metadata: BlockMetadata
+    ) -> None:
+        if metadata.num_rows > 0:
+            assert schema == CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA, (
+                f"Schema mismatch: {schema} != "
+                f"{CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA}"
+            )
+
+    def load_checkpoint_as_block(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> ObjectRef[Block]:
+        """Load the compact checkpoint as an ``ObjectRef[Block]``.
+
+        Unlike :meth:`load_checkpoint`, the block is not converted to a
+        numpy array — the struct-typed compact table is passed as a task
+        kwarg to ``ListFiles`` and consumed as a pyarrow table. An empty
+        (schema-less) table means there is no checkpoint data.
+        """
+        start_t = time.time()
+        loaded = self._load_checkpoint_block(data_file_dir, data_file_filesystem)
+        if loaded is None:
+            return ray.put(pyarrow.table({}))
+        block_ref, schema, _ = loaded
+        logger.info(
+            "Checkpoint loaded for %s in %.2f seconds. Schema = %s",
+            type(self).__name__,
+            time.time() - start_t,
+            schema.to_string(),
+        )
+        return block_ref
+
+
+def load_generated_id_checkpoint_as_block(
+    config: CheckpointConfig,
+    data_file_dir: Optional[str] = None,
+    data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    data_context: Optional[DataContext] = None,
+) -> ObjectRef[Block]:
+    """Load the generated-ID checkpoint as a compact per-file Block.
+
+    The returned block has ``CHECKPOINTED_GENERATED_ID_COLUMN_TABLE_SCHEMA``
+    and is consumed by ``ListFiles`` (file-level skipping) and the V2
+    Parquet reader (row-group and row-level skipping). Regular ``id_column``
+    checkpointing does not go through this path — it uses the actor-pool
+    ``CheckpointFilter`` wired up by
+    ``ray.data._internal.planner.checkpoint.create_checkpoint_filter_op``.
+    """
+    assert getattr(config, "generated_id_column", None), (
+        "load_generated_id_checkpoint_as_block() is only for "
+        "generated_id_column configs; id_column uses the actor-pool pattern."
+    )
+    manager = GeneratedIdColumnCheckpointManager(
+        checkpoint_config=config,
+        data_context=data_context or DataContext.get_current(),
+    )
+    return manager.load_checkpoint_as_block(data_file_dir, data_file_filesystem)
 
 
 @DeveloperAPI

@@ -311,6 +311,10 @@ class OnlineBinPacker(FilePartitioner):
             self._cap, self._output, max_shared_open_bins
         )  # non-isolated bins (mixed files)
         self._heavy = _SingleFileBinPool(self._cap, self._output)
+        # Per-file compact checkpoint structs (generated-ID checkpointing),
+        # carried from input manifests to rebuilt bin manifests.
+        self._has_checkpoint_column = False
+        self._checkpoint_by_path: dict = {}
 
     @property
     def requires_global_input(self) -> bool:
@@ -319,6 +323,13 @@ class OnlineBinPacker(FilePartitioner):
     # === Feeding ===
 
     def add_input(self, input_manifest: FileManifest) -> None:
+        checkpoint_column = input_manifest.file_fragments_checkpoint
+        if checkpoint_column is not None:
+            self._has_checkpoint_column = True
+            # The struct is per file (all of a file's rows carry the same
+            # value), so a path-keyed map survives bin splits and re-unions.
+            for path, checkpoint_value in zip(input_manifest.paths, checkpoint_column):
+                self._checkpoint_by_path[str(path)] = checkpoint_value
         for item in _bin_items(input_manifest):
             self._place(item)
 
@@ -393,8 +404,7 @@ class OnlineBinPacker(FilePartitioner):
         self._heavy.flush()
         self._shared.flush()
 
-    @staticmethod
-    def _bin_to_manifest(bin_: Bin) -> FileManifest:
+    def _bin_to_manifest(self, bin_: Bin) -> FileManifest:
         # One manifest row per distinct file in the bin. A file's (possibly-split)
         # items cover disjoint contiguous runs, so union their physical row-group
         # ids into the read unit for that file.
@@ -436,4 +446,9 @@ class OnlineBinPacker(FilePartitioner):
             paths=paths,
             sizes=sizes,
             chunk_metadatas=cast(List[Optional[ChunkMetadata]], chunk_metadatas),
+            checkpoint_file_fragments=(
+                [self._checkpoint_by_path.get(path) for path in paths]
+                if self._has_checkpoint_column
+                else None
+            ),
         )
