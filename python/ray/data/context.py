@@ -107,6 +107,10 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
     "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
 )
 
+DEFAULT_ENABLE_AGGREGATION_BASED_PREPROCESSORS = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATION_BASED_PREPROCESSORS", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
@@ -868,6 +872,13 @@ class DataContext:
             assign multi-dimensional arrays into columns or rely on numpy-only
             operations (e.g. ``%``) that Arrow-backed columns do not implement.
         batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
+        enable_aggregation_based_preprocessors: Whether fitting a preprocessor
+            ``Chain`` defers each member's statistics computation and batches
+            independent members' aggregations into a single dataset scan at the
+            first ``transform()`` (computed over the dataset that was passed to
+            ``fit()``). When enabled, ``Chain.fit()`` returns without computing
+            member statistics; they materialize at the first ``transform()``,
+            ``transform_batch()``, or serialization. Defaults to ``True``.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
         gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
@@ -1086,6 +1097,10 @@ class DataContext:
     )
 
     batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
+
+    enable_aggregation_based_preprocessors: bool = (
+        DEFAULT_ENABLE_AGGREGATION_BASED_PREPROCESSORS
+    )
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
