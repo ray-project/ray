@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -8,13 +9,15 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 import requests
 import yaml
 
 import ray
+from ray import NodeID
 from ray._common.test_utils import wait_for_condition
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -27,8 +30,12 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.common import uri_to_http_components
-from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.job.common import JobLogsResponse, uri_to_http_components
+from ray.dashboard.modules.job.job_head import (
+    JOB_LOGS_UNAVAILABLE_ERROR_CODE,
+    JobHead,
+)
+from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
@@ -637,6 +644,111 @@ def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
     )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
+
+
+@pytest.fixture
+def job_head_with_agent():
+    node_id = NodeID.from_random().hex()
+    job = JobDetails(
+        type=JobType.SUBMISSION,
+        submission_id="test-job",
+        status=JobStatus.SUCCEEDED,
+        entrypoint="echo hello",
+        driver_agent_http_address="http://127.0.0.1:52365",
+        driver_node_id=node_id,
+    )
+    agent = MagicMock()
+    agent.get_job_logs_internal = AsyncMock()
+    job_head = object.__new__(JobHead)
+    job_head._gcs_client = MagicMock()
+    job_head._job_info_client = MagicMock()
+    job_head._agents = {node_id: agent}
+    job_head._fetch_agent_info = AsyncMock(return_value=("127.0.0.1", 52365, 52366))
+    return job_head, job, agent
+
+
+@pytest.mark.asyncio
+async def test_get_job_logs_from_live_agent(job_head_with_agent):
+    job_head, job, agent = job_head_with_agent
+    agent.get_job_logs_internal.return_value = JobLogsResponse(logs="hello\n")
+    request = MagicMock(match_info={"job_or_submission_id": job.submission_id})
+
+    with patch(
+        "ray.dashboard.modules.job.job_head.find_job_by_ids",
+        new=AsyncMock(return_value=job),
+    ):
+        response = await job_head.get_job_logs(request)
+
+    assert response.status == 200
+    assert json.loads(response.text) == {"logs": "hello\n"}
+
+
+@pytest.mark.asyncio
+async def test_get_job_logs_when_driver_node_is_missing(job_head_with_agent):
+    job_head, job, agent = job_head_with_agent
+    job_head._fetch_agent_info.side_effect = KeyError("agent is not registered")
+    request = MagicMock(match_info={"job_or_submission_id": job.submission_id})
+
+    with patch(
+        "ray.dashboard.modules.job.job_head.find_job_by_ids",
+        new=AsyncMock(return_value=job),
+    ):
+        response = await job_head.get_job_logs(request)
+
+    assert response.status == 503
+    assert json.loads(response.text) == {
+        "error_code": JOB_LOGS_UNAVAILABLE_ERROR_CODE,
+        "message": (
+            "Logs for job test-job are unavailable because "
+            "the driver agent cannot be reached."
+        ),
+        "submission_id": "test-job",
+    }
+    agent.get_job_logs_internal.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(
+            aiohttp.ClientConnectionError("Connection refused"),
+            id="connection-refused",
+        ),
+        pytest.param(asyncio.TimeoutError(), id="timeout"),
+    ],
+)
+async def test_get_job_logs_when_driver_agent_is_unreachable(
+    job_head_with_agent, error
+):
+    job_head, job, agent = job_head_with_agent
+    agent.get_job_logs_internal.side_effect = error
+    request = MagicMock(match_info={"job_or_submission_id": job.submission_id})
+
+    with patch(
+        "ray.dashboard.modules.job.job_head.find_job_by_ids",
+        new=AsyncMock(return_value=job),
+    ):
+        response = await job_head.get_job_logs(request)
+
+    assert response.status == 503
+    assert response.content_type == "application/json"
+    assert json.loads(response.text)["error_code"] == JOB_LOGS_UNAVAILABLE_ERROR_CODE
+
+
+@pytest.mark.asyncio
+async def test_get_job_logs_unknown_job_preserves_404(job_head_with_agent):
+    job_head, _, _ = job_head_with_agent
+    request = MagicMock(match_info={"job_or_submission_id": "unknown-job"})
+
+    with patch(
+        "ray.dashboard.modules.job.job_head.find_job_by_ids",
+        new=AsyncMock(return_value=None),
+    ):
+        response = await job_head.get_job_logs(request)
+
+    assert response.status == 404
+    assert response.text == "Job unknown-job does not exist"
 
 
 def test_missing_resources(job_sdk_client):
