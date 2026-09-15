@@ -233,7 +233,7 @@ class ObservabilityAgentReporter(Reporter):
         it is tracked by only reaches this reporter because RayTestDBReporter
         refreshes the test from S3 before this one runs. A test with no known
         open issue is skipped, which is also what a failure to reach GitHub
-        looks like -- see Test.has_open_github_issue.
+        looks like -- see Test.get_open_github_issue.
         """
         # Checked before the repo handle is built, because building it fetches
         # the github bot token from AWS Secrets Manager. Most failing tests have
@@ -252,7 +252,10 @@ class ObservabilityAgentReporter(Reporter):
 
         try:
             ray_repo = TestStateMachine.get_ray_repo()
-            if not test.has_open_github_issue(ray_repo):
+            # The issue itself rather than a yes/no, so that commenting on it
+            # does not fetch it a second time.
+            issue = test.get_open_github_issue(ray_repo)
+            if issue is None:
                 logger.info(
                     f"Skip commenting the observability agent analysis for test "
                     f"{test.get_name()}; no open github issue is known for it. "
@@ -261,7 +264,7 @@ class ObservabilityAgentReporter(Reporter):
                 )
                 return
 
-            ray_repo.get_issue(issue_number).create_comment(
+            issue.create_comment(
                 self._issue_comment(test, result, summary, slack_thread)
             )
         except Exception:

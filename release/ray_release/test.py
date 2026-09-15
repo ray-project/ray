@@ -15,7 +15,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
-    from ray_release.github_client import GitHubRepo
+    from ray_release.github_client import GitHubIssue, GitHubRepo
 
 from ray_release.anyscale_util import Anyscale
 from ray_release.aws import s3_put_rayci_test_data
@@ -348,32 +348,44 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def has_open_github_issue(self, ray_github: "GitHubRepo") -> bool:
+    def get_open_github_issue(
+        self, ray_github: "GitHubRepo"
+    ) -> Optional["GitHubIssue"]:
         """
-        Returns whether this test has a tracked github issue that is open.
+        Returns this test's tracked github issue if it is open, else None.
+
+        Returns the issue rather than a bool so that a caller which goes on to
+        act on it -- commenting, say -- does not have to fetch the same issue a
+        second time, and cannot act on a different version of it than the one
+        this check passed.
 
         Checking that the issue is open is required rather than defensive:
         ReleaseTestStateMachine._close_github_issue closes the issue but leaves
         KEY_GITHUB_ISSUE_NUMBER on the test, so a recovered test keeps a number
         pointing at a closed issue indefinitely.
 
-        A failure to reach GitHub answers False. The caller can only read this
-        as "no open issue is known here", never as "this test has no open
-        issue".
+        A failure to reach GitHub answers None. The caller can only read that as
+        "no open issue is known here", never as "this test has no open issue".
         """
         from ray_release.github_client import GitHubException
 
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
         if not issue_number:
-            return False
+            return None
         try:
             issue = ray_github.get_issue(issue_number)
-            return issue.state == "open"
         except GitHubException as e:
             logger.warning(
                 f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
             )
-            return False
+            return None
+        return issue if issue.state == "open" else None
+
+    def has_open_github_issue(self, ray_github: "GitHubRepo") -> bool:
+        """
+        Returns whether this test has a tracked github issue that is open.
+        """
+        return self.get_open_github_issue(ray_github) is not None
 
     def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         """

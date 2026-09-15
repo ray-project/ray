@@ -748,6 +748,9 @@ def test_comments_on_an_open_issue():
     )
 
     assert len(issue.comments) == 1
+    # One fetch, not two: the issue the open-check returned is the one
+    # commented on, so nothing re-reads it between the check and the write.
+    assert repo.get_issue_calls == ["123"]
     body = issue.comments[0]
     assert SUMMARY in body
     assert SLACK_THREAD in body
@@ -767,6 +770,8 @@ def test_does_not_comment_on_a_closed_issue():
     )
 
     assert issue.comments == []
+    # The closed issue is still fetched exactly once to find that out.
+    assert repo.get_issue_calls == ["123"]
 
 
 @pytest.mark.parametrize("issue_number", [None, "", 0])

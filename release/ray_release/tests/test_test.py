@@ -199,6 +199,31 @@ def _repo():
     return GitHubClient("token").get_repo("owner/repo")
 
 
+def test_get_open_github_issue_returns_the_issue_it_fetched() -> None:
+    """The issue itself, so a caller acting on it need not fetch it again."""
+
+    @responses.activate
+    def run():
+        responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "open"})
+        issue = Test(github_issue_number="1").get_open_github_issue(_repo())
+        assert issue is not None
+        assert issue.number == _ISSUE_JSON["number"]
+        assert issue.state == "open"
+        assert len(responses.calls) == 1
+
+    run()
+
+
+@responses.activate
+def test_get_open_github_issue_closed() -> None:
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "closed"})
+    assert Test(github_issue_number="1").get_open_github_issue(_repo()) is None
+
+
+def test_get_open_github_issue_no_issue_number() -> None:
+    assert Test().get_open_github_issue(_repo()) is None
+
+
 def test_has_open_github_issue_no_issue_number() -> None:
     assert not Test().has_open_github_issue(_repo())
 
