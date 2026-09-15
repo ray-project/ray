@@ -70,3 +70,13 @@ ray_cc_test(
         "//src/ray/util:time",
     ],
 )
+
+ray_cc_test(
+    name = "fiber_stack_protection_test",
+    srcs = ["fiber_stack_protection_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker/task_execution:fiber",
+        "//src/ray/core_worker/task_execution:fiber_stack_protection",
+    ],
+)
