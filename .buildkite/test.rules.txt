@@ -245,6 +245,27 @@ python/ray/experimental/sandbox/
 @ core_python sandbox_tests
 ;
 
+# GPU device passthrough (CDI) backing ray.experimental.sandbox's GPU
+# support. These files live outside python/ray/experimental/sandbox/, so
+# the sandbox rule above doesn't reach them, and the broad python/ rule
+# below doesn't emit sandbox_tests -- a change to the CDI merge logic or
+# the NVIDIA spec generator would otherwise get no sandbox coverage.
+#
+# First match wins, so this rule has to repeat the python/ rule's tag set
+# rather than fall through to it: python/ray/_common/ and
+# python/ray/_private/accelerators/ are shared infrastructure the library
+# suites depend on, and dropping those tags here would silently narrow
+# coverage for data/train/serve/llm.
+python/ray/_common/cdi*.py
+python/ray/_common/tests/test_cdi*.py
+python/ray/_private/accelerators/accelerator.py
+python/ray/_private/accelerators/nvidia_gpu.py
+python/ray/tests/accelerators/test_nvidia_gpu.py
+@ core_python llm ml tune train data serve
+@ core_python dashboard linux_wheels macos_wheels java
+@ sandbox_tests
+;
+
 python/
 # Run library tests on core Python code change.
 @ core_python llm ml tune train data serve

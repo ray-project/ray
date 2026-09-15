@@ -7,6 +7,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray._common import cdi, cdi_lib
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     _release_image_use,
@@ -14,6 +15,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     sanitize_image_name,
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,19 @@ _OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 _RESOLV_CONF = "/etc/resolv.conf"
 _ETC_HOSTS = "/etc/hosts"
 
+# Shared with GVisorSandboxBackend._resolve_gpu_run_args, which raises this
+# same message *before* pulling/extracting the container image if no CDI
+# spec exists at all -- there's no point paying that cost for a sandbox
+# creation that's certain to fail here anyway.
+NO_GPU_CDI_SPEC_MESSAGE = (
+    "gpu_ids was requested but no CDI spec for this node's GPU "
+    "accelerator could be generated. Ensure this node's "
+    "accelerator vendor has CDI support configured (today, "
+    "only NVIDIA GPUs are supported: ensure "
+    "nvidia-container-toolkit-base, providing nvidia-ctk, is "
+    "installed on this node)."
+)
+
 
 def get_default_oci_spec() -> Dict[str, Any]:
     """Derive default OCI runtime specification by executing `runsc spec` in a temporary directory.
@@ -39,6 +54,60 @@ def get_default_oci_spec() -> Dict[str, Any]:
         config_path = os.path.join(temp_dir, "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _apply_gpu_cdi_edits(spec: Dict[str, Any], gpu_ids: List[str]) -> None:
+    """Merge the CDI containerEdits for `gpu_ids` into `spec` in place.
+
+    Generates this node's CDI spec for the "GPU" resource (see
+    ray._common.cdi — generic across accelerator vendors, not
+    NVIDIA-specific, though NVIDIA is the only one wired up today) and
+    merges the requested devices' containerEdits (device nodes,
+    driver-library mounts, env, hooks) into `spec`. Doesn't pre-create
+    any newly merged bind mount's destination: runsc's own mount setup
+    (runsc/boot/vfs.go's makeMountPoint) already creates a missing
+    mountpoint itself, matching the source's directory-or-not type
+    (confirmed against a real gVisor build) -- doing it here too would
+    just be writing avoidable placeholder files into the (possibly
+    shared, cached) image rootfs before the sandbox even exists.
+
+    Whether the backend actually invoking this spec can act on the
+    resulting CDI kind (e.g. whether runsc supports it) is that backend's
+    own concern, not this generic OCI-spec builder's — see
+    GVisorSandboxBackend's pre-flight check.
+    """
+    cdi_spec = cdi.get_spec("GPU")
+    if cdi_spec is None:
+        raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+    try:
+        cdi_devices = cdi_spec.select_devices(gpu_ids)
+        cdi_spec.apply_edits(spec, cdi_devices)
+    except cdi_lib.CDIError as err:
+        raise SandboxCreationError(
+            f"Failed to configure GPU access via CDI: {err}"
+        ) from err
+
+    # TODO(klueska): Special case override to allow NVIDIA GPU
+    # CDI-injected libraries to be found, since update-ldcache stays
+    # disabled under gVisor (see --disable-hook=update-ldcache above).
+    # Remove once https://github.com/NVIDIA/nvidia-container-toolkit/pull/2059
+    # lands and is backported to a 1.18.x release, letting that hook run
+    # under gVisor again.
+    env = spec.get("process", {}).get("env", [])
+    libcuda_dir = next(
+        (e.split("=", 1)[1] for e in env if e.startswith("NVIDIA_CTK_LIBCUDA_DIR=")),
+        None,
+    )
+    if libcuda_dir:
+        ld_library_path = next(
+            (e.split("=", 1)[1] for e in env if e.startswith("LD_LIBRARY_PATH=")),
+            None,
+        )
+        new_value = (
+            f"{libcuda_dir}:{ld_library_path}" if ld_library_path else libcuda_dir
+        )
+        env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
+        env.append(f"LD_LIBRARY_PATH={new_value}")
 
 
 class BaseImageManager(ABC):
@@ -157,6 +226,7 @@ class BaseImageManager(ABC):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -181,6 +251,7 @@ class BaseImageManager(ABC):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            gpu_ids: GPU device ids/UUIDs to expose via CDI (:mod:`ray._common.cdi`).
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -202,6 +273,7 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -220,6 +292,7 @@ class BaseImageManager(ABC):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -367,6 +440,7 @@ class ImageManager(BaseImageManager):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -391,6 +465,7 @@ class ImageManager(BaseImageManager):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            gpu_ids: GPU device ids/UUIDs to expose via CDI (:mod:`ray._common.cdi`).
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -556,6 +631,9 @@ class ImageManager(BaseImageManager):
             mem_res = resources.setdefault("memory", {})
             mem_res["limit"] = parsed_mem
 
+        if gpu_ids:
+            _apply_gpu_cdi_edits(spec, gpu_ids)
+
         if _oci_spec_transform_fn:
             result = _oci_spec_transform_fn(spec)
             if result is not None:
@@ -576,6 +654,7 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -594,6 +673,7 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -645,6 +725,7 @@ class ImageManager(BaseImageManager):
             network=network,
             resolv_conf_source=resolv_conf_source,
             hosts_source=hosts_source,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 

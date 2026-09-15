@@ -28,6 +28,9 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels core_python
 python/ray/util/dask/dask.py: core_python dask
 python/ray/dag/dag.py: core_python cgraphs_direct_transport
 python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
+python/ray/experimental/sandbox/config.py: core_python sandbox_tests
+python/ray/_common/cdi_lib.py: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java sandbox_tests
+python/ray/_private/accelerators/nvidia_gpu.py: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java sandbox_tests
 
 # === RLlib ===
 

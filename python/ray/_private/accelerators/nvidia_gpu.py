@@ -1,7 +1,10 @@
+import json
 import logging
 import os
 import re
-from typing import List, Optional, Tuple
+import shutil
+import subprocess
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
@@ -20,6 +23,24 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # dropped. Mixed-case consumer names ("NVIDIA GeForce RTX 5090") don't match and
 # fall back to a hyphen-joined product name in _gpu_name_to_accelerator_type.
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+((?:[A-Z]+\s+)*[A-Z0-9]*\d[A-Z0-9]*)")
+
+# Timeout for shelling out to `nvidia-ctk` during CDI spec generation
+# (generate_cdi_spec below). Multi-GPU nodes can see driver/device
+# probing overhead push past several seconds, but 60s doesn't cost much
+# in the common case either. `nvidia-ctk cdi generate` normally
+# completes in well under a second, so this only bounds a hung or
+# misbehaving nvidia-ctk to a longer-but-still-bounded failure.
+_NVIDIA_CTK_TIMEOUT_SECONDS = 60
+
+# Populated by generate_cdi_spec on its first successful call, then reused
+# for the rest of the process. Ray core's own GPU resource detection
+# (Node._resource_and_label_spec in ray._private.node) follows the same
+# shape: resolved once per raylet/worker process via NVML and never
+# re-polled at runtime, so there's nothing to invalidate this against
+# short of a process restart. A failed generation is deliberately not
+# cached, so a transient nvidia-ctk failure doesn't stick for the rest of
+# the process.
+_cdi_spec_cache: Optional[Dict] = None
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -83,6 +104,15 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         return cuda_device_type
 
     @staticmethod
+    def get_current_node_driver_version() -> str:
+        import ray._private.thirdparty.pynvml as pynvml
+
+        pynvml.nvmlInit()
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        pynvml.nvmlShutdown()
+        return driver_version
+
+    @staticmethod
     def _gpu_name_to_accelerator_type(name):
         if name is None:
             return None
@@ -143,3 +173,102 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             assert len(gpus) == 1
             return gpus[0]["Name"]
         return None
+
+    @staticmethod
+    def get_cdi_kind() -> str:
+        return "nvidia.com/gpu"
+
+    @staticmethod
+    def generate_cdi_spec() -> Optional[Dict]:
+        """Generate and return a CDI (Container Device Interface) spec
+        describing the node's NVIDIA GPUs, via the `nvidia-ctk` CLI (part
+        of nvidia-container-toolkit-base).
+
+        Never written to disk: `nvidia-ctk cdi generate` writes to stdout
+        when `--output` is omitted, which is captured and parsed directly.
+        Keeps this simple to swap for a real CDI generator library later —
+        no file format/location to keep compatible — and sidesteps sharing
+        a generated spec across processes (each process that needs one
+        generates its own once, then caches it for its own lifetime; see
+        _cdi_spec_cache).
+
+        Future improvement: today this shells out to nvidia-ctk, but a
+        Python-native generator (NVML enumeration, driver library
+        discovery, device node/MIG handling) could replace this method's
+        body without touching any caller. That's a substantially bigger
+        lift than reimplementing CDI *spec merging* (see the parallel note
+        in `ray._common.cdi_lib`) — it means reimplementing logic
+        nvidia-container-toolkit maintains and keeps in sync with new
+        drivers — and more naturally something to build and push upstream
+        (NVIDIA or CNCF) than something Ray owns long-term.
+
+        Consumers (e.g. Ray Sandboxes, via `ray._common.cdi`) merge the
+        spec's per-device containerEdits into a container's OCI runtime
+        spec themselves; this only produces the parsed spec.
+
+        Returns:
+            The parsed CDI spec, or None if `nvidia-ctk` is unavailable,
+            generation failed, or it produced unparseable output (logged at
+            warning level, since this is only called once a gpu_ids
+            request needs it, so a failure here means unmet user intent,
+            not routine background noise) — callers should treat this as
+            "GPU CDI support is unavailable on this node", not a fatal
+            error.
+        """
+        global _cdi_spec_cache
+        if _cdi_spec_cache is not None:
+            return _cdi_spec_cache
+
+        nvidia_ctk_path = shutil.which("nvidia-ctk")
+        if nvidia_ctk_path is None:
+            logger.warning(
+                "nvidia-ctk not found on PATH; skipping CDI spec generation. "
+                "Install nvidia-container-toolkit-base to enable it."
+            )
+            return None
+
+        # When generating the CDI spec: omits the update-ldcache hook, which
+        # gVisor can't run (it needs to mount /proc) and which is redundant
+        # here since the CDI-mounted driver libraries already sit on ld.so's
+        # default search path. Keeps the nvidia-persistenced/fabricmanager/MPS
+        # IPC socket mounts -- fabric-aware GPUs (e.g. NVSwitch systems like
+        # GB200) need the fabricmanager socket for CUDA's UVM init to
+        # complete at all, not just for multi-node NVLink. Emits both
+        # index-named ("0") and UUID-named ("GPU-...") devices for each GPU,
+        # so a caller can pass either format as a gpu_id.
+        try:
+            result = subprocess.run(
+                [
+                    nvidia_ctk_path,
+                    "cdi",
+                    "generate",
+                    "--format=json",
+                    "--disable-hook=update-ldcache",
+                    "--device-name-strategy=index",
+                    "--device-name-strategy=uuid",
+                ],
+                capture_output=True,
+                timeout=_NVIDIA_CTK_TIMEOUT_SECONDS,
+                check=True,
+                text=True,
+            )
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+        ) as e:
+            stderr = getattr(e, "stderr", None)
+            logger.warning(f"Failed to generate CDI spec: {e}. {stderr}")
+            return None
+
+        try:
+            # nvidia-ctk can write more than one JSON document to stdout
+            # (e.g. --feature-flag=enable-coherent-annotations). The full
+            # spec is always written first, so decode only that one.
+            spec = json.JSONDecoder().raw_decode(result.stdout.lstrip())[0]
+        except json.JSONDecodeError as e:
+            logger.warning(f"nvidia-ctk produced unparseable CDI spec output: {e}")
+            return None
+
+        _cdi_spec_cache = spec
+        return _cdi_spec_cache
