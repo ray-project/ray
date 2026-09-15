@@ -11,18 +11,18 @@ User Guides
 .. toctree::
     :hidden:
 
-    rllib-advanced-api
-    rllib-callback
+    advanced-api
+    callback
     checkpoints
     metrics-logger
     single-agent-episode
     connector-v2
-    rllib-replay-buffers
-    rllib-offline
+    replay-buffers
+    offline
     rl-modules
-    rllib-learner
-    rllib-fault-tolerance
-    rllib-dev
+    learner
+    fault-tolerance
+    dev
     scaling-guide
 
 .. _rllib-feature-guide:
@@ -46,7 +46,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-callback
+        .. button-ref:: callback
 
             Injecting custom code into RLlib through callbacks
 
@@ -86,7 +86,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-offline
+        .. button-ref:: offline
 
             Offline RL with offline datasets
 
@@ -94,7 +94,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-replay-buffers
+        .. button-ref:: replay-buffers
 
             Working with replay buffers
 
@@ -102,7 +102,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-dev
+        .. button-ref:: dev
 
             Contribute to RLlib
 
