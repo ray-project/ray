@@ -509,6 +509,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._next_block_idx += 1
 
             def _on_insert_done(idx: int = task_idx) -> None:
+                self._shuffle_metrics.on_task_finished(
+                    task_index=idx,
+                    exception=None,
+                    task_exec_stats=None,
+                    task_exec_driver_stats=None,
+                )
                 self._insert_tasks.pop(idx, None)
 
             task = MetadataOpTask(
@@ -530,6 +536,16 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             if self._shuffle_bar is not None:
                 self._shuffle_bar.update(total=self._next_block_idx)
+
+    def can_add_input(self) -> bool:
+        """Keep at most one queued insertion per GPU rank.
+
+        Actor method calls don't consume additional GPUs, but their block arguments
+        remain pinned in Ray's object store until the actor processes them. Without
+        this bound, a fast upstream reader can enqueue most of a dataset behind the
+        serial actor mailboxes and force object-store spill/restore thrashing.
+        """
+        return len(self._insert_tasks) < self._rank_pool.nranks
 
     def _is_inserting_done(self) -> bool:
         return self._inputs_complete and len(self._insert_tasks) == 0
@@ -677,6 +693,26 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._insert_tasks.clear()
         self._extraction_tasks.clear()
 
+    @property
+    def metrics(self) -> OpRuntimeMetrics:
+        """Expose insertion metrics for resource accounting and backpressure.
+
+        Input blocks remain pinned in the object store while ``insert_batch`` is
+        queued or running on a GPU actor. These blocks are tracked by
+        ``_shuffle_metrics`` rather than the unused base metrics object, so the
+        resource manager must read this stage's metrics to see the GPU shuffle's
+        downstream capacity.
+
+        The finalize metrics are added to the shuffle metrics for reporting purposes
+        only.
+        """
+        self._shuffle_metrics._extra_metrics = self._extra_metrics()
+        return self._shuffle_metrics
+
+    def _extra_metrics(self):
+        finalize_name = f"{self._name}_finalize"
+        return {finalize_name: self._reduce_metrics.as_dict()}
+
     # ------------------------------------------------------------------
     # Resource accounting
     # ------------------------------------------------------------------
@@ -693,7 +729,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return ExecutionResources(gpu=self._rank_pool.nranks)
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(gpu=1)
+        # The actor pool's GPUs are already included in base_resource_usage. Calling
+        # insert_batch on those actors does not acquire another GPU. Reporting one
+        # here leaves no incremental GPU budget after the pool starts and causes the
+        # executor's liveness fallback to serialize insertions across all ranks.
+        return ExecutionResources()
 
     def get_actor_info(self) -> "ActorPoolInfo":
         from ray.data._internal.execution.interfaces.physical_operator import (
@@ -701,14 +741,16 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
         n = len(self._rank_pool.actors)
+        tasks_in_flight = len(self._insert_tasks) + len(self._extraction_tasks)
+        active = min(n, tasks_in_flight)
         return ActorPoolInfo(
             running=n,
             pending=0,
             restarting=0,
-            active=n,
-            idle=0,
-            pool_utilization=0,
-            tasks_in_flight=0,
+            active=active,
+            idle=n - active,
+            pool_utilization=active / n if n else 0,
+            tasks_in_flight=tasks_in_flight,
         )
 
     # ------------------------------------------------------------------

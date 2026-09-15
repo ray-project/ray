@@ -254,8 +254,14 @@ def _plan_gpu_shuffle_aggregate(
     logical_op: Aggregate,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
+    """Plan a GPU aggregate, falling back to CPU for unsupported built-ins.
+
+    Global reductions use a two-stage GPU operator without a shuffle. Grouped
+    reductions use the RAPIDS MPF hash-shuffle operator.
+    """
     from ray.data._internal.gpu_shuffle.hash_aggregate import (
         GPUAggregateFn,
+        GPUGlobalAggregateOperator,
         GPUHashAggregateOperator,
         build_gpu_aggregation_plan,
     )
@@ -287,6 +293,13 @@ def _plan_gpu_shuffle_aggregate(
         )
 
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
+
+    if len(key_columns) == 0:
+        return GPUGlobalAggregateOperator(
+            data_context,
+            input_physical_op,
+            aggregation_plan,
+        )
 
     return GPUHashAggregateOperator(
         data_context,

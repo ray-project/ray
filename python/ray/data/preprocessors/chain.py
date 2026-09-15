@@ -1,6 +1,9 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
+from ray.data.preprocessor import (
+    Preprocessor,
+    SerializablePreprocessorBase,
+)
 from ray.data.preprocessors.utils import (
     _PublicField,
     migrate_private_fields,
@@ -47,38 +50,41 @@ class Chain(SerializablePreprocessorBase):
         *preprocessors: The preprocessors to sequentially compose.
     """
 
-    def fit_status(self):
+    def __init__(self, *preprocessors: SerializablePreprocessorBase):
+        super().__init__()
+        self._preprocessors = preprocessors
+        self._gpu_chain = None
+
+    @property
+    def preprocessors(self) -> Tuple[SerializablePreprocessorBase, ...]:
+        """Return the preprocessors in execution order."""
+        return self._preprocessors
+
+    def fit_status(self) -> Preprocessor.FitStatus:
+        """Return the aggregate fit status of the contained preprocessors."""
         fittable_count = 0
         fitted_count = 0
 
-        for p in self._preprocessors:
-            if p.fit_status() == Preprocessor.FitStatus.FITTED:
+        for preprocessor in self._preprocessors:
+            status = preprocessor.fit_status()
+            if status == Preprocessor.FitStatus.FITTED:
                 fittable_count += 1
                 fitted_count += 1
-            elif p.fit_status() in (
+            elif status in (
                 Preprocessor.FitStatus.NOT_FITTED,
                 Preprocessor.FitStatus.PARTIALLY_FITTED,
             ):
                 fittable_count += 1
             else:
-                assert p.fit_status() == Preprocessor.FitStatus.NOT_FITTABLE
-        if fittable_count > 0:
-            if fitted_count == fittable_count:
-                return Preprocessor.FitStatus.FITTED
-            elif fitted_count > 0:
-                return Preprocessor.FitStatus.PARTIALLY_FITTED
-            else:
-                return Preprocessor.FitStatus.NOT_FITTED
-        else:
+                assert status == Preprocessor.FitStatus.NOT_FITTABLE
+
+        if fittable_count == 0:
             return Preprocessor.FitStatus.NOT_FITTABLE
-
-    def __init__(self, *preprocessors: SerializablePreprocessorBase):
-        super().__init__()
-        self._preprocessors = preprocessors
-
-    @property
-    def preprocessors(self) -> Tuple[SerializablePreprocessorBase, ...]:
-        return self._preprocessors
+        if fitted_count == fittable_count:
+            return Preprocessor.FitStatus.FITTED
+        if fitted_count > 0:
+            return Preprocessor.FitStatus.PARTIALLY_FITTED
+        return Preprocessor.FitStatus.NOT_FITTED
 
     def _fit(self, ds: "Dataset") -> SerializablePreprocessorBase:
         for preprocessor in self._preprocessors[:-1]:
@@ -86,9 +92,87 @@ class Chain(SerializablePreprocessorBase):
         self._preprocessors[-1].fit(ds)
         return self
 
-    def fit_transform(self, ds: "Dataset") -> "Dataset":
+    def fit(
+        self,
+        ds: "Dataset",
+        *,
+        accelerator: Optional[str] = None,
+        batch_size: Optional[int] = None,
+        num_gpus: Optional[int] = None,
+        num_gpus_per_worker: float = 1,
+        concurrency: Optional[int] = None,
+    ) -> "Chain":
+        """Fit the chain using either its standard or GPU implementation.
+
+        Args:
+            ds: Dataset used to fit each fittable preprocessor.
+            accelerator: Set to ``"gpu"`` to use equivalent GPU preprocessors.
+            batch_size: Rows per cuDF batch when using the GPU implementation.
+            num_gpus: Maximum number of concurrent GPU workers.
+            num_gpus_per_worker: GPUs reserved for each worker.
+            concurrency: Maximum number of concurrent workers.
+
+        Returns:
+            This fitted chain.
+        """
+        from ray.data.preprocessors.gpu.chain import gpu_fit, use_gpu_accelerator
+
+        if use_gpu_accelerator(accelerator):
+            return gpu_fit(
+                self,
+                ds,
+                batch_size=batch_size,
+                num_gpus=num_gpus,
+                num_gpus_per_worker=num_gpus_per_worker,
+                concurrency=concurrency,
+            )
+
+        self._gpu_chain = None
+        return super().fit(ds)
+
+    def fit_transform(
+        self,
+        ds: "Dataset",
+        *,
+        transform_num_cpus: Optional[float] = None,
+        transform_memory: Optional[float] = None,
+        transform_batch_size: Optional[int] = None,
+        transform_concurrency: Optional[int] = None,
+        accelerator: Optional[str] = None,
+        num_gpus: Optional[int] = None,
+        num_gpus_per_worker: float = 1,
+    ) -> "Dataset":
+        """Fit the chain and transform ``ds`` in one pass.
+
+        GPU execution converts supported CPU preprocessors to a fused
+        :class:`GPUChain`; the default path retains the standard sequential
+        behavior.
+        """
+        from ray.data.preprocessors.gpu.chain import (
+            gpu_fit_transform,
+            use_gpu_accelerator,
+        )
+
+        if use_gpu_accelerator(accelerator):
+            return gpu_fit_transform(
+                self,
+                ds,
+                transform_num_cpus=transform_num_cpus,
+                transform_memory=transform_memory,
+                transform_batch_size=transform_batch_size,
+                transform_concurrency=transform_concurrency,
+                num_gpus=num_gpus,
+                num_gpus_per_worker=num_gpus_per_worker,
+            )
+
         for preprocessor in self._preprocessors:
-            ds = preprocessor.fit_transform(ds)
+            ds = preprocessor.fit_transform(
+                ds,
+                transform_num_cpus=transform_num_cpus,
+                transform_memory=transform_memory,
+                transform_batch_size=transform_batch_size,
+                transform_concurrency=transform_concurrency,
+            )
         return ds
 
     def _transform(
@@ -108,6 +192,55 @@ class Chain(SerializablePreprocessorBase):
                 concurrency=concurrency,
             )
         return ds
+
+    def transform(
+        self,
+        ds: "Dataset",
+        *,
+        batch_size: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[int] = None,
+        accelerator: Optional[str] = None,
+        num_gpus: Optional[int] = None,
+        num_gpus_per_worker: float = 1,
+    ) -> "Dataset":
+        """Transform a dataset using the standard or fused GPU chain.
+
+        Args:
+            ds: Dataset to transform.
+            batch_size: Rows per transform batch.
+            num_cpus: CPUs reserved per standard transform worker.
+            memory: Heap memory reserved per standard transform worker.
+            concurrency: Maximum number of concurrent workers.
+            accelerator: Set to ``"gpu"`` to use the fused GPU implementation.
+            num_gpus: Maximum number of concurrent GPU workers.
+            num_gpus_per_worker: GPUs reserved for each GPU worker.
+
+        Returns:
+            The lazily transformed dataset.
+        """
+        from ray.data.preprocessors.gpu.chain import gpu_transform, use_gpu_accelerator
+
+        if use_gpu_accelerator(accelerator):
+            return gpu_transform(
+                self,
+                ds,
+                batch_size=batch_size,
+                num_cpus=num_cpus,
+                memory=memory,
+                concurrency=concurrency,
+                num_gpus=num_gpus,
+                num_gpus_per_worker=num_gpus_per_worker,
+            )
+
+        return super().transform(
+            ds,
+            batch_size=batch_size,
+            num_cpus=num_cpus,
+            memory=memory,
+            concurrency=concurrency,
+        )
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
         for preprocessor in self._preprocessors:
@@ -135,6 +268,7 @@ class Chain(SerializablePreprocessorBase):
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
         self._preprocessors = fields["preprocessors"]
+        self._gpu_chain = None
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
