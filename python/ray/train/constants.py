@@ -57,9 +57,16 @@ _DEPRECATED_VALUE: Any = "DEPRECATED"
 ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
 
 
-V2_MIGRATION_GUIDE_MESSAGE = (
+# For deprecations that always warn. Warnings gated on
+# ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR should use V2_MIGRATION_GUIDE_MESSAGE
+# below, which additionally documents that env var as the opt-out.
+V2_MIGRATION_GUIDE_LINK_MESSAGE = (
     "See this issue for more context and migration options: "
-    "https://github.com/ray-project/ray/issues/49454. "
+    "https://github.com/ray-project/ray/issues/49454."
+)
+
+V2_MIGRATION_GUIDE_MESSAGE = (
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE} "
     "Disable these warnings by setting the environment variable: "
     f"{ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR}=0"
 )
