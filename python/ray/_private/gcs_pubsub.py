@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import random
+import os
 from collections import deque
 from typing import List, Optional, Tuple
 
@@ -30,7 +30,14 @@ class _SubscriberBase:
         self._worker_id = worker_id
         # self._subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        #
+        # A subscriber is constructed on every ray.init(), so we use
+        # os.urandom() instead of the `random` module: the latter would
+        # draw from (and thus perturb) the process's shared global random
+        # state, silently breaking reproducibility for any user code that
+        # seeds `random` before calling ray.init(). See
+        # https://github.com/ray-project/ray/issues/10145.
+        self._subscriber_id = os.urandom(28)
         self._last_batch_size = 0
         self._max_processed_sequence_id = 0
         self._publisher_id = b""
