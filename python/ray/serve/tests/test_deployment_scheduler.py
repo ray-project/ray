@@ -1045,13 +1045,24 @@ def autoscaling_cluster_with_telemetry(monkeypatch):
 @pytest.fixture
 def setup_compact_scheduling(request, monkeypatch):
     """Ends with node 1 holding one 1-CPU replica whose migration is blocked."""
+    # Detect a killed raylet within a few seconds. Tighter values mark healthy
+    # nodes dead under CI load.
     monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
-    monkeypatch.setenv("RAY_health_check_timeout_ms", "1000")
-    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "2000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "3000")
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "0.01")
 
     params = getattr(request, "param", None)
     cluster = AutoscalingCluster(**CPU_NODE_AUTOSCALING_CONFIG)
+
+    def teardown():
+        serve.shutdown()
+        ray.shutdown()
+        cluster.shutdown()
+
+    # Clean up even when setup fails. A leaked driver and cluster otherwise
+    # break every later test in the file.
+    request.addfinalizer(teardown)
     cluster.start()
     ray.init()
     serve.start()
@@ -1127,10 +1138,6 @@ def setup_compact_scheduling(request, monkeypatch):
     check_num_alive_nodes(4)
 
     yield client, config, signal
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
 
 @pytest.mark.skipif(
@@ -1258,11 +1265,12 @@ class TestCompactScheduling:
 
         wait_for_condition(
             check_deployment_status,
+            timeout=30,
             name="BlockInit",
             app_name="A",
             expected_status=DeploymentStatus.UNHEALTHY,
         )
-        wait_for_condition(check_node_dead, node_id=node_to_kill["NodeID"])
+        wait_for_condition(check_node_dead, timeout=30, node_id=node_to_kill["NodeID"])
 
         signal.send.remote()
         wait_for_condition(
