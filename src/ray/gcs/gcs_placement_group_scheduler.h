@@ -204,11 +204,6 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
-  /// This method returns bundle locations that success to commit resources.
-  ///
-  /// \return Location of bundles that success to commit resources on a node.
-  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
-
   /// This method returns bundle locations.
   ///
   /// \return Location of bundles.
@@ -254,9 +249,6 @@ class LeaseStatusTracker {
 
   /// Location of bundles that commit requests failed.
   std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
-
-  /// Location of bundles that committed requests success.
-  std::shared_ptr<BundleLocations> committed_bundle_locations_;
 
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::PREPARING;
@@ -443,11 +435,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Acquire the bundle resources from the cluster resources. The matching
   /// release is no longer mirrored here -- when bundles are cancelled or a
   /// scheduling attempt fails, GCS waits for the raylet's next ray-syncer
-  /// broadcast to reconcile its view of the affected nodes' resources.
+  /// broadcast to reconcile its view. Per-instance allocation is saved in
+  /// the tracker so CommitBundleResources can create PG resources with the
+  /// correct GPU topology.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
-  /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
@@ -456,11 +447,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy);
-
-  /// Help function to check if the resource_name has the pattern
-  /// {original_resource_name}_group_{placement_group_id}, which means
-  /// wildcard resource.
-  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   instrumented_io_context &io_context_;
 
@@ -487,7 +473,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 
   friend class GcsPlacementGroupSchedulerTest;
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
 };
 
 }  // namespace gcs

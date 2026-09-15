@@ -15,6 +15,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,10 +26,17 @@
 
 namespace ray {
 
+using ResourceAllocation = absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>;
+
 /// Represents a node resource set that contains the per-instance resource values.
 class NodeResourceInstanceSet {
  public:
-  NodeResourceInstanceSet(){};
+  /// \param track_pg_index If true, parse resource names on every Set/Remove
+  /// to build a lookup table for PG bundle resources. The raylet uses this to
+  /// find which bundle can satisfy a PG resource request. The GCS passes false
+  /// because it never does local PG allocation, and the parsing overhead is large.
+  explicit NodeResourceInstanceSet(bool track_pg_index = true)
+      : track_pg_index_(track_pg_index){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
   explicit NodeResourceInstanceSet(const NodeResourceSet &total);
@@ -50,17 +58,22 @@ class NodeResourceInstanceSet {
   /// If the resource doesn't exist, return 0.
   FixedPoint Sum(ResourceID resource_id) const;
 
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
   /// Check whether two node resource sets are equal meaning
   /// they have the same resources and instances.
   bool operator==(const NodeResourceInstanceSet &other) const;
 
   std::string DebugString() const;
 
+  /// Returns true if `resource_demands` can be satisfied without modifying state.
+  bool CanAllocate(const ResourceSet &resource_demands) const;
+
   /// Try to allocate resources specified by `resource_demands`.
   /// This operation is all or nothing meaning that if any single resource
   /// cannot be allocated, the entire allocation fails and std::nullopt is returned.
-  std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>> TryAllocate(
-      const ResourceSet &resource_demands);
+  std::optional<ResourceAllocation> TryAllocate(const ResourceSet &resource_demands);
 
   /// Free allocated resources and add them back to this set.
   void Free(ResourceID resource_id, const std::vector<FixedPoint> &allocation);
@@ -87,23 +100,11 @@ class NodeResourceInstanceSet {
   NodeResourceSet ToNodeResourceSet() const;
 
   /// Only for testing.
-  const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
-    return resources_;
-  }
+  const ResourceAllocation &Resources() const { return resources_; }
 
- private:
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
-  ///
-  /// Allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional demand using the
-  /// instance with the smallest available capacity that can satisfy the fractional
-  /// demand. For example, assume a resource conisting of 4 instances, with available
-  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
-  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
-  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .3).
-  /// Thus, we will allocate a bunch of full instances and
-  /// at most a fractional instance.
+  /// Allocates full unit-capacity instances first, then uses best-fit for the fractional
+  /// remainder.
   ///
   /// During resource allocation with a placement group, no matter whether the
   /// allocation requirement specifies a bundle index, we generate the
@@ -114,42 +115,13 @@ class NodeResourceInstanceSet {
   /// that the allocation on the wildcard resource and the indexed resource are
   /// consistent, meaning the same instance ids should be allocated.
   ///
-  /// For example, considering the GPU resource on a host. Assuming the host has 3 GPUs
-  /// and 1 placement group with 2 bundles. The bundle with index 1 contains 1 GPU and
-  /// the bundle with index 2 contains 2 GPU.
-  ///
-  /// The current node resource can be as follows:
-  /// resource id: total, available
-  /// GPU: [1, 1, 1], [0, 0, 0]
-  /// GPU_<pg_id>: [1, 1, 1], [1, 1, 1]
-  /// GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
-  /// GPU_2_<pg_id>: [0, 1, 1], [0, 1, 1]
-  ///
-  /// Now, we want to allocate a task with 2 GPUs and in the placement group <pg_id>,
-  /// reflecting in the following resource demand:
-  /// GPU_<pg_id> : 2
-  ///
-  /// We will iterate though all the bundles in the placement group and bundle with
-  /// index=2 has the required capacity. So we will allocate the task to the 2 GPUs in
-  /// bundle 2 in placement group <pg_id> and the same allocation should be reflected in
-  /// the wildcard GPU resource. So the allocation will be:
-  /// GPU_<pg_id> : [0, 1, 1]
-  /// GPU_2_<pg_id> : [0, 1, 1]
-  ///
-  /// And as a result, after the allocation, current node resource will be:
-  /// resource id: total, available
-  /// GPU: [1, 1, 1], [0, 0, 0]
-  /// GPU_<pg_id>: [1, 1, 1], [1, 0, 0]
-  /// GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
-  /// GPU_2_<pg_id>: [0, 1, 1], [0, 0, 0]
-  ///
   /// \param resource_id: The id of the resource to be allocated.
   /// \param demand: The resource amount to be allocated.
-  ///
   /// \return the allocated instances, if allocation successful. Else, return nullopt.
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
 
+ private:
   /// Allocate resource to the resource_id based on a provided reference allocation.
   /// The function is used for placement group allocation. Making the allocation of
   /// the wildcard resource be identical to the indexed resource allocation.
@@ -163,8 +135,10 @@ class NodeResourceInstanceSet {
   void AllocateWithReference(const std::vector<FixedPoint> &ref_allocation,
                              ResourceID resource_id);
 
+  bool track_pg_index_ = true;
+
   /// Map from the resource IDs to the resource instance values.
-  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
+  ResourceAllocation resources_;
 
   /// This is a derived map from the resources_ map. The map aggregates all the current
   /// placement group indexed resources in resources_ by their original resource id and
