@@ -237,7 +237,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // The two types of messages that are received are:
   //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
   //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
-  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  //
+  // Messages of one type that were received together arrive in one call; the resource
+  // view is updated from every RESOURCE_VIEW message in the call before scheduling is
+  // re-run once.
+  void ConsumeSyncMessages(
+      syncer::MessageType message_type,
+      std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) override;
 
   // Generate a RaySyncer sync message to be sent to other Raylets.
   //
