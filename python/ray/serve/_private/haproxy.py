@@ -140,7 +140,7 @@ def _load_lua_template() -> string.Template:
 
 @dataclass
 class _DeploymentTargets:
-    """One `_direct_http` deployment's replicas and the backend that holds them.
+    """One deployment's replicas and the HAProxy backend that holds them.
 
     The Lua replica map is keyed `[app][deployment][replica_id]`, mirroring the
     two-level decision `/internal/route` reports: which deployment, then which of
@@ -149,10 +149,11 @@ class _DeploymentTargets:
     reload) apart from "this deployment's replica set moved under me"
     (`unknown_replica_id`, e.g. autoscaling).
 
-    Only `_direct_http` deployments appear. The app's ingress deployment does not:
-    a request goes *either* to the ingress by path *or* through the router to a
-    direct deployment, never both, so the router never names the ingress and the
-    map has no reason to hold its replicas.
+    Every router-selectable deployment of the app appears, not just the
+    `_direct_http` ones: the ingress is a target the router may name like any
+    other, and its replicas live in the app's `-via-ingress-request-router`
+    companion backend. An app whose only replicas are its ingress's is therefore
+    still routed through its router rather than plain path-based balancing.
     """
 
     # Generated HAProxy backend holding these replicas.
@@ -173,29 +174,19 @@ def _routers_and_targets_by_backend(
     stays on-node. Falls back to the lexicographically smallest router when none
     is co-located.
 
-    The replica map is `{backend_name: {deployment_name: _DeploymentTargets}}`
-    and holds only `_direct_http` deployments with at least one replica ID. The
-    ingress's own `backend.servers` are deliberately not included -- see
-    `_DeploymentTargets`. A router-bearing backend with no direct targets
-    therefore contributes nothing, and if no backend contributes anything the
-    caller writes no Lua at all.
+    The replica map is `{backend_name: {deployment_name: _DeploymentTargets}}`,
+    built by `BackendConfig.get_deployment_targets()` -- the single source for
+    which deployments are router-selectable and which backend holds each one's
+    replicas. A router-bearing backend whose deployments have no replica IDs yet
+    contributes nothing, and if no backend contributes anything the caller writes
+    no Lua at all.
     """
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, Dict[str, _DeploymentTargets]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
             continue
-        by_deployment: Dict[str, _DeploymentTargets] = {}
-        # `direct_target_configs` is built sorted by deployment name, so the
-        # rendered Lua is byte-stable for `_write_if_changed`.
-        for direct in backend.direct_target_configs:
-            replicas = {
-                s.replica_id: s.name for s in direct.servers if s.replica_id is not None
-            }
-            if replicas:
-                by_deployment[direct.deployment_name] = _DeploymentTargets(
-                    backend_name=direct.name, replicas=replicas
-                )
+        by_deployment = backend.get_deployment_targets()
         if not by_deployment:
             continue
         candidates = backend.ingress_request_router_servers
@@ -615,6 +606,65 @@ class BackendConfig:
     # speak HTTP/2 cleartext to replica direct-ingress gRPC servers.
     protocol: RequestProtocol = RequestProtocol.HTTP
 
+    @property
+    def haproxy_name(self) -> str:
+        """This backend's name as the config renders it (never empty)."""
+        return self.name or "unknown"
+
+    @property
+    def via_ingress_request_router_backend_name(self) -> str:
+        """Companion backend holding this app's ingress replicas.
+
+        The router may name the ingress deployment like any other target, and
+        the frontend then dispatches here. Both the Jinja template and the Lua
+        replica map have to spell this name identically -- if they drift, an
+        ingress selection matches no `use_backend`, falls through to the
+        path-routed backend and silently loses the pin -- so neither writes the
+        suffix out itself.
+        """
+        # TODO (celinaky): this doesn't seem like the best way to do it, try to
+        # fix later. also idk why these are @property.
+        return f"{self.haproxy_name}-via-ingress-request-router"
+
+    def get_deployment_targets(self) -> Dict[str, "_DeploymentTargets"]:
+        """Router-selectable deployments of this app, keyed by deployment name.
+
+        The single source for the Lua map's `[deployment][replica_id]` level:
+        which deployments `/internal/route` may name, and which HAProxy backend
+        holds each one's replicas. The ingress comes first, then the
+        `_direct_http` deployments in the order `direct_target_configs` already
+        holds them (sorted by deployment name), so the rendered Lua is
+        byte-stable for `_write_if_changed`.
+
+        A deployment is included only when at least one of its replicas carries
+        a `replica_id`: that is what the router returns and what the map is
+        keyed on. The ingress is skipped entirely when `ingress_deployment_name`
+        is empty -- a proxy-backed target group has no ingress deployment
+        identity for the router to name.
+        """
+        targets: "Dict[str, _DeploymentTargets]" = {}
+
+        if self.ingress_deployment_name:
+            ingress_replicas = {
+                s.replica_id: s.name for s in self.servers if s.replica_id is not None
+            }
+            if ingress_replicas:
+                targets[self.ingress_deployment_name] = _DeploymentTargets(
+                    backend_name=self.via_ingress_request_router_backend_name,
+                    replicas=ingress_replicas,
+                )
+
+        for direct in self.direct_target_configs:
+            replicas = {
+                s.replica_id: s.name for s in direct.servers if s.replica_id is not None
+            }
+            if replicas:
+                targets[direct.deployment_name] = _DeploymentTargets(
+                    backend_name=direct.name, replicas=replicas
+                )
+
+        return targets
+
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
 
@@ -968,9 +1018,6 @@ class HAProxyApi(ProxyApi):
         # file count stays bounded instead of growing with every reload.
         self._retired_logs: "deque[Tuple[str, str]]" = deque()
         self._max_retained_logs: int = 10
-        # Apps already warned about in `_write_ingress_request_router_lua`, so
-        # the warning fires once per app rather than on every config regeneration.
-        self._warned_router_apps_without_direct_targets: Set[str] = set()
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -1334,35 +1381,15 @@ class HAProxyApi(ProxyApi):
     ) -> Optional[str]:
         """Render the ingress-request-router Lua action and write it to disk.
 
-        Returns the script path, or None if no backend has both ingress
-        request routers AND replicas with replica IDs.
+        Returns the script path, or None if no backend has both ingress request
+        routers AND a router-selectable deployment with replica IDs. An app whose
+        only replicas are its ingress's does get a Lua map: the ingress is a
+        target the router may name, so such an app is routed through its router
+        rather than load-balanced by path.
         """
         routers, targets = _routers_and_targets_by_backend(
             backends, local_host=get_localhost_ip()
         )
-
-        # A router-bearing app whose only replicas are its ingress's is the
-        # pre-`_direct_http` single-model shape. The router only ever names
-        # `_direct_http` deployments now, so it is never consulted for such an
-        # app and requests load-balance across the ingress instead -- traffic
-        # flows, but without the routing policy. Say so once per app rather than
-        # letting it degrade silently. (A direct deployment that merely has no
-        # replica IDs yet is a transient during scaling and is not warned about.)
-        for backend in backends:
-            if (
-                backend.ingress_request_router_servers
-                and not backend.direct_target_configs
-                and backend.app_name
-                not in self._warned_router_apps_without_direct_targets
-            ):
-                self._warned_router_apps_without_direct_targets.add(backend.app_name)
-                logger.warning(
-                    f"Application '{backend.app_name}' has an ingress request router "
-                    "but no `_direct_http` deployments. The router is only consulted "
-                    "for `_direct_http` deployments, so it will not be called and "
-                    "requests will be load-balanced across the ingress replicas "
-                    "without the routing policy."
-                )
 
         if not routers:
             return None
