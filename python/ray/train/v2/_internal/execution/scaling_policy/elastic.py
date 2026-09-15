@@ -1,9 +1,9 @@
 import logging
-from typing import List, Optional
+from typing import Optional
 
 import ray
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
-    ResourceDict,
+    ReservedResources,
 )
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
@@ -37,12 +37,12 @@ class ElasticScalingPolicy(ScalingPolicy):
         self._latest_monitor_time = float("-inf")
         self._latest_insufficient_workers_warning_time = float("-inf")
         self._latest_reserved_resources_query_time = float("-inf")
-        self._latest_reserved_resources: Optional[List[ResourceDict]] = None
+        self._latest_reserved_resources: Optional[ReservedResources] = None
 
     def _get_num_workers_for_resource_request(self) -> int:
         return self.scaling_config.max_workers
 
-    def _count_possible_workers(self, reserved_resources: List[ResourceDict]) -> int:
+    def _count_possible_workers(self, reserved_resources: ReservedResources) -> int:
         """Count the number of workers that can be started/restarted with the given
         the list of node resources. The returned number is capped at the maximum
         number of workers.
@@ -65,7 +65,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         if sum(single_worker_resources.values()) == 0:
             return self.scaling_config.max_workers
 
-        for resources in reserved_resources:
+        for resources in reserved_resources.values():
             num_workers = min(
                 [
                     resources.get(resource, 0.0) // single_worker_resources[resource]
@@ -254,7 +254,7 @@ class ElasticScalingPolicy(ScalingPolicy):
     # Methods for interacting with AutoscalingCoordinator
     # ---------------------------------------------------
 
-    def _get_reserved_resources(self) -> Optional[List[ResourceDict]]:
+    def _get_reserved_resources(self) -> Optional[ReservedResources]:
         """Get reserved resources from AutoscalingCoordinator.
         Return None if there is an error."""
         now = time_monotonic()
