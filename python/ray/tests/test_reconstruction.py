@@ -11,6 +11,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     wait_for_pid_to_exit,
 )
+from ray.job_config import JobConfig
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -176,6 +177,73 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
             ray.get(obj)
     else:
         with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
+            ray.get(obj)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Very flaky on Windows due to memory usage."
+)
+@pytest.mark.parametrize(
+    ("cluster_lineage_pinning_enabled", "ray_data_reconstruction_enabled", "expected"),
+    [
+        # A job that doesn't reconstruct objects itself defers to the cluster.
+        (True, False, True),
+        (False, False, False),
+        # Ray Data reconstructs lost objects itself, so Ray Core stops pinning
+        # lineage even though the cluster-level config enables it.
+        (True, True, False),
+        (False, True, False),
+    ],
+)
+def test_job_config_ray_data_reconstruction(
+    config,
+    ray_start_cluster,
+    cluster_lineage_pinning_enabled,
+    ray_data_reconstruction_enabled,
+    expected,
+):
+    """`_enable_ray_data_reconstruction` only ever turns core lineage pinning off."""
+    config["lineage_pinning_enabled"] = cluster_lineage_pinning_enabled
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, _system_config=config)
+    ray.init(
+        address=cluster.address,
+        job_config=JobConfig(
+            _enable_ray_data_reconstruction=ray_data_reconstruction_enabled
+        ),
+    )
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return x.size
+
+    obj = large_object.options(resources={"node1": 1}).remote()
+    assert (
+        ray.get(dependent_task.options(resources={"node1": 1}).remote(obj)) == 10**7
+    )
+
+    # Explicitly kill the node holding the object to test reconstruction is
+    # enabled/disabled.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+
+    if expected:
+        assert ray.get(dependent_task.remote(obj)) == 10**7
+        assert ray.get(obj).size == 10**7
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj))
+        with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(obj)
 
 

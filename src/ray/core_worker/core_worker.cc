@@ -3800,7 +3800,11 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    worker_context_->MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    if (worker_context_->MaybeInitializeJobInfo(job_id,
+                                                request.task_spec().job_config())) {
+      reference_counter_->SetLineagePinningEnabled(
+          worker_context_->ShouldPinObjectLineage());
+    }
     task_counter_.SetJobId(job_id);
   }
 
