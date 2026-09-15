@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 import ray
+from ray._common.network_utils import parse_address
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.placement_group import (
@@ -20,11 +21,46 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
+# Environment variables set by GKE / Cloud TPU VM platforms.
+GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
-GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
+
+# Backward compatibility / aliases
+TPU_NAME_ENV_VAR = GKE_TPU_NAME_ENV_VAR
+TPU_ACCELERATOR_TYPE_ENV_VAR = GKE_TPU_ACCELERATOR_TYPE_ENV_VAR
+TPU_TOPOLOGY_ENV_VAR = GKE_TPU_TOPOLOGY_ENV_VAR
+TPU_WORKER_ID_ENV_VAR = GKE_TPU_WORKER_ID_ENV_VAR
+
+# Environment variables for LibTPU / JAX mesh and subslice configuration.
+# See: https://github.com/google/jax/issues/14977 for an example/more details.
+TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
+TPU_PROCESS_BOUNDS_ENV_VAR = "TPU_PROCESS_BOUNDS"
+TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_PROCESS_BOUNDS"
+TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
+TPU_SINGLE_HOST_BOUNDS = "1,1,1"
+TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
+TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
+TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
+TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+
+# Mapping of chips per host/process to LibTPU 3D coordinate bounding boxes (X,Y,Z).
+TPU_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
+    1: "1,1,1",
+    2: "1,2,1",
+    4: "2,2,1",
+    8: "2,4,1",
+}
+
+# TorchTPU (PyTorch/XLA) environment variables and defaults.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
+
+# Ray-specific TPU control flags.
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
+NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -39,25 +75,12 @@ GCE_TPU_ENV_KEY = "tpu-env"
 GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
-TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-
-NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
-
-# The following defines environment variables that allow
-# us to access a subset of TPU visible chips.
-#
-# See: https://github.com/google/jax/issues/14977 for an example/more details.
-TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
-
-TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
-TPU_SINGLE_HOST_BOUNDS = "1,1,1"
-
+# Hardware and topology configuration defaults.
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
+TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
 
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
 # See https://cloud.google.com/tpu/docs/custom-os-image.
@@ -69,9 +92,15 @@ TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 # Topologies that are always sub-host or single-host
 TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
-# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
-# Accelerators that are 1 core per chip: v5e, v6e
+# TPU generations fall into three hardware/software accounting categories:
+# 1) Megacore (v2, v3, v4, v5p): 2 TensorCores per chip, but fused into 1 logical XLA
+#    device per chip (3D topology, e.g. "2,2,1"). Listed in neither set below.
+# 2) Single-Core (v5litepod, v6e): 1 TensorCore per chip and 1 logical XLA device per chip
+#    (3D topology, e.g. "2,4,1"). Listed in SINGLE_CORE_TPU_TYPES.
+# 3) Dual-Device (v7x): 2 discrete chiplets, enumerated as 2 logical XLA devices
+#    per chip (4D topology, e.g. "2,2,1,2"). Listed in DUAL_DEVICE_TPU_TYPES.
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+DUAL_DEVICE_TPU_TYPES = ("v7x",)
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
@@ -110,8 +139,8 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 16, 24)),
-    "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v5litepod": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
     "v7x": {
         "2x2x1",
         "2x2x2",
@@ -128,7 +157,7 @@ VALID_TPU_TOPOLOGY = {
 
 
 # Worker grid dimensions for each valid TPU topology.
-# Maps topology -> (worker_y, worker_x) for 2D, (worker_z, worker_y, worker_x) for 3D.
+# Maps topology -> (worker_y, worker_x) for 2D, (worker_x, worker_y, worker_z) for 3D.
 # Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types.
 # For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
 #
@@ -165,40 +194,111 @@ _VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
 
 
 def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
-    """Parse a topology string (e.g. "2x4", "2x2x2") into a dimension tuple."""
-    return tuple(int(d) for d in topology.strip().lower().split("x"))
+    """Parse a topology string (e.g. "2x4", "2,2,1", "2x2x2") into a dimension tuple."""
+    parts = [int(p) for p in re.split(r"[,xX]", topology.strip()) if p]
+    if not parts:
+        raise ValueError(f"Invalid topology string: '{topology}'")
+    return tuple(parts)
+
+
+def normalize_torchtpu_topology(
+    topology: str,
+    tpu_resource_per_chip: int = 1,
+    accelerator_type: Optional[str] = None,
+) -> str:
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    if tpu_resource_per_chip <= 0:
+        raise ValueError("tpu_resource_per_chip must be positive")
+
+    if not isinstance(topology, str) or not topology.strip():
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    clean_topo = topology.strip().lower().replace("x", ",")
+    dims: List[str] = []
+    for token in clean_topo.split(","):
+        tok = token.strip()
+        if not tok or not tok.isdigit() or int(tok) <= 0:
+            raise ValueError(f"Invalid topology string: {topology!r}")
+        dims.append(tok)
+
+    if len(dims) not in (2, 3, 4):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    # 2D topologies (e.g. "2x4") are padded with 1 for the Z dimension ("2,4,1").
+    if len(dims) == 2:
+        dims.append("1")
+    # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
+    if len(dims) == 3:
+        if tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
+        elif accelerator_type and get_tpu_devices_per_chip(accelerator_type) > 1:
+            dims.append(str(get_tpu_devices_per_chip(accelerator_type)))
+    return ",".join(dims)
 
 
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
-    (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
+    (x, y, z) for 3D. Raises ``ValueError`` for unknown topologies.
     """
     dims = _parse_topology_dims(topology)
+    key = "x".join(str(d) for d in dims)
     if len(dims) == 2:
-        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
+        if key not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
             raise ValueError(
                 f"Unknown 2D topology: '{topology}'. "
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_2D.keys())}"
             )
-        return _VALID_TOPOLOGY_WORKER_DIMS_2D[topology]
+        return _VALID_TOPOLOGY_WORKER_DIMS_2D[key]
     else:
-        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
+        if key not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
             raise ValueError(
                 f"Unknown 3D topology: '{topology}'. "
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
             )
-        return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+        return _VALID_TOPOLOGY_WORKER_DIMS_3D[key]
+
+
+def get_jax_process_bounds(topology: str) -> str:
+    """Returns the JAX/libtpu process bounds string (e.g. '1,2,1' for '2x4'; '1,1,2' for '2x2x2')."""
+    dims = _get_worker_dims_for_topology(topology)
+    if len(dims) == 2:
+        return f"{dims[0]},{dims[1]},1"
+    return ",".join(str(d) for d in dims)
+
+
+def get_jax_chips_per_process_bounds(
+    chips_per_host: int = DEFAULT_TPU_NUM_CHIPS_PER_HOST,
+) -> str:
+    """Returns the JAX/libtpu chips-per-process bounds string (e.g. '2,2,1' for 4 chips)."""
+    return TPU_CHIPS_PER_PROCESS_BOUNDS.get(chips_per_host, f"{chips_per_host},1,1")
+
+
+def _strip_endpoint_port(endpoint: Optional[str]) -> str:
+    """Strips port and URI scheme from an endpoint (IPv4, IPv6, hostname, or URL)."""
+    if not endpoint:
+        return ""
+    s = endpoint.strip()
+    if not s:
+        return ""
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    if "/" in s:
+        s = s.split("/", 1)[0]
+    parsed = parse_address(s)
+    if parsed is not None:
+        return parsed[0]
+    return s.strip("[]")
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
     """Return the default chips-per-VM for *topology* on *accelerator_version*
     (single-host v5e/v6e topologies pack up to 8 chips on one VM).
     """
-    accel_lower = accelerator_version.strip().lower()
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
 
     # Single-host: return total chips in topology
-    if accel_lower in TPU_8_CHIPS_PER_HOST_TYPES:
+    if any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES):
         total_chips = get_num_chips_from_topology(topology)
         if total_chips <= 8:
             return total_chips
@@ -230,7 +330,8 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 
 
 def _accelerator_type_check(accelerator_type: str):
-    if not accelerator_type.startswith(VALID_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    if not norm_type.startswith(VALID_TPU_TYPES):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
@@ -238,25 +339,27 @@ def _accelerator_type_check(accelerator_type: str):
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
     """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    parts = accelerator_type.split("-")
+    parts = norm_type.split("-")
     if len(parts) < 2:
         raise ValueError(
             f"Accelerator type must include size (e.g. 'v6e-8'), got: {accelerator_type}"
         )
 
     num_cores = int(parts[1])
-    cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+    cores_per_chip = get_tpu_cores_per_chip(norm_type)
 
     return num_cores // cores_per_chip
 
 
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    if accelerator_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
-        total_chips = get_total_chips_from_accelerator_type(accelerator_type)
+    if norm_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
+        total_chips = get_total_chips_from_accelerator_type(norm_type)
 
         # Sub/single-host topologies return their exact chip count
         if total_chips <= 8:
@@ -267,8 +370,9 @@ def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
 
 
 def get_tpu_cores_per_chip(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
-    if accelerator_type.startswith(SINGLE_CORE_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
+    if norm_type.startswith(SINGLE_CORE_TPU_TYPES):
         return 1
 
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
@@ -293,7 +397,7 @@ def infer_tpu_pod_type_from_topology(
         return None
     try:
         num_chips = get_num_chips_from_topology(topology)
-        generation = accelerator_type.lower().replace("tpu-", "")
+        generation = normalize_tpu_accelerator_type(accelerator_type)
         num_cores = num_chips * get_tpu_cores_per_chip(generation)
 
         return f"{generation}-{num_cores}"
@@ -338,8 +442,9 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     total_chips = get_num_chips_from_topology(topology)
 
     # Check for 8-chip host types (v5litepod, v6e) for single host setups
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
     if (
-        accelerator_version.strip().lower() in TPU_8_CHIPS_PER_HOST_TYPES
+        any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES)
         and topology.strip().lower() in TPU_SINGLE_HOST_TOPOLOGIES
     ):
         return total_chips
@@ -437,7 +542,8 @@ def _build_subslice_labels(
     Returns a dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to
     subslice index strings (e.g. "0").
     """
-    worker_dims = _get_worker_dims_for_topology(parent_topology)
+    clean_parent_topo = parent_topology.strip().lower()
+    worker_dims = _get_worker_dims_for_topology(clean_parent_topo)
 
     if len(worker_dims) == 2:
         dim_y, dim_x = worker_dims
@@ -452,13 +558,13 @@ def _build_subslice_labels(
         for sub_shape, (sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_2D.items():
             if sub_y > dim_y or sub_x > dim_x:
                 continue
-            if sub_shape == parent_topology:
+            if sub_shape == clean_parent_topo:
                 break
             subslice_id = (idx_y // sub_y) * (dim_x // sub_x) + (idx_x // sub_x)
             labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
         return labels
     else:
-        dim_z, dim_y, dim_x = worker_dims
+        dim_x, dim_y, dim_z = worker_dims
         wz = physical_worker_id // (dim_y * dim_x)
         remainder = physical_worker_id % (dim_y * dim_x)
         wy = remainder // dim_x
@@ -467,10 +573,10 @@ def _build_subslice_labels(
         # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_3D must be in ascending order by
         # total worker count. The 'break' relies on this property.
         labels = {}
-        for sub_shape, (sub_z, sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
-            if sub_z > dim_z or sub_y > dim_y or sub_x > dim_x:
+        for sub_shape, (sub_x, sub_y, sub_z) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
+            if sub_x > dim_x or sub_y > dim_y or sub_z > dim_z:
                 continue
-            if sub_shape == parent_topology:
+            if sub_shape == clean_parent_topo:
                 break
             subslice_id = (
                 (wz // sub_z) * (dim_y // sub_y) * (dim_x // sub_x)
@@ -613,6 +719,60 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     return False
 
 
+def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
+    """Normalizes a TPU accelerator type string to the standard 'v{gen}' format."""
+    if not accelerator_type:
+        return ""
+    s = str(accelerator_type).strip().lower()
+    if s.startswith("tpu-v"):
+        return s[4:]
+    if s.startswith("tpu-"):
+        return "v" + s[4:]
+    if s.startswith("tpuv"):
+        return s[3:]
+    if s.startswith("tpu"):
+        return "v" + s[3:]
+    return s
+
+
+def get_tpu_resource_per_chip() -> int:
+    """Returns the number of TPU custom resources per chip.
+
+    Defaults to 1 for 1 TPU resource per physical chip. If
+    RAY_TPU_RESOURCE_PER_CHIP is set to an integer, that value is used
+    instead (e.g. 2 for 2 TPU resources per physical chip on dual-device TPUs).
+    """
+    val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
+    if val is not None:
+        try:
+            rpc_val = int(val)
+            if rpc_val <= 0:
+                raise ValueError
+            return rpc_val
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, got: {val!r}"
+            )
+    return 1
+
+
+def get_tpu_devices_per_chip(accelerator_type: Optional[str] = None) -> int:
+    """Return the number of logical devices per physical chip (defaults to 1)."""
+    if not accelerator_type:
+        accelerator_type = (
+            os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR)
+            or TPUAcceleratorManager.get_current_node_tpu_pod_type()
+        )
+
+    if not accelerator_type:
+        return 1
+
+    gen = normalize_tpu_accelerator_type(accelerator_type).split("-")[0]
+    if gen in DUAL_DEVICE_TPU_TYPES:
+        return 2
+    return 1
+
+
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
@@ -623,6 +783,31 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return TPU_VISIBLE_CHIPS_ENV_VAR
+
+    @staticmethod
+    def _expand_chip_to_device_ids(chip: str, devices_per_chip: int) -> List[str]:
+        """Expand a physical chip ID into logical device IDs for multi-device TPUs."""
+        if devices_per_chip <= 1:
+            return [chip]
+        try:
+            chip_idx = int(chip)
+            return [
+                str(chip_idx * devices_per_chip + dev_idx)
+                for dev_idx in range(devices_per_chip)
+            ]
+        except ValueError:
+            return [chip]
+
+    @staticmethod
+    def _map_device_to_chip_id(device_id: str, devices_per_chip: int) -> str:
+        """Map a logical device ID back to its physical chip ID."""
+        if devices_per_chip <= 1:
+            return device_id
+        try:
+            dev_idx = int(device_id)
+            return str(dev_idx // devices_per_chip)
+        except ValueError:
+            return device_id
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
@@ -636,7 +821,24 @@ class TPUAcceleratorManager(AcceleratorManager):
         if tpu_visible_chips == "":
             return []
 
-        return list(tpu_visible_chips.split(","))
+        visible_chips = [
+            chip.strip() for chip in tpu_visible_chips.split(",") if chip.strip()
+        ]
+        if not visible_chips:
+            return []
+        resource_per_chip = get_tpu_resource_per_chip()
+        if resource_per_chip <= 1:
+            return visible_chips
+
+        # Expand physical chip indices to logical device IDs for multi-device TPUs
+        logical_ids = []
+        for chip in visible_chips:
+            logical_ids.extend(
+                TPUAcceleratorManager._expand_chip_to_device_ids(
+                    chip, resource_per_chip
+                )
+            )
+        return logical_ids
 
     @staticmethod
     @lru_cache()
@@ -721,11 +923,12 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             True if it's a valid topology, False otherwise.
         """
-        tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
-        if tpu_version_formatted.startswith("tpu"):
-            tpu_version_formatted = "v" + tpu_version_formatted[3:]
+        tpu_version_formatted = normalize_tpu_accelerator_type(
+            tpu_accelerator_version
+        ).split("-")[0]
+
         if (
-            tpu_version_formatted.lower() not in VALID_TPU_TOPOLOGY
+            tpu_version_formatted not in VALID_TPU_TOPOLOGY
             or tpu_topology.strip().lower()
             not in VALID_TPU_TOPOLOGY[tpu_version_formatted]
         ):
@@ -761,29 +964,46 @@ class TPUAcceleratorManager(AcceleratorManager):
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
         Args:
-            visible_tpu_chips: List of str representing TPU chips.
+            visible_tpu_chips: List of str representing TPU chips, or device IDs
+                for TPUs with multiple logical devices per chip.
         """
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        num_visible_tpu_chips = len(visible_tpu_chips)
+        resource_per_chip = get_tpu_resource_per_chip()
+
+        # Map logical device IDs to physical chip IDs
+        physical_chips = {
+            TPUAcceleratorManager._map_device_to_chip_id(device_id, resource_per_chip)
+            for device_id in visible_tpu_chips
+        }
+
+        sorted_physical_chips = sorted(
+            physical_chips,
+            key=lambda x: (0, int(x)) if x.isdigit() else (1, x),
+        )
+        num_visible_chips = len(sorted_physical_chips)
         num_accelerators_on_node = (
             TPUAcceleratorManager.get_current_node_num_accelerators()
         )
-        if num_visible_tpu_chips == num_accelerators_on_node:
+        if (
+            num_accelerators_on_node > 0
+            and num_visible_chips == num_accelerators_on_node
+            and len(visible_tpu_chips) == num_accelerators_on_node * resource_per_chip
+        ):
             # Let the ML framework use the defaults
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
             os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_tpu_chips])
-        if num_visible_tpu_chips == 1:
+        ] = ",".join(sorted_physical_chips)
+        if num_visible_chips == 1:
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 2:
+        elif num_visible_chips == 2:
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
@@ -818,10 +1038,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
-            if accelerator_type.lower().startswith("tpu"):
-                return "v" + accelerator_type.lower()[3:]
-
-            return accelerator_type
+            return normalize_tpu_accelerator_type(accelerator_type)
         logging.debug("Failed to get a valid accelerator type.")
         return None
 
@@ -852,9 +1069,67 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
+    def _get_physical_worker_id_from_hardware(
+        parent_topology: Optional[str] = None,
+    ) -> Optional[int]:
+        """Query local TPU chip coordinates via libtpu and return the physical worker ID.
+
+        Queries the physical (x, y, z) coordinates of the local TPU ASICs directly
+        from hardware registers. If libtpu is installed and devices are accessible,
+        converts the coordinate into a linear physical rank (0 to N-1) where
+        adjacent indices represent physically adjacent hosts on the ICI mesh.
+
+        Args:
+            parent_topology: Optional parent TPU topology (e.g. "4x4"). If omitted,
+                resolved from current node environment or metadata.
+
+        Returns:
+            The integer physical worker index (0 to N-1), or None if hardware
+            coordinates are unavailable or unresolvable.
+        """
+        try:
+            from libtpu import sdk  # type: ignore[import-untyped]
+        except ImportError:
+            logger.debug("libtpu is not installed; skipping hardware discovery.")
+            return None
+        except Exception as e:
+            # Native C++ driver failures may surface as OSError or RuntimeError
+            # during module import on the Ray startup path.
+            logger.debug("Failed to import libtpu: %s", e)
+            return None
+
+        try:
+            coords = sdk.slice.get_chip_coordinates()
+        except Exception as e:
+            logger.debug("Failed to query TPU chip coordinates: %s", e)
+            return None
+
+        if not coords:
+            return None
+
+        if not parent_topology:
+            parent_topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        if not parent_topology:
+            return None
+
+        try:
+            coords_list = [
+                list(c.coordinates()) if hasattr(c, "coordinates") else list(c[2])
+                for c in coords
+            ]
+            return _get_physical_worker_id_from_coords(coords_list, parent_topology)
+        except Exception as e:
+            logger.debug("Could not resolve physical worker ID from hardware: %s", e)
+            return None
+
+    @staticmethod
     def get_current_node_tpu_worker_id() -> Optional[int]:
         """Return the worker index of the TPU pod."""
         try:
+            hardware_id = TPUAcceleratorManager._get_physical_worker_id_from_hardware()
+            if hardware_id is not None:
+                return hardware_id
+
             # Start with GKE-based check
             worker_id = os.getenv(GKE_TPU_WORKER_ID_ENV_VAR, None)
             if not worker_id:
@@ -864,8 +1139,8 @@ class TPUAcceleratorManager(AcceleratorManager):
                 return int(worker_id)
             else:
                 return None
-        except ValueError as e:
-            logging.debug("Could not get TPU worker id: %s", e)
+        except Exception as e:
+            logger.debug("Could not get TPU worker id: %s", e)
             return None
 
     @staticmethod
@@ -928,7 +1203,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         def tpu_pod_type_to_ray_accelerator_type(
             tpu_pod_type: str,
         ) -> Optional[str]:
-            return "TPU-" + str(tpu_pod_type.split("-")[0].upper())
+            gen = normalize_tpu_accelerator_type(tpu_pod_type).split("-")[0]
+            if gen in VALID_TPU_TYPES:
+                return f"TPU-{gen.upper()}"
+            return None
 
         ray_accelerator_type = None
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()

@@ -254,6 +254,72 @@ def test_get_current_node_tpu_worker_id(mock_os, mock_request, test_case):
     assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected_value
 
 
+def test_get_current_node_tpu_worker_id_hardware_discovery(monkeypatch):
+    """Verify that physical hardware coordinate discovery via libtpu takes precedence."""
+
+    class MockChipCoordinate:
+        def __init__(self, x, y):
+            self._coords = (x, y)
+
+        def coordinates(self):
+            return self._coords
+
+    mock_sdk = mock.MagicMock()
+    # 4 chips for worker 0 in a 4x4 parent topology
+    mock_sdk.slice.get_chip_coordinates.return_value = [
+        MockChipCoordinate(0, 0),
+        MockChipCoordinate(0, 1),
+        MockChipCoordinate(0, 2),
+        MockChipCoordinate(0, 3),
+    ]
+
+    mock_libtpu = mock.MagicMock()
+    mock_libtpu.sdk = mock_sdk
+
+    monkeypatch.setitem(sys.modules, "libtpu", mock_libtpu)
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x4")
+    # Even if environment variable has a conflicting logical worker ID, hardware discovery wins
+    monkeypatch.setenv("TPU_WORKER_ID", "99")
+
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    assert worker_id == 0
+
+    # Test worker 1 coords (wx=1, wy=0 -> x in [2, 3], y in [0, 1])
+    mock_sdk.slice.get_chip_coordinates.return_value = [
+        MockChipCoordinate(2, 0),
+        MockChipCoordinate(2, 1),
+        MockChipCoordinate(3, 0),
+        MockChipCoordinate(3, 1),
+    ]
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    assert worker_id == 1
+
+
+def test_get_current_node_tpu_worker_id_hardware_discovery_fallback(monkeypatch):
+    """When hardware discovery fails (empty coords, exception, or malformed payload), fall back to env var."""
+    mock_sdk = mock.MagicMock()
+    mock_sdk.slice.get_chip_coordinates.return_value = []
+    mock_libtpu = mock.MagicMock()
+    mock_libtpu.sdk = mock_sdk
+
+    monkeypatch.setitem(sys.modules, "libtpu", mock_libtpu)
+    monkeypatch.setenv("TPU_TOPOLOGY", "4x4")
+    monkeypatch.setenv("TPU_WORKER_ID", "3")
+
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    assert worker_id == 3
+
+    # Malformed coordinate object that raises AttributeError or IndexError during extraction
+    mock_sdk.slice.get_chip_coordinates.return_value = [object()]
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    assert worker_id == 3
+
+    # Exception during hardware query falls back safely to env var
+    mock_sdk.slice.get_chip_coordinates.side_effect = RuntimeError("libtpu driver busy")
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    assert worker_id == 3
+
+
 @pytest.mark.parametrize(
     "test_case",
     [
@@ -360,14 +426,14 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
         if len(tpu_chips) == 1:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[1]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 2:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[2]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
@@ -485,11 +551,14 @@ def test_parse_topology_dims():
     assert tpu._parse_topology_dims("16x16") == (16, 16)
     assert tpu._parse_topology_dims("2x2x2") == (2, 2, 2)
     assert tpu._parse_topology_dims("4x8x16") == (4, 8, 16)
+    assert tpu._parse_topology_dims("4,8,16") == (4, 8, 16)
+    assert tpu._parse_topology_dims("2,2,1") == (2, 2, 1)
 
 
 def test_get_worker_dims_2d():
     """Test worker dimension lookup for 2D topologies."""
     assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology(" 2X4 ") == (1, 2)
     assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
     assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
 
@@ -497,6 +566,7 @@ def test_get_worker_dims_2d():
 def test_get_worker_dims_3d():
     """Test worker dimension lookup for 3D topologies."""
     assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology(" 2X2X2 ") == (1, 1, 2)
     assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
 
 
@@ -504,6 +574,39 @@ def test_get_worker_dims_unknown():
     """Test that unknown topologies raise ValueError."""
     with pytest.raises(ValueError, match="Unknown 2D topology"):
         tpu._get_worker_dims_for_topology("99x99")
+
+
+@pytest.mark.parametrize(
+    "topology, expected_bounds",
+    [
+        ("2x4", "1,2,1"),
+        (" 2X4 ", "1,2,1"),
+        ("2,4", "1,2,1"),
+        ("2x2x1", "1,1,1"),
+        ("2,2,1", "1,1,1"),
+        ("2x2x2", "1,1,2"),
+        ("4x4x4", "2,2,4"),
+        ("4x8x8", "2,4,8"),
+    ],
+)
+def test_get_jax_process_bounds(topology, expected_bounds):
+    """Test JAX process bounds string calculation."""
+    assert tpu.get_jax_process_bounds(topology) == expected_bounds
+
+
+@pytest.mark.parametrize(
+    "chips_per_host, expected_bounds",
+    [
+        (1, "1,1,1"),
+        (2, "1,2,1"),
+        (4, "2,2,1"),
+        (8, "2,4,1"),
+        (16, "16,1,1"),
+    ],
+)
+def test_get_jax_chips_per_process_bounds(chips_per_host, expected_bounds):
+    """Test JAX chips-per-process bounds string calculation."""
+    assert tpu.get_jax_chips_per_process_bounds(chips_per_host) == expected_bounds
 
 
 def test_get_default_chips_per_vm():
@@ -523,6 +626,7 @@ def test_get_default_chips_per_vm():
     [
         # 4x4 parent, 4 workers at positions (0,0), (1,0), (0,1), (1,1)
         (0, "4x4", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
+        (0, " 4X4 ", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
         (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "0"}),
         (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "1"}),
         (3, "4x4", {"ray.io/tpu-subslice-2x2": "3", "ray.io/tpu-subslice-2x4": "1"}),
@@ -535,18 +639,72 @@ def test_build_subslice_labels_2d(physical_worker_id, parent_topology, expected_
         assert labels[key] == value
 
 
-def test_build_subslice_labels_3d():
-    """Test subslice label computation for 3D."""
-    # 4x4x4 parent, 16 workers: (z,y,x)
-    # Worker 0 → (0,0,0)
-    labels = tpu._build_subslice_labels(0, "4x4x4")
-    assert labels["ray.io/tpu-subslice-2x2x1"] == "0"
-    assert labels["ray.io/tpu-subslice-2x2x2"] == "0"
-
-    # Worker 8 → (1,0,0): z=1, y=0, x=0
-    labels = tpu._build_subslice_labels(8, "4x4x4")
-    assert labels["ray.io/tpu-subslice-2x2x1"] == "8"
-    assert labels["ray.io/tpu-subslice-2x2x2"] == "4"
+@pytest.mark.parametrize(
+    "physical_worker_id, parent_topology, expected_labels",
+    [
+        # 4x4x4 parent (16 workers in a 2x2x4 host grid across x, y, z)
+        # Worker 0: (wx=0, wy=0, wz=0)
+        (
+            0,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "0",
+                "ray.io/tpu-subslice-2x2x2": "0",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 1: (wx=1, wy=0, wz=0)
+        (
+            1,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "1",
+                "ray.io/tpu-subslice-2x2x2": "1",
+                "ray.io/tpu-subslice-2x2x4": "1",
+                "ray.io/tpu-subslice-2x4x4": "1",
+            },
+        ),
+        # Worker 2: (wx=0, wy=1, wz=0)
+        (
+            2,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "2",
+                "ray.io/tpu-subslice-2x2x2": "2",
+                "ray.io/tpu-subslice-2x2x4": "2",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 4: (wx=0, wy=0, wz=1) - second plane along z
+        (
+            4,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "4",
+                "ray.io/tpu-subslice-2x2x2": "0",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+        # Worker 8: (wx=0, wy=0, wz=2) - starts the second 2x2x2 block along z
+        (
+            8,
+            "4x4x4",
+            {
+                "ray.io/tpu-subslice-2x2x1": "8",
+                "ray.io/tpu-subslice-2x2x2": "4",
+                "ray.io/tpu-subslice-2x2x4": "0",
+                "ray.io/tpu-subslice-2x4x4": "0",
+            },
+        ),
+    ],
+)
+def test_build_subslice_labels_3d(physical_worker_id, parent_topology, expected_labels):
+    """Test subslice label computation for 3D topologies."""
+    labels = tpu._build_subslice_labels(physical_worker_id, parent_topology)
+    for key, value in expected_labels.items():
+        assert labels[key] == value
 
 
 @pytest.mark.parametrize(
@@ -610,6 +768,32 @@ def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
     """
     with pytest.raises(ValueError, match="out of bounds"):
         tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
+@pytest.mark.parametrize(
+    "input_endpoint, expected_host",
+    [
+        ("10.0.0.1", "10.0.0.1"),
+        ("10.0.0.1:8471", "10.0.0.1"),
+        ("http://10.0.0.1:8471", "10.0.0.1"),
+        ("https://10.0.0.1:8471/path", "10.0.0.1"),
+        ("node-0.cluster.local", "node-0.cluster.local"),
+        ("node-0.cluster.local:8471", "node-0.cluster.local"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("2001:db8:85a3::8a2e:370:7334", "2001:db8:85a3::8a2e:370:7334"),
+        ("[2001:db8::1]:8471", "2001:db8::1"),
+        ("[2001:db8::1]", "2001:db8::1"),
+        ("http://[2001:db8::1]:8471", "2001:db8::1"),
+        ("fe80::1ff:fe23:4567:890a", "fe80::1ff:fe23:4567:890a"),
+        ("::1", "::1"),
+        ("[::1]:8080", "::1"),
+        ("", ""),
+        ("   ", ""),
+        (None, ""),
+    ],
+)
+def test_strip_endpoint_port(input_endpoint, expected_host):
+    assert tpu._strip_endpoint_port(input_endpoint) == expected_host
 
 
 if __name__ == "__main__":
