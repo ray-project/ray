@@ -468,6 +468,9 @@ class ReferenceCounterInterface {
 
   virtual std::vector<ObjectID> FlushObjectsToRecover() = 0;
 
+  /// Re-queue an object for recovery if it is still in scope.
+  virtual void MarkObjectForRecovery(const ObjectID &object_id) = 0;
+
   /// Whether we have a reference to a particular ObjectID.
   ///
   /// \param[in] object_id The object ID to check for.
