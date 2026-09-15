@@ -594,6 +594,13 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"packages":["tensorflow", "requests"], "uv_version": "==0.4.0;python_version=='3.8.11'"}``
 
+  Before running ``uv pip install``, Ray expands ``$VAR`` and ``${VAR}`` references in
+  ``packages`` and ``uv_pip_install_options`` entries using the environment available
+  during runtime environment creation, including variables set in
+  ``runtime_env["env_vars"]``. When ``working_dir`` is set,
+  ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`` resolves to its prepared local directory.
+  References to variables that aren't defined remain unchanged.
+
   When specifying a path to a ``requirements.txt`` file, the file must be present on your local machine and it must be a valid absolute path or relative filepath relative to your local current working directory, *not* relative to the ``working_dir`` specified in the ``runtime_env``.
   Furthermore, referencing local files *within* a ``requirements.txt`` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`` environment variable in the creation process. For example, use ``-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt`` or ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl`` to reference local files, while ensuring they're in the ``working_dir``.
 
