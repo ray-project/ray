@@ -10,8 +10,6 @@ import json
 import sys
 import threading
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -56,7 +54,7 @@ def test_train_streaming_split_reports_every_dataset(shutdown_only):
 
 
 def test_concurrent_subcluster_datasets_report_every_execution(
-    ray_start_cluster, tmp_path, monkeypatch
+    ray_start_cluster, monkeypatch
 ):
     """Two datasets pinned to different subclusters via per-dataset
     ``DataContext`` label selectors, executed concurrently from two driver
@@ -70,22 +68,16 @@ def test_concurrent_subcluster_datasets_report_every_execution(
     # in this process; open the gate the same way the unit tests do.
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
 
-    def write_parquet(subcluster: str) -> str:
-        path = tmp_path / subcluster
-        path.mkdir()
-        pq.write_table(pa.table({"id": [1, 2, 3]}), path / "part.parquet")
-        return str(path)
-
-    def make_dataset(subcluster: str, path: str) -> ray.data.Dataset:
+    def make_dataset(subcluster: str) -> ray.data.Dataset:
         ctx = ray.data.DataContext.get_current().copy()
         ctx.execution_options.label_selector = {"ray-subcluster": subcluster}
         with ray.data.DataContext.current(ctx):
-            return ray.data.read_parquet(path)
+            return ray.data.range(1)
 
     # Construct each Dataset in the main thread so the temporary contexts
     # don't race on the process-global default context; then run concurrently.
-    ds_a = make_dataset("tenant_a", write_parquet("tenant_a"))
-    ds_b = make_dataset("tenant_b", write_parquet("tenant_b"))
+    ds_a = make_dataset("tenant_a")
+    ds_b = make_dataset("tenant_b")
     threads = [
         threading.Thread(target=ds_a.materialize),
         threading.Thread(target=ds_b.materialize),
@@ -108,7 +100,7 @@ def test_executions_from_user_actors_are_merged(shutdown_only):
     @ray.remote(runtime_env={"env_vars": {"RAY_USAGE_STATS_ENABLED": "1"}})
     class Runner:
         def run(self):
-            ray.data.range(10).materialize()
+            ray.data.range(1).materialize()
 
     ray.get([Runner.remote().run.remote() for _ in range(2)])
 
