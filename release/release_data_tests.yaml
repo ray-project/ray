@@ -45,7 +45,7 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
@@ -70,7 +70,7 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
@@ -88,7 +88,7 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
@@ -112,6 +112,7 @@
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
     anyscale_sdk_2026: true
+    cluster_compute: read_benchmark_compute.yaml
   run:
     timeout: 3600
     script: >
@@ -123,7 +124,7 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 5400
