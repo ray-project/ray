@@ -393,6 +393,46 @@ class ApplicationState:
                 ),
             )
 
+    def _reapply_during_build(
+        self,
+        config: ServeApplicationSchema,
+        config_version: str,
+        target_capacity: Optional[float],
+        target_capacity_direction: Optional[TargetCapacityDirection],
+    ) -> bool:
+        """Absorb a re-apply of the config whose build is still in flight.
+
+        Cancelling and restarting an identical build is pure waste, and a
+        deployer that re-sends the full multi-app config on every change
+        would otherwise restart every unfinished app. Only `version`, the
+        target capacity and its direction may differ; they are updated on
+        the pending task so the post-build target state picks them up.
+        """
+        info = self._build_app_task_info
+        if info is None or info.finished or info.code_version != config_version:
+            return False
+        exclude = {"version"}
+        if info.config.model_dump(exclude=exclude) != config.model_dump(
+            exclude=exclude
+        ):
+            return False
+        info.config = config
+        info.target_capacity = target_capacity
+        info.target_capacity_direction = target_capacity_direction
+        self._target_state.config = config
+        return True
+
+    def _is_noop_reapply_of_failed_app(self, config: ServeApplicationSchema) -> bool:
+        """A labelled config that already failed is not retried until its
+        `version` changes. Unlabelled configs keep the retry-on-resubmit
+        behaviour OSS users rely on after transient build failures."""
+        return (
+            self._status == ApplicationStatus.DEPLOY_FAILED
+            and config.version is not None
+            and self._target_state.config is not None
+            and self._target_state.config.model_dump() == config.model_dump()
+        )
+
     def _is_noop_reapply(
         self,
         config: ServeApplicationSchema,
@@ -692,6 +732,11 @@ class ApplicationState:
         """
 
         config_version = get_app_code_version(config)
+        if self._reapply_during_build(
+            config, config_version, target_capacity, target_capacity_direction
+        ) or self._is_noop_reapply_of_failed_app(config):
+            return
+
         if config_version == self._target_state.code_version:
             # `deployment_infos` is non-None whenever `code_version` is
             # non-None (they are always set together in the target state).

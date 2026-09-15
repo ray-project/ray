@@ -1207,6 +1207,122 @@ def test_recovery_replay_restores_deploy_timestamp(check_obj_ref_ready_nowait):
     assert recovered_manager.get_app_version("test_app") == "v1"
 
 
+@patch("ray.cancel")
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/new")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_reapply_during_build_does_not_restart_build(
+    check_obj_ref_ready_nowait, ray_cancel
+):
+    """Re-applying the same config (any label, any capacity) while the build
+    is in flight keeps the build; both stored configs carry the new label."""
+    app_state_manager, deployment_state_manager = _make_app_state_manager()
+    check_obj_ref_ready_nowait.return_value = False
+
+    def cfg(version, num_replicas=1):
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            version=version,
+            deployments=[DeploymentSchema(name="a", num_replicas=num_replicas)],
+        )
+
+    app_state_manager.apply_app_configs([cfg("v1")], deployment_time=1)
+    app_state = app_state_manager._application_states["test_app"]
+    app_state.update()
+    build_ref = app_state._build_app_task_info.obj_ref
+    assert not app_state._build_app_task_info.finished
+
+    # Identical config: nothing happens.
+    app_state_manager.apply_app_configs([cfg("v1")], deployment_time=2)
+    ray_cancel.assert_not_called()
+    assert app_state._build_app_task_info.obj_ref is build_ref
+    assert app_state._deployment_timestamp == 1
+
+    # Label-only change: both stored configs updated, build untouched.
+    app_state_manager.apply_app_configs(
+        [cfg("v2")],
+        target_capacity=50,
+        target_capacity_direction=TargetCapacityDirection.UP,
+        deployment_time=3,
+    )
+    ray_cancel.assert_not_called()
+    assert app_state._build_app_task_info.obj_ref is build_ref
+    assert app_state._build_app_task_info.config.version == "v2"
+    assert app_state._build_app_task_info.target_capacity == 50
+    assert app_state_manager.get_app_version("test_app") == "v2"
+    assert app_state._deployment_timestamp == 1
+
+    # A real change still cancels and rebuilds.
+    app_state_manager.apply_app_configs([cfg("v3", num_replicas=2)], deployment_time=4)
+    ray_cancel.assert_called_once_with(build_ref)
+    assert app_state._deployment_timestamp == 4
+
+    # The build that finishes adopts the label it was given mid-flight.
+    check_obj_ref_ready_nowait.return_value = True
+    app_state.update()
+    assert app_state_manager.get_app_version("test_app") == "v3"
+    assert app_state._target_state.target_capacity is None
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(side_effect=RayTaskError(None, "intentionally failed", None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_failed_labelled_app_is_not_retried_until_relabelled(
+    check_obj_ref_ready_nowait,
+):
+    app_state_manager, _ = _make_app_state_manager()
+    cfg = ServeApplicationSchema(name="test_app", import_path="fa.ke", version="v1")
+    app_state_manager.apply_app_configs([cfg], deployment_time=1)
+    app_state = app_state_manager._application_states["test_app"]
+    check_obj_ref_ready_nowait.return_value = True
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOY_FAILED
+    failed_task = app_state._build_app_task_info
+
+    with patch(
+        "ray.serve._private.application_state.build_serve_application"
+    ) as build_mock:
+        # Same (config, version): idempotent, no retry.
+        app_state_manager.apply_app_configs([cfg], deployment_time=2)
+        build_mock.options.return_value.remote.assert_not_called()
+        assert app_state.status == ApplicationStatus.DEPLOY_FAILED
+        assert app_state._build_app_task_info is failed_task
+        assert app_state._deployment_timestamp == 1
+
+        # New label: retried.
+        app_state_manager.apply_app_configs(
+            [
+                ServeApplicationSchema(
+                    name="test_app", import_path="fa.ke", version="v2"
+                )
+            ],
+            deployment_time=3,
+        )
+        build_mock.options.return_value.remote.assert_called_once()
+        assert app_state.status == ApplicationStatus.DEPLOYING
+        assert app_state_manager.get_app_version("test_app") == "v2"
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(side_effect=RayTaskError(None, "intentionally failed", None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_failed_unlabelled_app_keeps_retry_on_resubmit(check_obj_ref_ready_nowait):
+    app_state_manager, _ = _make_app_state_manager()
+    cfg = ServeApplicationSchema(name="test_app", import_path="fa.ke")
+    app_state_manager.apply_app_configs([cfg], deployment_time=1)
+    app_state = app_state_manager._application_states["test_app"]
+    check_obj_ref_ready_nowait.return_value = True
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOY_FAILED
+    with patch(
+        "ray.serve._private.application_state.build_serve_application"
+    ) as build_mock:
+        app_state_manager.apply_app_configs([cfg], deployment_time=2)
+        build_mock.options.return_value.remote.assert_called_once()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+
 def test_get_app_version_none_for_imperative_app(mocked_application_state_manager):
     app_state_manager, _, _ = mocked_application_state_manager
     app_state_manager.deploy_app(

@@ -900,6 +900,77 @@ def test_deploy_multi_app_version_label(serve_instance):
     assert details.applications["app2"].version == "b2"
 
 
+def test_deploy_multi_app_reapply_keeps_unfinished_build(serve_instance):
+    """Re-sending the full config while app A is still building must not
+    restart A's build: B can deploy, fail and be reverted underneath it."""
+    client = serve_instance
+    slow_import = "ray.serve.tests.test_config_files.slow_import.node"
+    pid_import = "ray.serve.tests.test_config_files.pid.node"
+
+    def app_a(version="a2"):
+        return {
+            "name": "a",
+            "route_prefix": "/a",
+            "version": version,
+            "import_path": slow_import,
+        }
+
+    def app_b(version, import_path=pid_import):
+        return {
+            "name": "b",
+            "route_prefix": "/b",
+            "version": version,
+            "import_path": import_path,
+        }
+
+    def details(name):
+        return ServeInstanceDetails(**client.get_serve_details()).applications[name]
+
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [app_a(), app_b("b1")]})
+    )
+    wait_for_condition(
+        lambda: details("a").version == "a2"
+        and details("a").status == ApplicationStatus.DEPLOYING
+    )
+    a_deployed_at = details("a").last_deployed_time_s
+    wait_for_condition(check_running, app_name="b", timeout=30)
+
+    # B2 fails while A2 is still importing.
+    client.deploy_apps(
+        ServeDeploySchema.model_validate(
+            {
+                "applications": [
+                    app_a(),
+                    app_b("b2", "ray.serve.tests.test_config_files.fail.node"),
+                ]
+            }
+        )
+    )
+    wait_for_condition(
+        lambda: details("b").version == "b2"
+        and details("b").status == ApplicationStatus.DEPLOY_FAILED,
+        timeout=30,
+    )
+    assert details("a").status == ApplicationStatus.DEPLOYING
+    assert details("a").last_deployed_time_s == a_deployed_at
+
+    # Revert B to B1 (as a new label), still under A2's build.
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [app_a(), app_b("b3")]})
+    )
+    wait_for_condition(check_running, app_name="b", timeout=30)
+    assert details("b").version == "b3"
+    assert details("a").status == ApplicationStatus.DEPLOYING
+    assert details("a").last_deployed_time_s == a_deployed_at
+
+    # A2 finishes exactly once, with the label it was given.
+    wait_for_condition(check_running, app_name="a", timeout=60)
+    assert details("a").version == "a2"
+    assert details("a").last_deployed_time_s == a_deployed_at
+    assert httpx.get(get_application_url("HTTP", app_name="a")).json()[1] == "slow"
+
+
 def test_deploy_multi_app_deleting(serve_instance):
     """Test deleting an application by removing from config."""
     client = serve_instance
