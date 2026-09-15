@@ -115,7 +115,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 | `.. contents::` `:local:` | ` ```{contents} ` with `:local:` |
 | `.. toctree::` | ` ```{toctree} ` — entries stay **extensionless** |
 | `.. include:: f.rst` (you're converting `f`) | ` ```{include} f.md ` (convert the included file in the same PR) |
-| `.. include:: _shared.rst` (shared partial, stays `.rst`) | ` ```{include} _shared.rst ` with `:parser: rst` (don't convert a shared `_includes/` partial) |
+| `.. include:: _shared.rst` (shared partial, stays `.rst`) | **problematic — see Hard rule 8.** MyST surfaces an included `.rst` partial's directives and comments as literal text, not parsed RST. If the partial renders nothing (all-comment), drop the include. |
 | `.. image:: URL` | ` ```{image} URL ` — **not** `![](URL)`; see Hard rule 5 |
 | `.. figure:: P` (+ caption) | ` ```{figure} P ` with options as `:key: val` lines, blank line, then the caption |
 | `.. title:: T` | **no MyST equivalent** — see Hard rule 5 |
@@ -149,6 +149,11 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 6. **`doc/BUILD.bazel` doctest exclusions.** The main `doctest(` rule globs `source/**/*.md` **and** `source/**/*.rst` with a per-file `exclude` list. If a file you convert is named in that exclude list, **rewrite its entry from `.rst` to `.md` in the same PR.** Otherwise the `*.md` glob pulls the newly-converted file **into** doctest, and blocks that were excluded for a reason (e.g. `ray.init(...)` with no `import ray`) execute and fail. Conversely, a file that is *included* (not excluded) stays tested as `.md` — that's when Hard rule 4 matters most.
 
 7. **An apostrophe in a heading silently changes its anchor.** docutils slugifies `What's Ray Core?` to `what-s-ray-core`; MyST drops the apostrophe and produces `whats-ray-core`. The build stays green, nothing warns, and any external link to the old anchor dies. Roughly 17 headings across 15 of the still-unconverted files are affected. The rule: **if the heading already carries an explicit label, that label is the anchor callers should be using, and you add nothing.** Only when the heading is bare do you add a compat target carrying the old docutils slug — `(what-s-next)=` above `## What's next?`. Never put two targets on one heading. Either way the section id and the headerlink href still change, so treat this as a known, explainable render diff rather than a regression to chase.
+
+8. **Shared includes, substitutions, and raw-HTML images — three traps that build green and render wrong.**
+   - **A shared `.rst` partial does not include cleanly into MyST.** MyST's `{include}` of a `.rst` file surfaces the raw content: RST directives and comments render as **literal visible text**, not parsed RST. A bare `{include}` and `:parser: rst` both do it (the latter as a code block), through a green build — so a commented-out partial, which renders nothing on the RST pages, dumps its raw text onto every including page. If the partial renders nothing, **drop the include** (the page loses nothing); if it carries active content, convert it to `.md` and include the `.md`, or inline it. Verified against `_includes/rllib/new_api_stack.rst` (myst-parser 5.1.0).
+   - **RST substitutions (`|name|`) have no MyST equivalent here — the `substitution` extension is off.** A `.. |name| image::` definition plus a `|name|` use does **not** resolve, and wrapping both in one `{eval-rst}` block does not save it: docutils raises `Undefined substitution referenced` (a build error), because eval-rst's nested parse never runs the substitution transform, even with the definition in the same block. Drop the substitution and inline each use as an `<img>` tag (the `html_image` extension is on).
+   - **A raw `<img>` is only processed inside MyST-parsed content.** In prose or a `{list-table}` cell, Sphinx processes the tag, copies the image to `_images/`, and rewrites the `src`. In a **raw HTML block** — a hand-written `<table>` you reached for to get `colspan` — the `<img src>` passes through verbatim and 404s, again through a green build. So a substitution-driven icon/sigil table becomes a `{list-table}` with `<img>` cells (accepting that list-table can't `colspan`), never a raw HTML `<table>`.
 
 ---
 
@@ -238,7 +243,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 ## Verified Ray-specific facts (as of mid-2026)
 
-- `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` but **not** `linkify`; `myst_heading_anchors = 3` (so `[text](#slug)` resolves to any h1–h3 heading).
+- `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` and `html_image` but **not** `linkify` or `substitution`; `myst_heading_anchors = 4` (so `[text](#slug)` resolves to any h1–h4 heading).
 - `doc/BUILD.bazel` main `doctest(` rule globs `source/**/*.md` + `source/**/*.rst`, with a per-file `exclude` list (e.g. `ray-contribute/getting-involved.md`, `ray-contribute/testing-tips.md`) and whole-subtree excludes for `ray-core/`, `data/`, `rllib/`, `serve/`, `train/`, `tune/` (which have their own `doctest` rules).
 - `pre-commit` has no hook that lints `doc/source/**/*.md` outside `doc/source/data/` (vale) — so pre-commit passing is not evidence the page is correct; the Sphinx build is.
 - `sphinx_design==0.7.0` (`doc/requirements-doc.txt`) supports MyST first-class: its own docs are MyST and it ships a `snippets/myst/` tree, and its directives register through `app.add_directive`, so MyST's `{name}` fence dispatch reaches them like any other directive.
