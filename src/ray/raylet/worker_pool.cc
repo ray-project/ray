@@ -32,6 +32,7 @@
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/monitors/cpu_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -434,6 +435,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // optionally configure the worker's internal grpc thread count
   int64_t worker_grpc_threads = RayConfig::instance().worker_num_grpc_internal_threads();
+  if (worker_grpc_threads <= 0) {
+    worker_grpc_threads = CpuMonitorUtils::GetCpuLimit();
+  }
   if (worker_grpc_threads > 0) {
     env.emplace(kEnvVarKeyGrpcThreadCount, std::to_string(worker_grpc_threads));
   }
