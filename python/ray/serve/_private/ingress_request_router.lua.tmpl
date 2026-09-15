@@ -87,11 +87,12 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
--- Router contract: response MUST be a flat JSON object with `replica_id` as a
--- plain string actor name (no escaped quotes, no nested objects). The regex
--- relies on this; broaden the parser if the contract grows.
-local function extract_replica_id(json_body)
-    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
+-- Router contract: response MUST be a flat JSON object with `deployment` and
+-- `replica_id` as plain string values (no escaped quotes, no nested objects).
+-- The regex relies on this; broaden the parser if the contract grows.
+-- `field` is always one of our own literals, so it needs no pattern escaping.
+local function extract_string_field(json_body, field)
+    return json_body:match('"' .. field .. '"%s*:%s*"([^"]+)"')
 end
 
 local function set_router_response_headers(txn, json_body)
@@ -116,9 +117,15 @@ local function truncated_full_length(txn, body)
 end
 
 -- Core routing decision. Sets either txn.ingress_request_router_target +
--- txn.via_ingress_request_router (success) or txn.ingress_request_router_failed
--- (failure). Both outcomes are timed by the caller; only the silent early
--- returns in the action handler skip timing because no routing was attempted.
+-- txn.ingress_request_router_backend + txn.via_ingress_request_router (success)
+-- or txn.ingress_request_router_failed (failure). Both outcomes are timed by the
+-- caller; only the silent early returns in the action handler skip timing
+-- because no routing was attempted.
+--
+-- `replica_map` is keyed [deployment][replica_id], matching the two-level
+-- decision the router reports: which `_direct_http` deployment, then which of
+-- its replicas. The app's ingress is never in it -- a request goes either to
+-- the ingress by path or through the router to a direct deployment, never both.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- FORWARD_BODY=false: don't read or forward the body; call the router
     -- with body="" so a Content-Length: 0 POST still goes through routing
@@ -196,36 +203,47 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     end
 
     local response_body = http_response_body(response)
-    local replica_id = extract_replica_id(response_body)
+    local deployment = extract_string_field(response_body, "deployment")
+    if not deployment then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_deployment")
+        return
+    end
+    local replica_id = extract_string_field(response_body, "replica_id")
     if not replica_id then
         txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
     end
 
-    local entry = replica_map[replica_id]
-    if not entry then
-        -- Pin-miss: router named a replica not in HAProxy's server map, a
-        -- transient gap between the router view and HAProxy's config snapshot.
-        -- Arm `failed`. The frontend recovers it via the fallback proxy, except
-        -- for apps with `_direct_http` deployments, which fail closed with a 503
-        -- -- the fallback proxy cannot serve a model deployment's traffic.
+    -- Relabel before resolving, so a failure below is attributed to the
+    -- deployment whose routing broke rather than to the app's ingress (the
+    -- frontend's default for txn.serve_deployment). This is the router's own
+    -- claim, not a value we have validated -- deliberately, since a 503 for a
+    -- deployment missing from our config is exactly the case worth seeing under
+    -- its own name. The router is a first-party Serve deployment and the
+    -- log-format's %{+Q,+E} escaping covers the string.
+    txn:set_var("txn.serve_deployment", deployment)
+
+    local deployment_targets = replica_map[deployment]
+    if not deployment_targets then
+        -- The router named a deployment this HAProxy has no config for, e.g. a
+        -- model added since the last reload. The whole deployment is absent, so
+        -- there is no sibling replica to recover onto.
+        txn:set_var("txn.ingress_request_router_failed", "unknown_deployment")
+        return
+    end
+
+    local server_name = deployment_targets.r[replica_id]
+    if not server_name then
+        -- The deployment is known but this replica is not in its server map: a
+        -- transient gap between the router view and HAProxy's config snapshot,
+        -- e.g. autoscaling since the last reload.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
 
     set_router_response_headers(txn, response_body)
-    txn:set_var("txn.ingress_request_router_target", entry.s)
-    -- `b` is present only for replicas of a `_direct_http` deployment, which
-    -- lives in its own backend. The router names a replica, not a deployment;
-    -- the map resolves the owning backend because a replica belongs to exactly
-    -- one deployment and the controller publishes targets keyed by deployment.
-    if entry.b then
-        txn:set_var("txn.ingress_request_router_backend", entry.b)
-        -- The frontend set txn.serve_deployment to the app's *ingress*
-        -- deployment; this request is served by a different one, so relabel it
-        -- or HAProxy's per-request metrics attribute it to the wrong deployment.
-        txn:set_var("txn.serve_deployment", entry.d)
-    end
+    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.ingress_request_router_backend", deployment_targets.b)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
@@ -234,11 +252,11 @@ end
 -- rule fires instead of letting the request silently fall through to the
 -- primary backend. The product invariant is: requests to a router-bearing app
 -- are served via the router or fail; there is no quiet alternative path.
--- Exception: `unknown_replica_id` is recovered via the fallback proxy when the
--- app has one, otherwise 503ed. The fallback re-pins via its own router so the
--- policy is not bypassed. While the fallback is DOWN the request load-balances
--- onto a primary replica in the router backend instead of 503ing, so affinity
--- lapses for that window. Still counted as a failure.
+-- Both lookup misses (`unknown_deployment`, `unknown_replica_id`) 503 for apps
+-- with `_direct_http` deployments: the fallback Serve proxy cannot serve a model
+-- deployment's traffic. The frontend's fallback-recovery rules still exist but
+-- only arm for router apps without direct targets, which no longer get a Lua
+-- map at all, so they are unreachable.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.
@@ -247,8 +265,9 @@ end
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     -- Time the routing attempt regardless of outcome: both successful pins
     -- and explicit failures (router_unreachable, router_non_200,
-    -- unparseable_replica_id, unknown_replica_id) record latency_us so
-    -- failure paths are visible in the metrics stream.
+    -- unparseable_deployment, unparseable_replica_id, unknown_deployment,
+    -- unknown_replica_id) record latency_us so failure paths are visible in
+    -- the metrics stream.
     ${METRICS_PRE_CALL_ROUTER}
 
     local app = txn:get_var("txn.ingress_request_router_app")
