@@ -41,7 +41,7 @@ install_runsc() {
         fi
 
         # Download the tarball to a temp file so the large archive never lands
-        # in INSTALL_DIR (e.g. /usr/local/bin). Extract only runsc into INSTALL_DIR.
+        # in INSTALL_DIR (e.g. /usr/local/bin).
         local tmp_tarball
         tmp_tarball="$(mktemp)"
 
@@ -57,8 +57,10 @@ install_runsc() {
             ${sudo_cmd} mkdir -p "${INSTALL_DIR}"
         fi
 
-        # Extract just the runsc binary directly into INSTALL_DIR.
-        ${sudo_cmd} tar -xjf "${tmp_tarball}" -C "${INSTALL_DIR}" runsc
+        # Extract the full tarball into INSTALL_DIR. runsc needs the bundled
+        # gvisor-bin/ sidecars next to it at runtime, so we can't extract runsc
+        # alone or `runsc run` will fail even though `runsc --version` succeeds.
+        ${sudo_cmd} tar -xjf "${tmp_tarball}" -C "${INSTALL_DIR}"
         ${sudo_cmd} chmod 0755 "${INSTALL_DIR}/runsc"
 
         rm -f "${tmp_tarball}"
