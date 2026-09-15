@@ -333,9 +333,9 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
 
         ..
-          We skip the code snippet below because `to_dask` doesn't work with PyArrow 
+          We skip the code snippet below because `to_dask` doesn't work with PyArrow
           14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
-            
+
         .. testcode::
             :skipif: True
 

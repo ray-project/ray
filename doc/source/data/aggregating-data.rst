@@ -168,4 +168,3 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a shuffle strategy in alpha. To use it for aggregations, set the strategy before creating a ``Dataset``:
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
-
