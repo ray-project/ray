@@ -373,6 +373,8 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   if (best_node_id.IsNil()) {
     // Score viable candidates per-bundle using the existing scorer.
+    // try_allocate_all_bundles already verified all bundles fit, so each
+    // individual Score(bundle) will pass IsAvailable.
     double best_score = -1;
     for (const auto &node_id : candidate_nodes) {
       if (!try_allocate_all_bundles(node_id)) {
@@ -395,6 +397,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     result_nodes.resize(resource_request_list.size(), best_node_id);
   }
   if (result_nodes.empty()) {
+    // Can't meet the scheduling requirements temporarily.
     return SchedulingResult::Failed();
   }
 
