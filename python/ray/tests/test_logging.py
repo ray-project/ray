@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from contextlib import redirect_stderr, redirect_stdout
 from glob import glob
 from pathlib import Path
@@ -855,6 +855,100 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
     assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
+
+
+def test_log_monitor_archives_dead_zero_byte_worker_logs(tmp_path, live_dead_pids):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    old_dir = log_dir / "old"
+    old_dir.mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    alive_pid, dead_pid = live_dead_pids
+
+    stale_dead = log_dir / f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+    stale_alive = log_dir / f"worker-{worker_id}-{job_id}-{alive_pid}.out"
+    recent_dead = log_dir / f"worker-{worker_id}-{job_id}-{dead_pid}.err"
+    system_log = log_dir / "raylet.err"
+    business_log = log_dir / f"worker-{worker_id}-{job_id}-{alive_pid}.err"
+
+    for path in (stale_dead, stale_alive, recent_dead, system_log):
+        path.touch()
+    business_log.write_text("business log\n")
+
+    stale_mtime = time.time() - 120
+    for path in (stale_dead, stale_alive, system_log):
+        os.utime(path, (stale_mtime, stale_mtime))
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1",
+        str(log_dir),
+        mock_publisher,
+        lambda pid: pid == alive_pid,
+        max_files_open=5,
+    )
+
+    log_monitor.update_log_filenames()
+    assert isinstance(log_monitor.closed_file_infos, deque)
+    log_monitor.open_closed_files()
+
+    assert not stale_dead.exists()
+    assert (old_dir / stale_dead.name).exists()
+    assert str(stale_dead) not in log_monitor.log_filenames
+    assert stale_alive.exists()
+    assert recent_dead.exists()
+    assert system_log.exists()
+    assert log_monitor.check_log_files_and_publish_updates()
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": alive_pid,
+            "job": None,
+            "is_err": True,
+            "lines": ["business log"],
+            "actor_name": None,
+            "task_name": None,
+        }
+    )
+
+
+def test_log_monitor_does_not_archive_zero_byte_log_that_grows(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "old").mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    dead_pid = 47660
+    path = log_dir / f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+    path.touch()
+    stale_mtime = time.time() - 120
+    os.utime(path, (stale_mtime, stale_mtime))
+    initial_stat = os.stat(path)
+
+    log_monitor = LogMonitor(
+        "127.0.0.1",
+        str(log_dir),
+        MagicMock(),
+        lambda _: False,
+        max_files_open=5,
+    )
+    log_monitor.log_filenames.add(str(path))
+    file_info = LogFileInfo(
+        filename=str(path),
+        size_when_last_opened=0,
+        file_position=0,
+        worker_pid=dead_pid,
+    )
+
+    path.write_text("business log\n")
+    archived = log_monitor._try_archive_dead_zero_worker_log(
+        file_info, initial_stat, time.time()
+    )
+
+    assert not archived
+    assert path.read_text() == "business log\n"
+    assert str(path) in log_monitor.log_filenames
 
 
 def test_tpu_logs(tmp_path):
