@@ -4,6 +4,7 @@ import re
 import shutil
 import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
 from typing import Set
@@ -32,6 +33,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.tracing_utils import (
     TRACE_STACK,
+    TraceContextManager,
     _append_trace_stack,
     _load_span_processors,
     _validate_tracing_exporter,
@@ -49,8 +51,13 @@ from ray.tests.conftest import *  # noqa
 
 try:
     from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
-    from opentelemetry.sdk.trace.sampling import ParentBasedTraceIdRatio
+    from opentelemetry.sdk.trace.sampling import (
+        ALWAYS_OFF,
+        ALWAYS_ON,
+        ParentBasedTraceIdRatio,
+    )
     from opentelemetry.trace.propagation.tracecontext import (
         TraceContextTextMapPropagator,
     )
@@ -924,6 +931,97 @@ def test_append_trace_stack_multithread():
         task.join()
 
     assert len(passing) == number_of_tasks
+
+
+@contextmanager
+def enable_tracing_with_sampler(sampler):
+    """Enable Serve tracing with a deterministic sampler for unit tests.
+
+    Uses a locally-constructed TracerProvider (never the process-global one,
+    which OpenTelemetry only allows to be set once) so the sampling decision is
+    fully deterministic and independent of the trace id. ALWAYS_ON/ALWAYS_OFF
+    avoid any RNG/trace-id-based flakiness. Also isolates TRACE_STACK so the
+    test does not leak into other tests.
+    """
+    provider = TracerProvider(sampler=sampler)
+    tracer = provider.get_tracer("test_trace_context_manager")
+    stack_token = TRACE_STACK.set([])
+    with patch(
+        "ray.serve._private.tracing_utils.is_tracing_enabled", return_value=True
+    ), patch("ray.serve._private.tracing_utils._tracer", tracer):
+        try:
+            yield
+        finally:
+            TRACE_STACK.reset(stack_token)
+
+
+def test_trace_context_manager_restores_context_on_exit():
+    """TraceContextManager must detach the OpenTelemetry context it attaches.
+
+    Regression test: __enter__ calls set_trace_context (OTel context.attach)
+    and must save the token so __exit__ can detach it. Without the detach, the
+    current context is never restored, so a sibling span created after an inner
+    span's block exits is mis-parented under the already-ended inner span
+    instead of under the still-open outer span. This mirrors the correct
+    BatchTraceContextManager attach/detach pattern in the same module.
+    """
+    with enable_tracing_with_sampler(ALWAYS_ON):
+        before = get_trace_context()
+
+        with TraceContextManager("outer") as outer_cm:
+            outer_span_id = outer_cm.span.get_span_context().span_id
+            # The current context resolves to the outer span while inside it.
+            assert (
+                trace.get_current_span(get_trace_context()).get_span_context().span_id
+                == outer_span_id
+            )
+
+            with TraceContextManager("inner") as inner_cm:
+                inner_span_id = inner_cm.span.get_span_context().span_id
+                assert inner_span_id != outer_span_id
+                assert (
+                    trace.get_current_span(get_trace_context())
+                    .get_span_context()
+                    .span_id
+                    == inner_span_id
+                )
+
+            # After the inner block exits, the current context must be restored
+            # to the outer span (not left pointing at the ended inner span).
+            assert (
+                trace.get_current_span(get_trace_context()).get_span_context().span_id
+                == outer_span_id
+            )
+
+        # After the outer block exits, the context is fully restored: no leak.
+        assert get_trace_context() == before
+        assert TRACE_STACK.get([]) == []
+
+
+def test_trace_context_manager_unsampled_leaves_stack_untouched():
+    """Unsampled spans must not touch the trace stack on enter or exit.
+
+    Regression test for the push/pop asymmetry: __enter__ early-returns before
+    pushing when the span is unsampled, so __exit__ must not pop. Popping
+    unconditionally removes an unrelated parent span from TRACE_STACK and
+    corrupts set_span_name/set_span_attributes/set_trace_status for that parent.
+    """
+    with enable_tracing_with_sampler(ALWAYS_OFF):
+        sentinel = FakeSpan()
+        TRACE_STACK.set([sentinel])
+        before = get_trace_context()
+
+        with TraceContextManager("unsampled") as cm:
+            # A span is created, but it is not sampled, so nothing is
+            # attached or pushed onto the stack.
+            assert cm.span is not None
+            assert not cm.span.get_span_context().trace_flags.sampled
+            assert TRACE_STACK.get([]) == [sentinel]
+
+        # Exiting must not pop the unrelated parent off the stack, nor detach
+        # any context (nothing was attached).
+        assert TRACE_STACK.get([]) == [sentinel]
+        assert get_trace_context() == before
 
 
 def test_batched_span_attached_to_first_request_trace():
