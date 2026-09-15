@@ -33,23 +33,29 @@ install_runsc() {
 
         local url="https://storage.googleapis.com/gvisor/releases/release/latest/${arch}/gvisor.tar.bz2"
 
-        # Quieter output under Buildkite, matching install-llvm-binaries.sh.
-        local wget_options=""
-        if [ -n "${BUILDKITE-}" ]; then
-            wget_options="-nv"
-        fi
-
-        # bzip2 is required to extract the .tar.bz2 archive but isn't present on
-        # minimal images (e.g. ubuntu:jammy). Install it if missing, otherwise
-        # the extract fails silently and sandbox tests skip instead of running.
-        # This may need sudo independently of INSTALL_DIR (e.g. non-root CI image).
-        if ! command -v bzip2 > /dev/null 2>&1; then
+        # Ensure required tools are present. On minimal images (e.g. ubuntu:jammy)
+        # wget, bzip2, and ca-certificates may be missing; without them the
+        # download or extract fails and sandbox tests skip instead of running.
+        # Checked defensively so this is a no-op when they're already installed.
+        local deps=""
+        command -v wget > /dev/null 2>&1 || deps="${deps} wget"
+        command -v bzip2 > /dev/null 2>&1 || deps="${deps} bzip2"
+        # ca-certificates has no binary to probe; needed for HTTPS cert verification.
+        [ -d /etc/ssl/certs ] || deps="${deps} ca-certificates"
+        if [ -n "${deps}" ]; then
             local apt_sudo=""
             if [ "$(id -u)" -ne 0 ]; then
                 apt_sudo="sudo"
             fi
             ${apt_sudo} apt-get update
-            ${apt_sudo} apt-get install -y bzip2
+            # shellcheck disable=SC2086
+            ${apt_sudo} apt-get install -y ${deps}
+        fi
+
+        # Quieter output under Buildkite, matching install-llvm-binaries.sh.
+        local wget_options=""
+        if [ -n "${BUILDKITE-}" ]; then
+            wget_options="-nv"
         fi
 
         # Download the tarball to a temp file so the large archive never lands
