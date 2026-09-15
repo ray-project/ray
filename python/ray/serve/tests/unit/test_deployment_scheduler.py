@@ -27,13 +27,18 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
+    LabelSelectorFilter,
+    MinReplicaNodesFilter,
+    NodeFilter,
     PackNodeScorer,
     ReplicaSchedulingRequest,
     ReplicaSchedulingRequestStatus,
     RequestedResources,
     Resources,
+    SchedulingContext,
     SpreadDeploymentSchedulingPolicy,
     SpreadNodeScorer,
+    _filter_nodes_by_label_selector,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
@@ -1121,14 +1126,7 @@ def test_schedule_pins_actor_to_bundle_0():
 
 
 def test_filter_nodes_by_label_selector():
-    """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
-    when bin-packing, such that label constraints are enforced for the preferred node."""
-
-    class MockScheduler(default_impl.DefaultDeploymentScheduler):
-        def __init__(self):
-            pass
-
-    scheduler = MockScheduler()
+    """Label constraints are enforced before a node is scored."""
 
     nodes = {
         "n1": AvailableNodeResources(),
@@ -1142,39 +1140,35 @@ def test_filter_nodes_by_label_selector():
     }
 
     # equals operator
-    filtered = scheduler._filter_nodes_by_label_selector(
+    filtered = _filter_nodes_by_label_selector(
         nodes, {"region": "us-west"}, node_labels
     )
     assert set(filtered.keys()) == {"n1"}
 
     # not equals operator
-    filtered = scheduler._filter_nodes_by_label_selector(
+    filtered = _filter_nodes_by_label_selector(
         nodes, {"region": "!us-west"}, node_labels
     )
     assert set(filtered.keys()) == {"n2", "n3"}
 
     # in operator
-    filtered = scheduler._filter_nodes_by_label_selector(
+    filtered = _filter_nodes_by_label_selector(
         nodes, {"region": "in(us-west,us-east)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1", "n2"}
 
     # !in operator
-    filtered = scheduler._filter_nodes_by_label_selector(
+    filtered = _filter_nodes_by_label_selector(
         nodes, {"env": "!in(dev,staging)"}, node_labels
     )
     assert set(filtered.keys()) == {"n1"}
 
     # Missing labels treated as not a match for equality.
-    filtered = scheduler._filter_nodes_by_label_selector(
-        nodes, {"gpu": "A100"}, node_labels
-    )
+    filtered = _filter_nodes_by_label_selector(nodes, {"gpu": "A100"}, node_labels)
     assert set(filtered.keys()) == {"n2"}
 
     # Not equal should match node with missing labels.
-    filtered = scheduler._filter_nodes_by_label_selector(
-        nodes, {"gpu": "!T4"}, node_labels
-    )
+    filtered = _filter_nodes_by_label_selector(nodes, {"gpu": "!T4"}, node_labels)
     assert set(filtered.keys()) == {"n2", "n3"}
 
 
@@ -2016,6 +2010,80 @@ def scheduled_node_ids(on_scheduled: Mock) -> List[str]:
     return node_ids
 
 
+class TestNodeFilters:
+    def _ctx(self, occupied, num_replicas=3, node_labels=None):
+        return SchedulingContext(
+            deployment_id=DeploymentID(name="d1"),
+            num_replicas=num_replicas,
+            nodes_occupied_by_deployment=set(occupied),
+            node_labels=node_labels or {},
+        )
+
+    def test_min_replica_nodes_filter_owns_both_forms_of_its_rule(self):
+        nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
+        node_filter = MinReplicaNodesFilter(2)
+
+        unmet = self._ctx(occupied=["n1"])
+        assert set(node_filter.eligible(nodes, unmet)) == {"n2"}
+        assert node_filter.required_labels(unmet) == {RAY_NODE_ID_LABEL: "!in(n1)"}
+
+        met = self._ctx(occupied=["n1", "n2"])
+        assert set(node_filter.eligible(nodes, met)) == {"n1", "n2"}
+        assert node_filter.required_labels(met) == {}
+
+    def test_min_replica_nodes_filter_capped_by_replica_count(self):
+        nodes = {"n1": AvailableNodeResources()}
+        node_filter = MinReplicaNodesFilter(2)
+        single = self._ctx(occupied=["n1"], num_replicas=1)
+        assert set(node_filter.eligible(nodes, single)) == {"n1"}
+        assert node_filter.required_labels(single) == {}
+
+    def test_label_selector_filter_leaves_binding_to_ray(self):
+        nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
+        ctx = self._ctx(
+            occupied=[], node_labels={"n1": {"zone": "a"}, "n2": {"zone": "b"}}
+        )
+        node_filter = LabelSelectorFilter({"zone": "a"})
+        assert set(node_filter.eligible(nodes, ctx)) == {"n1"}
+        assert node_filter.required_labels(ctx) == {}
+
+    def test_build_filters_is_the_extension_point(self):
+        """A new rule needs no change to the scorer or to binding."""
+        d_id = DeploymentID(name="d1")
+        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(node_2, {"CPU": 4})
+
+        class BanFirstNodeFilter(NodeFilter):
+            def eligible(self, candidates, ctx):
+                return {n: r for n, r in candidates.items() if n != node_1}
+
+        class BannedScheduler(DefaultDeploymentScheduler):
+            def _build_filters(self):
+                return [BanFirstNodeFilter()]
+
+        scheduler = BannedScheduler(
+            cache,
+            "fake-head-node-id",
+            default_impl._default_create_placement_group,
+            scorer=PackNodeScorer(),
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [make_request(d_id, f"r{i}", 1, on_scheduled) for i in range(2)]
+            },
+            downscales={},
+        )
+        assert scheduled_node_ids(on_scheduled) == [node_2, node_2]
+
+
 class TestReplicaNodeFloor:
     @pytest.mark.parametrize("scorer", [PackNodeScorer(), SpreadNodeScorer()])
     def test_covers_floor_then_scores(self, scorer):
@@ -2166,6 +2234,33 @@ class TestReplicaNodeFloor:
         assert first.bundle_label_selector is None
         assert second.target_node_id is None
         assert second.bundle_label_selector == [{RAY_NODE_ID_LABEL: f"!in({node_1})"}]
+
+    def test_bound_replica_still_carries_the_floor_selector(self):
+        """Soft affinity can spill, so the rule travels with a placed replica too."""
+        d_id = DeploymentID(name="d1")
+        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(node_2, {"CPU": 4})
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [make_request(d_id, f"r{i}", 1, on_scheduled) for i in range(2)]
+            },
+            downscales={},
+        )
+
+        first, second = [call.args[0]._options for call in on_scheduled.call_args_list]
+        first_node = first["scheduling_strategy"].node_id
+        assert "label_selector" not in first
+        assert second["scheduling_strategy"].node_id != first_node
+        assert second["label_selector"] == {RAY_NODE_ID_LABEL: f"!in({first_node})"}
 
     def test_downscale_keeps_floor(self):
         d_id = DeploymentID(name="d1")
