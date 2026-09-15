@@ -90,11 +90,32 @@ class TestClickHouseDatasource:
         assert datasource._query == "SELECT * FROM events ORDER BY (prov_id, user_id)"
         mock_client.query.assert_called_once_with(
             "SELECT engine, sorting_key FROM system.tables "
-            "WHERE database = {database:String} "
+            "WHERE database = currentDatabase() "
             "AND name = {table:String} LIMIT 1",
-            parameters={"database": "analytics", "table": "events"},
+            parameters={"table": "events"},
         )
         mock_client.close.assert_called_once_with()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_uses_server_default_database(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = None
+        mock_client.query.return_value.result_rows = [["MergeTree", "id"]]
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="events",
+            dsn="clickhouse://user:password@localhost:8123",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by == (["id"], False)
+        mock_client.query.assert_called_once_with(
+            "SELECT engine, sorting_key FROM system.tables "
+            "WHERE database = currentDatabase() "
+            "AND name = {table:String} LIMIT 1",
+            parameters={"table": "events"},
+        )
 
     @mock.patch.object(ClickHouseDatasource, "_init_client")
     def test_auto_discovery_uses_qualified_table_name(self, mock_init_client):

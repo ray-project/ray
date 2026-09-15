@@ -188,22 +188,26 @@ class ClickHouseDatasource(Datasource):
         client = None
         try:
             client = self._init_client()
-            database = requested_database or str(
-                getattr(client, "database", "") or "default"
-            )
+            parameters = {"table": table}
+            if requested_database is None:
+                database_filter = "database = currentDatabase()"
+                table_for_log = table
+            else:
+                database_filter = "database = {database:String}"
+                parameters["database"] = requested_database
+                table_for_log = f"{requested_database}.{table}"
             result = client.query(
                 "SELECT engine, sorting_key FROM system.tables "
-                "WHERE database = {database:String} "
+                f"WHERE {database_filter} "
                 "AND name = {table:String} LIMIT 1",
-                parameters={"database": database, "table": table},
+                parameters=parameters,
             )
             rows = getattr(result, "result_rows", None)
             if not rows:
                 logger.warning(
-                    "ClickHouse table %s.%s was not found during order-by "
+                    "ClickHouse table %s was not found during order-by "
                     "discovery; falling back to a single read task.",
-                    database,
-                    table,
+                    table_for_log,
                 )
                 return None
 
@@ -212,9 +216,8 @@ class ClickHouseDatasource(Datasource):
             if not engine.endswith("MergeTree"):
                 logger.warning(
                     "ClickHouse order-by discovery only supports MergeTree-family "
-                    "tables, but %s.%s uses %s; falling back to a single read task.",
-                    database,
-                    table,
+                    "tables, but %s uses %s; falling back to a single read task.",
+                    table_for_log,
                     engine or "an unknown engine",
                 )
                 return None
@@ -222,19 +225,17 @@ class ClickHouseDatasource(Datasource):
             columns = _parse_simple_sorting_key(str(sorting_key or ""))
             if columns is None:
                 logger.warning(
-                    "ClickHouse table %s.%s has an empty or unsupported sorting "
+                    "ClickHouse table %s has an empty or unsupported sorting "
                     "key %r; falling back to a single read task.",
-                    database,
-                    table,
+                    table_for_log,
                     sorting_key,
                 )
                 return None
 
             logger.info(
-                "Discovered ClickHouse sorting key %s for %s.%s.",
+                "Discovered ClickHouse sorting key %s for %s.",
                 columns,
-                database,
-                table,
+                table_for_log,
             )
             return (columns, False)
         except Exception as exc:
