@@ -12,6 +12,13 @@ class RayServeException(Exception):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayServeConfigException(RayServeException):
+    """Raised when a config can't be applied to the running Serve instance."""
+
+    pass
+
+
 @PublicAPI(stability="stable")
 class gRPCStatusError(RayServeException):
     """Internal exception that wraps an exception with user-set gRPC status code.

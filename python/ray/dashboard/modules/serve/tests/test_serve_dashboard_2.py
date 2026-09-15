@@ -14,6 +14,7 @@ import ray._private.ray_constants as ray_constants
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import generate_system_config_map
+from ray.serve.config import ProxyLocation
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -65,22 +66,21 @@ def test_serve_namespace(ray_start_stop):
 
 
 @pytest.mark.parametrize(
-    "option,override",
+    "option,override,changed_field",
     [
-        ("proxy_location", "HeadOnly"),
-        ("http_options", {"host": "127.0.0.2"}),
-        ("http_options", {"port": 8000}),
-        ("http_options", {"root_path": "/serve_updated"}),
+        ("proxy_location", "HeadOnly", "proxy_location"),
+        ("http_options", {"host": "127.0.0.2"}, "http_options.host"),
+        ("http_options", {"port": 8001}, "http_options.port"),
+        ("http_options", {"root_path": "/serve_updated"}, "http_options.root_path"),
     ],
 )
-def test_put_with_http_options(ray_start_stop, option, override):
+def test_put_with_http_options(ray_start_stop, option, override, changed_field):
     """Submits a config with HTTP options specified.
 
-    Trying to submit a config to the serve agent with the HTTP options modified should
-    NOT fail:
+    Trying to submit a config to the serve agent with the HTTP options modified:
       - If Serve is NOT running, HTTP options will be honored when starting Serve
-      - If Serve is running, HTTP options will be ignored, and warning will be logged
-      urging users to restart Serve if they want their options to take effect
+      - If Serve is running, the request is rejected with a 400 and the running
+        options are left alone, so the change can't be silently dropped
     """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
@@ -126,7 +126,12 @@ def test_put_with_http_options(ray_start_stop, option, override):
     put_response = requests.put(
         SERVE_HEAD_URL, json=updated_serve_config_json, timeout=5
     )
-    assert put_response.status_code == 200
+    assert put_response.status_code == 400
+    assert "can't be updated at runtime" in put_response.text
+    # Only the field the config actually changed may be reported: naming a field the
+    # config left alone is how a fully-defaulted dump rejects an unchanged config.
+    assert changed_field in put_response.text
+    assert put_response.text.count("->") == 1
 
     # Fetch Serve status and confirm that HTTP options are unchanged
     get_response = requests.get(SERVE_HEAD_URL, timeout=5)
@@ -145,6 +150,40 @@ def test_put_with_http_options(ray_start_stop, option, override):
         == "4 pizzas please!"
     )
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
+
+
+def test_put_omitting_global_options(ray_start_stop):
+    """A config that declares no global options isn't asking to change them.
+
+    The schema fills in every default, so this is the case that regresses into a
+    rejection if the apply is diffed against the full dump instead of what was sent.
+    """
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    app = {"name": "app1", "route_prefix": "/app1", "import_path": world_import_path}
+    deploy_config_multi_app(
+        {
+            "proxy_location": "HeadOnly",
+            "http_options": {"host": "127.0.0.1", "port": 8000, "root_path": "/serve"},
+            "applications": [app],
+        },
+        SERVE_HEAD_URL,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app1").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    put_response = requests.put(SERVE_HEAD_URL, json={"applications": [app]}, timeout=5)
+    assert put_response.status_code == 200, put_response.text
+
+    # The running options are untouched, not reset to the schema defaults.
+    serve_details = ServeInstanceDetails.model_validate(
+        requests.get(SERVE_HEAD_URL, timeout=5).json()
+    )
+    assert serve_details.http_options.host == "127.0.0.1"
+    assert serve_details.http_options.root_path == "/serve"
+    assert serve_details.proxy_location == ProxyLocation.HeadOnly
 
 
 def test_put_with_grpc_options(ray_start_stop):

@@ -62,7 +62,7 @@ The file contains `proxy_location`, `http_options`, `grpc_options`, `logging_con
 
 ## Proxy config 
 
-The `proxy_location` field configures where to run proxies to handle traffic to the cluster. You can set `proxy_location` to the following values:
+The `proxy_location` field configures where to run proxies to handle traffic to the cluster. Like the HTTP and gRPC config, it's global to your Ray cluster and can't be updated at runtime. You can set `proxy_location` to the following values:
 - EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
 - HeadOnly: Only run a single proxy on the head node.
 - Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
@@ -78,7 +78,7 @@ You can also configure proxy health checks and lifecycle behavior with the follo
 
 ## HTTP config 
 
-The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime.
+The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime. Applying a config that changes it while Serve is running fails with a `RayServeConfigException` instead of being ignored. To change these values, shut Serve down and start it again.
 
 - **`host`**: The host IP address for Serve's HTTP proxies. This is optional and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly. If you're using Kubernetes, you must set `host` to `0.0.0.0` to expose your deployments outside the cluster.
 - **`port`**: The port for Serve's HTTP proxies. This parameter is optional and can be omitted. By default, the port is set to `8000`. 
@@ -89,7 +89,7 @@ The `http_options` are as follows. Note that the HTTP config is global to your R
 
 ## gRPC config 
 
-The `grpc_options` are as follows. Note that the gRPC config is global to your Ray cluster, and you can't update it during runtime.
+The `grpc_options` are as follows. Note that the gRPC config is global to your Ray cluster, and you can't update it during runtime. As with `http_options`, applying a config that changes it while Serve is running fails instead of being ignored.
 - **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is set to `9000`.
 - **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
 - **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, there is no request timeout.
