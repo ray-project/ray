@@ -202,9 +202,25 @@ class KubeRayProvider(ICloudInstanceProvider):
                 )
                 return
 
-            self._submit_scale_request(scale_request)
-            # Only add to processed requests if successful
+            rejected_nodes = self._submit_scale_request(scale_request)
+
+            # This request_id has been handled (full, partial, or no-op). Cache it
+            # so a replay does not add to_launch again. Instances that did not get
+            # a slot are failed below so they do not retry with this same id.
             self._requests.add(request_id)
+
+            nodes_to_reject = {}
+            for node_type, rejected in rejected_nodes.items():
+                requested = shape.get(node_type, 0)
+                if requested > 0 and rejected > 0:
+                    nodes_to_reject[node_type] = min(rejected, requested)
+
+            if nodes_to_reject:
+                self._add_launch_errors(
+                    nodes_to_reject,
+                    request_id,
+                    details="Launch capped by maxReplicas limit.",
+                )
 
         except Exception as e:
             logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
@@ -350,7 +366,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def _submit_scale_request(
         self, scale_request: "KubeRayProvider.ScaleRequest"
-    ) -> None:
+    ) -> Dict[NodeType, int]:
         """Submits a scale request to the Kubernetes API server.
 
         This method will convert the scale request to patches and submit the patches
@@ -358,6 +374,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             scale_request: The scale request.
+
+        Returns:
+            A dictionary mapping node types to the number of nodes that were rejected
+            due to the maxReplicas cap.
 
         Raises:
             Exception: An exception is raised if the Kubernetes API server returns an
@@ -368,6 +388,8 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         raycluster = self.ray_cluster
 
+        rejected_nodes = {}
+
         # Collect patches for replica counts.
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
@@ -376,12 +398,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
             target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
+            original_target_replicas = target_replicas
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_replicas = group_max_replicas
+
+                # Calculate how many nodes were rejected due to the cap
+                rejected_replicas = original_target_replicas - target_replicas
+                if rejected_replicas > 0:
+                    rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
@@ -411,12 +439,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             patch = worker_delete_patch(group_index, [])
             patch_payload.append(patch)
 
-        if len(patch_payload) == 0:
-            # No patch required.
-            return
+        if len(patch_payload) > 0:
+            logger.info(f"Submitting a scale request: {scale_request}")
+            self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
-        logger.info(f"Submitting a scale request: {scale_request}")
-        self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+        return rejected_nodes
 
     def _add_launch_errors(
         self,

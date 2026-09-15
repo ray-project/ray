@@ -475,6 +475,45 @@ async def test_job_manager_network_fault_tolerance(
     )
 
 
+class _StaleAddressGcsClient:
+    """Wraps a live GcsClient but reports an address that nothing is listening on.
+
+    Models a head replacement: the JobManager's own client keeps working through
+    the stable service, while the address it recorded at construction is dead.
+    """
+
+    def __init__(self, client, address: str):
+        self._client = client
+        self.address = address
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+@pytest.mark.asyncio
+async def test_job_succeeds_when_manager_gcs_address_is_stale(
+    call_ray_start, tmp_path  # noqa: F811
+):
+    """A job must reach SUCCEEDED even if the address the JobManager recorded is
+    no longer reachable.
+
+    The supervisor runs on a worker whose own GCS client reconnects through the
+    stable head service, so it must not depend on the creating head's address.
+    """
+    ray.init(address=call_ray_start)
+    live_client = ray._private.worker.global_worker.gcs_client
+    # Port 1 is reserved and never bound, so any client built from this address
+    # cannot reach GCS.
+    job_manager = JobManager(
+        _StaleAddressGcsClient(live_client, "127.0.0.1:1"), tmp_path
+    )
+
+    job_id = await job_manager.submit_job(entrypoint="echo hello")
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
 @pytest.fixture
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
@@ -948,24 +987,30 @@ class TestRuntimeEnv:
         [
             {},
             {"entrypoint_num_cpus": 1},
-            {"entrypoint_num_gpus": 1},
+            pytest.param(
+                {"entrypoint_num_gpus": 1},
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin",
+                    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",  # noqa: E501
+                ),
+            ),
             {"entrypoint_memory": 4},
             {"entrypoint_resources": {"Custom": 1}},
         ],
     )
-    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
+    async def test_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check the visible devices env var behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
 
-        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
-        logic. Instead, the behavior should match that of the user specifying
-        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
-        driver and tasks.
+        If the user specifies a resource, we should not use the NOSET logic.
+        Instead, the behavior should match that of the user specifying
+        resources for any other actor. So the visible devices env var should be
+        set in the driver and tasks.
         """
-        run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
+        run_cmd = f"python {_driver_script_path('check_visible_devices.py')}"
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd

@@ -30,7 +30,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
     # ...
 
 This will create a Ray head node on our local machine that we can use for development purposes.
-Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
+Note the Ray dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
 See :ref:`Using a Remote Cluster <jobs-remote-cluster>` for tips on port-forwarding if using a remote cluster.
 For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
@@ -51,7 +51,7 @@ Let's start with a sample script that can be run locally. The following script u
     ray.init()
     print(ray.get(hello_world.remote()))
 
-SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see
+SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see
 :ref:`Using a Remote Cluster <jobs-remote-cluster>` for details on setting up port forwarding.
 
 .. code-block:: python
