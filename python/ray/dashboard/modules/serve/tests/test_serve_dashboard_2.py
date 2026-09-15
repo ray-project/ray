@@ -20,7 +20,6 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     generate_system_config_map,
-    get_with_auth_token,
     request_with_auth_token,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -138,7 +137,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
     assert put_response.status_code == 200
 
     # Fetch Serve status and confirm that HTTP options are unchanged
-    get_response = get_with_auth_token(SERVE_HEAD_URL, timeout=5)
+    get_response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=5)
     serve_details = ServeInstanceDetails.model_validate(get_response.json())
 
     original_http_options = HTTPOptionsSchema.model_validate(original_http_options_json)
@@ -248,17 +247,23 @@ def test_get_applications_while_gcs_down(
     # Test serve REST API availability when the GCS is down.
     serve.start(detached=True)
 
-    get_response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+    get_response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert get_response.status_code == 200
     ray._private.worker._global_node.kill_gcs_server()
 
     for _ in range(10):
-        assert get_with_auth_token(SERVE_HEAD_URL, timeout=30).status_code == 200
+        assert (
+            request_with_auth_token("GET", SERVE_HEAD_URL, timeout=30).status_code
+            == 200
+        )
 
     ray._private.worker._global_node.start_gcs_server()
 
     for _ in range(10):
-        assert get_with_auth_token(SERVE_HEAD_URL, timeout=30).status_code == 200
+        assert (
+            request_with_auth_token("GET", SERVE_HEAD_URL, timeout=30).status_code
+            == 200
+        )
 
     serve.shutdown()
 
@@ -269,7 +274,7 @@ def test_get_applications_while_gcs_down(
 def test_target_capacity_field(ray_start_stop):
     """Test that the `target_capacity` field is always populated as expected."""
 
-    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
+    raw_json = request_with_auth_token("GET", SERVE_HEAD_URL).json()
 
     # `target_capacity` should be present in the response before deploying anything.
     assert raw_json["target_capacity"] is None
@@ -284,7 +289,7 @@ def test_target_capacity_field(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     # `target_capacity` should be present in the response even if not set.
-    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
+    raw_json = request_with_auth_token("GET", SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
@@ -295,7 +300,7 @@ def test_target_capacity_field(ray_start_stop):
     # Set `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 20
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
+    raw_json = request_with_auth_token("GET", SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 20
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 20
@@ -306,7 +311,7 @@ def test_target_capacity_field(ray_start_stop):
     # Update `target_capacity`, ensure it is returned properly.
     config["target_capacity"] = 40
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
+    raw_json = request_with_auth_token("GET", SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] == 40
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity == 40
@@ -317,7 +322,7 @@ def test_target_capacity_field(ray_start_stop):
     # Reset `target_capacity` by omitting it, ensure it is returned properly.
     del config["target_capacity"]
     deploy_config_multi_app(config, SERVE_HEAD_URL)
-    raw_json = get_with_auth_token(SERVE_HEAD_URL).json()
+    raw_json = request_with_auth_token("GET", SERVE_HEAD_URL).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None

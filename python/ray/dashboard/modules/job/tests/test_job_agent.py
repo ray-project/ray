@@ -22,7 +22,7 @@ from ray._private.test_utils import (
     chdir,
     format_web_url,
     get_current_unused_port,
-    get_with_auth_token,
+    request_with_auth_token,
     run_string_as_driver_nonblocking,
     wait_until_server_available,
 )
@@ -548,7 +548,7 @@ async def test_job_log_in_multiple_node(
         job_check_status.append(False)
 
     async def _check_all_jobs_log():
-        response = get_with_auth_token(webui_url + "/nodes?view=summary")
+        response = request_with_auth_token("GET", webui_url + "/nodes?view=summary")
         response.raise_for_status()
         summary = response.json()
         assert summary["result"] is True, summary["msg"]

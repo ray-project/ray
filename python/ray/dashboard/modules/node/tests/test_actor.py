@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.test_utils import (
     format_web_url,
-    get_with_auth_token,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.dashboard.modules.node import actor_consts
@@ -91,7 +91,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            resp = get_with_auth_token(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
@@ -195,8 +195,8 @@ def test_actor_with_ids(disable_aiohttp_cache, ray_start_with_dashboard):
         time.sleep(1)
         try:
             actor_idx = 2
-            resp = get_with_auth_token(
-                f"{webui_url}/logical/actors/{actor_ids[actor_idx]}"
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/logical/actors/{actor_ids[actor_idx]}"
             )
             resp_json = resp.json()
             resp_data = resp_json["data"]
@@ -211,8 +211,8 @@ def test_actor_with_ids(disable_aiohttp_cache, ray_start_with_dashboard):
 
             actor_idxs = [0, 1, 4]
             actor_idxs_to_id_str = ",".join([str(actor_ids[i]) for i in actor_idxs])
-            resp = get_with_auth_token(
-                f"{webui_url}/logical/actors?ids={actor_idxs_to_id_str}"
+            resp = request_with_auth_token(
+                "GET", f"{webui_url}/logical/actors?ids={actor_idxs_to_id_str}"
             )
             resp_json = resp.json()
             resp_actors = resp_json["data"]["actors"]
@@ -261,12 +261,14 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
     while True:
         time.sleep(1)
         try:
-            resp = get_with_auth_token(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
             assert len(actors) == 1
-            response = get_with_auth_token(webui_url + "/test/dump?key=node_actors")
+            response = request_with_auth_token(
+                "GET", webui_url + "/test/dump?key=node_actors"
+            )
             response.raise_for_status()
             result = response.json()
             assert actor_consts.NIL_NODE_ID not in result["data"]["nodeActors"]
@@ -322,7 +324,7 @@ def test_actor_cleanup(
     while True:
         time.sleep(1)
         try:
-            resp = get_with_auth_token(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
@@ -356,7 +358,7 @@ def test_actor_cleanup(
     while True:
         time.sleep(1)
         try:
-            resp = get_with_auth_token(f"{webui_url}/logical/actors")
+            resp = request_with_auth_token("GET", f"{webui_url}/logical/actors")
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]

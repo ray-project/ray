@@ -14,7 +14,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
-    get_with_auth_token,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
@@ -34,7 +34,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = get_with_auth_token(webui_url + "/test/dump")
+            response = request_with_auth_token("GET", webui_url + "/test/dump")
             response.raise_for_status()
             try:
                 dump_info = response.json()
@@ -77,7 +77,9 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = get_with_auth_token(webui_url + "/nodes?view=hostnamelist")
+            response = request_with_auth_token(
+                "GET", webui_url + "/nodes?view=hostnamelist"
+            )
             response.raise_for_status()
             hostname_list = response.json()
             assert hostname_list["result"] is True, hostname_list["msg"]
@@ -85,7 +87,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(hostname_list) == 1
 
             hostname = hostname_list[0]
-            response = get_with_auth_token(webui_url + f"/nodes/{node_id}")
+            response = request_with_auth_token("GET", webui_url + f"/nodes/{node_id}")
             response.raise_for_status()
             detail = response.json()
             assert detail["result"] is True, detail["msg"]
@@ -103,7 +105,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
                     actor_worker_pids.add(worker["pid"])
             assert actor_worker_pids == actor_pids
 
-            response = get_with_auth_token(webui_url + "/nodes?view=summary")
+            response = request_with_auth_token("GET", webui_url + "/nodes?view=summary")
             response.raise_for_status()
             summary = response.json()
             assert summary["result"] is True, summary["msg"]
@@ -161,7 +163,7 @@ def test_dead_node_cache_contains_latest_dead_node_if_cache_overflows(
 
     def _compare_dead_node_set(expected_alive_nodes, expected_dead_nodes):
         try:
-            response = get_with_auth_token(webui_url + "/nodes?view=summary")
+            response = request_with_auth_token("GET", webui_url + "/nodes?view=summary")
             response.raise_for_status()
             summary = response.json()
             assert summary["result"] is True, summary["msg"]
@@ -170,7 +172,9 @@ def test_dead_node_cache_contains_latest_dead_node_if_cache_overflows(
             alive_nodes = set()
             for node_info in summary:
                 node_id = node_info["raylet"]["nodeId"]
-                response = get_with_auth_token(webui_url + f"/nodes/{node_id}")
+                response = request_with_auth_token(
+                    "GET", webui_url + f"/nodes/{node_id}"
+                )
                 response.raise_for_status()
                 if node_info["raylet"]["state"] == "DEAD":
                     dead_nodes.add(node_id)
@@ -256,7 +260,7 @@ def test_multi_nodes_info(
 
     def _check_nodes():
         try:
-            response = get_with_auth_token(webui_url + "/nodes?view=summary")
+            response = request_with_auth_token("GET", webui_url + "/nodes?view=summary")
             response.raise_for_status()
             summary = response.json()
             assert summary["result"] is True, summary["msg"]
@@ -264,7 +268,9 @@ def test_multi_nodes_info(
             assert len(summary) == 4
             for node_info in summary:
                 node_id = node_info["raylet"]["nodeId"]
-                response = get_with_auth_token(webui_url + f"/nodes/{node_id}")
+                response = request_with_auth_token(
+                    "GET", webui_url + f"/nodes/{node_id}"
+                )
                 response.raise_for_status()
                 detail = response.json()
                 assert detail["result"] is True, detail["msg"]
@@ -298,9 +304,9 @@ def test_multi_node_churn(
         nonlocal success
         while True:
             try:
-                resp = get_with_auth_token(webui_url)
+                resp = request_with_auth_token("GET", webui_url)
                 resp.raise_for_status()
-                resp = get_with_auth_token(webui_url + "/nodes?view=summary")
+                resp = request_with_auth_token("GET", webui_url + "/nodes?view=summary")
                 resp.raise_for_status()
                 summary = resp.json()
                 assert summary["result"] is True, summary["msg"]
@@ -356,7 +362,9 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
     def _check_workers():
         try:
-            resp = get_with_auth_token(webui_url + "/test/dump?key=node_physical_stats")
+            resp = request_with_auth_token(
+                "GET", webui_url + "/test/dump?key=node_physical_stats"
+            )
             resp.raise_for_status()
             result = resp.json()
             assert result["result"] is True
@@ -396,7 +404,7 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
 
     def _check_worker_pids():
         try:
-            response = get_with_auth_token(webui_url + f"/nodes/{node_id}")
+            response = request_with_auth_token("GET", webui_url + f"/nodes/{node_id}")
             response.raise_for_status()
             dump_info = response.json()
             assert dump_info["result"] is True

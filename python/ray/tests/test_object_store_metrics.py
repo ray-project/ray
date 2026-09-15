@@ -10,7 +10,7 @@ from ray._common.test_utils import (
     PrometheusTimeseries,
     wait_for_condition,
 )
-from ray._private.test_utils import get_with_auth_token, raw_metric_timeseries
+from ray._private.test_utils import raw_metric_timeseries, request_with_auth_token
 from ray._private.worker import RayContext
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
@@ -376,7 +376,9 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
             if sample.labels["Name"] == "object_store_memory":
                 object_store_memory_bytes_from_metrics += sample.value
 
-        r = get_with_auth_token(f"http://{ctx.dashboard_url}/nodes?view=summary")
+        r = request_with_auth_token(
+            "GET", f"http://{ctx.dashboard_url}/nodes?view=summary"
+        )
         object_store_memory_bytes_from_dashboard = int(
             r.json()["data"]["summary"][0]["raylet"]["objectStoreAvailableMemory"]
         )

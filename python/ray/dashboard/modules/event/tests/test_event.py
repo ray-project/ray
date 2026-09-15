@@ -34,7 +34,6 @@ from ray._private.protobuf_compat import message_to_dict
 from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
     format_web_url,
-    get_with_auth_token,
     request_with_auth_token,
     wait_until_server_available,
 )
@@ -149,7 +148,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
 
     def _check_events():
         try:
-            resp = get_with_auth_token(f"{webui_url}/events")
+            resp = request_with_auth_token("GET", f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -215,7 +214,7 @@ def test_event_message_limit(
 
     def _check_events():
         try:
-            resp = get_with_auth_token(f"{webui_url}/events")
+            resp = request_with_auth_token("GET", f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -250,7 +249,7 @@ def test_report_events(ray_start_with_dashboard):
     resp = request_with_auth_token("POST", url, json=[json.dumps(sample_event)])
     assert resp.status_code == 200
 
-    resp = get_with_auth_token(f"{webui_url}/events")
+    resp = request_with_auth_token("GET", f"{webui_url}/events")
     assert resp.status_code == 200
     result = resp.json()
     all_events = result["data"]["events"]

@@ -82,11 +82,6 @@ def request_with_auth_token(method, url, **kwargs):
     return requests.request(method, url, **kwargs)
 
 
-def get_with_auth_token(url, **kwargs):
-    """``requests.get`` variant that attaches the cluster's auth token."""
-    return request_with_auth_token("GET", url, **kwargs)
-
-
 def auth_token_grpc_metadata():
     """gRPC metadata carrying the cluster's auth token, empty when there is none."""
     return tuple(_auth_token_header().items())

@@ -17,7 +17,7 @@ import requests
 import ray
 from ray import serve
 from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
-from ray._private.test_utils import get_with_auth_token, request_with_auth_token
+from ray._private.test_utils import request_with_auth_token
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -332,7 +332,9 @@ def test_delete_multi_app(ray_start_stop):
 def test_get_serve_instance_details_not_started(ray_start_stop):
     """Test REST API when Serve hasn't started yet."""
     # Parse the response to ensure it's formatted correctly.
-    serve_details = ServeInstanceDetails(**get_with_auth_token(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
     assert serve_details.target_groups == []
 
 
@@ -412,7 +414,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def applications_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -424,7 +426,9 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**get_with_auth_token(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
     # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
@@ -546,7 +550,7 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
     assert deploy.returncode == 0
 
     def applications_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -573,7 +577,9 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
         },
     }
 
-    serve_details = ServeInstanceDetails(**get_with_auth_token(SERVE_HEAD_URL).json())
+    serve_details = ServeInstanceDetails(
+        **request_with_auth_token("GET", SERVE_HEAD_URL).json()
+    )
 
     app_details = serve_details.applications
     # CHECK: application details
@@ -668,7 +674,7 @@ class TestScaleDeploymentEndpoint:
     ):
         """Get deployment details from serve instance."""
         serve_details = ServeInstanceDetails(
-            **get_with_auth_token(SERVE_HEAD_URL).json()
+            **request_with_auth_token("GET", SERVE_HEAD_URL).json()
         )
         app_details = serve_details.applications[app_name]
 
@@ -1120,7 +1126,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
 
     # Wait for declarative apps to be running
     def declarative_apps_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return len(serve_details.applications) == 2 and all(
@@ -1144,7 +1150,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
 
     # Wait for imperative apps to be running
     def all_apps_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return len(
@@ -1158,7 +1164,7 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
     print("All applications (declarative + imperative) are running.")
 
     # Test 1: No api_type parameter - should return all applications
-    response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 4
@@ -1166,7 +1172,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
     assert app_names == {"declarative_app1", "declarative_app2", "app1", "app2"}
 
     # Test 2: Filter by declarative applications
-    response = get_with_auth_token(SERVE_HEAD_URL + "?api_type=declarative", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=declarative", timeout=15
+    )
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1176,7 +1184,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
         assert app.source == "declarative"
 
     # Test 3: Filter by imperative applications
-    response = get_with_auth_token(SERVE_HEAD_URL + "?api_type=imperative", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=imperative", timeout=15
+    )
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1186,7 +1196,9 @@ def test_get_serve_instance_details_api_type_filtering(ray_start_stop):
         assert app.source == "imperative"
 
     # Test 4: Filter by unknown - should return 400 error (unknown is not a valid user input)
-    response = get_with_auth_token(SERVE_HEAD_URL + "?api_type=unknown", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=unknown", timeout=15
+    )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
     assert "Must be one of: imperative, declarative" in response.text
@@ -1200,15 +1212,17 @@ def test_get_serve_instance_details_invalid_api_type(ray_start_stop):
     Test that invalid api_type values return appropriate error responses.
     """
     # Test with invalid api_type value
-    response = get_with_auth_token(
-        SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=invalid_type", timeout=15
     )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
     assert "Must be one of: imperative, declarative" in response.text
 
     # Test with another invalid value
-    response = get_with_auth_token(SERVE_HEAD_URL + "?api_type=python", timeout=15)
+    response = request_with_auth_token(
+        "GET", SERVE_HEAD_URL + "?api_type=python", timeout=15
+    )
     assert response.status_code == 400
     assert "Invalid 'api_type' value" in response.text
 
@@ -1235,7 +1249,7 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def app_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1250,8 +1264,8 @@ def test_get_serve_instance_details_api_type_case_insensitive(ray_start_stop):
     test_cases = ["DECLARATIVE", "Declarative", "declarative", "DeClArAtIvE"]
 
     for api_type_value in test_cases:
-        response = get_with_auth_token(
-            f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
+        response = request_with_auth_token(
+            "GET", f"{SERVE_HEAD_URL}?api_type={api_type_value}", timeout=15
         )
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
@@ -1292,7 +1306,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     deploy_config_multi_app(config, SERVE_HEAD_URL)
 
     def both_apps_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1306,7 +1320,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     wait_for_condition(both_apps_running, timeout=15)
 
     # Verify both apps have correct external_scaler_enabled values
-    response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert len(serve_details.applications) == 2
@@ -1332,7 +1346,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     deploy_config_multi_app(config_default, SERVE_HEAD_URL)
 
     def app_default_running():
-        response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+        response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
         assert response.status_code == 200
         serve_details = ServeInstanceDetails(**response.json())
         return (
@@ -1344,7 +1358,7 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     wait_for_condition(app_default_running, timeout=15)
 
     # Verify default value is False
-    response = get_with_auth_token(SERVE_HEAD_URL, timeout=15)
+    response = request_with_auth_token("GET", SERVE_HEAD_URL, timeout=15)
     assert response.status_code == 200
     serve_details = ServeInstanceDetails(**response.json())
     assert "app_default" in serve_details.applications

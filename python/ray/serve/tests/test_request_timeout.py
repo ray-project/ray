@@ -12,7 +12,7 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import get_with_auth_token
+from ray._private.test_utils import request_with_auth_token
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.test_utils import (
     get_application_url,
@@ -130,8 +130,8 @@ def test_with_rest_api(ray_instance, shutdown_serve):
     ServeSubmissionClient("http://localhost:8265").deploy_applications(config)
 
     def application_running():
-        response = get_with_auth_token(
-            "http://localhost:8265/api/serve/applications/", timeout=15
+        response = request_with_auth_token(
+            "GET", "http://localhost:8265/api/serve/applications/", timeout=15
         )
         assert response.status_code == 200
 

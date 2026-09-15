@@ -12,7 +12,7 @@ from ray._common.test_utils import (
 )
 from ray._private.test_utils import (
     format_web_url,
-    get_with_auth_token,
+    request_with_auth_token,
     run_string_as_driver_nonblocking,
 )
 from ray.dashboard import dashboard
@@ -62,7 +62,9 @@ def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start
     """
     external_hook = set_ray_cluster_activity_hook
 
-    response = get_with_auth_token("http://127.0.0.1:8265/api/component_activities")
+    response = request_with_auth_token(
+        "GET", "http://127.0.0.1:8265/api/component_activities"
+    )
     response.raise_for_status()
 
     # Validate schema of response
@@ -104,7 +106,9 @@ def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start
         assert external_activity_response.reason == "Counter: 1"
 
         # Call endpoint again to validate different response
-        response = get_with_auth_token("http://127.0.0.1:8265/api/component_activities")
+        response = request_with_auth_token(
+            "GET", "http://127.0.0.1:8265/api/component_activities"
+        )
         response.raise_for_status()
         data = response.json()
         jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
@@ -145,7 +149,9 @@ time.sleep({sleep_time_s})
 
     def verify_driver_response():
         # Verify drivers are considered active after running script
-        response = get_with_auth_token(f"{webui_url}/api/component_activities")
+        response = request_with_auth_token(
+            "GET", f"{webui_url}/api/component_activities"
+        )
         response.raise_for_status()
 
         # Validate schema of response

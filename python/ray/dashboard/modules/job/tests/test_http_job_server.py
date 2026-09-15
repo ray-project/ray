@@ -23,7 +23,6 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    get_with_auth_token,
     request_with_auth_token,
     wait_until_server_available,
 )
@@ -639,15 +638,11 @@ def test_version_endpoint(job_sdk_client):
 
 
 def test_request_headers(job_sdk_client):
-    from ray._raylet import AuthenticationTokenLoader
+    from ray._private.test_utils import _auth_token_header
 
     client = job_sdk_client
     expected_headers = {"Connection": "keep-alive"}
-    expected_headers.update(
-        AuthenticationTokenLoader.instance().get_token_for_http_header(
-            ignore_auth_mode=True
-        )
-    )
+    expected_headers.update(_auth_token_header())
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -766,7 +761,9 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_file = tmp_path / package_name
     create_package(str(pkg_dir), package_file, include_gitignore=True)
 
-    resp = get_with_auth_token(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 404
 
     resp = request_with_auth_token(
@@ -776,7 +773,9 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     )
     assert resp.status_code == 200
 
-    resp = get_with_auth_token(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 200
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)
