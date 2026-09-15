@@ -176,8 +176,12 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         if result_task in done:
             return result_task.result()
         elif self._disconnected_task in done:
+            result_task.cancel()
+            await asyncio.gather(result_task, return_exceptions=True)
             self._response.cancel()
             raise asyncio.CancelledError()
         else:
+            result_task.cancel()
+            await asyncio.gather(result_task, return_exceptions=True)
             self._response.cancel()
             raise TimeoutError()
