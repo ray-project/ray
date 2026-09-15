@@ -21,6 +21,7 @@ Public API
     :toctree: doc/
 
     star
+    unnest
     col
     lit
     udf
@@ -47,6 +48,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    UnnestExpr
     DownloadExpr
     MonotonicallyIncreasingIdExpr
     RandomExpr

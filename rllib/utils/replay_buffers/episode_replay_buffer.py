@@ -313,8 +313,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             agent_to_num_steps_added=agent_to_num_steps_added,
             agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
             agent_to_num_steps_evicted=agent_to_num_steps_evicted,
-            module_to_num_episodes_added=module_to_num_steps_added,
-            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_added=module_to_num_episodes_added,
+            module_to_num_steps_added=module_to_num_steps_added,
             module_to_num_episodes_evicted=module_to_num_episodes_evicted,
             module_to_num_steps_evicted=module_to_num_steps_evicted,
         )
