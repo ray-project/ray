@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 import ray
+from ray.widgets.render import Template
 from ray.widgets.util import _can_display_ipywidgets, repr_with_fallback
 
 
@@ -180,6 +181,27 @@ def test_can_display_ipywidgets(
 
     assert _can_display_ipywidgets(["somedep", "8"], message="") == can_display
     mock_get_ipython_shell_name.assert_called()
+
+
+@pytest.mark.parametrize(
+    "template_file,container_class",
+    [
+        ("tune_status.html.j2", "tuneStatus"),
+        ("trial_progress.html.j2", "trialProgress"),
+    ],
+)
+def test_tune_widget_templates_set_table_background(template_file, container_class):
+    """Table cells must set an explicit background so text stays legible when the
+    JupyterLab theme is switched to dark mode (see issue #52656)."""
+    rendered = Template(template_file).render(
+        status_table="",
+        sys_info_message="",
+        trial_progress="",
+        messages="",
+        table="",
+    )
+    assert f".{container_class} table" in rendered
+    assert "background-color: var(--jp-layout-color1)" in rendered
 
 
 if __name__ == "__main__":
