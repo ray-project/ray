@@ -47,7 +47,8 @@ class MockObjectDirectory : public IObjectDirectory {
               ReportObjectRemoved,
               (const ObjectID &object_id,
                const NodeID &node_id,
-               const ObjectInfo &object_info),
+               const ObjectInfo &object_info,
+               bool freed_by_move),
               (override));
 
   MOCK_METHOD(void,
@@ -58,6 +59,13 @@ class MockObjectDirectory : public IObjectDirectory {
                const std::string &spilled_url,
                const ObjectID &generator_id,
                const bool spilled_to_local_storage),
+              (override));
+
+  MOCK_METHOD(void,
+              ReportObjectPrimaryMoved,
+              (const ObjectID &object_id,
+               const NodeID &node_id,
+               const rpc::Address &owner_address),
               (override));
 
   MOCK_METHOD(void, RecordMetrics, (uint64_t duration_ms), (override));

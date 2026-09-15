@@ -156,6 +156,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  bool AddObjectFreedOnProducerCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void OnObjectFreedOnProducer(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool AddObjectRefDeletedCallback(
       const ObjectID &object_id, std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -484,6 +492,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callbacks that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
     std::vector<std::function<void(const ObjectID &)>> object_ref_deleted_callbacks;
+    /// Callbacks run (once) when the producer physically frees its copy after a
+    /// plasma move-semantics handoff. Cleared after firing.
+    std::vector<std::function<void(const ObjectID &)>>
+        on_object_freed_on_producer_callbacks;
+    /// True once the producer-freed notification has fired for this object, so a
+    /// late AddObjectFreedOnProducerCallback can report the event already passed.
+    bool freed_on_producer = false;
     /// If this is set, we'll call PublishRefRemovedInternal when this process is no
     /// longer a borrower (RefCount() == 0).
     bool publish_ref_removed = false;

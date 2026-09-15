@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -130,6 +131,22 @@ class ObjectManagerInterface {
   virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
 
+  /// Register a callback invoked when a move-semantics push to a peer node
+  /// has been fully acked. Fires once per (object_id, peer_node_id). The bool
+  /// argument is whether this push was a move (the producer should free its
+  /// local copy) — true only for the move-target push of a non-put object.
+  virtual void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &, bool is_move)> fn) = 0;
+
+  /// Register a callback invoked on the consumer when a move-semantics push has
+  /// been fully received and sealed locally (is_move set on the PushRequest).
+  /// The callback should pin the received object as the new primary and report
+  /// the primary-location move to the owner. Runs on the main service. Returns
+  /// true iff the object was successfully fetched + pinned; on false the
+  /// producer keeps its copy (move falls back to a normal copy).
+  virtual void SetOnMovedObjectReceived(
+      std::function<bool(const ObjectID &, const rpc::Address &)> fn) = 0;
+
   virtual ~ObjectManagerInterface() = default;
 };
 
@@ -208,6 +225,16 @@ class ObjectManager : public ObjectManagerInterface,
   /// pinned by the raylet, so we can comfotable evict after spilling the object from
   /// local object manager. False otherwise.
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
+
+  void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &, bool is_move)> fn) override {
+    on_push_complete_ = std::move(fn);
+  }
+
+  void SetOnMovedObjectReceived(
+      std::function<bool(const ObjectID &, const rpc::Address &)> fn) override {
+    on_moved_object_received_ = std::move(fn);
+  }
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -336,7 +363,8 @@ class ObjectManager : public ObjectManagerInterface,
                        std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client,
                        std::function<void(const Status &)> on_complete,
                        std::shared_ptr<ChunkObjectReader> chunk_reader,
-                       bool from_disk);
+                       bool from_disk,
+                       bool is_move);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -391,6 +419,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
+  /// \param is_move Whether this push is a plasma move (defer the buffer-pool
+  /// release of the sealed object so it stays pinned until the consumer pins).
+  /// \param[out] object_sealed Set to true iff this chunk completed and sealed
+  /// the object. Only meaningful when the return value is true.
   /// \return Whether the chunk was successfully written into the local object
   /// store. This can fail if the chunk was already received in the past, or if
   /// the object is no longer being actively pulled.
@@ -400,7 +432,9 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t data_size,
                           uint64_t metadata_size,
                           uint64_t chunk_index,
-                          const std::string &data);
+                          const std::string &data,
+                          bool is_move,
+                          bool *object_sealed);
 
   /**
    * Send pull request for a batch of objects to a single remote node.
@@ -457,6 +491,38 @@ class ObjectManager : public ObjectManagerInterface,
       ObjectID,
       absl::flat_hash_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
+
+  /// Callback invoked when a move-semantics push completes. Receives the
+  /// object id, the peer node id the push was destined for, and whether the
+  /// push was a move (producer should free its local copy).
+  std::function<void(const ObjectID &, const NodeID &, bool is_move)> on_push_complete_;
+
+  /// Callback invoked on the consumer when a move-semantics push has been fully
+  /// received and sealed locally. Pins the received object as the new primary
+  /// and reports the primary-location move to the owner. Runs on the main
+  /// service. Returns true iff the object was fetched + pinned successfully.
+  std::function<bool(const ObjectID &, const rpc::Address &)> on_moved_object_received_;
+
+  /// Per-push ack tracking for move semantics. Records how many chunks of a
+  /// given (object, peer) push have been acked so we can fire
+  /// on_push_complete_ exactly once when the whole transfer succeeds.
+  struct PushAckState {
+    int64_t total_chunks;
+    int64_t acked_chunks = 0;
+    bool failed = false;
+    /// Whether this push is the move target for the object (producer frees its
+    /// copy on success). False for non-move pushes (e.g. ray.put objects).
+    bool is_move = false;
+  };
+  absl::flat_hash_map<std::pair<ObjectID, NodeID>, PushAckState> push_ack_tracking_;
+
+  /// Object ids this node move-freed as a producer (a move push completed and
+  /// ReleaseFreedLocalObject was called). Recorded when on_push_complete_ fires
+  /// with is_move, consumed in HandleObjectDeleted to tag the REMOVED update
+  /// with freed_on_producer_node_id. Only the move path populates it, so
+  /// evictions / owner-driven final frees never set the flag. Accessed only on
+  /// the main service thread (same as HandleObjectDeleted), so no lock needed.
+  absl::flat_hash_set<ObjectID> move_freed_object_ids_;
 
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;

@@ -124,6 +124,15 @@ std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
       });
 }
 
+std::optional<rpc::Address> LocalObjectManager::GetOwnerAddress(
+    const ObjectID &object_id) const {
+  auto it = local_objects_.find(object_id);
+  if (it == local_objects_.end() || it->second.is_freed_) {
+    return std::nullopt;
+  }
+  return it->second.owner_address_;
+}
+
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_pending_deletion_.size()

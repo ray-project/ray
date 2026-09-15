@@ -117,11 +117,12 @@ Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
   return Status::OK();
 }
 
-void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
+bool ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t data_size,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
-                                  const std::string &data) {
+                                  const std::string &data,
+                                  bool defer_release) {
   std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
   {
     absl::MutexLock lock(&pool_mutex_);
@@ -131,12 +132,12 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
         it->second.chunk_state_.at(chunk_index) != CreateChunkState::REFERENCED) {
       RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
                      << " could be sealed";
-      return;
+      return false;
     }
     if (it->second.data_size_ != data_size ||
         it->second.metadata_size_ != metadata_size) {
       RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
-      return;
+      return false;
     }
     RAY_CHECK(it->second.chunk_info_.size() > chunk_index);
 
@@ -158,6 +159,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   // on the object_id, which makes the unguarded copy call safe.
   std::memcpy(chunk_info->data_, data.data(), chunk_info->buffer_length_);
 
+  bool sealed = false;
   {
     // Ensure the process of object_id Seal and Release is mutex guarded.
     absl::MutexLock lock(&pool_mutex_);
@@ -169,12 +171,34 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     it->second.num_seals_remaining_--;
     if (it->second.num_seals_remaining_ == 0) {
       RAY_CHECK_OK(store_client_->Seal(object_id));
-      RAY_CHECK_OK(store_client_->Release(object_id));
-      create_buffer_state_.erase(it);
-      RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
-                     << ", last chunk index: " << chunk_index;
+      sealed = true;
+      if (defer_release) {
+        // Plasma move semantics: keep the create-reference (and buffer state)
+        // so the object stays refcount>0 and cannot be LRU-evicted until the
+        // consumer pins it. ReleaseObject() drops the reference after the pin.
+        RAY_LOG(DEBUG) << "Sealed received move object " << object_id
+                       << " (deferring release until pin), last chunk index: "
+                       << chunk_index;
+      } else {
+        RAY_CHECK_OK(store_client_->Release(object_id));
+        create_buffer_state_.erase(it);
+        RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
+                       << ", last chunk index: " << chunk_index;
+      }
     }
   }
+  return sealed;
+}
+
+void ObjectBufferPool::ReleaseObject(const ObjectID &object_id) {
+  absl::MutexLock lock(&pool_mutex_);
+  auto it = create_buffer_state_.find(object_id);
+  if (it == create_buffer_state_.end()) {
+    // Already released, or the object was not sealed with defer_release.
+    return;
+  }
+  RAY_CHECK_OK(store_client_->Release(object_id));
+  create_buffer_state_.erase(it);
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
@@ -193,6 +217,21 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
   // Mutex is acquired, no copy inflight, safe to abort the object_id.
   auto it = create_buffer_state_.find(object_id);
   if (it != create_buffer_state_.end()) {
+    if (it->second.num_seals_remaining_ == 0) {
+      // Plasma move semantics: this object was already sealed with a deferred
+      // create-reference release (WriteChunk(defer_release=true)) and is a
+      // valid, sealed, local object being pinned by the move path. Abort() on
+      // a sealed object is illegal and trips a fatal RAY_CHECK in the plasma
+      // client ("called abort on an object without a reference to it"), which
+      // crashes the raylet. The entry legitimately lingers only until
+      // ReleaseObject() drops the create-reference after the pin completes, so
+      // the refcount never hits 0 in the seal->pin window (the eviction race
+      // this redesign closes). Skip the abort and leave the entry for
+      // ReleaseObject(); do NOT release it here, or that window reopens.
+      RAY_LOG(DEBUG) << "Skipping abort of sealed move object " << object_id
+                     << " (deferred release pending pin)";
+      return;
+    }
     RAY_CHECK_OK(store_client_->Release(object_id));
     RAY_CHECK_OK(store_client_->Abort(object_id));
     create_buffer_state_.erase(object_id);
