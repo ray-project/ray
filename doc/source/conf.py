@@ -63,7 +63,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
     "sphinx_sitemap",
@@ -72,7 +71,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.redoc",
+    "sphinxcontrib.openapi",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -216,10 +215,6 @@ import template_collections
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = [
     "config.cache",
-    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
-    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
-    # the existing (identical) file. Benign and not fixable upstream.
-    "misc.copy_overwrite",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -797,24 +792,17 @@ def setup(app):
     app.connect("source-read", apply_ipython3_lexer)
 
 
-redoc = [
-    {
-        "name": "Ray Jobs API",
-        "page": "cluster/running-applications/job-submission/api",
-        "spec": "cluster/running-applications/job-submission/openapi.yml",
-        "embed": True,
-    },
-]
-
-# Pin the ReDoc bundle version rather than tracking the CDN's `latest` tag.
-# sphinxcontrib-redoc injects this script instead of bundling a renderer, so the
-# Jobs API page is rendered client-side at page-view time by whatever this URL
-# serves. On `latest`, a breaking change in the bundle degrades the published page
-# with no build-time signal, because the Sphinx build never executes it.
-# When bumping this, load the api.html page in the Read the Docs PR preview and
-# confirm the three-panel layout and the endpoint list still render. A green
-# Sphinx build proves nothing about this page.
-redoc_uri = "https://cdn.redoc.ly/redoc/v2.5.3/bundles/redoc.standalone.js"
+# Render the Jobs API OpenAPI spec with sphinxcontrib-openapi's httpdomain
+# renderer, selected here rather than per-directive.
+#
+# Two notes for anyone changing this. The default renderer is "httpdomain:old",
+# which silently renders no request or response schemas at all -- just paths,
+# parameters, and status codes -- so leaving this unset would quietly drop most
+# of the reference content. And selecting the renderer through this config value
+# rather than by writing `.. openapi:httpdomain::` in the page avoids an
+# "unknown directive name" warning, which matters because .readthedocs.yaml sets
+# fail_on_warning: true.
+openapi_default_renderer = "httpdomain"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
@@ -824,9 +812,12 @@ autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 # environment (doc/requirements-doc.lock.txt). Mocking an installed library
 # shadows the real module: an eager import in a documented class body then hits
 # the mock and aborts the whole package import as a misleading error. numpy and
-# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
-# direct requirements-doc entry), but importing it for real breaks the autodoc
-# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
+# pyarrow are installed, so they are not mocked. Heavy ML libraries (tensorflow,
+# torch, ...) are not installed in the docbuild environment and stay mocked here;
+# documented modules that use them import them lazily or under TYPE_CHECKING, so
+# the mock is enough to render their API. The doctest environment
+# (doctest_depset, fed by python/requirements/ml/*) installs them for real to run
+# the executable examples, but that is a separate depset from this build.
 # The mock list is shared with api_autogen.py and the API/doc consistency check
 # (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
 # the check see the same API surface this render produces. THIRD_PARTY_MOCK

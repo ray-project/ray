@@ -35,6 +35,10 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.util import _is_local_scheme
+from ray.data.checkpoint.generated_id import (
+    GENERATED_ID_COLUMN_TYPE,
+    get_generated_id_column_name,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -211,7 +215,9 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return ParquetInMemorySizeEstimator()
 
     @override
-    def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:
+    def resolve_partitioning(
+        self, sample: Optional[FileManifest]
+    ) -> Optional[Partitioning]:
         """Return ``self._partitioning`` with path-discovered field names.
 
         Hive partitioning ships with ``field_names=None`` by default and
@@ -221,6 +227,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         mutating ``self`` so schema inference stays side-effect-free.
         """
         import copy
+
+        # The base signature allows ``None`` for sources whose schema comes
+        # from a catalog; Parquet answers ``schema_needs_file_sample`` True,
+        # so ``_read_datasource_v2`` always samples before calling this.
+        assert sample is not None, "Parquet always receives a sample"
 
         if self._partitioning is None or len(sample) == 0:
             return copy.deepcopy(self._partitioning)
@@ -240,7 +251,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             filesystem=self._partitioning.filesystem,
         )
 
-    def infer_schema(self, sample: FileManifest) -> pa.Schema:
+    @property
+    @override
+    def schema_needs_file_sample(self) -> bool:
+        return True
+
+    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
         """Read Parquet footers from the sample manifest; unify and augment.
 
         When the sample has multiple files, their schemas are unified via
@@ -258,6 +274,10 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         import pyarrow.parquet as pq
 
         from ray.data._internal.util import unify_schemas_with_validation
+
+        # See ``resolve_partitioning``: ``None`` is reachable only for a
+        # source that answers ``schema_needs_file_sample`` False.
+        assert sample is not None, "Parquet always receives a sample"
 
         # Empty sample — typically means the user pointed ``read_parquet``
         # at an empty directory. Return an empty schema so the rest of
@@ -334,6 +354,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
                 schema = schema.append(pa.field("row_hash", pa.uint64()))
             elif schema.field(idx).type != pa.uint64():
                 schema = schema.set(idx, pa.field("row_hash", pa.uint64()))
+
+        generated_id = get_generated_id_column_name()
+        if generated_id and schema.get_field_index(generated_id) == -1:
+            # Synthesized post-read for generated-ID checkpointing; a
+            # colliding on-disk column is rejected at read time.
+            schema = schema.append(pa.field(generated_id, GENERATED_ID_COLUMN_TYPE))
 
         check_for_legacy_tensor_type(schema)
         return schema

@@ -125,9 +125,19 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
-DEFAULT_HASH_SHUFFLE_COMPRESSION = os.environ.get(
-    "RAY_DATA_HASH_SHUFFLE_COMPRESSION", "zstd"
-)
+
+def _deduce_default_shuffle_compression() -> str:
+    legacy_codec = os.environ.get("RAY_DATA_HASH_SHUFFLE_COMPRESSION")
+    if legacy_codec is not None:
+        logger.warning(
+            "RAY_DATA_HASH_SHUFFLE_COMPRESSION is deprecated, please use "
+            "RAY_DATA_SHUFFLE_COMPRESSION instead"
+        )
+
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+
+
+DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
 
 DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
@@ -140,6 +150,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
 DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
+
+DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -173,6 +185,8 @@ DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
+
+DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
@@ -304,6 +318,18 @@ DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
 
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
+    "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
+)
+
+DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO = env_float(
+    "RAY_DATA_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO", None
+)
+
+DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION = env_float(
+    "RAY_DATA_OBJECT_STORE_MEMORY_PRESSURE_FRACTION", None
 )
 
 DEFAULT_MAX_ERRORED_BLOCKS = 0
@@ -640,6 +666,16 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        accurate_map_phase_timing: Whether to break "Block transform time" down
+            into input prep, function body, and output block build for row-based
+            transforms such as :meth:`~ray.data.Dataset.map` and
+            :meth:`~ray.data.Dataset.filter`. Those
+            run once per row, and measuring each phase separately costs enough per row
+            to slow the transform down, so by default Ray Data reports only their
+            total. Batch-based transforms such as
+            :meth:`~ray.data.Dataset.map_batches` are always broken down, since one
+            measurement there covers a whole batch. Enable this when you need the
+            breakdown for a row-based transform and can afford the overhead.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         execution_options: The
@@ -703,12 +739,39 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        object_store_reservation_overshoot_ratio: An operator loses its share of the
+            shared object-store memory pool once its object-store usage exceeds this
+            multiple of its total reservation. The headroom above 1x absorbs the
+            ordinary fluctuation of an operator's own output buffer under steady
+            load. Only object-store memory is withheld: the operator keeps its full
+            CPU/GPU share so it can still drain what it already holds. Has no effect
+            unless ``object_store_memory_pressure_fraction`` is also set. Defaults to
+            None, which disables the overshoot throttle.
+        object_store_memory_pressure_fraction: Once this execution's object-store
+            usage exceeds this fraction of its memory limit, an idle operator with
+            queued input may run one task despite an exhausted object-store budget
+            for task outputs. This keeps the pipeline moving without releasing more
+            upstream output. Only one such task runs at a time per operator, since
+            the allowance requires the operator to have no task in flight; CPU/GPU
+            limits are always enforced. Leaving this unset disables the allowance
+            entirely, which keeps object-store backpressure strict on the default
+            path. Set together with ``object_store_reservation_overshoot_ratio`` it
+            additionally enables the overshoot throttle. Defaults to None.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
             all-to-all operation.
             Raise this if your workload can wait a long time for cluster capacity.
             Set to -1 to disable.
+        output_backpressure_guard_release_interval_s: Per-operator minimum interval
+            in seconds between successive ``OutputBackpressureGuard`` releases. The
+            guard exists as a liveness escape hatch: when the resource allocator
+            clamps an op's output budget to 0, it flips the budget to 1 byte so the
+            executor emits one more block. On workloads with very large blocks this
+            per-iteration release can outpace downstream drain, so object store usage
+            grows even under "backpressure". A positive interval throttles releases
+            per op; only releases that actually yield output start the interval.
+            Defaults to None (no throttling, legacy behavior).
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -750,8 +813,9 @@ class DataContext:
             See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
-        hash_shuffle_compression: Codec used to compress hash-shuffle
-            intermediate shards: "none", "lz4", or "zstd" (default "zstd").
+        shuffle_compression: Codec used to compress shuffle intermediate
+            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
         hash_shuffle_reduce_get_timeout_s: Timeout in seconds, for the
@@ -759,15 +823,21 @@ class DataContext:
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
-            shuffle input blocks before partitioning. Currently only applies
-            to the ``SHUFFLE_V2`` shuffle strategy; other shuffle
-            strategies ignore it. Input blocks are buffered per node and
+            shuffle input blocks before partitioning. Applies to the
+            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            Other shuffle strategies ignore it. Input blocks are buffered per
+            node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
             increase shuffle parallelism (useful for CPU-intensive shuffles)
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
+        use_external_hash_shuffle: Whether keyed ``repartition()``,
+            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
+            external (on-disk, file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
+            environment variable (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -860,8 +930,8 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Codec for hash-shuffle intermediate shards ("none", "lz4", or "zstd").
-    hash_shuffle_compression: str = DEFAULT_HASH_SHUFFLE_COMPRESSION
+    # Codec for shuffle intermediate shards ("none", "lz4", or "zstd").
+    shuffle_compression: str = DEFAULT_SHUFFLE_COMPRESSION
 
     # Shard refs each reduce task dereferences per ray.get() call.
     hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
@@ -905,6 +975,11 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
+    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # When False, use the object-store path.
+    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################
@@ -944,6 +1019,7 @@ class DataContext:
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
@@ -971,6 +1047,9 @@ class DataContext:
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    output_backpressure_guard_release_interval_s: Optional[
+        float
+    ] = DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
     execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
@@ -1030,6 +1109,13 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    object_store_reservation_overshoot_ratio: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO
+    object_store_memory_pressure_fraction: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -1252,6 +1338,32 @@ class DataContext:
         # NOTE: Coercing to the enum resolves deprecated aliases (like
         #       `hash_shuffle_v2`) to their current strategy
         self._shuffle_strategy = ShuffleStrategy(value)
+
+    # Deprecated alias of `shuffle_compression`
+    @property
+    def hash_shuffle_compression(self) -> str:
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=3)
+
+        return self.shuffle_compression
+
+    @hash_shuffle_compression.setter
+    def hash_shuffle_compression(self, value: str) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=4)
+
+        self.shuffle_compression = value
+
+    @staticmethod
+    def _warn_hash_shuffle_compression_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`hash_shuffle_compression` is deprecated, please configure "
+            "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
