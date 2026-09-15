@@ -298,7 +298,11 @@ async def test_routes_tokens_to_replica():
 
     sender = TokenSender()
     router = LLMRouter.__new__(LLMRouter)
-    router._handle = MagicMock()
+    # `route` resolves the body's `model` against this map and reports the
+    # deployment name, so give the sole handle a real one.
+    handle = MagicMock()
+    handle.deployment_id.name = "LLMServer:m"
+    router._servers = {"m": handle}
     router._tokenizer = MagicMock()
     router._tokenizer.tokenize = AsyncMock(return_value=token_ids)
     router._pick_replica = AsyncMock(

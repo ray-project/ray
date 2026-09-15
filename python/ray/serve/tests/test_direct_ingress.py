@@ -405,6 +405,74 @@ def test_without_direct_http_non_ingress_has_no_port(
         assert target_group.direct_http_targets == {}
 
 
+_direct_asgi_child_app = FastAPI()
+
+
+@serve.deployment
+@serve.ingress(_direct_asgi_child_app)
+class DirectAsgiChild:
+    @_direct_asgi_child_app.get("/hello")
+    def hello(self):
+        return PlainTextResponse("from-direct-asgi-child")
+
+
+_asgi_parent_app = FastAPI()
+
+
+@serve.deployment
+@serve.ingress(_asgi_parent_app)
+class AsgiParentIngress:
+    def __init__(self, child):
+        self._child = child
+
+    @_asgi_parent_app.get("/")
+    def root(self):
+        return PlainTextResponse("from-asgi-ingress")
+
+
+def test_direct_http_asgi_deployment_serves_its_own_app(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """A `serve.ingress`-wrapped deployment marked `_direct_http` serves its own
+    FastAPI app on its own port, alongside a FastAPI ingress.
+
+    Two things are pinned here. First, Serve accepts two FastAPI deployments in one
+    app when the non-ingress one is `_direct_http` -- the shape a model server
+    behind a control-plane ingress takes. Second, the direct port serves the
+    child's ASGI app, not a bare callable: the earlier `_direct_http` tests use a
+    plain class, so this is the first time the late-bound ASGI path is exercised
+    on a non-ingress replica.
+    """
+    serve.run(
+        AsgiParentIngress.bind(DirectAsgiChild.options(_direct_http=True).bind()),
+        name=SERVE_DEFAULT_APP_NAME,
+    )
+
+    child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectAsgiChild")
+    assert child_port is not None
+
+    r = httpx.get(f"http://localhost:{child_port}/hello")
+    r.raise_for_status()
+    assert r.text == "from-direct-asgi-child"
+
+    for http_url in get_application_urls("HTTP"):
+        r = httpx.get(http_url)
+        r.raise_for_status()
+        assert r.text == "from-asgi-ingress"
+
+
+def test_two_fastapi_deployments_rejected_without_direct_http(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """Negative control: the same two FastAPI deployments without the flag are
+    still rejected as multiple ingresses."""
+    with pytest.raises(RayServeException, match="multiple FastAPI deployments"):
+        serve.run(
+            AsgiParentIngress.bind(DirectAsgiChild.bind()),
+            name=SERVE_DEFAULT_APP_NAME,
+        )
+
+
 def test_internal_server_error(_skip_if_ff_not_enabled, serve_instance):
     serve.run(Hybrid.bind(raise_error=True))
 
