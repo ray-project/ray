@@ -42,9 +42,11 @@ def executor():
 @pytest.fixture
 def reset_collector(monkeypatch):
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
-    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 for driver-created
-    # clusters, so the env var can't keep the opt-out gate open. Patch the gate.
-    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
+    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 whenever it starts a
+    # local cluster, and ``ray.data.range`` auto-starts one mid-test. Connect
+    # first so the documented opt-in below isn't clobbered.
+    ray.init(ignore_reinit_error=True)
+    monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "1")
     # Prometheus isn't running in tests, so stub the counter query fn;
     # the readers degrade to None without any network I/O.
     monkeypatch.setattr(collector, "query_prometheus_counter", lambda promql: None)
@@ -228,7 +230,7 @@ def test_does_not_record_when_usage_stats_opted_out(
 ):
     """Privacy gate: opting out of Ray usage stats (RAY_USAGE_STATS_ENABLED=0,
     ``ray disable-usage-stats``, etc.) must also disable Ray Data collection."""
-    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: False)
+    monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "0")
     ds = ray.data.range(10)
     callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)

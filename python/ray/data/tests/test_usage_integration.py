@@ -16,7 +16,6 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._common.usage import usage_lib
 from ray._raylet import GcsClient
-from ray.data._internal.usage import collector
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -64,9 +63,9 @@ def test_concurrent_subcluster_datasets_report_every_execution(
     cluster.add_node(num_cpus=1, labels={"ray-subcluster": "tenant_a"})
     cluster.add_node(num_cpus=1, labels={"ray-subcluster": "tenant_b"})
     ray.init(address=cluster.address)
-    # The driver hosts both executors, and ``ray.init()`` disabled usage stats
-    # in this process; open the gate the same way the unit tests do.
-    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
+    # The driver hosts both executors, so opt this process in through the
+    # documented env var (it takes priority over ``~/.ray/config.json``).
+    monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "1")
 
     def make_dataset(subcluster: str) -> ray.data.Dataset:
         ctx = ray.data.DataContext.get_current().copy()
