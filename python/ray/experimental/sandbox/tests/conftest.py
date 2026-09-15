@@ -1,4 +1,5 @@
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -8,9 +9,6 @@ import pytest
 
 from ray._private.test_utils import sandbox_test_enabled
 
-_RUNSC_URL = (
-    "https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
-)
 _SLIRP4NETNS_URL = (
     "https://github.com/rootless-containers/slirp4netns/releases/download/"
     "v1.3.5/slirp4netns-{arch}"
@@ -31,6 +29,8 @@ def _install_on_path(name: str, url: str) -> None:
     os.chmod(bin_dir, 0o755)
     binary = os.path.join(bin_dir, name)
     try:
+        import urllib.request
+
         urllib.request.urlretrieve(url, binary)
     except Exception as e:
         pytest.skip(f"Failed to install {name} for sandbox tests: {e}")
@@ -43,8 +43,14 @@ def ensure_runsc():
     if not sandbox_test_enabled():
         return
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
-    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
-    _install_on_path("runsc", _RUNSC_URL.format(arch=arch))
+    if not shutil.which("runsc"):
+        temp_bin = tempfile.mkdtemp()
+        script = Path(__file__).resolve().parents[5] / "ci" / "env" / "install-runsc.sh"
+        try:
+            subprocess.check_call(["bash", str(script), temp_bin])
+            os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
+        except Exception as e:
+            pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
 
 
 def _public_netns_supported() -> bool:
