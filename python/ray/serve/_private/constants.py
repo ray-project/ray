@@ -613,6 +613,10 @@ RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
+# Minimum number of distinct nodes a deployment's replicas must cover before
+# the scheduler is free to pack them. Capped by the deployment's replica count.
+RAY_SERVE_MIN_REPLICA_NODES = get_env_int_positive("RAY_SERVE_MIN_REPLICA_NODES", 1)
+
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
