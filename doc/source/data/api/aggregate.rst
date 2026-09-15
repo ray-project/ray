@@ -32,3 +32,4 @@ compute aggregations.
     ZeroPercentage
     ApproximateQuantile
     ApproximateTopK
+    TopKUnique
