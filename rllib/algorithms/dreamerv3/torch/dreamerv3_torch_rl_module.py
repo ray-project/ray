@@ -16,6 +16,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_rl_module import (
     ACTIONS_ONE_HOT,
     DreamerV3RLModule,
 )
+from ray.rllib.algorithms.dreamerv3.utils import multidiscrete_onehot_to_ints
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -75,4 +76,9 @@ class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
         # Undo one-hot actions?
         if isinstance(self.action_space, gym.spaces.Discrete):
             output[Columns.ACTIONS] = torch.argmax(actions, dim=-1)
+        elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+            # Convert concatenated one-hot to integer actions per sub-action.
+            output[Columns.ACTIONS] = multidiscrete_onehot_to_ints(
+                actions, self.action_space.nvec
+            )
         return output
