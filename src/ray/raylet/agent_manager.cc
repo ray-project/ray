@@ -124,5 +124,7 @@ AgentManager::~AgentManager() {
 
 pid_t AgentManager::GetPid() { return process_->GetId(); }
 
+bool AgentManager::IsAlive() const { return process_ && process_->IsAlive(); }
+
 }  // namespace raylet
 }  // namespace ray

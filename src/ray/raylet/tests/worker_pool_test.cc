@@ -125,6 +125,23 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 
 static std::unordered_map<std::string, int> runtime_env_reference;
 
+// Every agent call costs an ephemeral port, so tests assert on the number of calls and
+// not only on the resulting reference counts.
+static int runtime_env_agent_call_count;
+
+// Reproduces the window a worker start spends inside GetOrCreateRuntimeEnv waiting for
+// the real agent's HTTP round trip.
+static bool runtime_env_agent_defers_callbacks;
+static std::vector<std::function<void()>> deferred_runtime_env_agent_callbacks;
+
+static void FlushDeferredRuntimeEnvAgentCallbacks() {
+  std::vector<std::function<void()>> callbacks;
+  callbacks.swap(deferred_runtime_env_agent_callbacks);
+  for (auto &callback : callbacks) {
+    callback();
+  }
+}
+
 static int GetReferenceCount(const std::string &serialized_runtime_env) {
   auto it = runtime_env_reference.find(serialized_runtime_env);
   return it == runtime_env_reference.end() ? 0 : it->second;
@@ -136,6 +153,7 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
+    runtime_env_agent_call_count++;
     if (serialized_runtime_env == kBadRuntimeEnv) {
       callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
     } else {
@@ -146,12 +164,18 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else {
         runtime_env_reference[serialized_runtime_env] += 1;
       }
-      callback(true, R"({"dummy":"dummy"})", "");
+      auto reply_to_caller = [callback]() { callback(true, R"({"dummy":"dummy"})", ""); };
+      if (runtime_env_agent_defers_callbacks) {
+        deferred_runtime_env_agent_callbacks.push_back(std::move(reply_to_caller));
+      } else {
+        reply_to_caller();
+      }
     }
   };
 
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
+    runtime_env_agent_call_count++;
     auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
     runtime_env_reference[serialized_runtime_env] -= 1;
@@ -471,6 +495,9 @@ class WorkerPoolTest : public ::testing::Test {
     thread_io_service_->join();
     AssertNoLeaks();
     runtime_env_reference.clear();
+    runtime_env_agent_call_count = 0;
+    runtime_env_agent_defers_callbacks = false;
+    deferred_runtime_env_agent_callbacks.clear();
     worker_pool_->all_jobs_.clear();
   }
 
@@ -1320,6 +1347,86 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
   ASSERT_EQ(0, worker_pool_->GetIdleWorkerSize());
+
+  worker_pool_->ClearProcesses();
+}
+
+// Regression test for https://github.com/ray-project/ray/issues/66153.
+TEST_F(WorkerPoolDriverRegisteredTest, ThrottledWorkerStartSkipsRuntimeEnvAgent) {
+  rpc::RuntimeEnvInfo runtime_env_info;
+  runtime_env_info.set_serialized_runtime_env(R"({"env_vars": {"REPRO": "1"}})");
+  const LeaseSpecification lease_spec = ExampleLeaseSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, {}, LeaseID::Nil(), runtime_env_info);
+  auto callback = [](const std::shared_ptr<WorkerInterface> worker,
+                     PopWorkerStatus status,
+                     const std::string &runtime_env_setup_error_message) -> bool {
+    return true;
+  };
+
+  runtime_env_agent_call_count = 0;
+  std::vector<std::unique_ptr<ProcessInterface>> started_processes;
+  for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
+    worker_pool_->PopWorker(lease_spec, callback);
+    std::unique_ptr<ProcessInterface> last_process =
+        worker_pool_->LastStartedWorkerProcess();
+    RAY_CHECK(last_process->IsValid());
+    started_processes.push_back(std::move(last_process));
+  }
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, runtime_env_agent_call_count);
+
+  constexpr int kThrottledRequests = 20;
+  for (int i = 0; i < kThrottledRequests; i++) {
+    worker_pool_->PopWorker(lease_spec, callback);
+  }
+  ASSERT_EQ(kThrottledRequests, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, runtime_env_agent_call_count);
+
+  // Freeing one slot replays the whole backlog, but only one request fits.
+  std::shared_ptr<WorkerInterface> worker = worker_pool_->CreateWorker(
+      worker_pool_->GetWorkerId(started_processes[0]->GetId()));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, started_processes[0]->GetId(), [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, runtime_env_agent_call_count);
+
+  worker_pool_->ClearProcesses();
+}
+
+// Worker starts reach `worker_processes` only once the agent has answered, so without
+// num_starting_runtime_envs a whole backlog passes the concurrency check at once.
+TEST_F(WorkerPoolDriverRegisteredTest,
+       RuntimeEnvInFlightCountsTowardsStartupConcurrency) {
+  rpc::RuntimeEnvInfo runtime_env_info;
+  runtime_env_info.set_serialized_runtime_env(R"({"env_vars": {"REPRO": "1"}})");
+  const LeaseSpecification lease_spec = ExampleLeaseSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, {}, LeaseID::Nil(), runtime_env_info);
+  auto callback = [](const std::shared_ptr<WorkerInterface> worker,
+                     PopWorkerStatus status,
+                     const std::string &runtime_env_setup_error_message) -> bool {
+    return true;
+  };
+
+  runtime_env_agent_call_count = 0;
+  runtime_env_agent_defers_callbacks = true;
+
+  constexpr int kRequests = 20;
+  for (int i = 0; i < kRequests; i++) {
+    worker_pool_->PopWorker(lease_spec, callback);
+  }
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, runtime_env_agent_call_count);
+  ASSERT_EQ(kRequests - MAXIMUM_STARTUP_CONCURRENCY,
+            worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(0, worker_pool_->NumWorkersStarting());
+
+  // The slots move from creating a runtime env to starting a worker process.
+  FlushDeferredRuntimeEnvAgentCallbacks();
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, runtime_env_agent_call_count);
+  ASSERT_EQ(kRequests - MAXIMUM_STARTUP_CONCURRENCY,
+            worker_pool_->NumPendingStartRequests());
 
   worker_pool_->ClearProcesses();
 }
