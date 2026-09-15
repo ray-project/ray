@@ -323,32 +323,23 @@ def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
     return False
 
 
-def run_oom_check():
-    metrics = _load_metrics_for_check("OOM check", "RAYTEST_FAIL_ON_WORKER_OOM")
+def run_ray_oom_kill_check():
+    """Fail if Ray's memory monitor evicted any workers."""
+    check_name = "Ray OOM kill check"
+    metrics = _load_metrics_for_check(check_name, "RAYTEST_FAIL_ON_RAY_OOM_KILL")
     if metrics is None:
         return 1
 
-    return_code = 0
-    if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
-        return_code = 1
-    else:
-        worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
-        if worker_oom_kills:
-            logger.error(
-                f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
-            )
-            return_code = 1
+    if _metric_unavailable(check_name, metrics, "worker_oom_kills"):
+        return 1
 
-    if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
-        return_code = 1
-    elif metrics["unexpected_worker_failures"]:
+    worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+    if worker_oom_kills:
         logger.error(
-            "Test failed: Unexpected worker failures detected "
-            "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
-            f"Details: {metrics['unexpected_worker_failures']}"
+            f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
         )
-        return_code = 1
-    return return_code
+        return 1
+    return 0
 
 
 def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
@@ -362,6 +353,28 @@ def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
         for series in worker_oom_kills
         if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
     ]
+
+
+def run_unexpected_worker_failure_check():
+    """Fail if any worker died from a cause Ray's memory monitor never saw."""
+    check_name = "Unexpected worker failure check"
+    metrics = _load_metrics_for_check(
+        check_name, "RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE"
+    )
+    if metrics is None:
+        return 1
+
+    if _metric_unavailable(check_name, metrics, "unexpected_worker_failures"):
+        return 1
+
+    if metrics["unexpected_worker_failures"]:
+        logger.error(
+            "Test failed: Unexpected worker failures detected "
+            "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+            f"Details: {metrics['unexpected_worker_failures']}"
+        )
+        return 1
+    return 0
 
 
 def run_spilling_check():
@@ -557,11 +570,21 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
 
-        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+        test_fail_on_ray_oom_kill = (
+            os.environ.get("RAYTEST_FAIL_ON_RAY_OOM_KILL") == "1"
+        )
 
-        # Fail if any OOM kills occurred
-        if return_code == 0 and test_fail_on_worker_oom:
-            return_code = run_oom_check()
+        # Fail if Ray's memory monitor killed any worker
+        if return_code == 0 and test_fail_on_ray_oom_kill:
+            return_code = run_ray_oom_kill_check()
+
+        test_fail_on_unexpected_worker_failure = (
+            os.environ.get("RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE") == "1"
+        )
+
+        # Fail if any worker died for a reason the memory monitor didn't capture
+        if return_code == 0 and test_fail_on_unexpected_worker_failure:
+            return_code = run_unexpected_worker_failure_check()
 
         test_fail_on_spilling = os.environ.get("RAYTEST_FAIL_ON_SPILLING") == "1"
 
