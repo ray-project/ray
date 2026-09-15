@@ -14,7 +14,7 @@ load("//bazel:ray.bzl", "COPTS")
 genrule(
     name = "auth_token_file",
     outs = ["auth_token"],
-    cmd = "od -An -N32 -tx1 /dev/urandom | tr -d ' \\n' > $@",
+    cmd = "python3 -c \"import secrets; print(secrets.token_hex(32), end='')\" > $@",
 )
 
 # These tests start their own cluster with `ray start --head` as a subprocess, so

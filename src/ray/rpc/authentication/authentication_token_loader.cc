@@ -289,8 +289,10 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
       std::string(path_separator) + ".ray" + std::string(path_separator) + "auth_token";
 
   if (home_dir.empty()) {
+    // No resolvable home: return an empty path rather than an invalid relative
+    // "./.ray/auth_token". ReadTokenFromFile("") simply finds no token.
     RAY_LOG(WARNING) << "Cannot determine home directory for token storage";
-    return "." + token_subpath;
+    return "";
   }
 
   return home_dir + token_subpath;

@@ -1617,29 +1617,31 @@ def clean_token_sources(cleanup_auth_token_env):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _isolate_token_auth_state():
-    """Isolate token-auth state across bazel targets, which share HOME."""
-    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
-    original_token = None
-    if os.path.exists(default_token):
-        with open(default_token) as f:
-            original_token = f.read()
-        os.remove(default_token)
+def _isolate_token_auth_state(tmp_path_factory):
+    """Isolate token-auth state across bazel targets, which share HOME.
+
+    Point HOME at a per-session temp dir so a default-on cluster's
+    ``~/.ray/auth_token`` is unique to this target. Both Python's ``Path.home()``
+    and the C++ token loader resolve the home via ``HOME``, so this keeps them in
+    sync. Bazel runs targets in parallel under a shared HOME, so mutating the
+    real ``~/.ray/auth_token`` would race across targets and could delete a
+    developer's own token; redirecting HOME per session sidesteps that entirely.
+    """
+    isolated_home = tmp_path_factory.mktemp("ray_auth_home")
+    original_home = os.environ.get("HOME")
+    os.environ["HOME"] = str(isolated_home)
     reset_auth_token_state()
     try:
         yield
     finally:
-        # Turn auth off before the token file changes: a still-draining Ray
-        # thread reloads the token on its next RPC and CHECK-fails if it's gone.
+        # Turn auth off before HOME changes: a still-draining Ray thread reloads
+        # the token on its next RPC and CHECK-fails if it's gone.
         os.environ.pop("RAY_AUTH_MODE", None)
         reset_auth_token_state()
-        if original_token is None:
-            if os.path.exists(default_token):
-                os.remove(default_token)
+        if original_home is None:
+            os.environ.pop("HOME", None)
         else:
-            os.makedirs(os.path.dirname(default_token), exist_ok=True)
-            with open(default_token, "w") as f:
-                f.write(original_token)
+            os.environ["HOME"] = original_home
         reset_auth_token_state()
 
 
