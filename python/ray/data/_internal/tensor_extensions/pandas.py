@@ -191,6 +191,27 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
 ###########################################
 
 
+def _tensor_array_to_numpy(array: "pa.Array") -> np.ndarray:
+    """``array.to_numpy()``, but dense and copy-free where that is possible.
+
+    A variable-shaped tensor array returns one ndarray view per row, and
+    ``TensorArray`` then stacks those into a dense array, copying the whole
+    payload. When every row has the same shape the views are already adjacent in
+    one buffer, so a single view over all of them says the same thing with no
+    copy.
+    """
+    from ray.data._internal.tensor_extensions.arrow import (
+        ArrowVariableShapedTensorArray,
+    )
+
+    if isinstance(array, ArrowVariableShapedTensorArray):
+        dense = array._to_dense_numpy_or_none()
+        if dense is not None:
+            return dense
+
+    return array.to_numpy(zero_copy_only=False)
+
+
 @PublicAPI(stability="beta")
 @pd.api.extensions.register_extension_dtype
 class TensorDtype(pd.api.extensions.ExtensionDtype):
@@ -447,9 +468,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 )
             else:
                 # chunk(0) returns pa.Array with zero_copy_only=True by default
-                values = array.chunk(0).to_numpy(zero_copy_only=False)
+                values = _tensor_array_to_numpy(array.chunk(0))
         else:
-            values = array.to_numpy(zero_copy_only=False)
+            values = _tensor_array_to_numpy(array)
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
