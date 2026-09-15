@@ -222,7 +222,7 @@ Created Ray Cluster: raycluster-tpu-sample-2
 
 v4, v5p, and tpu7x use 3D topologies of the form `AxBxC`. The accelerator values are `tpu-v4-podslice`, `tpu-v5p-slice`, and `tpu7x`. These accelerators always use 4 TPUs per host, so `--worker-tpu` must be 4. Set `--num-of-hosts` to the product of the three dimensions divided by 4. Single-host 3D is `2x2x1`, not `1x1`.
 
-The plugin also rejects invalid 3D shapes. `2x2x1` is a special case and always allowed. For topologies with 64 chips or fewer, each dimension must be even. Above 64 chips, each dimension must be multiples of 4, with `A <= B <= C` - for example, `8x4x4` has 128 chips but fails because `8 > 4`.
+The plugin also rejects invalid 3D shapes. `2x2x1` is a special case and always allowed. For topologies with 64 chips or fewer, each dimension must be even. Above 64 chips, each dimension must be a multiple of 4, with `A <= B <= C`. For example, `8x4x4` has 128 chips but fails because `8 > 4`.
 
 Create a 3D multi-host TPU cluster. `2x2x2` has 8 chips, so use 4 TPUs per host and 2 hosts:
 
@@ -236,7 +236,7 @@ Created Ray Cluster: raycluster-tpu-sample-3
 If GKE supports a TPU configuration that the plugin hasn't listed yet, pass `--skip-tpu-validation`. The plugin then skips accelerator, topology, and host-count checks.
 
 ```text
-$ kubectl ray create cluster raycluster-tpu-sample-4 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=ACCELERATOR,cloud.google.com/gke-tpu-topology=TOPOLOGY --skip-tpu-validation
+$ kubectl ray create cluster raycluster-tpu-sample-4 --worker-tpu 4 --num-of-hosts 4 --worker-node-selectors cloud.google.com/gke-tpu-accelerator=<accelerator>,cloud.google.com/gke-tpu-topology=<topology> --skip-tpu-validation
 Created Ray Cluster: raycluster-tpu-sample-4
 ```
 
