@@ -2725,6 +2725,143 @@ class TestSingletonThreadRouter:
             assert reserved_slots == 0
 
     @pytest.mark.asyncio
+    async def test_no_reserve_cancel_stops_replica_wait(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+    ):
+        """Cancellation stops pick-only selection while it waits for replicas."""
+        asyncio_router, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+        router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
+
+        # FakeRequestRouter normally bypasses RequestRouter initialization. Use the
+        # base setup here to exercise its real no-replica wait loop.
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+
+        wait_started = threading.Event()
+        wait_finished = threading.Event()
+
+        class SignalingEvent(asyncio.Event):
+            async def wait(self):
+                wait_started.set()
+                try:
+                    return await super().wait()
+                finally:
+                    wait_finished.set()
+
+        replicas_updated_event = SignalingEvent()
+        fake_request_router._lazily_constructed_replicas_updated_event = (
+            replicas_updated_event
+        )
+
+        async def choose_available_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = choose_available_replicas
+
+        async def runner():
+            async with thread_router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ):
+                pytest.fail("Selection should be cancelled before yielding a replica.")
+
+        task = asyncio.create_task(runner())
+        try:
+            await async_wait_for_condition(wait_started.is_set, timeout=2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await async_wait_for_condition(wait_finished.is_set, timeout=2)
+        finally:
+            # Unblock selection before test teardown.
+            replica_id = ReplicaID(
+                unique_id="test-replica-1",
+                deployment_id=DeploymentID(name="test-deployment"),
+            )
+            replica = FakeReplica(replica_id)
+
+            def add_replica_and_unblock():
+                fake_request_router._replicas = {replica_id: replica}
+                fake_request_router._replicas_list = [replica]
+                replicas_updated_event.set()
+
+            router_loop.call_soon_threadsafe(add_replica_and_unblock)
+            await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_no_reserve_cancel_stops_empty_retries(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        """Cancellation closes pick-only selection after it enters backoff."""
+        _, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+        router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
+
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+        replica_id = ReplicaID(
+            unique_id="test-replica-1",
+            deployment_id=DeploymentID(name="test-deployment"),
+        )
+        replica = FakeReplica(replica_id)
+        fake_request_router._replicas = {replica_id: replica}
+        fake_request_router._replicas_list = [replica]
+
+        backoff_started = threading.Event()
+        unblock_backoff = asyncio.Event()
+        allow_selection = threading.Event()
+
+        async def choose_replicas(candidate_replicas, pending_request=None):
+            assert pending_request is not None
+            pending_request.routing_context.should_backoff = True
+            if allow_selection.is_set():
+                return [candidate_replicas]
+            return []
+
+        async def block_backoff(attempt):
+            backoff_started.set()
+            await unblock_backoff.wait()
+
+        fake_request_router.choose_replicas = choose_replicas
+        monkeypatch.setattr(fake_request_router, "_backoff", block_backoff)
+
+        async def runner():
+            async with thread_router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ):
+                pytest.fail("Selection should be cancelled before yielding a replica.")
+
+        task = asyncio.create_task(runner())
+        try:
+            await async_wait_for_condition(backoff_started.is_set, timeout=2)
+            assert fake_request_router.num_routing_tasks_in_backoff == 1
+
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            await async_wait_for_condition(
+                lambda: fake_request_router.num_routing_tasks_in_backoff == 0,
+                timeout=2,
+            )
+        finally:
+            # Unblock selection before test teardown.
+            allow_selection.set()
+            router_loop.call_soon_threadsafe(unblock_backoff.set)
+            await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
     async def test_finally_shields_cleanup_from_cancellation(
         self,
         setup_router: Tuple[AsyncioRouter, FakeRequestRouter],

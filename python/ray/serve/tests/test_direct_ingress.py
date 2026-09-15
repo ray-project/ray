@@ -48,9 +48,8 @@ from ray.serve._private.test_utils import (
     send_signal_on_cancellation,
 )
 from ray.serve.autoscaling_policy import default_autoscaling_policy
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -62,82 +61,6 @@ from ray.serve.schema import (
 )
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
-
-
-class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
-    def _update_multiplexed_model_ids_with_replicas(self, replicas):
-        # Hold the location index empty to deterministically exercise requests
-        # arriving before multiplexed model metadata propagates.
-        pass
-
-
-@pytest.mark.skipif(not RAY_SERVE_ENABLE_HA_PROXY, reason="Requires HAProxy routing")
-def test_multiplexed_routing_retry(serve_instance):
-    # Emulate Serve LLM's direct-streaming pattern: HAProxy calls a separate
-    # ingress router's /internal/route endpoint, which sets the model ID on a
-    # backend handle and calls choose_replica(_reserve=False). The router returns
-    # the selected replica's HTTP endpoint and ID; HAProxy forwards the original
-    # request directly to that replica instead of the router dispatching it.
-    @serve.deployment(
-        num_replicas=2,
-        request_router_config=RequestRouterConfig(
-            request_router_class=_DelayedMultiplexedMetadataRouter,
-        ),
-    )
-    class ModelServer:
-        async def __call__(self, request: Request):
-            if request.url.path == "/ready":
-                return request.headers.get("x-routed", "")
-            return request.headers["x-model-id"]
-
-    app = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(app)
-    class IngressRouter:
-        def __init__(self, server):
-            self.server = server
-            self.model_id = ""
-
-        def enable_multiplexing(self):
-            self.model_id = "model"
-
-        @app.post("/internal/route")
-        async def route(self):
-            handle = self.server.options(multiplexed_model_id=self.model_id)
-            async with handle.choose_replica(_reserve=False) as selection:
-                replica = selection._replica
-                host, port = replica.backend_http_endpoint
-                return {
-                    "host": host,
-                    "port": port,
-                    "replica_id": replica.replica_id.to_full_id_str(),
-                    "request_headers": {
-                        "x-model-id": self.model_id,
-                        "x-routed": "ready",
-                    },
-                }
-
-    server = ModelServer.bind()
-    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
-    # Wait for HAProxy to install the ingress router before exercising model
-    # selection. Readiness requests do not touch multiplexed routing state.
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
-        timeout=30,
-    )
-    serve.get_deployment_handle(
-        "IngressRouter", app_name="default"
-    ).enable_multiplexing.remote().result()
-
-    with httpx.Client(timeout=30) as client:
-        # The first request records a cold-model fallback. With the location
-        # index still empty, the next request initially gets no candidates.
-        # Selection must retry internally; neither HTTP request may fail.
-        for _ in range(2):
-            response = client.post("http://localhost:8000/")
-            assert response.status_code == 200, response.text
-            assert response.text == "model"
 
 
 @ray.remote

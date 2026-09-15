@@ -1793,17 +1793,21 @@ class SingletonThreadRouter(Router):
             except Exception:
                 logger.exception("Failed to release reserved replica slot.")
 
+        reserve = request_kwargs.get("_reserve", True)
         future = asyncio.run_coroutine_threadsafe(
             enter_context(), cast(asyncio.AbstractEventLoop, self._asyncio_loop)
         )
-        # Shield so a caller cancellation does not propagate through wrap_future
-        # and cancel ``enter_context``: __aenter__ finishes and returns, so the
-        # entered CM stays reachable for release. Otherwise the CM is discarded
-        # mid-entry and the slot leaks until GC.
         try:
-            selection, context_manager = await asyncio.shield(
-                asyncio.wrap_future(future)
-            )
+            if reserve:
+                # Shield so a caller cancellation does not propagate through wrap_future
+                # and cancel ``enter_context``: __aenter__ finishes and returns, so the
+                # entered CM stays reachable for release. Otherwise the CM is discarded
+                # mid-entry and the slot leaks until GC.
+                selection, context_manager = await asyncio.shield(
+                    asyncio.wrap_future(future)
+                )
+            else:
+                selection, context_manager = await asyncio.wrap_future(future)
         except BaseException:
             # Honor the cancellation now; release the orphaned slot on the
             # router loop instead of making the cancelled caller wait on it.
