@@ -8,6 +8,7 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    TopKUnique,
     Unique,
     ZeroPercentage,
 )
@@ -557,6 +558,140 @@ class TestUnique:
         answer = ["a", "b", "c"]
 
         assert Counter(result["unique(id)"]) == Counter(answer)
+
+
+class TestTopKUnique:
+    """Test cases for TopKUnique aggregation."""
+
+    def test_topk_unique_basic(self, ray_start_regular_shared_2_cpus):
+        """Test basic exact top-k by global frequency."""
+        data = [
+            *[{"word": "apple"} for _ in range(5)],
+            *[{"word": "banana"} for _ in range(3)],
+            *[{"word": "cherry"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(TopKUnique(on="word", k=2))
+        assert result["topk_unique(word)"] == ["apple", "banana"]
+
+    def test_topk_unique_global_ranking_across_blocks(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        """A value that never wins within any single block must still win globally.
+
+        With per-block top-1 semantics, "c" (3+3+3=9 occurrences, never a block
+        winner) would be dropped in favor of per-block winners "a" (4) and
+        "b" (4+2=6). Exact global counting must return "c".
+        """
+        data = [
+            # Block 1: a wins locally.
+            *[{"v": "a"} for _ in range(4)],
+            *[{"v": "c"} for _ in range(3)],
+            # Block 2: b wins locally.
+            *[{"v": "b"} for _ in range(4)],
+            *[{"v": "c"} for _ in range(3)],
+            # Block 3: b wins locally.
+            *[{"v": "b"} for _ in range(2)],
+            *[{"v": "c"} for _ in range(3)],
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=3)
+        result = ds.aggregate(TopKUnique(on="v", k=1))
+        assert result["topk_unique(v)"] == ["c"]
+
+    def test_topk_unique_deterministic_tiebreak(self, ray_start_regular_shared_2_cpus):
+        """Equal counts are broken by value order, deterministically."""
+        data = [
+            *[{"v": "zebra"} for _ in range(2)],
+            *[{"v": "apple"} for _ in range(2)],
+            *[{"v": "mango"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=2)
+        result = ds.aggregate(TopKUnique(on="v", k=2))
+        assert result["topk_unique(v)"] == ["apple", "mango"]
+
+    def test_topk_unique_custom_alias(self, ray_start_regular_shared_2_cpus):
+        """Test custom alias name."""
+        data = [{"item": "x"}, {"item": "x"}, {"item": "y"}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(TopKUnique(on="item", k=1, alias_name="top_items"))
+        assert result["top_items"] == ["x"]
+
+    def test_topk_unique_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test top-k per group."""
+        data = [
+            *[{"category": "A", "item": "apple"} for _ in range(5)],
+            *[{"category": "A", "item": "banana"} for _ in range(3)],
+            *[{"category": "B", "item": "cherry"} for _ in range(4)],
+            *[{"category": "B", "item": "date"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.groupby("category").aggregate(TopKUnique(on="item", k=1)).take_all()
+
+        result_by_category = {
+            row["category"]: row["topk_unique(item)"] for row in result
+        }
+        assert result_by_category["A"] == ["apple"]
+        assert result_by_category["B"] == ["cherry"]
+
+    def test_topk_unique_fewer_items_than_k(self, ray_start_regular_shared_2_cpus):
+        """Fewer distinct values than k returns all of them."""
+        data = [{"id": "a"}, {"id": "b"}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(TopKUnique(on="id", k=5))
+        assert sorted(result["topk_unique(id)"]) == ["a", "b"]
+
+    def test_topk_unique_counts_nulls_by_default(self, ray_start_regular_shared_2_cpus):
+        """With ignore_nulls=False (default), nulls compete for top-k slots."""
+        data = [
+            *[{"v": None} for _ in range(5)],
+            *[{"v": "a"} for _ in range(3)],
+            *[{"v": "b"} for _ in range(1)],
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=2)
+        result = ds.aggregate(TopKUnique(on="v", k=2))
+        assert result["topk_unique(v)"] == [None, "a"]
+
+    def test_topk_unique_ignore_nulls(self, ray_start_regular_shared_2_cpus):
+        """With ignore_nulls=True, nulls are excluded from counting."""
+        data = [
+            *[{"v": None} for _ in range(5)],
+            *[{"v": "a"} for _ in range(3)],
+            *[{"v": "b"} for _ in range(1)],
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=2)
+        result = ds.aggregate(TopKUnique(on="v", k=2, ignore_nulls=True))
+        assert result["topk_unique(v)"] == ["a", "b"]
+
+    def test_topk_unique_encode_lists(self, ray_start_regular_shared_2_cpus):
+        """With encode_lists=True, list elements are counted individually."""
+        data = [
+            {"tokens": ["a", "b", "a"]},
+            {"tokens": ["a", "c"]},
+            {"tokens": ["b"]},
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(
+            TopKUnique(on="tokens", k=2, ignore_nulls=True, encode_lists=True)
+        )
+        assert result["topk_unique(tokens)"] == ["a", "b"]
+
+    def test_topk_unique_whole_lists_as_values(self, ray_start_regular_shared_2_cpus):
+        """With encode_lists=False, whole lists are counted as single values."""
+        data = [
+            {"tokens": ["a", "b"]},
+            {"tokens": ["a", "b"]},
+            {"tokens": ["c"]},
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=2)
+        result = ds.aggregate(TopKUnique(on="tokens", k=1, ignore_nulls=True))
+        # Values are counted as tuples internally (for hashability), but the
+        # result round-trips through Arrow, which represents them as lists.
+        assert [list(v) for v in result["topk_unique(tokens)"]] == [["a", "b"]]
+
+    def test_topk_unique_invalid_k(self, ray_start_regular_shared_2_cpus):
+        """k must be positive."""
+        with pytest.raises(ValueError, match="`k` must be a positive integer"):
+            TopKUnique(on="v", k=0)
 
 
 if __name__ == "__main__":
