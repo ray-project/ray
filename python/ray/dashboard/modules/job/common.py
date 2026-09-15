@@ -361,10 +361,25 @@ class JobInfoStorageClient:
         error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = 30,
-    ):
-        """Puts or updates job status.  Sets end_time if status is terminal."""
+        jobinfo_must_exist: bool = False,
+        expected_status: Optional[JobStatus] = None,
+    ) -> bool:
+        """Put or update job status and set end_time for terminal statuses.
+
+        Returns false without writing if ``jobinfo_must_exist`` is true and the
+        record was deleted, or if its status no longer matches ``expected_status``.
+        These checks apply to the record read before the write; the underlying KV
+        update is not a compare-and-set operation.
+        """
 
         old_info = await self.get_info(job_id, timeout=timeout)
+
+        if jobinfo_must_exist and old_info is None:
+            return False
+        if expected_status is not None and (
+            old_info is None or old_info.status != expected_status
+        ):
+            return False
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
@@ -390,6 +405,7 @@ class JobInfoStorageClient:
             new_info.end_time = int(time.time() * 1000)
 
         await self.put_info(job_id, new_info, timeout=timeout)
+        return True
 
     async def get_status(self, job_id: str, timeout: int = 30) -> Optional[JobStatus]:
         job_info = await self.get_info(job_id, timeout)
