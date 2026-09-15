@@ -34,6 +34,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
+from starlette.applications import Starlette
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
 
@@ -239,3 +240,63 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
 
     # Sort by path for consistent ordering
     return sorted(patterns, key=lambda x: x.path)
+
+
+class ASGIRoutePatternMatcher:
+    """Matches (method, path) pairs against a fixed list of `RoutePattern`s.
+
+    Serve needs to answer "does this request belong to a route this ASGI app
+    declares?" in two places: the proxy, which tags metrics with the matched
+    pattern instead of the bare route prefix, and the LLM ingress request
+    router, which must send a request the application ingress owns to the
+    ingress rather than to a model deployment. Both have to agree -- a request
+    the proxy would tag `/v1/models` must be the same one the router keeps on
+    the ingress -- so the matching lives here once rather than being
+    reimplemented per caller.
+
+    Matching goes through `get_asgi_route_name` against a mock Starlette app
+    built from the patterns, so parameterized segments, `{name:path}`, mounts,
+    method restrictions and Starlette's trailing-slash redirect behavior are all
+    handled exactly as they are for real requests.
+
+    The mock app is built once in the constructor. Invalid patterns therefore
+    raise here, at construction, rather than on a request.
+    """
+
+    def __init__(self, patterns: List[RoutePattern]):
+        self._patterns = list(patterns)
+
+        async def _dummy_endpoint(request):
+            # Never called: the app exists only so Starlette's own matching can
+            # be run against it.
+            pass
+
+        self._app = Starlette(
+            routes=[
+                Route(pattern.path, _dummy_endpoint, methods=pattern.methods)
+                for pattern in self._patterns
+            ]
+        )
+
+    def match_scope(self, scope: Scope) -> Optional[str]:
+        """Match a full ASGI scope against the declared routes.
+
+        Takes the whole scope rather than just method and path so fields
+        `get_asgi_route_name` reads -- notably `root_path`, which it prepends to
+        the matched name -- survive. Callers holding a real request scope should
+        use this; `match` is for callers that only have the two values.
+        """
+        return get_asgi_route_name(self._app, scope)
+
+    def match(self, method: str, path: str) -> Optional[str]:
+        """Return the matched route pattern, or None if nothing matches.
+
+        A pattern whose path matches but whose declared methods exclude `method`
+        is not a match: `GET /foo` and `POST /foo` can legitimately belong to
+        different destinations.
+        """
+        return self.match_scope({"type": "http", "method": method, "path": path})
+
+    def matches(self, method: str, path: str) -> bool:
+        """Whether any declared route owns this (method, path)."""
+        return self.match(method, path) is not None

@@ -56,6 +56,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    RoutePattern,
+    extract_route_patterns,
+)
 from ray.serve._private.utils import (
     call_function_from_import_path,
     generate_request_id,
@@ -647,6 +651,26 @@ class ASGIAppReplicaWrapper:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
         return None
+
+    def __serve_route_patterns__(self) -> List[RoutePattern]:
+        """The route patterns this replica's ASGI app actually serves.
+
+        Internal Serve method, not a supported public API. Callers reach it over
+        a `DeploymentHandle` when they need an ingress deployment's real routes
+        -- the LLM ingress request router does this once at startup to learn
+        which method/path pairs belong to the application ingress rather than to
+        a model deployment.
+
+        Read from the initialized app on the replica rather than from the
+        controller's `EndpointInfo.route_patterns`, which is populated from build
+        metadata and can be stale or absent before replicas report in. A
+        late-bound `serve.ingress()` app is covered because `_set_asgi_app` has
+        already run by the time a replica can serve this call.
+
+        Extraction failures propagate: a router that silently saw an empty route
+        set would route the ingress's own control paths to a model deployment.
+        """
+        return extract_route_patterns(self._asgi_app)
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
