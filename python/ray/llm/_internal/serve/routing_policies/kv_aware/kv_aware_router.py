@@ -13,7 +13,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
-from ray.serve._private.request_router.request_router import RequestRouter
+from ray.serve._private.request_router.request_router import (
+    MultiplexMixin,
+    RequestRouter,
+)
 from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -31,7 +34,7 @@ def _get_expected_output_tokens(pending_request: PendingRequest) -> Optional[int
     return None
 
 
-class KVAwareRouter(RequestRouter):
+class KVAwareRouter(MultiplexMixin, RequestRouter):
     """Routes each request to the candidate that best balances expected KV-cache
     overlap against the worker's current prefill/decode load.
 
@@ -70,6 +73,9 @@ class KVAwareRouter(RequestRouter):
         route to a random candidate (batch prompts, truncated or unparseable
         bodies).
 
+        A LoRA request is narrowed to the replicas already holding the adapter
+        before it is scored, and carries the adapter name into scoring.
+
         Args:
             candidate_replicas: The replicas eligible to serve the request.
             pending_request: The request being routed.
@@ -77,6 +83,22 @@ class KVAwareRouter(RequestRouter):
         Returns:
             Ranked groups of replicas.
         """
+        if (
+            pending_request is not None
+            and pending_request.metadata.multiplexed_model_id
+        ):
+            # Score within the multiplex candidates rather than around them: a
+            # replica that would have to download and load the adapter first is
+            # not a better pick than one already serving it.
+            candidate_replica_ids = self.apply_multiplex_routing(
+                pending_request=pending_request
+            )
+            candidate_replicas = [
+                replica
+                for replica in candidate_replicas
+                if replica.replica_id in candidate_replica_ids
+            ]
+
         token_ids = (
             pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
             if pending_request is not None
@@ -96,6 +118,10 @@ class KVAwareRouter(RequestRouter):
             token_ids,
             list(worker_id_to_replica),
             _get_expected_output_tokens(pending_request),
+            # vLLM stamps this adapter name on the request's KV-cache events and
+            # the selection service salts its KV hashes with it, so each adapter
+            # gets its own KV namespace. Empty means the base model.
+            lora_name=pending_request.metadata.multiplexed_model_id or None,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 

@@ -208,13 +208,20 @@ class _SelectWorkerStub:
         self.token_ids = None
         self.allowed = None
         self.expected_output_tokens = None
+        self.lora_name = None
 
     async def __call__(
-        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+        self,
+        request_id,
+        token_ids,
+        allowed_worker_ids,
+        expected_output_tokens=None,
+        lora_name=None,
     ):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
         self.expected_output_tokens = expected_output_tokens
+        self.lora_name = lora_name
         return {
             "worker_id": self._worker_id,
             "dp_rank": 0,
@@ -282,6 +289,35 @@ async def test_choose_replicas_routes_to_selected_worker():
     assert select.token_ids == [10, 11, 12]
     assert sorted(select.allowed) == sorted(worker_ids)
     assert select.expected_output_tokens is None
+    assert select.lora_name is None
+
+
+@pytest.mark.asyncio
+async def test_choose_replicas_honors_lora_multiplexing_and_kv_namespace():
+    """LoRA narrows candidates and salts the selection-service KV namespace."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    worker_ids = [get_worker_id("r1"), get_worker_id("r2")]
+    router = _build_kv_aware_router(worker_ids[0])
+    router.apply_multiplex_routing = mock.MagicMock(
+        return_value={replicas[0].replica_id}
+    )
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
+        metadata=RequestMetadata(
+            request_id="req-lora",
+            internal_request_id="int-lora",
+            multiplexed_model_id="base-model:adapter-a",
+        ),
+    )
+
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert groups == [[replicas[0]]]
+    router.apply_multiplex_routing.assert_called_once_with(pending_request=pending)
+    select = router._kv_token_tracker.select_worker
+    assert select.allowed == [worker_ids[0]]
+    assert select.lora_name == "base-model:adapter-a"
 
 
 @pytest.mark.asyncio
