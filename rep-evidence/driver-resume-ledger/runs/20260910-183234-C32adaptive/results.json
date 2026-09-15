@@ -1,0 +1,221 @@
+{
+  "config": {
+    "target_write_rate": 26.25,
+    "same_key_ceiling": 262.5,
+    "duration_s": 600.0,
+    "dt": 0.5,
+    "tau_s": 5.0
+  },
+  "profiles": {
+    "constant": {
+      "W_fixed_mean": 8,
+      "W_fixed_peak": 8,
+      "rate_min": 200.0,
+      "rate_max": 200.0,
+      "arms": {
+        "fixed_mean": {
+          "write_rate_mean": 25.0,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 7,
+          "redo_time_max": 0.035,
+          "redo_time_p95": 0.035,
+          "w_min": 8,
+          "w_max": 8,
+          "write_rate_dev_frac": 0.0475,
+          "over_ceiling": false
+        },
+        "fixed_peak": {
+          "write_rate_mean": 25.0,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 7,
+          "redo_time_max": 0.035,
+          "redo_time_p95": 0.035,
+          "w_min": 8,
+          "w_max": 8,
+          "write_rate_dev_frac": 0.0475,
+          "over_ceiling": false
+        },
+        "adaptive": {
+          "write_rate_mean": 25.0,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 7,
+          "redo_time_max": 0.035,
+          "redo_time_p95": 0.035,
+          "w_min": 8,
+          "w_max": 8,
+          "write_rate_dev_frac": 0.0475,
+          "over_ceiling": false
+        }
+      }
+    },
+    "step": {
+      "W_fixed_mean": 11,
+      "W_fixed_peak": 20,
+      "rate_min": 50.0,
+      "rate_max": 500.0,
+      "arms": {
+        "fixed_mean": {
+          "write_rate_mean": 25.0,
+          "write_rate_p95": 46.0,
+          "write_rate_max": 46.0,
+          "redo_units_max": 10,
+          "redo_time_max": 0.2,
+          "redo_time_p95": 0.2,
+          "w_min": 11,
+          "w_max": 11,
+          "write_rate_dev_frac": 0.0475,
+          "over_ceiling": false
+        },
+        "fixed_peak": {
+          "write_rate_mean": 13.75,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 19,
+          "redo_time_max": 0.38,
+          "redo_time_p95": 0.38,
+          "w_min": 20,
+          "w_max": 20,
+          "write_rate_dev_frac": 0.4761,
+          "over_ceiling": false
+        },
+        "adaptive": {
+          "write_rate_mean": 25.39666666666667,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 124.0,
+          "redo_units_max": 19,
+          "redo_time_max": 0.038,
+          "redo_time_p95": 0.038,
+          "w_min": 2,
+          "w_max": 20,
+          "write_rate_dev_frac": 0.0324,
+          "over_ceiling": false
+        }
+      }
+    },
+    "ramp": {
+      "W_fixed_mean": 5,
+      "W_fixed_peak": 20,
+      "rate_min": 5.0,
+      "rate_max": 500.0,
+      "arms": {
+        "fixed_mean": {
+          "write_rate_mean": 21.52166666666667,
+          "write_rate_p95": 80.0,
+          "write_rate_max": 100.0,
+          "redo_units_max": 4,
+          "redo_time_max": 0.8,
+          "redo_time_p95": 0.6353405639101918,
+          "w_min": 5,
+          "w_max": 5,
+          "write_rate_dev_frac": 0.18,
+          "over_ceiling": false
+        },
+        "fixed_peak": {
+          "write_rate_mean": 5.38,
+          "write_rate_p95": 20.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 19,
+          "redo_time_max": 3.8,
+          "redo_time_p95": 3.017867678573411,
+          "w_min": 20,
+          "w_max": 20,
+          "write_rate_dev_frac": 0.795,
+          "over_ceiling": false
+        },
+        "adaptive": {
+          "write_rate_mean": 19.648333333333333,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 28.0,
+          "redo_units_max": 18,
+          "redo_time_max": 0.03682038197600246,
+          "redo_time_p95": 0.03634687319836169,
+          "w_min": 1,
+          "w_max": 19,
+          "write_rate_dev_frac": 0.2514,
+          "over_ceiling": false
+        }
+      }
+    },
+    "bursty": {
+      "W_fixed_mean": 10,
+      "W_fixed_peak": 20,
+      "rate_min": 20.0,
+      "rate_max": 500.0,
+      "arms": {
+        "fixed_mean": {
+          "write_rate_mean": 26.0,
+          "write_rate_p95": 50.0,
+          "write_rate_max": 50.0,
+          "redo_units_max": 9,
+          "redo_time_max": 0.45,
+          "redo_time_p95": 0.45,
+          "w_min": 10,
+          "w_max": 10,
+          "write_rate_dev_frac": 0.0094,
+          "over_ceiling": false
+        },
+        "fixed_peak": {
+          "write_rate_mean": 13.0,
+          "write_rate_p95": 26.0,
+          "write_rate_max": 26.0,
+          "redo_units_max": 19,
+          "redo_time_max": 0.95,
+          "redo_time_p95": 0.95,
+          "w_min": 20,
+          "w_max": 20,
+          "write_rate_dev_frac": 0.5047,
+          "over_ceiling": false
+        },
+        "adaptive": {
+          "write_rate_mean": 21.805,
+          "write_rate_p95": 56.0,
+          "write_rate_max": 166.0,
+          "redo_units_max": 19,
+          "redo_time_max": 0.85,
+          "redo_time_p95": 0.55,
+          "w_min": 2,
+          "w_max": 20,
+          "write_rate_dev_frac": 0.1692,
+          "over_ceiling": false
+        }
+      }
+    }
+  },
+  "verdict": {
+    "NC_constant_write_rate_tie_frac": 0.0,
+    "NC_constant_redo_time_tie_frac": 0.0,
+    "NC_constant_is_a_tie": true,
+    "VOID_adaptive_won_on_constant": false,
+    "adaptive_write_rate_dev": {
+      "step": 0.0324,
+      "ramp": 0.2514,
+      "bursty": 0.1692
+    },
+    "adaptive_holds_target_rate": false,
+    "fixed_mean_dev": {
+      "step": 0.0475,
+      "ramp": 0.18,
+      "bursty": 0.0094
+    },
+    "fixed_peak_redo_time_vs_adaptive": {
+      "step": 10.0,
+      "ramp": 103.2,
+      "bursty": 1.12
+    },
+    "fixed_matches_adaptive_everywhere": false,
+    "adaptive_redo_units_max": {
+      "step": 19,
+      "ramp": 18,
+      "bursty": 19
+    },
+    "fixed_peak_redo_units_max": {
+      "step": 19,
+      "ramp": 19,
+      "bursty": 19
+    },
+    "C32_proven": false
+  }
+}

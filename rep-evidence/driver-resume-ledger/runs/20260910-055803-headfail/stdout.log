@@ -1,0 +1,25 @@
+starting head + worker
+  head rc=0 worker rc=0
+  session=session_2026-09-10_05-58-09_073229_962153 nodes=2
+
+creating a NON-HEAD-PINNED detached coordinator on the worker node
+  off-head placement: True  progress: 60 units
+
+KILLING THE HEAD (gcs_server)
+  killed gcs_server pids [962133, 962155]
+
+restarting the head on the SAME storage path and port
+  head restart rc=0, outage 26.3s
+  session after restart: session_2026-09-10_05-58-09_073229_962153
+  session unchanged: True
+  ledger epochs present: [1]  epoch-1 committed units: 60
+  named actors visible: [{'name': 'coord-H', 'namespace': 'r4'}]
+  reattach: {"error": "ActorUnschedulableError: The actor is not schedulable: The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible, and soft=False was specified."}
+
+======================================================================
+  C21_session_name_survives_real_head_restart          True
+  ledger_survived_head_loss                            True
+  committed_units_recovered                            60
+  actor_reattachable_after_head_restart                False
+  coordinator_progressed_off_head_before_kill          True
+======================================================================

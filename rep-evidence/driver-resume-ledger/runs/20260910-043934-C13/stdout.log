@@ -1,0 +1,31 @@
+experiment=C13 git=b95947ac65df budgets=[1, 2]
+
+==============================================================================
+CONTROL FIRST -- two-instance regression (must be clean of INV-DUR)
+==============================================================================
+  tiny     traces=2117    {'INV-FENCE-ACK': 1352}
+  small    traces=2833    {'INV-FENCE-ACK': 2045}
+
+==============================================================================
+THREE CONCURRENT INSTANCES
+==============================================================================
+  tiny/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 307, 'INV-DUR': 337}
+  tiny/w=5 traces=1110    fenced-active=1110   {'INV-FENCE-ACK': 885, 'INV-DUR': 1146}
+  small/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 334, 'INV-DUR': 391}
+  small/w=5 traces=1110    fenced-active=1110   {'INV-FENCE-ACK': 967, 'INV-DUR': 1507}
+
+  fuzz, three instances, unbounded window
+  tiny     traces=1200   {'INV-FENCE-ACK': 529, 'INV-DUR': 660}
+  small    traces=1200   {'INV-FENCE-ACK': 767, 'INV-DUR': 1407}
+
+==============================================================================
+NEGATIVE CONTROLS
+==============================================================================
+  NC14_same_instance_id            {'INV-FENCE-ACK': 1352, 'INV-ONE': 62}  (1890 traces)
+      INV-ONE: {1: ['A', 'A'], 2: ['audit']}
+  NC13_carry_forward_ptr_first     {'INV-FENCE-ACK': 1352}  (1890 traces)
+  NC2_fence_inverted               {'INV-LIVE': 58}  (96 traces)
+
+==============================================================================
+VERDICT: C13=proven C19=refuted -- 2-instance {'INV-FENCE-ACK': 3397}; 3-instance {'INV-FENCE-ACK': 3789, 'INV-DUR': 5448}; NC14 red on INV-ONE
+==============================================================================

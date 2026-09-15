@@ -1,0 +1,532 @@
+{
+  "experiment": "C1",
+  "verdict": "C1=proven C16=refuted",
+  "why": "INV-ONE=0, INV-DUR=627, INV-FENCE-ACK=9998, coverage=11746 fenced-active traces",
+  "config": {
+    "experiment": "C1",
+    "git_rev": "2019059e89e8a1d4ff28d0a56d8376d61ad09ee4",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T04:27:08"
+  },
+  "totals": {
+    "INV-FENCE-ACK": 9998,
+    "INV-DUR": 627
+  },
+  "coverage": 11746,
+  "real": {
+    "tiny/w=4": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 4,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 4,
+      "traces": 1061,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 663
+      },
+      "fenced_active_traces": 971,
+      "fenced_ack_traces": 663,
+      "seconds": 2.37,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "tiny/w=6": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 4,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 6,
+      "traces": 4193,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2739,
+        "INV-DUR": 28
+      },
+      "fenced_active_traces": 3949,
+      "fenced_ack_traces": 2739,
+      "seconds": 9.19,
+      "inv_dur_examples": [
+        "[spawn@15 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at A#22 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#14 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#16 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#18 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#19 after Ack: unfenced acked units [1] are not recoverable (recovered [0])",
+        "[spawn@15 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at A#22 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#14 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#16 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#18 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#19 after Ack: unfenced acked units [1] are not recoverable (recovered [0])",
+        "[spawn@28 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#12 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#13 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#15 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#17 after Put: unfenced acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#18 after Ack: unfenced acked units [3] are not recoverable (recovered [0, 1, 2])",
+        "[spawn@28 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#12 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#13 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#15 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#17 after Put: unfenced acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#18 after Ack: unfenced acked units [3] are not recoverable (recovered [0, 1, 2])"
+      ],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": [
+        "A#0: Keys(prefix='session-A/job1/epoch/')",
+        "A#1: Put(key='session-A/job1/epoch/0001', value='A', overwrite=False)",
+        "A#2: Get(key='session-A/job1/epoch/0001')",
+        "A#3: Note(text='A owns epoch 1')",
+        "A#4: Put(key='session-A/job1/state/0001/base@0000', value={'seq': 0, 'done': []}, overwrite=True)",
+        "A#5: Put(key='session-A/job1/state/0001/base_ptr', value=0, overwrite=True)",
+        "A#6: Keys(prefix='session-A/job1/state/')",
+        "A#7: Keys(prefix='session-A/job1/epoch/')",
+        "A#8: Exec(unit=0)",
+        "A#9: Put(key='session-A/job1/state/0001/seg/0001', value={'seq': 1, 'done': [0]}, overwrite=True)",
+        "A#10: Ack(units=(0,))",
+        "A#11: Exec(unit=1)",
+        "A#12: Put(key='session-A/job1/state/0001/seg/0002', value={'seq': 2, 'done': [1]}, overwrite=True)",
+        "A#13: Ack(units=(1,))",
+        "A#14: Put(key='session-A/job1/state/0001/base@0002', value={'seq': 2, 'done': [0, 1]}, overwrite=True)",
+        "A#15: Put(key='session-A/job1/state/0001/base_ptr', value=2, overwrite=True)",
+        "A#16: Keys(prefix='session-A/job1/state/0001/')",
+        "A#17: Delete(key='session-A/job1/state/0001/base@0000')",
+        "A#18: Delete(key='session-A/job1/state/0001/seg/0001')",
+        "A#19: Delete(key='session-A/job1/state/0001/seg/0002')",
+        "A#20: Note(text='compacted epoch 1 at seq 2')",
+        "A#21: Exec(unit=2)",
+        "A#22: Put(key='session-A/job1/state/0001/seg/0003', value={'seq': 3, 'done': [2]}, overwrite=True)",
+        "A#23: Ack(units=(2,))",
+        "A#24: Exec(unit=3)",
+        "A#25: Put(key='session-A/job1/state/0001/seg/0004', value={'seq': 4, 'done': [3]}, overwrite=True)",
+        "A#26: Ack(units=(3,))",
+        "A#27: Put(key='session-A/job1/state/0001/base@0004', value={'seq': 4, 'done': [0, 1, 2, 3]}, overwrite=True)",
+        "B#0: Keys(prefix='session-A/job1/epoch/')",
+        "B#1: Put(key='session-A/job1/epoch/0002', value='B', overwrite=False)",
+        "B#2: Get(key='session-A/job1/epoch/0002')",
+        "B#3: Note(text='B owns epoch 2')",
+        "B#4: Get(key='session-A/job1/state/0001/base_ptr')",
+        "A#28: Put(key='session-A/job1/state/0001/base_ptr', value=4, overwrite=True)",
+        "A#29: Keys(prefix='session-A/job1/state/0001/')",
+        "B#5: Get(key='session-A/job1/state/0001/base@0002')",
+        "A#30: Delete(key='session-A/job1/state/0001/base@0002')",
+        "B#6: Keys(prefix='session-A/job1/state/0001/seg/')",
+        "A#31: Delete(key='session-A/job1/state/0001/seg/0003')",
+        "B#7: Get(key='session-A/job1/state/0001/seg/0003')",
+        "A#32: Delete(key='session-A/job1/state/0001/seg/0004')",
+        "B#8: Get(key='session-A/job1/state/0001/seg/0004')",
+        "A#33: Note(text='compacted epoch 1 at seq 4')",
+        "B#9: Put(key='session-A/job1/state/0002/base@0002', value={'seq': 2, 'done': [0, 1]}, overwrite=True)",
+        "A#34: Note(text='A: job complete, 4 units')",
+        "B#10: Put(key='session-A/job1/state/0002/base_ptr', value=2, overwrite=True)",
+        "B#11: Keys(prefix='session-A/job1/state/')",
+        "B#12: Delete(key='session-A/job1/state/0001/base@0004')",
+        "B#13: Delete(key='session-A/job1/state/0001/base_ptr')",
+        "B#14: Keys(prefix='session-A/job1/epoch/')",
+        "B#15: Delete(key='session-A/job1/epoch/0001')",
+        "B#16: Exec(unit=2)",
+        "B#17: Put(key='session-A/job1/state/0002/seg/0003', value={'seq': 3, 'done': [2]}, overwrite=True)",
+        "B#18: Ack(units=(2,))",
+        "B#19: Exec(unit=3)",
+        "B#20: Put(key='session-A/job1/state/0002/seg/0004', value={'seq': 4, 'done': [3]}, overwrite=True)",
+        "B#21: Ack(units=(3,))",
+        "B#22: Put(key='session-A/job1/state/0002/base@0004', value={'seq': 4, 'done': [0, 1, 2, 3]}, overwrite=True)",
+        "B#23: Put(key='session-A/job1/state/0002/base_ptr', value=4, overwrite=True)",
+        "B#24: Keys(prefix='session-A/job1/state/0002/')",
+        "B#25: Delete(key='session-A/job1/state/0002/base@0002')",
+        "B#26: Delete(key='session-A/job1/state/0002/seg/0003')",
+        "B#27: Delete(key='session-A/job1/state/0002/seg/0004')",
+        "B#28: Note(text='compacted epoch 2 at seq 4')",
+        "B#29: Note(text='B: job complete, 4 units')",
+        "audit#0: Keys(prefix='session-A/job1/epoch/')",
+        "audit#1: Put(key='session-A/job1/epoch/0003', value='audit', overwrite=False)",
+        "audit#2: Get(key='session-A/job1/epoch/0003')",
+        "audit#3: Note(text='audit owns epoch 3')",
+        "audit#4: Get(key='session-A/job1/state/0002/base_ptr')",
+        "audit#5: Get(key='session-A/job1/state/0002/base@0004')",
+        "audit#6: Keys(prefix='session-A/job1/state/0002/seg/')",
+        "audit#7: Put(key='session-A/job1/state/0003/base@0004', value={'seq': 4, 'done': [0, 1, 2, 3]}, overwrite=True)",
+        "audit#8: Put(key='session-A/job1/state/0003/base_ptr', value=4, overwrite=True)",
+        "audit#9: Keys(prefix='session-A/job1/state/')",
+        "audit#10: Delete(key='session-A/job1/state/0002/base@0004')",
+        "audit#11: Delete(key='session-A/job1/state/0002/base_ptr')",
+        "audit#12: Keys(prefix='session-A/job1/epoch/')",
+        "audit#13: Delete(key='session-A/job1/epoch/0002')",
+        "audit#14: Note(text='audit startup complete (audit)')"
+      ]
+    },
+    "small/w=4": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 4,
+      "traces": 1395,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1004
+      },
+      "fenced_active_traces": 1340,
+      "fenced_ack_traces": 1004,
+      "seconds": 3.92,
+      "inv_dur_examples": [],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": null
+    },
+    "small/w=6": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "window": 6,
+      "traces": 5695,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 4136,
+        "INV-DUR": 44
+      },
+      "fenced_active_traces": 5486,
+      "fenced_ack_traces": 4136,
+      "seconds": 15.9,
+      "inv_dur_examples": [
+        "[spawn@15 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at A#22 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#14 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#16 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#18 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#19 after Ack: unfenced acked units [1] are not recoverable (recovered [0])",
+        "[spawn@15 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at A#22 after Put: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#14 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#16 after Delete: unfenced acked units [0, 1] are not recoverable (recovered []); INV-DUR at B#18 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#19 after Ack: unfenced acked units [1] are not recoverable (recovered [0])",
+        "[spawn@28 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at A#35 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#12 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#13 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#14 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#16 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#18 after Put: unfenced acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#19 after Ack: unfenced acked units [3] are not recoverable (recovered [0, 1, 2])",
+        "[spawn@28 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at A#35 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#12 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#13 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#14 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#16 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#18 after Put: unfenced acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#19 after Ack: unfenced acked units [3] are not recoverable (recovered [0, 1, 2])",
+        "[spawn@41 dec=[1, 1, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#12 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#13 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#15 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#17 after Put: unfenced acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4]); INV-DUR at B#18 after Ack: unfenced acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4])"
+      ],
+      "inv_one_examples": [],
+      "minimal_inv_dur_log": [
+        "A#0: Keys(prefix='session-A/job1/epoch/')",
+        "A#1: Put(key='session-A/job1/epoch/0001', value='A', overwrite=False)",
+        "A#2: Get(key='session-A/job1/epoch/0001')",
+        "A#3: Note(text='A owns epoch 1')",
+        "A#4: Put(key='session-A/job1/state/0001/base@0000', value={'seq': 0, 'done': []}, overwrite=True)",
+        "A#5: Put(key='session-A/job1/state/0001/base_ptr', value=0, overwrite=True)",
+        "A#6: Keys(prefix='session-A/job1/state/')",
+        "A#7: Keys(prefix='session-A/job1/epoch/')",
+        "A#8: Exec(unit=0)",
+        "A#9: Put(key='session-A/job1/state/0001/seg/0001', value={'seq': 1, 'done': [0]}, overwrite=True)",
+        "A#10: Ack(units=(0,))",
+        "A#11: Exec(unit=1)",
+        "A#12: Put(key='session-A/job1/state/0001/seg/0002', value={'seq': 2, 'done': [1]}, overwrite=True)",
+        "A#13: Ack(units=(1,))",
+        "A#14: Put(key='session-A/job1/state/0001/base@0002', value={'seq': 2, 'done': [0, 1]}, overwrite=True)",
+        "A#15: Put(key='session-A/job1/state/0001/base_ptr', value=2, overwrite=True)",
+        "A#16: Keys(prefix='session-A/job1/state/0001/')",
+        "A#17: Delete(key='session-A/job1/state/0001/base@0000')",
+        "A#18: Delete(key='session-A/job1/state/0001/seg/0001')",
+        "A#19: Delete(key='session-A/job1/state/0001/seg/0002')",
+        "A#20: Note(text='compacted epoch 1 at seq 2')",
+        "A#21: Exec(unit=2)",
+        "A#22: Put(key='session-A/job1/state/0001/seg/0003', value={'seq': 3, 'done': [2]}, overwrite=True)",
+        "A#23: Ack(units=(2,))",
+        "A#24: Exec(unit=3)",
+        "A#25: Put(key='session-A/job1/state/0001/seg/0004', value={'seq': 4, 'done': [3]}, overwrite=True)",
+        "A#26: Ack(units=(3,))",
+        "A#27: Put(key='session-A/job1/state/0001/base@0004', value={'seq': 4, 'done': [0, 1, 2, 3]}, overwrite=True)",
+        "A#28: Put(key='session-A/job1/state/0001/base_ptr', value=4, overwrite=True)",
+        "A#29: Keys(prefix='session-A/job1/state/0001/')",
+        "A#30: Delete(key='session-A/job1/state/0001/base@0002')",
+        "A#31: Delete(key='session-A/job1/state/0001/seg/0003')",
+        "A#32: Delete(key='session-A/job1/state/0001/seg/0004')",
+        "A#33: Note(text='compacted epoch 1 at seq 4')",
+        "A#34: Exec(unit=4)",
+        "A#35: Put(key='session-A/job1/state/0001/seg/0005', value={'seq': 5, 'done': [4]}, overwrite=True)",
+        "A#36: Ack(units=(4,))",
+        "A#37: Exec(unit=5)",
+        "A#38: Put(key='session-A/job1/state/0001/seg/0006', value={'seq': 6, 'done': [5]}, overwrite=True)",
+        "A#39: Ack(units=(5,))",
+        "A#40: Put(key='session-A/job1/state/0001/base@0006', value={'seq': 6, 'done': [0, 1, 2, 3, 4, 5]}, overwrite=True)",
+        "B#0: Keys(prefix='session-A/job1/epoch/')",
+        "B#1: Put(key='session-A/job1/epoch/0002', value='B', overwrite=False)",
+        "B#2: Get(key='session-A/job1/epoch/0002')",
+        "B#3: Note(text='B owns epoch 2')",
+        "B#4: Get(key='session-A/job1/state/0001/base_ptr')",
+        "A#41: Put(key='session-A/job1/state/0001/base_ptr', value=6, overwrite=True)",
+        "A#42: Keys(prefix='session-A/job1/state/0001/')",
+        "B#5: Get(key='session-A/job1/state/0001/base@0004')",
+        "A#43: Delete(key='session-A/job1/state/0001/base@0004')",
+        "B#6: Keys(prefix='session-A/job1/state/0001/seg/')",
+        "A#44: Delete(key='session-A/job1/state/0001/seg/0005')",
+        "B#7: Get(key='session-A/job1/state/0001/seg/0005')",
+        "A#45: Delete(key='session-A/job1/state/0001/seg/0006')",
+        "B#8: Get(key='session-A/job1/state/0001/seg/0006')",
+        "A#46: Note(text='compacted epoch 1 at seq 6')",
+        "B#9: Put(key='session-A/job1/state/0002/base@0004', value={'seq': 4, 'done': [0, 1, 2, 3]}, overwrite=True)",
+        "A#47: Note(text='A: job complete, 6 units')",
+        "B#10: Put(key='session-A/job1/state/0002/base_ptr', value=4, overwrite=True)",
+        "B#11: Keys(prefix='session-A/job1/state/')",
+        "B#12: Delete(key='session-A/job1/state/0001/base@0006')",
+        "B#13: Delete(key='session-A/job1/state/0001/base_ptr')",
+        "B#14: Keys(prefix='session-A/job1/epoch/')",
+        "B#15: Delete(key='session-A/job1/epoch/0001')",
+        "B#16: Exec(unit=4)",
+        "B#17: Put(key='session-A/job1/state/0002/seg/0005', value={'seq': 5, 'done': [4]}, overwrite=True)",
+        "B#18: Ack(units=(4,))",
+        "B#19: Exec(unit=5)",
+        "B#20: Put(key='session-A/job1/state/0002/seg/0006', value={'seq': 6, 'done': [5]}, overwrite=True)",
+        "B#21: Ack(units=(5,))",
+        "B#22: Put(key='session-A/job1/state/0002/base@0006', value={'seq': 6, 'done': [0, 1, 2, 3, 4, 5]}, overwrite=True)",
+        "B#23: Put(key='session-A/job1/state/0002/base_ptr', value=6, overwrite=True)",
+        "B#24: Keys(prefix='session-A/job1/state/0002/')",
+        "B#25: Delete(key='session-A/job1/state/0002/base@0004')",
+        "B#26: Delete(key='session-A/job1/state/0002/seg/0005')",
+        "B#27: Delete(key='session-A/job1/state/0002/seg/0006')",
+        "B#28: Note(text='compacted epoch 2 at seq 6')",
+        "B#29: Note(text='B: job complete, 6 units')",
+        "audit#0: Keys(prefix='session-A/job1/epoch/')",
+        "audit#1: Put(key='session-A/job1/epoch/0003', value='audit', overwrite=False)",
+        "audit#2: Get(key='session-A/job1/epoch/0003')",
+        "audit#3: Note(text='audit owns epoch 3')",
+        "audit#4: Get(key='session-A/job1/state/0002/base_ptr')",
+        "audit#5: Get(key='session-A/job1/state/0002/base@0006')",
+        "audit#6: Keys(prefix='session-A/job1/state/0002/seg/')",
+        "audit#7: Put(key='session-A/job1/state/0003/base@0006', value={'seq': 6, 'done': [0, 1, 2, 3, 4, 5]}, overwrite=True)",
+        "audit#8: Put(key='session-A/job1/state/0003/base_ptr', value=6, overwrite=True)",
+        "audit#9: Keys(prefix='session-A/job1/state/')",
+        "audit#10: Delete(key='session-A/job1/state/0002/base@0006')",
+        "audit#11: Delete(key='session-A/job1/state/0002/base_ptr')",
+        "audit#12: Keys(prefix='session-A/job1/epoch/')",
+        "audit#13: Delete(key='session-A/job1/epoch/0002')",
+        "audit#14: Note(text='audit startup complete (audit)')"
+      ]
+    }
+  },
+  "fuzz": {
+    "tiny": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "traces": 1500,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 583,
+        "INV-DUR": 146
+      },
+      "fenced_active_traces": 864,
+      "fenced_ack_traces": 583,
+      "seconds": 3.11,
+      "inv_dur_examples": [
+        "[spawn@10 dec=[0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#12 after Delete: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#13 after Delete: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#15 after Delete: unfenced acked units [0] are not recoverable (recovered [1]); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 1)] (instance, its epoch, unit)",
+        "[spawn@12 dec=[0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at A#22 after Put: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#12 after Delete: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#13 after Delete: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#14 after Delete: unfenced acked units [1] are not recoverable (recovered [0]); INV-DUR at B#16 after Delete: unfenced acked units [1] are not recoverable (recovered [0])",
+        "[spawn@26 dec=[1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0]] -> INV-DUR at B#9 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1, 3]); INV-DUR at B#11 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1, 3]); INV-DUR at B#12 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1, 3]); INV-DUR at B#14 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1, 3]); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 3)] (instance, its epoch, unit)",
+        "[spawn@19 dec=[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0]] -> INV-DUR at B#7 after Put: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#9 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#10 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#11 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#15 after Put: unfenced acked units [1, 2] are not recoverable (recovered [0]); INV-DUR at B#16 after Ack: unfenced acked units [1, 2] are not recoverable (recovered [0]); INV-DUR at B#18 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#19 after Ack: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#20 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#21 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#23 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#24 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#25 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 3)] (instance, its epoch, unit)",
+        "[spawn@9 dec=[0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0]] -> INV-DUR at B#9 after Put: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#11 after Delete: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#12 after Delete: unfenced acked units [0] are not recoverable (recovered [1]); INV-DUR at B#14 after Delete: unfenced acked units [0] are not recoverable (recovered [1])"
+      ]
+    },
+    "small": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "traces": 1500,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 873,
+        "INV-DUR": 409
+      },
+      "fenced_active_traces": 1226,
+      "fenced_ack_traces": 873,
+      "seconds": 4.2,
+      "inv_dur_examples": [
+        "[spawn@38 dec=[1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#12 after Delete: unfenced acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#13 after Delete: unfenced acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#15 after Delete: unfenced acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 5)] (instance, its epoch, unit)",
+        "[spawn@28 dec=[1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]] -> INV-DUR at B#7 after Put: unfenced acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-DUR at B#9 after Delete: unfenced acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-DUR at B#10 after Delete: unfenced acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-DUR at A#35 after Put: unfenced acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-DUR at B#14 after Put: unfenced acked units [1, 2, 3] are not recoverable (recovered [0]); INV-DUR at B#15 after Ack: unfenced acked units [1, 2, 3] are not recoverable (recovered [0]); INV-DUR at B#17 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#18 after Ack: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#19 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#20 after Put: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#22 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#23 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#24 after Delete: unfenced acked units [2, 3] are not recoverable (recovered [0, 1]); INV-DUR at B#27 after Put: unfenced acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#28 after Ack: unfenced acked units [3] are not recoverable (recovered [0, 1, 2])",
+        "[spawn@39 dec=[0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0]] -> INV-DUR at B#7 after Put: unfenced acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at B#9 after Delete: unfenced acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at B#10 after Delete: unfenced acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at B#14 after Put: unfenced acked units [1, 2, 3, 4, 5] are not recoverable (recovered [0]); INV-DUR at B#15 after Ack: unfenced acked units [1, 2, 3, 4, 5] are not recoverable (recovered [0]); INV-DUR at B#17 after Put: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#18 after Ack: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#19 after Put: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#20 after Put: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#22 after Delete: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#23 after Delete: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#24 after Delete: unfenced acked units [2, 3, 4, 5] are not recoverable (recovered [0, 1]); INV-DUR at B#27 after Put: unfenced acked units [3, 4, 5] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#28 after Ack: unfenced acked units [3, 4, 5] are not recoverable (recovered [0, 1, 2]); INV-DUR at B#30 after Put: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#31 after Ack: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#32 after Put: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#33 after Put: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#35 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#36 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#37 after Delete: unfenced acked units [4, 5] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at B#40 after Put: unfenced acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4]); INV-DUR at B#41 after Ack: unfenced acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4])",
+        "[spawn@24 dec=[1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0]] -> INV-DUR at B#7 after Put: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at A#32 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#9 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#10 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#11 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0, 1, 2] are not recoverable (recovered []); INV-DUR at B#15 after Put: unfenced acked units [1, 2] are not recoverable (recovered [0]); INV-DUR at B#16 after Ack: unfenced acked units [1, 2] are not recoverable (recovered [0]); INV-DUR at B#18 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#19 after Ack: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#20 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#21 after Put: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#23 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#24 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at B#25 after Delete: unfenced acked units [2] are not recoverable (recovered [0, 1]); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 3)] (instance, its epoch, unit)",
+        "[spawn@12 dec=[1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0]] -> INV-DUR at B#10 after Put: unfenced acked units [0] are not recoverable (recovered []); INV-DUR at B#12 after Delete: unfenced acked units [0] are not recoverable (recovered []); INV-DUR at B#13 after Delete: unfenced acked units [0] are not recoverable (recovered []); INV-DUR at B#15 after Delete: unfenced acked units [0] are not recoverable (recovered []); INV-FENCE-ACK at fencing: 1 ack(s) issued by a fenced instance, e.g. [('A', 1, 1)] (instance, its epoch, unit)"
+      ]
+    }
+  },
+  "controls": {
+    "NC1_fence_ignored": {
+      "flags": {
+        "fence_mode": "ignore"
+      },
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2612,
+        "INV-ONE": 126,
+        "INV-DUR": 206
+      },
+      "traces": 4071,
+      "went_red_INV_ONE": true,
+      "went_red_any_fencing": true,
+      "example": "[spawn@0 dec=[0, 1, 0, 0, 0, 0]] -> INV-ONE at fencing: epoch 1 claimed by ['A', 'B']",
+      "epoch_owners_example": {
+        "1": [
+          "A",
+          "B"
+        ],
+        "2": [
+          "audit"
+        ]
+      }
+    },
+    "NC2_fence_inverted": {
+      "flags": {
+        "fence_mode": "inverted"
+      },
+      "violations_by_kind": {
+        "INV-LIVE": 73
+      },
+      "traces": 123,
+      "went_red_INV_ONE": false,
+      "went_red_any_fencing": true,
+      "example": "[spawn@0 dec=[0, 0, 0]] -> INV-LIVE at end of trace: no instance made progress: {'A': 'aborted', 'B': 'aborted'}",
+      "epoch_owners_example": null
+    },
+    "NC3_state_not_epoch_scoped": {
+      "flags": {
+        "epoch_scoped_state": false
+      },
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2739,
+        "INV-DUR": 18
+      },
+      "traces": 4193,
+      "went_red_INV_ONE": false,
+      "went_red_any_fencing": false,
+      "example": "[spawn@0 dec=[0, 0, 0, 0, 0, 0]] -> INV-FENCE-ACK at fencing: 2 ack(s) issued by a fenced instance, e.g. [('A', 1, 0), ('A', 1, 1)] (instance, its epoch, unit)",
+      "epoch_owners_example": null
+    }
+  }
+}

@@ -1,0 +1,58 @@
+
+====================================================================
+ARM: async_nokill
+====================================================================
+  [async_nokill] booted, Q=8
+  [async_nokill] work during window: 91 units, max queued 0 (Q=8 batches = 24 units), saturated=False
+  [async_nokill] committed=400 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_outage
+====================================================================
+  [async_outage] booted, Q=8
+  [async_outage] SIGKILL gcs_server 1007275
+  [async_outage] gcs_server re-exec'd after 35s
+  [async_outage] work during window: 25 units, max queued 8 (Q=8 batches = 24 units), saturated=True
+  [async_outage] committed=360 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_crash_outage
+====================================================================
+  [async_crash_outage] booted, Q=8
+  [async_crash_outage] SIGKILL gcs_server 1008473
+  [async_crash_outage] gcs_server re-exec'd after 35s
+  [async_crash_outage] work during window: -50 units, max queued 8 (Q=8 batches = 24 units), saturated=True
+  [async_crash_outage] died=True executed=75 durable=45 backlog=30 queued=8 resumed_from=45 redo=30 bound=27 within=False
+  [async_crash_outage] committed=45 dupes=False contiguous=True epochs=[18]
+
+====================================================================
+ARM: sync_crash_outage
+====================================================================
+  [sync_crash_outage] booted, Q=0
+  [sync_crash_outage] SIGKILL gcs_server 1010485
+  [sync_crash_outage] gcs_server re-exec'd after 35s
+  [sync_crash_outage] work during window: -48 units, max queued 0 (Q=0 batches = 0 units), saturated=True
+  [sync_crash_outage] died=True executed=48 durable=45 backlog=3 queued=0 resumed_from=45 redo=3 bound=3 within=True
+  [sync_crash_outage] committed=45 dupes=False contiguous=True epochs=[19]
+
+====================================================================
+  NC_nokill_completed_all                True
+  NC_nokill_clean                        True
+  VOID_nokill_corrupted                  False
+  clause1_work_during_outage             25
+  clause1_beats_sync_baseline_zero       True
+  NC_queue_saturated                     True
+  clause2_async_queued_at_death          8
+  clause2_async_backlog_at_death         30
+  NC_async_had_a_backlog_to_lose         True
+  NC_sync_backlog_at_death               3
+  NC_coordinator_actually_died           True
+  clause2_async_redo                     30
+  clause2_async_bound                    27
+  clause2_async_within_bound             False
+  NC_sync_redo                           3
+  NC_sync_within_W                       True
+  clause3_contiguous_everywhere          True
+  writer_errors                          []
+  C26_proven                             False
+====================================================================

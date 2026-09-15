@@ -1,0 +1,38 @@
+
+==================================================================
+q16_early: Q=16, death at +30.0s into a 55s outage
+==================================================================
+  [r0] gcs killed; die at +30.0s, restore at +55s
+  [r0 phase=30.0] executed=98 queued=16 resumed_from=45 redo=53 p=2 blocked=False formula=54 equals=False saturated=True
+  [r0] committed=45 contiguous=True dupes=False
+
+==================================================================
+q16_late: Q=16, death at +45.0s into a 55s outage
+==================================================================
+  [r1] gcs killed; die at +45.0s, restore at +55s
+  [r1 phase=45.0] executed=99 queued=16 resumed_from=45 redo=54 p=3 blocked=True formula=54 equals=True saturated=True
+  [r1] committed=45 contiguous=True dupes=False
+
+==================================================================
+q32_late: Q=32, death at +45.0s into a 55s outage
+==================================================================
+  [r2] gcs killed; die at +45.0s, restore at +55s
+  [r2 phase=45.0] executed=141 queued=31 resumed_from=45 redo=96 p=-3 blocked=False formula=102 equals=False saturated=False
+  [r2] committed=45 contiguous=True dupes=False
+
+==================================================================
+  NC_early_reproduced_anomaly        True
+  early_redo                         53
+  early_p                            2
+  early_blocked                      False
+  VOID_anomaly_did_not_reproduce     False
+  late_redo                          54
+  late_p                             3
+  late_blocked                       True
+  late_equals_formula                True
+  q32_redo                           96
+  q32_blocked                        False
+  q32_predicted_below_102            True
+  contiguous_everywhere              True
+  C31_proven                         True
+==================================================================

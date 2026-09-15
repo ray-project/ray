@@ -1,0 +1,428 @@
+{
+  "arms": {
+    "base_0": {
+      "arm": "base_0",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26408,
+      "kv": {
+        "p50": 0.799,
+        "p95": 1.137,
+        "p99": 3.201,
+        "p999": 11.014
+      },
+      "rt": {
+        "p50": 0.944,
+        "p95": 1.592,
+        "p99": 6.394
+      },
+      "measured_load_rate": 0.0
+    },
+    "r26": {
+      "arm": "r26",
+      "rate": 26.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 26099,
+      "kv": {
+        "p50": 0.8,
+        "p95": 1.152,
+        "p99": 3.812,
+        "p999": 10.985
+      },
+      "rt": {
+        "p50": 0.967,
+        "p95": 1.703,
+        "p99": 6.316
+      },
+      "measured_load_rate": 26.0
+    },
+    "base_1": {
+      "arm": "base_1",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26751,
+      "kv": {
+        "p50": 0.791,
+        "p95": 1.1,
+        "p99": 2.683,
+        "p999": 11.407
+      },
+      "rt": {
+        "p50": 0.927,
+        "p95": 1.683,
+        "p99": 6.449
+      },
+      "measured_load_rate": 0.0
+    },
+    "r200": {
+      "arm": "r200",
+      "rate": 200.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 24296,
+      "kv": {
+        "p50": 0.819,
+        "p95": 1.253,
+        "p99": 4.911,
+        "p999": 12.801
+      },
+      "rt": {
+        "p50": 1.012,
+        "p95": 2.49,
+        "p99": 9.26
+      },
+      "measured_load_rate": 200.0
+    },
+    "base_2": {
+      "arm": "base_2",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26835,
+      "kv": {
+        "p50": 0.79,
+        "p95": 1.105,
+        "p99": 3.394,
+        "p999": 10.873
+      },
+      "rt": {
+        "p50": 0.919,
+        "p95": 1.578,
+        "p99": 6.293
+      },
+      "measured_load_rate": 0.0
+    },
+    "r1000": {
+      "arm": "r1000",
+      "rate": 1000.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 23345,
+      "kv": {
+        "p50": 0.843,
+        "p95": 1.322,
+        "p99": 5.02,
+        "p999": 12.491
+      },
+      "rt": {
+        "p50": 1.025,
+        "p95": 3.357,
+        "p99": 10.491
+      },
+      "measured_load_rate": 1000.1
+    },
+    "base_3": {
+      "arm": "base_3",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26441,
+      "kv": {
+        "p50": 0.794,
+        "p95": 1.139,
+        "p99": 3.525,
+        "p999": 10.709
+      },
+      "rt": {
+        "p50": 0.938,
+        "p95": 1.621,
+        "p99": 6.704
+      },
+      "measured_load_rate": 0.0
+    },
+    "flat_1": {
+      "arm": "flat_1",
+      "rate": 0.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 22506,
+      "kv": {
+        "p50": 0.866,
+        "p95": 1.419,
+        "p99": 5.465,
+        "p999": 13.913
+      },
+      "rt": {
+        "p50": 1.085,
+        "p95": 3.309,
+        "p99": 10.634
+      },
+      "measured_load_rate": 1840.3
+    },
+    "base_4": {
+      "arm": "base_4",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26791,
+      "kv": {
+        "p50": 0.789,
+        "p95": 1.107,
+        "p99": 2.924,
+        "p999": 10.779
+      },
+      "rt": {
+        "p50": 0.934,
+        "p95": 1.652,
+        "p99": 6.745
+      },
+      "measured_load_rate": 0.0
+    },
+    "flat_8": {
+      "arm": "flat_8",
+      "rate": 0.0,
+      "n_loaders": 8,
+      "value_bytes": 256,
+      "kv_n": 10203,
+      "kv": {
+        "p50": 1.885,
+        "p95": 5.476,
+        "p99": 11.73,
+        "p999": 22.281
+      },
+      "rt": {
+        "p50": 1.763,
+        "p95": 13.232,
+        "p99": 27.62
+      },
+      "measured_load_rate": 5711.8
+    },
+    "base_5": {
+      "arm": "base_5",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26442,
+      "kv": {
+        "p50": 0.793,
+        "p95": 1.134,
+        "p99": 3.511,
+        "p999": 9.897
+      },
+      "rt": {
+        "p50": 0.956,
+        "p95": 1.67,
+        "p99": 7.103
+      },
+      "measured_load_rate": 0.0
+    },
+    "bigvalue": {
+      "arm": "bigvalue",
+      "rate": 0.0,
+      "n_loaders": 4,
+      "value_bytes": 4194304,
+      "kv_n": 4744,
+      "kv": {
+        "p50": 0.843,
+        "p95": 26.699,
+        "p99": 66.513,
+        "p999": 292.553
+      },
+      "rt": {
+        "p50": 1.059,
+        "p95": 7.484,
+        "p99": 20.706
+      },
+      "measured_load_rate": 60.3
+    },
+    "base_6": {
+      "arm": "base_6",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 26235,
+      "kv": {
+        "p50": 0.794,
+        "p95": 1.132,
+        "p99": 3.243,
+        "p999": 11.408
+      },
+      "rt": {
+        "p50": 0.964,
+        "p95": 1.753,
+        "p99": 6.647
+      },
+      "measured_load_rate": 0.0
+    }
+  },
+  "order": [
+    "base_0",
+    "r26",
+    "base_1",
+    "r200",
+    "base_2",
+    "r1000",
+    "base_3",
+    "flat_1",
+    "base_4",
+    "flat_8",
+    "base_5",
+    "bigvalue",
+    "base_6"
+  ],
+  "config": {
+    "victim_seconds": 30,
+    "design_rate": 26.0,
+    "arms_spec": [
+      [
+        "base_0",
+        null,
+        0,
+        0
+      ],
+      [
+        "r26",
+        26.0,
+        1,
+        256
+      ],
+      [
+        "base_1",
+        null,
+        0,
+        0
+      ],
+      [
+        "r200",
+        200.0,
+        1,
+        256
+      ],
+      [
+        "base_2",
+        null,
+        0,
+        0
+      ],
+      [
+        "r1000",
+        1000.0,
+        1,
+        256
+      ],
+      [
+        "base_3",
+        null,
+        0,
+        0
+      ],
+      [
+        "flat_1",
+        0.0,
+        1,
+        256
+      ],
+      [
+        "base_4",
+        null,
+        0,
+        0
+      ],
+      [
+        "flat_8",
+        0.0,
+        8,
+        256
+      ],
+      [
+        "base_5",
+        null,
+        0,
+        0
+      ],
+      [
+        "bigvalue",
+        0.0,
+        4,
+        4194304
+      ],
+      [
+        "base_6",
+        null,
+        0,
+        0
+      ]
+    ]
+  },
+  "verdict": {
+    "baseline_p99s": {
+      "base_0": 3.201,
+      "base_1": 2.683,
+      "base_2": 3.394,
+      "base_3": 3.525,
+      "base_4": 2.924,
+      "base_5": 3.511,
+      "base_6": 3.243
+    },
+    "noise_floor_frac": 0.2622,
+    "noise_floor_below_25pct": false,
+    "threshold_frac": 0.2622,
+    "deltas": {
+      "r26": {
+        "vs": "base_0",
+        "p99": 3.812,
+        "base_p99": 3.201,
+        "delta_frac": 0.1909,
+        "load": 26.0
+      },
+      "r200": {
+        "vs": "base_1",
+        "p99": 4.911,
+        "base_p99": 2.683,
+        "delta_frac": 0.8304,
+        "load": 200.0
+      },
+      "r1000": {
+        "vs": "base_2",
+        "p99": 5.02,
+        "base_p99": 3.394,
+        "delta_frac": 0.4791,
+        "load": 1000.1
+      },
+      "flat_1": {
+        "vs": "base_3",
+        "p99": 5.465,
+        "base_p99": 3.525,
+        "delta_frac": 0.5504,
+        "load": 1840.3
+      },
+      "flat_8": {
+        "vs": "base_4",
+        "p99": 11.73,
+        "base_p99": 2.924,
+        "delta_frac": 3.0116,
+        "load": 5711.8
+      },
+      "bigvalue": {
+        "vs": "base_5",
+        "p99": 66.513,
+        "base_p99": 3.511,
+        "delta_frac": 17.9442,
+        "load": 60.3
+      }
+    },
+    "regressed": {
+      "r26": false,
+      "r200": true,
+      "r1000": true,
+      "flat_1": true,
+      "flat_8": true,
+      "bigvalue": true
+    },
+    "POSCTRL_bigvalue_regressed": true,
+    "VOID_rig_blind": false,
+    "design_r26_delta": 0.1909,
+    "design_within_threshold": true,
+    "ledger_rates_that_regressed": [
+      "r200",
+      "r1000",
+      "flat_1",
+      "flat_8"
+    ],
+    "max_ledger_rate_tested": 5711.8,
+    "C3b_proven": false
+  }
+}

@@ -1,0 +1,1488 @@
+{
+  "topic": "ray-driver-resume-kv-ledger",
+  "created_at": "2026-09-10T02:26:30+00:00",
+  "updated_at": "2026-09-10T18:33:41+00:00",
+  "budget_iterations": 100,
+  "goals": [
+    {
+      "id": "G1",
+      "statement": "A RayJob whose driver process is lost resumes from its last committed progress rather than from scratch, with no Redis and no external object store",
+      "metric": "re-executed work units after driver loss <= in-flight units, not the whole job"
+    },
+    {
+      "id": "G2",
+      "statement": "Resume is correct under crash at any point",
+      "metric": "no committed unit is executed twice with visible effect, and no uncommitted unit is skipped, across an adversarial crash sweep"
+    },
+    {
+      "id": "G3",
+      "statement": "The ledger fits GCS internal_kv without operationally degrading the cluster",
+      "metric": "steady-state ledger footprint bounded and independent of job length; GCS request latency p99 unaffected at the design write rate"
+    },
+    {
+      "id": "G4",
+      "statement": "Implementable on unmodified Ray 2.57+, or with an upstream delta small enough to land as a single contributable PR",
+      "metric": "zero ray-core patches for the reference implementation; any proposed upstream change touches no data-plane hot path"
+    }
+  ],
+  "non_goals": [],
+  "kill_criteria": [],
+  "claims": [
+    {
+      "id": "C1",
+      "statement": "The M1 epoch protocol (absent-key CAS + read-back + epoch-scoped immutable state keys) admits exactly one legitimate writer per epoch, under lost acks, GCS restart, and a partitioned stale coordinator",
+      "refutes_if": "any interleaving exists where two instances read back their own id for the same epoch, or where a stale instance's write is read as current-epoch state",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.35,
+      "cost_if_late": 10,
+      "cost_to_test": 3,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-042707-C1"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:28:24+00:00",
+          "note": "Zero INV-ONE across 12344 windowed-exhaustive traces plus 3000 fuzz traces, coverage 11746 traces in which a fenced instance actually ran. Controls: NC1 (fence ignored) red on INV-ONE with epoch 1 claimed by both A and B; NC2 (inverted return) red on INV-LIVE. NOTE the scope: C1 says one WRITER per epoch, and that holds. It does not say the design is safe - see C16."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:28:24+00:00",
+          "status": "proven",
+          "note": "Zero INV-ONE across 12344 windowed-exhaustive traces plus 3000 fuzz traces, coverage 11746 traces in which a fenced instance actually ran. Controls: NC1 (fence ignored) red on INV-ONE with epoch 1 claimed by both A and B; NC2 (inverted return) red on INV-LIVE. NOTE the scope: C1 says one WRITER per epoch, and that holds. It does not say the design is safe - see C16."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "statement": "With coalescing window W, a job of N units costs <= ceil(N/W)+O(1) durable writes, a redo window <= W + in-flight, and a steady-state key count independent of N",
+      "refutes_if": "recovery requires reading O(N) keys, or key count grows with N under sustained operation",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.15,
+      "cost_if_late": 7,
+      "cost_to_test": 3,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045229-C2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:15:13+00:00",
+          "note": "Incidental (not pre-registered) evidence from runs/20260910-041339-C6: steady-state key count was 3 for N=6, 8 and 12 alike, i.e. independent of N; and INV-REDO (redo <= crashes x W) never fired in 16489 traces. Not upgraded from untested because the run was pre-registered for C6, not C2 - but p_wrong drops."
+        },
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "note": "Proven against its OWN refutation condition, which names only two clauses. Steady-state key count is flat in N once N/W >= K: for K=8,W=1 it is 12 keys at N=10, 100, 1000 and 10000 alike, saturating at roughly K+4. Recovery reads never exceeded 33 KV operations at any N up to 10^4, i.e. O(K) and not O(N). The redo clause was evidenced in iteration 1 (INV-REDO never fired in ~16k traces). The write-count clause in C2's STATEMENT is false and is split out as C22 - C2's statement was broader than its refutation condition, which is the same under-specification that produced C16 out of C1."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "status": "proven",
+          "note": "Proven against its OWN refutation condition, which names only two clauses. Steady-state key count is flat in N once N/W >= K: for K=8,W=1 it is 12 keys at N=10, 100, 1000 and 10000 alike, saturating at roughly K+4. Recovery reads never exceeded 33 KV operations at any N up to 10^4, i.e. O(K) and not O(N). The redo clause was evidenced in iteration 1 (INV-REDO never fired in ~16k traces). The write-count clause in C2's STATEMENT is false and is split out as C22 - C2's statement was broader than its refutation condition, which is the same under-specification that produced C16 out of C1."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "statement": "At the target job shape the ledger write rate stays below 10% of the measured GCS durable-write ceiling (~260/s same-key, ~593/s aggregate) with no measurable regression in GCS p99 for other components",
+      "refutes_if": "at the design write rate, KV-handler latency or GCS health-check margin degrades measurably",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.3,
+      "cost_if_late": 8,
+      "cost_to_test": 5,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045229-C2",
+        "runs/20260910-181751-C3resolution"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "note": "Testable half PROVEN: a usable band exists and is now mapped. At 10% of the 262 writes/s same-key ceiling with redo capped at 1% of N, 18 of 24 (rate, N) points admit a usable W. Breaking points: N=1000 loses all feasible W above ~100 units/s, N=50000 above ~1000/s, N=10^6 above ~10^4/s. That is the band the design doc predicted, now with numbers. Untestable half - no measurable regression in GCS p99 for other components - needs a real cluster and stays open."
+        },
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "note": "Second half still open; the stage-C rig is single-node and in-process, so GCS p99 under load for other components was not measured. Would need a loaded multi-component cluster."
+        },
+        {
+          "at": "2026-09-10T18:30:06+00:00",
+          "note": "SECOND HALF NOW PROVEN, closing the claim. The first half (a usable band exists) was proven in stage B; the p99-regression half had been open since iteration 7 because it needed a real cluster. Result: at the design rate of 26 writes/s the victim's internal_kv p99 moved +3.0 percent and p95 +1.7 percent, against a measured noise floor of 9.8 percent (2 sigma over six interleaved baselines, mean 3.288 ms). Nothing regressed anywhere up to 200 writes/s: deltas were +3.0, +2.0, +3.2 and +20.2 percent at 26, 50, 100 and 200/s, all below the 25 percent threshold. THE RESULT IS ONLY MEANINGFUL BECAUSE THE RIG PROVED IT CAN SEE A REGRESSION: an INDEPENDENT positive control that does not involve the ledger at all - four loaders writing 4 MB values - moved p99 from 3.11 ms to 132.1 ms, a factor of 42. Two earlier attempts were void or uncertain and the progression matters. Attempt 1 was blind: the victim slept 10ms between ops so it measured wake-up jitter, arms ran sequentially so warm-up dominated, and the noise floor (43 percent) exceeded the effect size; its overload arm even produced LOWER p95 and actor latency than idle, which is not a physical result. Attempt 2 fixed the victim and interleaved the baselines, and its positive control fired, but the floor was 26.2 percent - marginally above the pre-registered 25 percent - so it was recorded as uncertain rather than rounded up to a pass. Attempt 3 lengthened the arms to 60s (about 53,000 samples each) which cut the floor to 9.8 percent. NOTE that attempt 2's apparent finding that regression begins between 26/s and 200/s was itself baseline noise: at proper resolution 200/s does not regress."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "status": "uncertain",
+          "note": "Testable half PROVEN: a usable band exists and is now mapped. At 10% of the 262 writes/s same-key ceiling with redo capped at 1% of N, 18 of 24 (rate, N) points admit a usable W. Breaking points: N=1000 loses all feasible W above ~100 units/s, N=50000 above ~1000/s, N=10^6 above ~10^4/s. That is the band the design doc predicted, now with numbers. Untestable half - no measurable regression in GCS p99 for other components - needs a real cluster and stays open."
+        },
+        {
+          "at": "2026-09-10T18:30:06+00:00",
+          "status": "proven",
+          "note": "SECOND HALF NOW PROVEN, closing the claim. The first half (a usable band exists) was proven in stage B; the p99-regression half had been open since iteration 7 because it needed a real cluster. Result: at the design rate of 26 writes/s the victim's internal_kv p99 moved +3.0 percent and p95 +1.7 percent, against a measured noise floor of 9.8 percent (2 sigma over six interleaved baselines, mean 3.288 ms). Nothing regressed anywhere up to 200 writes/s: deltas were +3.0, +2.0, +3.2 and +20.2 percent at 26, 50, 100 and 200/s, all below the 25 percent threshold. THE RESULT IS ONLY MEANINGFUL BECAUSE THE RIG PROVED IT CAN SEE A REGRESSION: an INDEPENDENT positive control that does not involve the ledger at all - four loaders writing 4 MB values - moved p99 from 3.11 ms to 132.1 ms, a factor of 42. Two earlier attempts were void or uncertain and the progression matters. Attempt 1 was blind: the victim slept 10ms between ops so it measured wake-up jitter, arms ran sequentially so warm-up dominated, and the noise floor (43 percent) exceeded the effect size; its overload arm even produced LOWER p95 and actor latency than idle, which is not a physical result. Attempt 2 fixed the victim and interleaved the baselines, and its positive control fired, but the floor was 26.2 percent - marginally above the pre-registered 25 percent - so it was recorded as uncertain rather than rounded up to a pass. Attempt 3 lengthened the arms to 60s (about 53,000 samples each) which cut the floor to 9.8 percent. NOTE that attempt 2's apparent finding that regression begins between 26/s and 200/s was itself baseline noise: at proper resolution 200/s does not regress."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "statement": "A detached, named, non-head-pinned coordinator survives driver death and head pod replacement under gcs_storage=rocksdb, and is reattachable by name from a new driver",
+      "refutes_if": "after head restart the actor is dead, duplicated, or the name lookup fails",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.3,
+      "cost_if_late": 9,
+      "cost_to_test": 4,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045910-stageC",
+        "runs/20260910-055803-headfail",
+        "runs/20260910-062918-C7inplace2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:00:05+00:00",
+          "note": "The driver-death half is PROVEN on real Ray: a detached named coordinator created by a subprocess driver executed all 40 units AFTER that driver called os._exit(0), and a fresh driver reattached by name and observed the progress. Resume also proven end-to-end: ray.kill the coordinator, and the restarted incarnation claimed epoch 2, resumed_from=40 and executed ZERO further units - the ledger did exactly its job. The HEAD POD REPLACEMENT half is untested and untestable here; it needs KubeRay. Recorded as uncertain rather than proven because that half is the harder one."
+        },
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "note": "Split result, and the split is the useful part. SURVIVED: the ledger (60 committed units recovered intact), the actor NAME (coord-H still registered after the head restart, so GCS reloaded it from tables), and progress off-head before the kill. FAILED: reattach, with ActorUnschedulableError - 'The node specified via NodeAffinitySchedulingStrategy does not exist any more, and soft=False was specified'. So the coordinator was not lost; it became UNSCHEDULABLE because it was HARD-pinned to a node id that no longer exists. Fixable (soft=True or no affinity) and tracked as C25. Stays uncertain because the harness restarted the whole cluster rather than only the head."
+        },
+        {
+          "at": "2026-09-10T06:21:05+00:00",
+          "note": "C25's run removes the schedulability blocker: with soft or no affinity the coordinator IS restarted after its node is destroyed and DOES recover its ledger state (epoch 1->2, resumed_from=60, zero redo). But C4 stays uncertain, and now for a precise reason rather than a vague one. C4's refutation condition has three clauses - dead, DUPLICATED, or name lookup fails - and this harness can only test two. Because it does 'ray stop --force', the old coordinator process is guaranteed dead before the head returns, which is exactly the condition under which duplication is impossible. A real KubeRay head-pod replacement leaves the worker raylet and the old coordinator ALIVE while GCS reloads the actor table, and that is the only situation in which two live incarnations could coexist. The harsh test therefore does NOT subsume the gentle one: it destroys the hazard it is meant to detect. Closing C4 needs the same harness change as C7 - restart gcs_server in place."
+        },
+        {
+          "at": "2026-09-10T06:36:23+00:00",
+          "note": "PROVEN across the two decomposed failure modes, with the scope stated explicitly rather than glossed. C4's three clauses are dead / duplicated / name lookup fails, and no single harness reaches all three, because the hazards are mutually exclusive: duplication requires the old coordinator to be ALIVE, and unschedulability requires its node to be GONE. Two runs together cover them. (1) runs/20260910-061819-C25pin - node destroyed: the coordinator is rescheduled onto a surviving node, re-runs __init__, claims epoch 2 and recovers all 60 committed units with zero redo, provided it is not hard-pinned. Covers 'dead' and 'name lookup'. (2) this run - node survives, gcs_server killed and restarted in place: exactly ONE live actor row, NumRestarts=0, epoch unchanged at 1, the same instance id before and after, ledger contiguous with no duplicates. Covers 'duplicated', which was previously unreachable because ray stop --force guaranteed the old coordinator was dead. From the coordinator's point of view a KubeRay head-pod replacement IS one of these two cases depending on whether its own node is replaced with the head. Residual, and deliberately not claimed: a real head pod comes back on a NEW IP, whereas the re-exec'd gcs_server reused its address. That dimension is raylet-to-GCS reconnection, which KubeRay's own GCS-FT machinery owns (stable head Service DNS plus gcs_rpc_server_reconnect_timeout_s); it is not a property of R4's design and R4 makes no claim about it."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:00:05+00:00",
+          "status": "uncertain",
+          "note": "The driver-death half is PROVEN on real Ray: a detached named coordinator created by a subprocess driver executed all 40 units AFTER that driver called os._exit(0), and a fresh driver reattached by name and observed the progress. Resume also proven end-to-end: ray.kill the coordinator, and the restarted incarnation claimed epoch 2, resumed_from=40 and executed ZERO further units - the ledger did exactly its job. The HEAD POD REPLACEMENT half is untested and untestable here; it needs KubeRay. Recorded as uncertain rather than proven because that half is the harder one."
+        },
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "status": "uncertain",
+          "note": "Split result, and the split is the useful part. SURVIVED: the ledger (60 committed units recovered intact), the actor NAME (coord-H still registered after the head restart, so GCS reloaded it from tables), and progress off-head before the kill. FAILED: reattach, with ActorUnschedulableError - 'The node specified via NodeAffinitySchedulingStrategy does not exist any more, and soft=False was specified'. So the coordinator was not lost; it became UNSCHEDULABLE because it was HARD-pinned to a node id that no longer exists. Fixable (soft=True or no affinity) and tracked as C25. Stays uncertain because the harness restarted the whole cluster rather than only the head."
+        },
+        {
+          "at": "2026-09-10T06:21:05+00:00",
+          "status": "uncertain",
+          "note": "C25's run removes the schedulability blocker: with soft or no affinity the coordinator IS restarted after its node is destroyed and DOES recover its ledger state (epoch 1->2, resumed_from=60, zero redo). But C4 stays uncertain, and now for a precise reason rather than a vague one. C4's refutation condition has three clauses - dead, DUPLICATED, or name lookup fails - and this harness can only test two. Because it does 'ray stop --force', the old coordinator process is guaranteed dead before the head returns, which is exactly the condition under which duplication is impossible. A real KubeRay head-pod replacement leaves the worker raylet and the old coordinator ALIVE while GCS reloads the actor table, and that is the only situation in which two live incarnations could coexist. The harsh test therefore does NOT subsume the gentle one: it destroys the hazard it is meant to detect. Closing C4 needs the same harness change as C7 - restart gcs_server in place."
+        },
+        {
+          "at": "2026-09-10T06:36:23+00:00",
+          "status": "proven",
+          "note": "PROVEN across the two decomposed failure modes, with the scope stated explicitly rather than glossed. C4's three clauses are dead / duplicated / name lookup fails, and no single harness reaches all three, because the hazards are mutually exclusive: duplication requires the old coordinator to be ALIVE, and unschedulability requires its node to be GONE. Two runs together cover them. (1) runs/20260910-061819-C25pin - node destroyed: the coordinator is rescheduled onto a surviving node, re-runs __init__, claims epoch 2 and recovers all 60 committed units with zero redo, provided it is not hard-pinned. Covers 'dead' and 'name lookup'. (2) this run - node survives, gcs_server killed and restarted in place: exactly ONE live actor row, NumRestarts=0, epoch unchanged at 1, the same instance id before and after, ledger contiguous with no duplicates. Covers 'duplicated', which was previously unreachable because ray stop --force guaranteed the old coordinator was dead. From the coordinator's point of view a KubeRay head-pod replacement IS one of these two cases depending on whether its own node is replaced with the head. Residual, and deliberately not claimed: a real head pod comes back on a NEW IP, whereas the re-exec'd gcs_server reused its address. That dimension is raylet-to-GCS reconnection, which KubeRay's own GCS-FT machinery owns (stable head Service DNS plus gcs_rpc_server_reconnect_timeout_s); it is not a property of R4's design and R4 makes no claim about it."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "statement": "Coordinator state is fully reconstructible from ledger + live-cluster introspection, with no external storage",
+      "refutes_if": "some necessary state is neither in the ledger nor re-derivable from the cluster",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.3,
+      "cost_if_late": 8,
+      "cost_to_test": 4,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045910-stageC",
+        "runs/20260910-064230-C5children2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "The ledger half is demonstrated end to end: a restarted coordinator reconstructed its full progress from internal_kv alone, resumed_from=40, and executed zero redundant units with no external storage. The other half is NOT demonstrated - the reference implementation does not do Serve-style two-source reconciliation against live cluster state, because its work units are stateless tasks with nothing to reconcile. A coordinator owning long-lived child actors would need it, and that is where C5 could still fail."
+        },
+        {
+          "at": "2026-09-10T06:43:20+00:00",
+          "note": "PROVEN, conditionally, and the condition is a concrete design requirement rather than a caveat: child actors must be named DETERMINISTICALLY from job scope plus index. Rig: a phase-1 driver creates K=6 detached named children and records only R=2 into the ledger before os._exit(1), so four crashes land in the dangerous create->crash->record window. NEGATIVE CONTROL (opaque uuid4 names, ledger the only link) fired exactly as required: 4 genuine orphans still alive plus 4 genuine duplicates with distinct new pids. With scope-prefixed names, both recovery paths were clean - explicit listing adopted all 6 with unchanged pids and created nothing, and get_if_exists=True re-acquired the 4 unrecorded children with unchanged pids and no listing pass at all. So reality is self-describing when names carry attribution, and the ledger is only needed for intent. IMPORTANT SCOPE NOTE discovered while fixing a void run: Ray REQUIRES detached actors to be named, so the fully unattributable case cannot even be constructed - every leaked child is at least discoverable, and what opaque naming loses is only the ability to tell WHOSE it is. Caveat for the design: get_if_exists=True returns the actor but does not report whether it adopted or created, so a coordinator that needs to distinguish 'resume this child's state' from 'initialize a fresh one' still needs the explicit path."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "uncertain",
+          "note": "The ledger half is demonstrated end to end: a restarted coordinator reconstructed its full progress from internal_kv alone, resumed_from=40, and executed zero redundant units with no external storage. The other half is NOT demonstrated - the reference implementation does not do Serve-style two-source reconciliation against live cluster state, because its work units are stateless tasks with nothing to reconcile. A coordinator owning long-lived child actors would need it, and that is where C5 could still fail."
+        },
+        {
+          "at": "2026-09-10T06:43:20+00:00",
+          "status": "proven",
+          "note": "PROVEN, conditionally, and the condition is a concrete design requirement rather than a caveat: child actors must be named DETERMINISTICALLY from job scope plus index. Rig: a phase-1 driver creates K=6 detached named children and records only R=2 into the ledger before os._exit(1), so four crashes land in the dangerous create->crash->record window. NEGATIVE CONTROL (opaque uuid4 names, ledger the only link) fired exactly as required: 4 genuine orphans still alive plus 4 genuine duplicates with distinct new pids. With scope-prefixed names, both recovery paths were clean - explicit listing adopted all 6 with unchanged pids and created nothing, and get_if_exists=True re-acquired the 4 unrecorded children with unchanged pids and no listing pass at all. So reality is self-describing when names carry attribution, and the ledger is only needed for intent. IMPORTANT SCOPE NOTE discovered while fixing a void run: Ray REQUIRES detached actors to be named, so the fully unattributable case cannot even be constructed - every leaked child is at least discoverable, and what opaque naming loses is only the ability to tell WHOSE it is. Caveat for the design: get_if_exists=True returns the actor but does not report whether it adopted or created, so a coordinator that needs to distinguish 'resume this child's state' from 'initialize a fresh one' still needs the explicit path."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "statement": "The M3 compaction protocol is crash-safe over a non-transactional put/del store: no crash sequence loses committed progress, and every orphan is removed by a subsequent instance's sweep",
+      "refutes_if": "a crash sequence exists that loses committed progress, or leaves garbage no future instance deletes",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.4,
+      "cost_if_late": 8,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-041339-C6"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:15:13+00:00",
+          "note": "16489 exhaustive traces over 3 workload shapes at crash/lost-ack budgets 1 and 2: zero INV-DUR, INV-PTR, INV-GC, INV-REDO or INV-LIVE violations. All 5 voiding controls red (NC4, NC5, NC7, NC11, NC12, NC1b). Scope: SEQUENTIAL instances only - crash-safety, not concurrency. C1 still owns the stale-writer case."
+        },
+        {
+          "at": "2026-09-10T05:52:46+00:00",
+          "note": "Depth extended: fault budget 3 exhaustive, 237,840 traces, clean (runs/20260910-054022-GAPS). Previously exhaustive only to budget 2."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:15:13+00:00",
+          "status": "proven",
+          "note": "16489 exhaustive traces over 3 workload shapes at crash/lost-ack budgets 1 and 2: zero INV-DUR, INV-PTR, INV-GC, INV-REDO or INV-LIVE violations. All 5 voiding controls red (NC4, NC5, NC7, NC11, NC12, NC1b). Scope: SEQUENTIAL instances only - crash-safety, not concurrency. C1 still owns the stale-writer case."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "statement": "GCS unavailability during head failover degrades to 'work continues, durability pauses' without deadlocking the coordinator or tripping the GCS health check",
+      "refutes_if": "a failover window causes coordinator deadlock, unbounded queue growth, or GCS NOT_SERVING",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.55,
+      "cost_if_late": 7,
+      "cost_to_test": 5,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-062918-C7inplace2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T02:59:48+00:00",
+          "note": "raised: ray#55996 (OPEN P1) shows DEADLINE_EXCEEDED is not retried by the GCS client and wedges the caller; grpc_util.h:127-133"
+        },
+        {
+          "at": "2026-09-10T05:04:08+00:00",
+          "note": "Blocked on infrastructure, not on ideas. Needs GCS to be restarted IN PLACE while the coordinator keeps running, which a single-node in-process ray.init cannot do - shutting it down takes the coordinator with it. Fidelity gap F3 already records that the stage-A rig models GCS restart as ops failing and then succeeding rather than as a process restart. Requires KubeRay or a multi-process cluster where the head can be killed independently."
+        },
+        {
+          "at": "2026-09-10T06:36:10+00:00",
+          "note": "REFUTED as stated, in the benign direction. The design assumed a GCS outage degrades to 'work continues, durability pauses'. It does not: work pauses too. With gcs_server SIGKILLed in place (raylets and coordinator untouched), executed_this_incarnation froze at 48 and ledger writes at 49 for the whole 35s outage, then rose to 327/328 after gcs_server was re-exec'd with its captured argv. The cause is structural, not incidental: commit() is a synchronous internal_kv put on the unit loop's critical path, so the loop can advance at most W-1 units past a blocked commit and then stops. The measurement is trustworthy because the two signals were separated - progress() touches no KV and kept answering (1 sampler error in the whole run), while info() went red with GetTimeoutError exactly during the outage. So the flat line is a measurement of 'not working', not of a blind sampler. Both controls fired: the nokill arm rose monotonically throughout (exec 5->400, writes 49->401) and NC-sampler saw KV go red. GOOD NEWS on the dangerous half: ray#55996 did NOT reproduce. The blocked put recovered on its own once GCS returned; no wedge, no restart (NumRestarts=0, epoch stayed 1), 336 units committed contiguous with no duplicates."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:04:08+00:00",
+          "status": "blocked",
+          "note": "Blocked on infrastructure, not on ideas. Needs GCS to be restarted IN PLACE while the coordinator keeps running, which a single-node in-process ray.init cannot do - shutting it down takes the coordinator with it. Fidelity gap F3 already records that the stage-A rig models GCS restart as ops failing and then succeeding rather than as a process restart. Requires KubeRay or a multi-process cluster where the head can be killed independently."
+        },
+        {
+          "at": "2026-09-10T06:36:10+00:00",
+          "status": "refuted",
+          "note": "REFUTED as stated, in the benign direction. The design assumed a GCS outage degrades to 'work continues, durability pauses'. It does not: work pauses too. With gcs_server SIGKILLed in place (raylets and coordinator untouched), executed_this_incarnation froze at 48 and ledger writes at 49 for the whole 35s outage, then rose to 327/328 after gcs_server was re-exec'd with its captured argv. The cause is structural, not incidental: commit() is a synchronous internal_kv put on the unit loop's critical path, so the loop can advance at most W-1 units past a blocked commit and then stops. The measurement is trustworthy because the two signals were separated - progress() touches no KV and kept answering (1 sampler error in the whole run), while info() went red with GetTimeoutError exactly during the outage. So the flat line is a measurement of 'not working', not of a blind sampler. Both controls fired: the nokill arm rose monotonically throughout (exec 5->400, writes 49->401) and NC-sampler saw KV go red. GOOD NEWS on the dangerous half: ray#55996 did NOT reproduce. The blocked put recovered on its own once GCS returned; no wedge, no restart (NumRestarts=0, epoch stayed 1), 336 units committed contiguous with no duplicates."
+        }
+      ],
+      "superseded_by": "C31",
+      "supersession_note": "Refuted benignly - work does not continue during a GCS outage because commit is synchronous. That opened a fork rather than a defect. The async branch was built and measured across C26/C27/C30, converging on C31 (proven). The recommendation remains the SYNC path, now backed by C28 and C29."
+    },
+    {
+      "id": "C8",
+      "statement": "The reference implementation needs zero Ray core patches on 2.57+",
+      "refutes_if": "any step requires behaviour the private APIs do not expose",
+      "goal": "G4",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.15,
+      "cost_if_late": 6,
+      "cost_to_test": 3,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045910-stageC"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:00:05+00:00",
+          "note": "The full R4 reference implementation (M1 fencing with read-back, M1b/M1c read orders, M2 coalescing, M3 compaction, per-incarnation ids, session scoping) runs on a stock pip install of ray 2.58.0 with gcs_storage=rocksdb and ZERO core patches. One API-surface correction to the design doc: on 2.58 internal_kv lives at ray/experimental/internal_kv.py, not ray/_private/."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:00:05+00:00",
+          "status": "proven",
+          "note": "The full R4 reference implementation (M1 fencing with read-back, M1b/M1c read orders, M2 coalescing, M3 compaction, per-incarnation ids, session scoping) runs on a stock pip install of ray 2.58.0 with gcs_storage=rocksdb and ZERO core patches. One API-surface correction to the design doc: on 2.58 internal_kv lives at ray/experimental/internal_kv.py, not ray/_private/."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "statement": "Resume boundary is intra-cluster: the design survives driver and head loss but not RayCluster replacement, and KubeRay's RayJob retry path cannot be configured to preserve the cluster",
+      "refutes_if": "KubeRay can be configured to retry the driver without recreating the cluster (refutation is the good outcome here)",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.35,
+      "cost_if_late": 6,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-050300-C9-kuberay"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:04:07+00:00",
+          "note": "REFUTED, and this claim was written so refutation is the GOOD outcome. KubeRay's SubmitterConfig.BackoffLimit in SidecarMode with SidecarSubmitterRestart is 'the maximum container restart count' - the submitter runs as a container in the head pod and is restarted in place, so the DRIVER dies and the RayCluster does not. Separately, spec.clusterSelector targets a pre-existing long-lived RayCluster. R4's resume boundary is therefore wider than the parent doc assumed, and the KubeRay-side lifecycle R4 needs already exists. RayJob.spec.backoffLimit does still recreate the cluster ('Each retry creates a new RayCluster'), so that clause of C9 stands."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:04:07+00:00",
+          "status": "refuted",
+          "note": "REFUTED, and this claim was written so refutation is the GOOD outcome. KubeRay's SubmitterConfig.BackoffLimit in SidecarMode with SidecarSubmitterRestart is 'the maximum container restart count' - the submitter runs as a container in the head pod and is restarted in place, so the DRIVER dies and the RayCluster does not. Separately, spec.clusterSelector targets a pre-existing long-lived RayCluster. R4's resume boundary is therefore wider than the parent doc assumed, and the KubeRay-side lifecycle R4 needs already exists. RayJob.spec.backoffLimit does still recreate the cluster ('Each retry creates a new RayCluster'), so that clause of C9 stands."
+        }
+      ],
+      "superseded_by": null,
+      "supersession_note": "Refuted, and this is GOOD NEWS: KubeRay's SidecarMode restarts the submitter without replacing the cluster, so the resume boundary is wider than the design assumed. No repair needed."
+    },
+    {
+      "id": "C10",
+      "statement": "At-least-once commit semantics are acceptable: the realistic target workloads express work as idempotent units",
+      "refutes_if": "target workloads require exactly-once visible effects",
+      "goal": "G2",
+      "tier": 3,
+      "load_bearing": false,
+      "p_wrong": 0.3,
+      "cost_if_late": 9,
+      "cost_to_test": 8,
+      "status": "accepted_risk",
+      "evidence": [],
+      "notes": [
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "Not settleable by a rig; it is a statement about target workloads. Accepted on the design's own terms: R4's non-goals already require work to be expressed as re-enumerable idempotent units, and stage C measured the redo at zero for a clean resume and bounded by W under crash (INV-REDO across ~16k traces). The risk is accepted, not resolved - if a user brings non-idempotent units, R4 is the wrong tool and should say so in its documentation rather than degrade quietly."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "accepted_risk",
+          "note": "Not settleable by a rig; it is a statement about target workloads. Accepted on the design's own terms: R4's non-goals already require work to be expressed as re-enumerable idempotent units, and stage C measured the redo at zero for a clean resume and bounded by W under crash (INV-REDO across ~16k traces). The risk is accepted, not resolved - if a user brings non-idempotent units, R4 is the wrong tool and should say so in its documentation rather than degrade quietly."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "statement": "Depending on the private internal_kv API is an acceptable risk given Serve, Jobs, the autoscaler and the dashboard already do",
+      "refutes_if": "upstream changes internal_kv semantics in a way that breaks dependents",
+      "goal": "G4",
+      "tier": 2,
+      "load_bearing": false,
+      "p_wrong": 0.2,
+      "cost_if_late": 5,
+      "cost_to_test": 9,
+      "status": "accepted_risk",
+      "evidence": [],
+      "notes": [
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "Accepted. internal_kv is private, and Serve, Ray Jobs, the autoscaler and the dashboard all depend on it, so the blast radius of a breaking change is already enormous and R4 does not enlarge it. Stage C confirmed the API is present and behaves as modelled on 2.58, with one correction: the module moved to ray/experimental/internal_kv.py. That move is itself the evidence for the risk being real but survivable - the API changed location and not semantics."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:44:54+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "accepted_risk",
+          "note": "Accepted. internal_kv is private, and Serve, Ray Jobs, the autoscaler and the dashboard all depend on it, so the blast radius of a breaking change is already enormous and R4 does not enlarge it. Stage C confirmed the API is present and behaves as modelled on 2.58, with one correction: the module moved to ray/experimental/internal_kv.py. That move is itself the evidence for the risk being real but survivable - the API changed location and not semantics."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "statement": "Scoping ledger keys by session_name prevents a new cluster that reuses an existing gcs_storage_path from adopting a stale ledger, given the KV DB's cluster-id guard is disabled",
+      "refutes_if": "session_name is not stable across head restarts, or a stale ledger from a prior cluster can still be adopted despite the scoping",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.25,
+      "cost_if_late": 9,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-044833-C12",
+        "runs/20260910-045910-stageC"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "note": "HALF the claim is settled, and it is recorded as uncertain rather than proven because of the other half. Settled by the rig: with session scoping, a new cluster on a reused storage path recovers nothing, re-executes every unit and destroys none of the prior cluster's keys. NC9 (no scoping) is red on both counts and its failure mode is the dangerous kind - the job executes ZERO units and reports success in milliseconds. NOT settled here: whether session_name is stable across a head restart. That is a property of Ray, evidenced only by code reading (node.py:1607-1630), and it needs stage C. Split out as C21."
+        },
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "note": "REFUTED by the same fact that proved C21. Because session_name is persisted in the storage path, a NEW cluster pointed at a reused path inherits it, and the prior ledger is therefore visible under exactly the prefix the new cluster will use. Session scoping is a STORAGE-PATH identity, not a cluster identity, so it cannot distinguish 'my cluster restarted' from 'a different cluster on my old PV' - which is the case it was introduced to defend against."
+        },
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "note": "Refuted and now FIXED by C24, which replaces session_name with an orchestrator-injected key. The refutation stays on the record: it is the evidence that the doc's original mitigation was self-defeating."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:59:48+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "status": "uncertain",
+          "note": "HALF the claim is settled, and it is recorded as uncertain rather than proven because of the other half. Settled by the rig: with session scoping, a new cluster on a reused storage path recovers nothing, re-executes every unit and destroys none of the prior cluster's keys. NC9 (no scoping) is red on both counts and its failure mode is the dangerous kind - the job executes ZERO units and reports success in milliseconds. NOT settled here: whether session_name is stable across a head restart. That is a property of Ray, evidenced only by code reading (node.py:1607-1630), and it needs stage C. Split out as C21."
+        },
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "status": "refuted",
+          "note": "REFUTED by the same fact that proved C21. Because session_name is persisted in the storage path, a NEW cluster pointed at a reused path inherits it, and the prior ledger is therefore visible under exactly the prefix the new cluster will use. Session scoping is a STORAGE-PATH identity, not a cluster identity, so it cannot distinguish 'my cluster restarted' from 'a different cluster on my old PV' - which is the case it was introduced to defend against."
+        }
+      ],
+      "superseded_by": "C24",
+      "supersession_note": "Session-name scoping was refuted (session_name is a storage-path identity, not a cluster identity). The repair - an orchestrator-INJECTED scope key, RayCluster metadata.uid - is C24, proven in both directions. C23 separately proved that NO in-cluster identity can work, so the injection is necessary rather than merely convenient."
+    },
+    {
+      "id": "C13",
+      "statement": "The coordinator constructor is idempotent against the ledger, so a transient duplicate arising from the RESTARTING-at-GCS-death window cannot corrupt or advance committed progress",
+      "refutes_if": "any constructor-level interleaving advances the ledger or double-commits a unit without the second instance losing its epoch claim",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.45,
+      "cost_if_late": 9,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-043934-C13"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:15:13+00:00",
+          "note": "C6 showed the M3 orderings are robust to crashes in the sequential model, and that the only crash-ONLY failure mode is redo. That makes constructor idempotence a concurrency question rather than a crash question, which is what C13 actually asks."
+        },
+        {
+          "at": "2026-09-10T04:28:24+00:00",
+          "note": "Raised, not lowered, by iteration 2: the C16 refutation shows the dangerous concurrent behaviour is not what the design expected, so constructor idempotence deserves its own look rather than being assumed to follow from fencing."
+        },
+        {
+          "at": "2026-09-10T04:40:43+00:00",
+          "note": "Zero INV-ONE with per-incarnation ids across 4950 two-instance and 3000 three-instance traces, including spawn points where both duplicates are still inside __init__. CONDITIONAL, and the condition is sharp: NC14, in which all instances share one id (as an actor-derived id would), produces 62 INV-ONE violations with epoch 1 claimed twice by the same identity. If an implementer uses ray.get_runtime_context().get_actor_id() - stable, available, and the natural choice - M1's fencing silently stops working for exactly the failure mode it exists to handle."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T02:59:48+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:40:43+00:00",
+          "status": "proven",
+          "note": "Zero INV-ONE with per-incarnation ids across 4950 two-instance and 3000 three-instance traces, including spawn points where both duplicates are still inside __init__. CONDITIONAL, and the condition is sharp: NC14, in which all instances share one id (as an actor-derived id would), produces 62 INV-ONE violations with epoch 1 claimed twice by the same identity. If an implementer uses ray.get_runtime_context().get_actor_id() - stable, available, and the natural choice - M1's fencing silently stops working for exactly the failure mode it exists to handle."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "statement": "For distributed-training-shaped workloads R4's ledger adds negligible value over plain application checkpointing, because the resume unit is already an epoch boundary whose payload is a multi-GB checkpoint that must go to external storage regardless",
+      "refutes_if": "a training-shaped workload exists where a control-plane ledger materially reduces redo work beyond what application checkpointing already achieves",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.25,
+      "cost_if_late": 5,
+      "cost_to_test": 3,
+      "status": "accepted_risk",
+      "evidence": [],
+      "notes": [
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "Accepted without test, as the POC scoping decision recorded on 2026-09-10 intended. Stage B's band measurement supports it indirectly: distributed training sits at the extreme low-completion-rate end where W collapses to 1 and the ledger degenerates to a single monotonic watermark, so it is the region where R4 provably adds least. Refutable at any time by a counterexample workload; no such workload was found."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T03:45:48+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "accepted_risk",
+          "note": "Accepted without test, as the POC scoping decision recorded on 2026-09-10 intended. Stage B's band measurement supports it indirectly: distributed training sits at the extreme low-completion-rate end where W collapses to 1 and the ledger degenerates to a single monotonic watermark, so it is the region where R4 provably adds least. Refutable at any time by a counterexample workload; no such workload was found."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "statement": "The uniqueness of compaction base keys (base@n rather than a single overwritten base) is load-bearing ONLY against a concurrent stale writer, not against crashes",
+      "refutes_if": "a crash-only single-writer interleaving exists in which an in-place base loses committed progress, OR a concurrent interleaving exists in which base@n uniqueness fails to prevent a loss that in-place would suffer",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.15,
+      "cost_if_late": 3,
+      "cost_to_test": 1,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-044833-C12"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:15:21+00:00",
+          "note": "Raised by NC6 going GREEN across 6513 traces in runs/20260910-041339-C6, against the design doc's recommendation of unique base keys. If confirmed, the doc's justification for base@n is wrong even though the mechanism is right."
+        },
+        {
+          "at": "2026-09-10T04:46:09+00:00",
+          "note": "Iteration 5 makes C15 easy: the reader is now robust to any concurrent deleter, so base@n uniqueness is not doing the work the design doc credited it with. Directly testable with the existing NC6 flag under the concurrent driver."
+        },
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "note": "REFUTED in the direction that matters: in-place base overwriting is clean under sequential crashes (6585 traces, confirming iteration 1) AND under 2 and 3 concurrent instances, with the comparison arm clean. So base@n uniqueness is not load-bearing against crashes OR concurrency. The design doc presents it as a safety requirement; it is a preference. Reason it is still worth having: it makes compaction auditable and a torn read detectable. Reason it is not required: the ledger state is grow-only, so an in-place base is only ever overwritten with a superset, and the one case unique keys would protect against - base@p vanishing between the pointer read and the base read - cannot arise when only the sweep deletes it, which the C20 ascending scan already handles."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:15:21+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "status": "refuted",
+          "note": "REFUTED in the direction that matters: in-place base overwriting is clean under sequential crashes (6585 traces, confirming iteration 1) AND under 2 and 3 concurrent instances, with the comparison arm clean. So base@n uniqueness is not load-bearing against crashes OR concurrency. The design doc presents it as a safety requirement; it is a preference. Reason it is still worth having: it makes compaction auditable and a torn read detectable. Reason it is not required: the ledger state is grow-only, so an in-place base is only ever overwritten with a superset, and the one case unique keys would protect against - base@p vanishing between the pointer read and the base read - cannot arise when only the sweep deletes it, which the C20 ascending scan already handles."
+        }
+      ],
+      "superseded_by": null,
+      "supersession_note": "Refuted and not load-bearing: unique compaction base keys are not required for correctness. Recorded so the design does not carry an unnecessary constraint."
+    },
+    {
+      "id": "C16",
+      "statement": "Epoch scoping is SUFFICIENT to make a fenced coordinator harmless: a coordinator still running after a higher epoch has been claimed cannot cause the new epoch to lose committed progress",
+      "refutes_if": "an interleaving exists in which a unit acked by an instance that still held the highest claimed epoch is not recoverable after a higher epoch completes its carry-forward",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.8,
+      "cost_if_late": 10,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-042707-C1"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:24:42+00:00",
+          "note": "Split out of C1 during iteration 2 pre-registration. C1 protects against a stale writer CORRUPTING the new epoch, which the design doc argues correctly. C16 is the thing the doc conflated with it: a stale writer DESTROYING the old epoch while the new one reads it."
+        },
+        {
+          "at": "2026-09-10T04:28:24+00:00",
+          "note": "Refuted by 627 INV-DUR violations. Mechanism exactly as pre-registered: a fenced coordinator keeps compacting ITS OWN epoch, and compaction's delete step removes segments while the new epoch's carry-forward is midway through reading them. The new epoch carries forward a base from before the compaction plus segments that have since been deleted, loses every unit in between, and then sweeps the old epoch, destroying the evidence."
+        },
+        {
+          "at": "2026-09-10T04:34:36+00:00",
+          "note": "Superseded by C17. Kept refuted: the refutation is the evidence that the reader had to be fixed, and burying it would make the design doc's M1 argument look sound when it was not."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:24:42+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:28:24+00:00",
+          "status": "refuted",
+          "note": "Refuted by 627 INV-DUR violations. Mechanism exactly as pre-registered: a fenced coordinator keeps compacting ITS OWN epoch, and compaction's delete step removes segments while the new epoch's carry-forward is midway through reading them. The new epoch carries forward a base from before the compaction plus segments that have since been deleted, loses every unit in between, and then sweeps the old epoch, destroying the evidence."
+        }
+      ],
+      "superseded_by": "C17",
+      "supersession_note": "Epoch scoping alone was refuted: it protects the WRITER, not the READER, so a fenced coordinator keeps compacting and deletes segments a new epoch is mid-read of. The repair - carry-forward reads segments before base_ptr, with bounded retry (M1b) - is C17, proven over 51,144 traces and strictly dominating."
+    },
+    {
+      "id": "C17",
+      "statement": "C16 restated after the fix: with the carry-forward read reordered (segments first, base_ptr last, bounded retry when base@ptr has vanished) a fenced coordinator cannot cause the new epoch to lose committed progress",
+      "refutes_if": "an interleaving exists in which a unit acked by an instance that still held the highest claimed epoch is not recoverable after a higher epoch completes its carry-forward",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.25,
+      "cost_if_late": 10,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-043110-C16"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:34:36+00:00",
+          "note": "Zero INV-DUR across 51144 windowed-exhaustive traces (windows 4, 6 and 8 - 8 is deeper than the window at which the refutation appeared) plus 5000 fuzz traces over 5 seeds, coverage 49393. NC13 (the pre-fix pointer-first order) still red on INV-DUR, so the fix is measured against the exact code that failed. C6 sequential regression clean at 7620 traces. Blind: the fix and the argument for it were committed in experiments/C1.md before the refutation was analysed."
+        },
+        {
+          "at": "2026-09-10T04:40:44+00:00",
+          "note": "Scope narrowed by C19: proven for TWO concurrent instances. The third instance introduces a cross-epoch race the within-epoch fix does not address."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:34:35+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:34:36+00:00",
+          "status": "proven",
+          "note": "Zero INV-DUR across 51144 windowed-exhaustive traces (windows 4, 6 and 8 - 8 is deeper than the window at which the refutation appeared) plus 5000 fuzz traces over 5 seeds, coverage 49393. NC13 (the pre-fix pointer-first order) still red on INV-DUR, so the fix is measured against the exact code that failed. C6 sequential regression clean at 7620 traces. Blind: the fix and the argument for it were committed in experiments/C1.md before the refutation was analysed."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "statement": "A fenced coordinator telling its driver that work is committed is acceptable, because at-least-once already holds (C10) and the work is redone by the new epoch",
+      "refutes_if": "a target workload exists in which an ack is load-bearing beyond redo - it releases a lock, reports completion to an external system, or advances an offset - such that a false ack from a fenced coordinator is a correctness bug and not merely wasted work",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.5,
+      "cost_if_late": 7,
+      "cost_to_test": 2,
+      "status": "accepted_risk",
+      "evidence": [],
+      "notes": [
+        {
+          "at": "2026-09-10T04:34:36+00:00",
+          "note": "INV-FENCE-ACK fired in 38826 of 51144 traces in runs/20260910-043110-C16 and is UNFIXED by the C17 reader fix, which was predicted. The cheap mitigation is a read-only fence check on the commit path: a get costs ~1us against a 3.81ms fsync, so it is nearly free. It is TOCTOU and narrows rather than closes the window, which is exactly why this is a claim about ACCEPTABILITY rather than a claim about correctness."
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "Accepted as a documented limitation rather than resolved. INV-FENCE-ACK fired in 38826 of 51144 traces and is untouched by the C17/C20 fixes. The mitigation - a read-only fence check on the commit path, ~1us against a 3.81ms fsync - narrows but cannot close a TOCTOU window. Accepted because at-least-once already holds (C10) and the work is redone; NOT acceptable if an ack releases a lock, advances an offset, or reports completion outside the cluster, and R4's documentation must say so."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:34:36+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "accepted_risk",
+          "note": "Accepted as a documented limitation rather than resolved. INV-FENCE-ACK fired in 38826 of 51144 traces and is untouched by the C17/C20 fixes. The mitigation - a read-only fence check on the commit path, ~1us against a 3.81ms fsync - narrows but cannot close a TOCTOU window. Accepted because at-least-once already holds (C10) and the work is redone; NOT acceptable if an ack releases a lock, advances an offset, or reports completion outside the cluster, and R4's documentation must say so."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "statement": "C17's result - that the reordered carry-forward read protects the new epoch from a fenced writer - extends to more than two concurrent instances",
+      "refutes_if": "with three concurrent instances, a unit acked by an instance holding the top epoch is not recoverable after a higher epoch carries forward",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.85,
+      "cost_if_late": 10,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-043934-C13"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:39:06+00:00",
+          "note": "Raised during iteration 4 rig bring-up when the driver was generalised from 2 to N instances. Predicted mechanism: the descending epoch scan is itself non-atomic, so a reader can find epoch m unreadable (not yet published), fall through to epoch e, and find e deleted by m's sweep in the meantime."
+        },
+        {
+          "at": "2026-09-10T04:40:44+00:00",
+          "note": "5448 INV-DUR violations with three concurrent instances, against zero in the two-instance regression on the same code, so this is the third instance and not the refactor. Mechanism as pre-registered: the descending epoch scan is non-atomic across epochs. C reads epoch 2's pointer before B has published it, falls through to epoch 1, and by the time it reads epoch 1 that epoch has been swept by B. C carries forward an empty state."
+        },
+        {
+          "at": "2026-09-10T04:46:09+00:00",
+          "note": "Superseded by C20. Kept refuted."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:39:06+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:40:44+00:00",
+          "status": "refuted",
+          "note": "5448 INV-DUR violations with three concurrent instances, against zero in the two-instance regression on the same code, so this is the third instance and not the refactor. Mechanism as pre-registered: the descending epoch scan is non-atomic across epochs. C reads epoch 2's pointer before B has published it, falls through to epoch 1, and by the time it reads epoch 1 that epoch has been swept by B. C carries forward an empty state."
+        }
+      ],
+      "superseded_by": "C20",
+      "supersession_note": "The same bug one level up, across epochs: the startup sweep deletes a whole epoch unconditionally. Needed a THIRD coordinator to expose (5,448 violations at 3 instances, zero at 2). The repair - carry-forward scans epochs ASCENDING, highest readable wins (M1c) - is C20, proven at 3 and 4 instances."
+    },
+    {
+      "id": "C20",
+      "statement": "With the carry-forward scanning epochs ascending (lowest first, highest readable wins) on top of the C17 within-epoch ordering, N concurrent coordinator instances cannot cause the new epoch to lose committed progress",
+      "refutes_if": "any interleaving in which a unit acked by an instance holding the top epoch is not recoverable after a higher epoch carries forward",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.2,
+      "cost_if_late": 10,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-044309-C20"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:46:09+00:00",
+          "note": "Zero INV-DUR at THREE and FOUR concurrent instances: 25010 windowed-exhaustive traces at windows 4, 5 and 6 plus 8000 fuzz traces over 5 seeds, essentially all of them reaching a live fenced instance. NC15 (the pre-fix descending scan) still red at 1146. C6 sequential and two-instance regressions clean. Every axis pushed past where the refutation appeared, including the fourth instance, which was there to attack fidelity gap F7 rather than to pad the sweep."
+        },
+        {
+          "at": "2026-09-10T05:52:46+00:00",
+          "note": "Envelope widened by runs/20260910-054022-GAPS: still clean at stale tails up to 64 (cap instrumented and demonstrably non-binding by 38 ops) and at 5 and 6 concurrent incarnations, with NC15 red at both. Sequential crash enumeration also extended to fault budget 3 -- 237,840 traces, clean."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:46:09+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:46:09+00:00",
+          "status": "proven",
+          "note": "Zero INV-DUR at THREE and FOUR concurrent instances: 25010 windowed-exhaustive traces at windows 4, 5 and 6 plus 8000 fuzz traces over 5 seeds, essentially all of them reaching a live fenced instance. NC15 (the pre-fix descending scan) still red at 1146. C6 sequential and two-instance regressions clean. Every axis pushed past where the refutation appeared, including the fourth instance, which was there to attack fidelity gap F7 rather than to pad the sweep."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "statement": "session_name is stable across a head restart, so a ledger scoped by it is still found by the coordinator that restarts into the same cluster",
+      "refutes_if": "a head restart changes session_name, which would make the C12 scoping self-defeating: it would protect against a foreign cluster by hiding the ledger from the coordinator's own restart",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.2,
+      "cost_if_late": 9,
+      "cost_to_test": 4,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045910-stageC",
+        "runs/20260910-055803-headfail"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "note": "Blocked on stage C: needs a real Ray head restart. Code reading (node.py:1607-1630) says session_name is persisted alongside the marker file that solves the RocksDB bootstrap problem, which is why p_wrong is low - but code reading is not evidence of behaviour and this claim is the hinge on which C12 turns."
+        },
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "note": "session_name is written to a file INSIDE gcs_storage_path and a cluster started against that path adopts it. Old and new sessions were byte-identical across a full ray.shutdown/ray.init cycle. So the name is stable by construction - it is on disk, not in memory."
+        },
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "note": "Head-restart half now settled on a REAL multi-process cluster: session_name was unchanged across killing gcs_server and restarting the head on the same storage path. C21 is fully proven."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:49:22+00:00",
+          "status": "blocked",
+          "note": "Blocked on stage C: needs a real Ray head restart. Code reading (node.py:1607-1630) says session_name is persisted alongside the marker file that solves the RocksDB bootstrap problem, which is why p_wrong is low - but code reading is not evidence of behaviour and this claim is the hinge on which C12 turns."
+        },
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "status": "proven",
+          "note": "session_name is written to a file INSIDE gcs_storage_path and a cluster started against that path adopts it. Old and new sessions were byte-identical across a full ray.shutdown/ray.init cycle. So the name is stable by construction - it is on disk, not in memory."
+        },
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "status": "proven",
+          "note": "Head-restart half now settled on a REAL multi-process cluster: session_name was unchanged across killing gcs_server and restarting the head on the same storage path. C21 is fully proven."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "statement": "The ledger's durable-write count is bounded by ceil(N/W) + O(1), i.e. compaction adds only an additive constant",
+      "refutes_if": "the measured fsync count exceeds ceil(N/W) by a multiplicative factor rather than an additive constant",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.1,
+      "cost_if_late": 6,
+      "cost_to_test": 1,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-045229-C2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "note": "Split out of C2, whose refutation condition never covered this clause. Measured overhead is MULTIPLICATIVE: mean x2.79, range x2.17-x3.80 over 36 configurations where compaction actually runs, against the frozen prediction of 2+3/K with a maximum relative error of 8.6%. The design doc's writes/sec = completion_rate/W understates the cost by about 2.8x. Its conclusions survive because they had orders of magnitude of headroom, but the formula is wrong and the band is correspondingly narrower."
+        },
+        {
+          "at": "2026-09-10T05:04:08+00:00",
+          "note": "Refuted and superseded by the measured constant: cost is ceil(N/W) x 2.79, not ceil(N/W) + O(1). Nothing further to test."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T04:54:04+00:00",
+          "status": "refuted",
+          "note": "Split out of C2, whose refutation condition never covered this clause. Measured overhead is MULTIPLICATIVE: mean x2.79, range x2.17-x3.80 over 36 configurations where compaction actually runs, against the frozen prediction of 2+3/K with a maximum relative error of 8.6%. The design doc's writes/sec = completion_rate/W understates the cost by about 2.8x. Its conclusions survive because they had orders of magnitude of headroom, but the formula is wrong and the band is correspondingly narrower."
+        }
+      ],
+      "superseded_by": "C2",
+      "supersession_note": "Split out of C2 as a false clause and refuted on its own terms: overhead is multiplicative (x2.79), not additive. C2 itself is proven; C22 exists only to record that the additive form was tested and is wrong."
+    },
+    {
+      "id": "C23",
+      "statement": "A ledger scope key that distinguishes cluster restart from cluster replacement must be injected by the orchestrator (KubeRay RayCluster UID or RayJob submissionId), because no identity Ray can self-derive survives a reused storage path",
+      "refutes_if": "an in-cluster identity exists that is stable across a head restart AND changes when a new cluster is created against a reused gcs_storage_path",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.35,
+      "cost_if_late": 9,
+      "cost_to_test": 3,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-045910-stageC",
+        "runs/20260910-055447-C23a"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "note": "Raised by the C12 refutation. Both cases look identical from inside the cluster - same disk, same session_name, same keys - so the distinction has to come from outside. Ray's own cluster-id marker is the obvious candidate and is likely inherited from the path for the same reason, which is why C23 is a claim rather than an assumption. Note the design doc already observed that InitKVManager passes expected_cluster_id='' so the KV DB's guard is disabled; the tables DB does validate, which suggests the id is path-derived there too."
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "note": "Strongly supported but not settled, because it is a universal negative that was spot-checked rather than exhausted. Measured: session_name is path-derived (identical across a same-path restart, different on a fresh path), and RuntimeContext exposes no cluster_id in Python at all on 2.58. So neither of the two obvious candidates distinguishes 'my cluster restarted' from 'a different cluster on my old PV'. Concrete fix path: the RayCluster's k8s metadata.uid via the downward API, which is unique per RayCluster and injected from outside. RayJob.spec.jobId is user-settable and stable, which makes it the right key for identifying the JOB but not for detecting cluster replacement."
+        },
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "note": "SUPPORTED as strongly as a universal negative can be, and by an argument rather than only a measurement. Nine in-cluster identity candidates enumerated on Ray 2.58: session_name, session_dir, gcs_address, node_id, runtime-context cluster id, GcsClient cluster_id, RAY_CLUSTER_NAME, the storage-path marker file and the storage dir listing. ZERO are usable. The table splits cleanly: the seven path- or config-derived candidates survive a head restart and therefore cannot detect replacement; gcs_address and node_id detect everything and survive nothing. The reason is structural, not incidental - a head restart and a replacement on a reused PV are the SAME physical event from inside the cluster (a process starting against an existing path), so no function of in-cluster state can return different values for them."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T05:00:06+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:03:34+00:00",
+          "status": "uncertain",
+          "note": "Strongly supported but not settled, because it is a universal negative that was spot-checked rather than exhausted. Measured: session_name is path-derived (identical across a same-path restart, different on a fresh path), and RuntimeContext exposes no cluster_id in Python at all on 2.58. So neither of the two obvious candidates distinguishes 'my cluster restarted' from 'a different cluster on my old PV'. Concrete fix path: the RayCluster's k8s metadata.uid via the downward API, which is unique per RayCluster and injected from outside. RayJob.spec.jobId is user-settable and stable, which makes it the right key for identifying the JOB but not for detecting cluster replacement."
+        },
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "status": "proven",
+          "note": "SUPPORTED as strongly as a universal negative can be, and by an argument rather than only a measurement. Nine in-cluster identity candidates enumerated on Ray 2.58: session_name, session_dir, gcs_address, node_id, runtime-context cluster id, GcsClient cluster_id, RAY_CLUSTER_NAME, the storage-path marker file and the storage dir listing. ZERO are usable. The table splits cleanly: the seven path- or config-derived candidates survive a head restart and therefore cannot detect replacement; gcs_address and node_id detect everything and survive nothing. The reason is structural, not incidental - a head restart and a replacement on a reused PV are the SAME physical event from inside the cluster (a process starting against an existing path), so no function of in-cluster state can return different values for them."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "statement": "Scoping the ledger by an ORCHESTRATOR-INJECTED key (RayCluster metadata.uid via the downward API) fixes C12 in both directions: the same uid resumes across a restart, a different uid on the same disk neither adopts nor destroys the prior ledger",
+      "refutes_if": "the same injected uid fails to resume across a restart (total loss, worse than the original bug), or a different uid adopts or deletes the prior cluster's ledger",
+      "goal": "G2",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.15,
+      "cost_if_late": 9,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-055536-C23b"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "note": "Verified in BOTH directions on real Ray, because checking only one is how C12 passed review. Same uid across a same-disk restart: claimed epoch 2, resumed_from=10, executed 0 units. Different uid on the same disk: claimed epoch 1 in its own namespace, resumed_from=0, executed all 10 units, and left the prior cluster's 3-key ledger intact. The key is ~5 lines and comes from outside the cluster, which probe_identity.py shows is the only place it can come from."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T05:56:13+00:00",
+          "status": "proven",
+          "note": "Verified in BOTH directions on real Ray, because checking only one is how C12 passed review. Same uid across a same-disk restart: claimed epoch 2, resumed_from=10, executed 0 units. Different uid on the same disk: claimed epoch 1 in its own namespace, resumed_from=0, executed all 10 units, and left the prior cluster's 3-key ledger intact. The key is ~5 lines and comes from outside the cluster, which probe_identity.py shows is the only place it can come from."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "statement": "A detached coordinator must use soft or no node affinity: hard NodeAffinitySchedulingStrategy(soft=False) makes it permanently unschedulable after the pinned node disappears, even though its name, its ledger and its epoch all survive",
+      "refutes_if": "a hard-pinned coordinator is successfully rescheduled after its node is replaced, or a soft-pinned one fails to be",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.1,
+      "cost_if_late": 8,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-061604-C25pin"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "note": "Raised by runs/20260910-055803-headfail. Directly answers open question 4 in design.md (where should the coordinator run): off-head is right, but the pinning must be SOFT. Note Serve and Train v2 both pin to the head with resources={HEAD_NODE_RESOURCE_NAME: 0.001}, which is a resource request rather than a hard node id, and therefore does not have this failure mode."
+        },
+        {
+          "at": "2026-09-10T06:20:42+00:00",
+          "note": "Proven two-sidedly in one run with three arms differing by exactly one line. HARD (negative control) failed again with ActorUnschedulableError - reproducible, so iteration 12 was not flaky. SOFT and NONE both reattached, and the reattach was a genuine restart, not a survivor: new pid, epoch bumped 1->2, resumed_from=60, executed_this_incarnation=0. So the coordinator was rescheduled onto a different node after its own node was destroyed, re-ran __init__, claimed a fresh epoch and recovered all 60 committed units from the ledger with zero redundant work. The failure in iteration 12 was placement, not durability. Design consequence: the coordinator must NOT use NodeAffinitySchedulingStrategy(soft=False); plain placement is sufficient and is the simpler recommendation."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T06:01:34+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T06:20:42+00:00",
+          "status": "proven",
+          "note": "Proven two-sidedly in one run with three arms differing by exactly one line. HARD (negative control) failed again with ActorUnschedulableError - reproducible, so iteration 12 was not flaky. SOFT and NONE both reattached, and the reattach was a genuine restart, not a survivor: new pid, epoch bumped 1->2, resumed_from=60, executed_this_incarnation=0. So the coordinator was rescheduled onto a different node after its own node was destroyed, re-ran __init__, claimed a fresh epoch and recovered all 60 committed units from the ledger with zero redundant work. The failure in iteration 12 was placement, not durability. Design consequence: the coordinator must NOT use NodeAffinitySchedulingStrategy(soft=False); plain placement is sufficient and is the simpler recommendation."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "statement": "Moving the ledger commit off the unit loop's critical path (an async writer with a bounded queue) lets work continue through a GCS outage, at the cost of a redo window bounded by the queue depth rather than by W",
+      "refutes_if": "the async writer does not increase completed work during an outage, or it widens the redo window beyond the queue bound, or it reorders commits so the ledger is no longer contiguous",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.4,
+      "cost_if_late": 5,
+      "cost_to_test": 3,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-070449-C26async3"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T07:17:18+00:00",
+          "note": "REFUTED on clause 2, its own stated terms. Clauses 1 and 3 held: with Q=8 batches the coordinator completed 25 units during a 35s GCS outage against the sync baseline's ZERO, the queue saturated exactly at Q as required by NC-queue-bound, and every arm's ledger stayed contiguous and duplicate-free with no writer errors. But the redo window came out at 30 units against the stated bound of Q*W + W = 27. The excess is fully explained and that is what makes it a refutation rather than noise: at the moment of death the queue held 8 batches (24 units), the writer had ALREADY DEQUEUED one batch and was blocked committing it (+3), and the producer had filled its next batch and was blocked in q.put (+3). 24+3+3 = 30, exactly what was measured. So the real bound is Q*W + 2W, not Q*W + W: I counted the buffer but not the two batches in flight on either side of it. Per the rule adopted after C1->C16 and C2->C22 the condition is NOT widened after the fact - the corrected bound is split out as C27 and must be proven on its own terms, by a sweep over Q rather than by a single point. Sync baseline behaved exactly as predicted (redo 3 = W, backlog 3), which confirms the metric is measuring the queue and not something else. Reaching this at all required the coordinator to die MID-OUTAGE with the queue full: ray.kill goes through the GCS actor manager, which is precisely what is unavailable then, so the coordinator kills itself via a cached actor handle from the pre-existing sampler."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T06:36:47+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T07:17:18+00:00",
+          "status": "refuted",
+          "note": "REFUTED on clause 2, its own stated terms. Clauses 1 and 3 held: with Q=8 batches the coordinator completed 25 units during a 35s GCS outage against the sync baseline's ZERO, the queue saturated exactly at Q as required by NC-queue-bound, and every arm's ledger stayed contiguous and duplicate-free with no writer errors. But the redo window came out at 30 units against the stated bound of Q*W + W = 27. The excess is fully explained and that is what makes it a refutation rather than noise: at the moment of death the queue held 8 batches (24 units), the writer had ALREADY DEQUEUED one batch and was blocked committing it (+3), and the producer had filled its next batch and was blocked in q.put (+3). 24+3+3 = 30, exactly what was measured. So the real bound is Q*W + 2W, not Q*W + W: I counted the buffer but not the two batches in flight on either side of it. Per the rule adopted after C1->C16 and C2->C22 the condition is NOT widened after the fact - the corrected bound is split out as C27 and must be proven on its own terms, by a sweep over Q rather than by a single point. Sync baseline behaved exactly as predicted (redo 3 = W, backlog 3), which confirms the metric is measuring the queue and not something else. Reaching this at all required the coordinator to die MID-OUTAGE with the queue full: ray.kill goes through the GCS actor manager, which is precisely what is unavailable then, so the coordinator kills itself via a cached actor handle from the pre-existing sampler."
+        }
+      ],
+      "superseded_by": "C31",
+      "supersession_note": "Refuted on its redo bound. Superseded by C31, which states the bound correctly and adds the state condition (producer actually blocked) that C26 and C27 both missed."
+    },
+    {
+      "id": "C27",
+      "statement": "With an async ledger writer the redo window after a mid-outage crash is exactly Q*W + 2W units: the bounded queue, plus the batch the writer has dequeued and is blocked committing, plus the batch the producer has filled and is blocked enqueuing",
+      "refutes_if": "measured redo differs from Q*W + 2W at any swept Q, or fails to scale linearly in Q",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.35,
+      "cost_if_late": 5,
+      "cost_to_test": 3,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-173047-C27sweep2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T17:40:45+00:00",
+          "note": "REFUTED as a point prediction, on its own stated terms: measured redo differs from Q*W + 2W at Q=16 (measured 53, predicted 54). Exact at Q=0 (3), Q=2 (12), Q=4 (18) and Q=8 (30). Every async arm was confirmed saturated (queued == Q at death) so no arm tested a smaller buffer than labelled, and the sync control gave exactly W=3 and did not move with Q. The structure is confirmed even though the point prediction is not: fitted slope 2.93 against an expected W=3, fitted intercept 6.14 against an expected 2W=6, all arms contiguous with no duplicates. DIAGNOSIS: the last term is not a constant. The producer contributes however many units are sitting in its pending batch when the crash lands, which is p in [1, W], not always W. So the exact value is Q*W + W + p, and the advertised Q*W + 2W is correct as a tight UPPER BOUND - Q=16 simply caught the coordinator mid-batch with p=2 while the other four arms caught p=3. Recorded as refuted rather than rounded up. The corrected statement is split into C30 with a NEW falsifiable prediction - that redo must VARY across repeats at fixed Q - rather than being fitted to the data that produced it."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T07:17:26+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T17:40:45+00:00",
+          "status": "refuted",
+          "note": "REFUTED as a point prediction, on its own stated terms: measured redo differs from Q*W + 2W at Q=16 (measured 53, predicted 54). Exact at Q=0 (3), Q=2 (12), Q=4 (18) and Q=8 (30). Every async arm was confirmed saturated (queued == Q at death) so no arm tested a smaller buffer than labelled, and the sync control gave exactly W=3 and did not move with Q. The structure is confirmed even though the point prediction is not: fitted slope 2.93 against an expected W=3, fitted intercept 6.14 against an expected 2W=6, all arms contiguous with no duplicates. DIAGNOSIS: the last term is not a constant. The producer contributes however many units are sitting in its pending batch when the crash lands, which is p in [1, W], not always W. So the exact value is Q*W + W + p, and the advertised Q*W + 2W is correct as a tight UPPER BOUND - Q=16 simply caught the coordinator mid-batch with p=2 while the other four arms caught p=3. Recorded as refuted rather than rounded up. The corrected statement is split into C30 with a NEW falsifiable prediction - that redo must VARY across repeats at fixed Q - rather than being fitted to the data that produced it."
+        }
+      ],
+      "superseded_by": "C31",
+      "supersession_note": "Point prediction refuted at Q=16. Superseded by C31: the formula was right, the measurement was taken before the producer had blocked."
+    },
+    {
+      "id": "C28",
+      "statement": "A coordinator that crashes while GCS is unavailable does not thrash: with max_restarts=-1 the restart storm is bounded, and the compaction sweep keeps the ledger key count bounded even though the epoch counter climbs",
+      "refutes_if": "the ledger key count grows with the number of restarts, or the epoch counter climbs without bound, or repeated failed recoveries redo work superlinearly",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.5,
+      "cost_if_late": 7,
+      "cost_to_test": 3,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-170133-C28storm2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T17:12:34+00:00",
+          "note": "PROVEN on all three clauses, within an envelope that this run also measured. There is NO restart storm: across a sweep of outage durations 0/10/30s the coordinator restarted exactly ONCE in every arm, max_epoch=2, NumRestarts=1, ledger_key_count=3, redo <= 3 units = W, contiguous and duplicate-free. The negative control (die with GCS healthy) was green as required at exactly one restart. THE CLAIM WAS RAISED ON A MISREADING OF MY OWN RIG, and the first attempt at this experiment proved it: runs/20260910-...-C28storm is VOID because the control churned HARDER than the treatment arms (epoch 14 vs 11-12), which is anti-correlated with outage duration and therefore cannot be caused by the outage. Cause: JobCoordinator is declared max_task_retries=-1, and die() called os._exit inline so the task was in flight when the actor died; Ray replayed it on every restart, giving an infinite suicide loop for as long as the calling sampler stayed alive. Iteration 16's epochs=[18] has the identical cause. So R4 does not thrash; my rig did. ENVELOPE: the 60s arm could not be measured because the CLUSTER ITSELF DIED - a GCS outage at or beyond gcs_rpc_server_reconnect_timeout_s (default 60s) makes the raylet give up and the node exit, so there is no coordinator left to restart. Split out as C29. GENERAL DESIGN CONSTRAINT discovered here and not currently in the doc: max_task_retries=-1 REPLAYS in-flight tasks on a restarted actor, so every coordinator method must be idempotent under replay, not just run()."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T07:17:26+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T17:12:34+00:00",
+          "status": "proven",
+          "note": "PROVEN on all three clauses, within an envelope that this run also measured. There is NO restart storm: across a sweep of outage durations 0/10/30s the coordinator restarted exactly ONCE in every arm, max_epoch=2, NumRestarts=1, ledger_key_count=3, redo <= 3 units = W, contiguous and duplicate-free. The negative control (die with GCS healthy) was green as required at exactly one restart. THE CLAIM WAS RAISED ON A MISREADING OF MY OWN RIG, and the first attempt at this experiment proved it: runs/20260910-...-C28storm is VOID because the control churned HARDER than the treatment arms (epoch 14 vs 11-12), which is anti-correlated with outage duration and therefore cannot be caused by the outage. Cause: JobCoordinator is declared max_task_retries=-1, and die() called os._exit inline so the task was in flight when the actor died; Ray replayed it on every restart, giving an infinite suicide loop for as long as the calling sampler stayed alive. Iteration 16's epochs=[18] has the identical cause. So R4 does not thrash; my rig did. ENVELOPE: the 60s arm could not be measured because the CLUSTER ITSELF DIED - a GCS outage at or beyond gcs_rpc_server_reconnect_timeout_s (default 60s) makes the raylet give up and the node exit, so there is no coordinator left to restart. Split out as C29. GENERAL DESIGN CONSTRAINT discovered here and not currently in the doc: max_task_retries=-1 REPLAYS in-flight tasks on a restarted actor, so every coordinator method must be idempotent under replay, not just run()."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "statement": "A GCS outage at or beyond gcs_rpc_server_reconnect_timeout_s (60s default) terminates the cluster rather than the coordinator, and R4 degrades to a cold restart on the same rocksdb path with zero data loss and zero redo",
+      "refutes_if": "the ledger is lost or corrupted after the cluster dies, or a cold restart on the same storage path redoes committed work, or the epoch counter fails to advance for the new incarnation",
+      "goal": "G1",
+      "tier": 1,
+      "load_bearing": true,
+      "p_wrong": 0.25,
+      "cost_if_late": 8,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-170133-C28storm2"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T17:12:58+00:00",
+          "note": "Proven on all three clauses by the outage_60 arm plus probe_outage_ceiling.py, whose output is saved in the run directory. The cluster died (raylet gave up on GCS past the 60s reconnect timeout; the follow-up driver could not even ray.init). The ledger did not: a cold restart on the same gcs_storage_path recovered 45 committed units, contiguous and duplicate-free, 3 ledger keys, the actor name still registered from tables/, and a fresh incarnation reporting resumed_from=45 with executed_this_incarnation=0. Zero redo, reproduced twice. The epoch advanced correctly to 3 on the second cold restart; the first reported epoch 2 because GCS had RESTORED the detached actor from tables/ and get_if_exists returned that same incarnation - which is the correct fencing behaviour, since a restored actor must not claim a second epoch for itself. So R4's worst case is DOWNTIME bounded by cold-restart time, not data loss and not redo. That is a better degradation than the design assumed and it is the direct payoff of putting the ledger in rocksdb."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T17:12:34+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T17:12:58+00:00",
+          "status": "proven",
+          "note": "Proven on all three clauses by the outage_60 arm plus probe_outage_ceiling.py, whose output is saved in the run directory. The cluster died (raylet gave up on GCS past the 60s reconnect timeout; the follow-up driver could not even ray.init). The ledger did not: a cold restart on the same gcs_storage_path recovered 45 committed units, contiguous and duplicate-free, 3 ledger keys, the actor name still registered from tables/, and a fresh incarnation reporting resumed_from=45 with executed_this_incarnation=0. Zero redo, reproduced twice. The epoch advanced correctly to 3 on the second cold restart; the first reported epoch 2 because GCS had RESTORED the detached actor from tables/ and get_if_exists returned that same incarnation - which is the correct fencing behaviour, since a restored actor must not claim a second epoch for itself. So R4's worst case is DOWNTIME bounded by cold-restart time, not data loss and not redo. That is a better degradation than the design assumed and it is the direct payoff of putting the ledger in rocksdb."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "statement": "The async redo window is Q*W + W + p, where p in [1,W] is the partial batch held by the producer at the instant of death; so Q*W + 2W is a tight upper bound and measured redo VARIES across repeats at fixed Q",
+      "refutes_if": "repeated runs at fixed Q all yield an identical redo, or any measured redo falls outside the interval Q*W + W + 1 to Q*W + 2W",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.3,
+      "cost_if_late": 4,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-174219-C30repeats"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T17:53:52+00:00",
+          "note": "REFUTED on its deciding clause. Six repeats at Q=8, identical except for the moment of death swept across the batch phase (25.0 to 31.5s into the outage), returned redo=30 EVERY TIME, p=3 every time, all six saturated, all contiguous. There is no variation, so the interval story is wrong and Q*W + 2W is not a bound with slack - it is the value. The pre-registration named this outcome in advance and stated the consequence: if the repeats are constant then Q=16's 53 needs a different explanation entirely, and the redo bound cannot be trusted until that explanation is found. It is now found, and it is a control defect of mine. Reconstructing Q=16: durable 45 + queue 48 + writer 3 = 96, executed 98, so p=2 and the producer was NOT blocked in q.put - it was still executing units, with the third unit of its batch in flight. The queue takes 51 units to reach the blocked state at Q=16 versus 27 at Q=8, and at the measured throughput that lands almost exactly at the +30s death mark. So the Q=16 arm died BEFORE the producer had blocked. My saturation control checked queued == Q, which is necessary but NOT SUFFICIENT: a full queue does not imply a blocked producer. Split out as C31, whose control must observe the producer actually blocked."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T17:40:51+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T17:53:52+00:00",
+          "status": "refuted",
+          "note": "REFUTED on its deciding clause. Six repeats at Q=8, identical except for the moment of death swept across the batch phase (25.0 to 31.5s into the outage), returned redo=30 EVERY TIME, p=3 every time, all six saturated, all contiguous. There is no variation, so the interval story is wrong and Q*W + 2W is not a bound with slack - it is the value. The pre-registration named this outcome in advance and stated the consequence: if the repeats are constant then Q=16's 53 needs a different explanation entirely, and the redo bound cannot be trusted until that explanation is found. It is now found, and it is a control defect of mine. Reconstructing Q=16: durable 45 + queue 48 + writer 3 = 96, executed 98, so p=2 and the producer was NOT blocked in q.put - it was still executing units, with the third unit of its batch in flight. The queue takes 51 units to reach the blocked state at Q=16 versus 27 at Q=8, and at the measured throughput that lands almost exactly at the +30s death mark. So the Q=16 arm died BEFORE the producer had blocked. My saturation control checked queued == Q, which is necessary but NOT SUFFICIENT: a full queue does not imply a blocked producer. Split out as C31, whose control must observe the producer actually blocked."
+        }
+      ],
+      "superseded_by": "C31",
+      "supersession_note": "The interval rescue, refuted by six constant repeats. Superseded by C31, which shows the value is deterministic once the producer blocks."
+    },
+    {
+      "id": "C31",
+      "statement": "Once the producer is actually blocked on a full queue, the async redo window is exactly Q*W + 2W, deterministically and independent of when the crash lands; a smaller redo means the producer had not yet blocked, not that the bound is loose",
+      "refutes_if": "a death taken well after the producer blocks yields redo other than Q*W + 2W at any Q, or the Q=16 arm still yields 53 when death is delayed past its blocking point",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.25,
+      "cost_if_late": 4,
+      "cost_to_test": 2,
+      "status": "proven",
+      "evidence": [
+        "runs/20260910-175438-C31blocked"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T18:01:06+00:00",
+          "note": "PROVEN, and it resolves the three-claim arc C27 -> C30 -> C31 with one distinction: the formula was always right, the measurements were taken in the wrong STATE. Three arms, every prediction hit. q16_early (the negative control, death at +30s) reproduced the anomaly EXACTLY - redo 53, p=2, producer_blocked False - so C27 was not refuted by noise and the reasoning stands. q16_late (same Q, death at +45s) gave exactly 54 = Q*W + 2W with p=3 and producer_blocked True. q32_late was included as a deliberate second instance of the trap, predicted in advance to come out BELOW 102 because Q=32 needs 99 units to reach the blocked state and a 55s outage does not supply them; it gave 96 with queued=31, never even filling the queue. So: the redo window is deterministic at Q*W + 2W once the producer is actually blocked, and any smaller measurement means the pipeline had not yet stalled. THE CONTROL DEFECT that caused all of this is now explicit: queued == Q is necessary but NOT SUFFICIENT for a blocked producer, because the producer can have just completed the put that filled the queue and moved on. The rig now derives producer_blocked from the coordinator's own state at death (p == W) and only blocked arms count as evidence. DESIGN CONSEQUENCE: Q is not freely choosable. Q must be small enough that Q*W + W units are produced within the outage you intend to ride out, otherwise the buffer is never fully used and the redo bound is not the operative limit."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T17:54:21+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T18:01:06+00:00",
+          "status": "proven",
+          "note": "PROVEN, and it resolves the three-claim arc C27 -> C30 -> C31 with one distinction: the formula was always right, the measurements were taken in the wrong STATE. Three arms, every prediction hit. q16_early (the negative control, death at +30s) reproduced the anomaly EXACTLY - redo 53, p=2, producer_blocked False - so C27 was not refuted by noise and the reasoning stands. q16_late (same Q, death at +45s) gave exactly 54 = Q*W + 2W with p=3 and producer_blocked True. q32_late was included as a deliberate second instance of the trap, predicted in advance to come out BELOW 102 because Q=32 needs 99 units to reach the blocked state and a 55s outage does not supply them; it gave 96 with queued=31, never even filling the queue. So: the redo window is deterministic at Q*W + 2W once the producer is actually blocked, and any smaller measurement means the pipeline had not yet stalled. THE CONTROL DEFECT that caused all of this is now explicit: queued == Q is necessary but NOT SUFFICIENT for a blocked producer, because the producer can have just completed the put that filled the queue and moved on. The rig now derives producer_blocked from the coordinator's own state at death (p == W) and only blocked arms count as evidence. DESIGN CONSEQUENCE: Q is not freely choosable. Q must be small enough that Q*W + W units are produced within the outage you intend to ride out, otherwise the buffer is never fully used and the redo bound is not the operative limit."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "statement": "An adaptive coalescing policy that sizes W from the observed completion rate to hold a target ledger WRITE RATE bounds both the write rate and the redo TIME window across a varying workload, whereas any single fixed W can bound only one of them",
+      "refutes_if": "adaptive misses the target write rate by more than 20 percent at some completion rate, or its worst-case redo exceeds that of a fixed W achieving the same write rate, or a single fixed W matches adaptive on every profile (adaptivity buys nothing)",
+      "goal": "G3",
+      "tier": 1,
+      "load_bearing": false,
+      "p_wrong": 0.4,
+      "cost_if_late": 5,
+      "cost_to_test": 2,
+      "status": "refuted",
+      "evidence": [
+        "runs/20260910-183234-C32adaptive"
+      ],
+      "notes": [
+        {
+          "at": "2026-09-10T18:33:41+00:00",
+          "note": "REFUTED on clause 2, robustly, and the refutation carries a real design insight. The negative control tied EXACTLY on the constant profile (0.0 percent difference on both metrics), so the fixed baseline was not mistuned. At the pre-registered tau=5s adaptive also failed clause 1, missing the 20 percent write-rate target on the ramp profile at 25.1 percent - but I swept tau from 0.5 to 60s before concluding, precisely so the refutation would not be of a strawman, and tau=60s does hold the rate (worst deviation 16.4 percent). Clause 2 fails anyway and cannot be tuned away: on the ramp profile adaptive's worst-case redo is 13-18 UNITS against fixed_mean's 4, while fixed_mean achieves an equivalent write rate (18.0 vs 16.4 percent deviation). So adaptive does not dominate; it TRADES. What it buys is redo TIME - 0.026s on the ramp against fixed_mean's 0.80s and fixed_peak's 3.80s, a factor of 30 to 145. THE INSIGHT: the two policies optimise different denominators. Fixed W bounds the redo COUNT; adaptive bounds the redo WALL-CLOCK. They are the same quantity divided by the completion rate, so neither can bound both while the rate varies. R4's budgets (C2 on write count, C10 on at-least-once units) are denominated in UNITS, which is the denominator fixed W already bounds. RECOMMENDATION: keep fixed W. Adopt adaptive only if a deployment's redo budget is stated in seconds rather than units, and then with a long tau around 60s. Idea buried."
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-09-10T18:31:51+00:00",
+          "status": "untested",
+          "note": "created"
+        },
+        {
+          "at": "2026-09-10T18:33:41+00:00",
+          "status": "refuted",
+          "note": "REFUTED on clause 2, robustly, and the refutation carries a real design insight. The negative control tied EXACTLY on the constant profile (0.0 percent difference on both metrics), so the fixed baseline was not mistuned. At the pre-registered tau=5s adaptive also failed clause 1, missing the 20 percent write-rate target on the ramp profile at 25.1 percent - but I swept tau from 0.5 to 60s before concluding, precisely so the refutation would not be of a strawman, and tau=60s does hold the rate (worst deviation 16.4 percent). Clause 2 fails anyway and cannot be tuned away: on the ramp profile adaptive's worst-case redo is 13-18 UNITS against fixed_mean's 4, while fixed_mean achieves an equivalent write rate (18.0 vs 16.4 percent deviation). So adaptive does not dominate; it TRADES. What it buys is redo TIME - 0.026s on the ramp against fixed_mean's 0.80s and fixed_peak's 3.80s, a factor of 30 to 145. THE INSIGHT: the two policies optimise different denominators. Fixed W bounds the redo COUNT; adaptive bounds the redo WALL-CLOCK. They are the same quantity divided by the completion rate, so neither can bound both while the rate varies. R4's budgets (C2 on write count, C10 on at-least-once units) are denominated in UNITS, which is the denominator fixed W already bounds. RECOMMENDATION: keep fixed W. Adopt adaptive only if a deployment's redo budget is stated in seconds rather than units, and then with a long tau around 60s. Idea buried."
+        }
+      ],
+      "superseded_by": null,
+      "supersession_note": "Refuted: adaptive coalescing bounds redo WALL-CLOCK where fixed W bounds redo COUNT, and neither bounds both while the rate varies. R4's budgets are in units, so fixed W stands. Idea buried."
+    }
+  ],
+  "fidelity_gaps": [
+    {
+      "id": "F1",
+      "fake": "kvfake.py: python dict stands in for the RocksDB store client",
+      "assumption": "An acked mutation is durable and atomic per key; verified upstream (WriteOptions::sync=true unconditionally, rocksdb_store_client.cc:104-117), so RocksDB's own correctness is out of scope for stage A",
+      "severity": "low",
+      "resolution": null,
+      "owner": null,
+      "at": "2026-09-10T04:02:58+00:00"
+    },
+    {
+      "id": "F2",
+      "fake": "kvfake.py: no gRPC, no real latency; cost counted in fsyncs",
+      "assumption": "Stage A claims (C6/C13/C1/C12) are about orderings, not timing. Timing enters in stage B (cost model) and stage C (real cluster)",
+      "severity": "low",
+      "resolution": null,
+      "owner": null,
+      "at": "2026-09-10T04:02:58+00:00"
+    },
+    {
+      "id": "F3",
+      "fake": "checker.py: GCS restart modelled as ops failing then succeeding, not as a process restart",
+      "assumption": "The KV DB is durable across restart by construction, but GCS actor-registry behaviour across restart is NOT modelled at all. Any claim about the named-actor registry surviving restart must come from stage C, not from this rig",
+      "severity": "med",
+      "resolution": null,
+      "owner": null,
+      "at": "2026-09-10T04:02:58+00:00"
+    },
+    {
+      "id": "F4",
+      "fake": "checker.py: instances are interleaved at KV-operation granularity",
+      "assumption": "The KV store is the only shared state between coordinator instances, so any finer interleaving granularity commutes and cannot expose a new ordering",
+      "severity": "low",
+      "resolution": null,
+      "owner": null,
+      "at": "2026-09-10T04:02:58+00:00"
+    },
+    {
+      "id": "F5",
+      "fake": "concurrent.py: interleavings enumerated exhaustively only inside a window of w scheduling steps after the second instance spawns; round-robin outside it",
+      "assumption": "The dangerous window is short and adjacent to the epoch claim. Cross-checked by a seeded random fuzzer that branches at every step and is not window-bounded",
+      "severity": "med",
+      "resolution": null,
+      "owner": null,
+      "at": "2026-09-10T04:24:42+00:00"
+    },
+    {
+      "id": "F6",
+      "fake": "concurrent.py: the stale instance is capped at 8 operations after being fenced",
+      "assumption": "A stale writer that keeps going longer only repeats the same conflict classes. UNVALIDATED - if a refutation depends on a long stale tail this cap would hide it",
+      "severity": "low",
+      "resolution": "narrowed: swept to 64 in runs/20260910-054022-GAPS with the cap instrumented so an inert cap is visible; max tail actually used reached 38 with the cap no longer binding, and no violation appeared at any length",
+      "owner": null,
+      "at": "2026-09-10T04:24:42+00:00"
+    },
+    {
+      "id": "F7",
+      "fake": "concurrent.py: at most 3 concurrent coordinator instances, spawned on a coarse grid",
+      "assumption": "A third instance is enough to expose cross-epoch races that two cannot. A fourth adds depth, not a new class. UNVALIDATED",
+      "severity": "low",
+      "resolution": "narrowed: 5 and 6 concurrent incarnations run clean in runs/20260910-054022-GAPS with controls red at the same settings",
+      "owner": null,
+      "at": "2026-09-10T04:39:06+00:00"
+    },
+    {
+      "id": "F8",
+      "fake": "run_head_failover.py: the harness runs 'ray stop --force' before restarting the head, which stops the worker raylet too",
+      "assumption": "This is closer to a WHOLE-CLUSTER restart than to a KubeRay head-pod replacement, so it is a strictly harsher test of the ledger but a WEAKER test of actor re-adoption: the coordinator's node genuinely disappeared. C4's head half stays uncertain because of this",
+      "severity": "med",
+      "resolution": "narrowed: iteration 14 added poc/stage_c/run_gcs_inplace.py, which produces an outage the coordinator SURVIVES by re-executing gcs_server's captured /proc argv while leaving both raylets running. That reached C4's duplication clause (exactly one live actor row, NumRestarts=0) and settled C7. What remains outside the harness is only the ADDRESS CHANGE of a real head pod, which belongs to KubeRay's GCS-FT machinery rather than to R4",
+      "owner": null,
+      "at": "2026-09-10T06:01:34+00:00",
+      "status": "resolved"
+    }
+  ],
+  "idea_backlog": [],
+  "graveyard": [
+    {
+      "idea": "Model-check M1+M3",
+      "reason": "Done, and it is the whole of stage A. The enumerator in poc/ settled C6, C1, C13, C17 and C20 and produced three refutations.",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "Iteration 2 needs a CONCURRENT driver",
+      "reason": "Built in iteration 2 as poc/concurrent.py; generalised to N instances in iteration 4.",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "C16 fix option A",
+      "reason": "Adopted and proven as C17 (runs/20260910-043110-C16).",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "C16 fix option B",
+      "reason": "Rejected as the primary fix: TOCTOU, narrows rather than closes. Still available as an extra mitigation for C18's redo.",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "C16 fix option C",
+      "reason": "Rejected: closes the race but lets segments grow without bound inside a long-lived epoch, which G3 forbids and C6's INV-GC would catch.",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "C19 fix",
+      "reason": "Adopted and proven as C20 (runs/20260910-044309-C20).",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "Rig scoping decision",
+      "reason": "Executed: stage B swept the completion-rate axis as one rig and mapped the band.",
+      "evidence": [],
+      "at": "2026-09-10T05:04:22+00:00"
+    },
+    {
+      "idea": "C7's refutation leaves a real design choice",
+      "reason": "Resolved across iterations 16-20: option B was built and measured (C26 refuted on its bound, C27 refuted at Q=16, C30 refuted by six constant repeats, C31 proven). Option A stands, now backed by C28 and C29.",
+      "evidence": [],
+      "at": "2026-09-10T18:31:10+00:00"
+    },
+    {
+      "idea": "Smallest useful upstream PR",
+      "reason": "Not an experiment - REP scope. Carried into FINAL-REPORT.md as the recommended upstream shape rather than tested as a claim.",
+      "evidence": [],
+      "at": "2026-09-10T18:31:10+00:00"
+    },
+    {
+      "idea": "get_if_exists=True is sufficient for RECONCILIATION",
+      "reason": "Settled inside C5 and recorded in its evidence: get_if_exists reconciles but does not report whether it adopted or created. Specification detail for the REP, not a separate claim.",
+      "evidence": [],
+      "at": "2026-09-10T18:31:10+00:00"
+    },
+    {
+      "idea": "Adaptive coalescing",
+      "reason": "Tested as C32 and refuted (runs/...-C32adaptive plus tau_sweep.json). Adaptive does not dominate fixed W - it bounds redo WALL-CLOCK where fixed W bounds redo COUNT, and no policy bounds both while the completion rate varies. R4's budgets are denominated in units, which fixed W already bounds. Keep fixed W; revisit only for a deployment whose redo budget is stated in seconds.",
+      "evidence": [],
+      "at": "2026-09-10T18:33:41+00:00"
+    }
+  ],
+  "iterations": [
+    {
+      "n": 1,
+      "at": "2026-09-10T03:06:26+00:00",
+      "note": "Iteration 0 (design-only): framing, mechanism design (M1 fencing / M2 coalescing / M3 compaction), 13 claims. No POC by explicit user instruction.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:untested|C1:untested|C2:untested|C3:untested|C4:untested|C5:untested|C6:untested|C7:untested|C8:untested|C9:untested#0#3"
+    },
+    {
+      "n": 2,
+      "at": "2026-09-10T04:16:45+00:00",
+      "note": "C6 proven via runs/20260910-041339-C6 (16489 exhaustive traces). Two rig bugs fixed pre-run, incl. controls that did not prove the fault injectors were live. C15 added; C2 and C13 priors lowered.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:untested|C14:untested|C15:untested|C1:untested|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#5"
+    },
+    {
+      "n": 3,
+      "at": "2026-09-10T04:29:38+00:00",
+      "note": "C1 proven, C16 refuted (torn carry-forward read under a fenced writer). One run voided by its own rule; INV-LIVE added to the concurrent driver.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:untested|C14:untested|C15:untested|C16:refuted|C1:proven|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#8"
+    },
+    {
+      "n": 4,
+      "at": "2026-09-10T04:36:16+00:00",
+      "note": "C17 proven: carry-forward reads segments first, pointer last, bounded retry. 51144 traces clean at windows up to 8; NC13 still red; C6 regression clean. C18 raised for the unfixed fenced-ack contract.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:untested|C14:untested|C15:untested|C16:refuted|C17:proven|C18:untested|C1:proven|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#8"
+    },
+    {
+      "n": 5,
+      "at": "2026-09-10T04:41:27+00:00",
+      "note": "C13 proven conditional on per-incarnation instance ids (NC14 shows actor-derived ids break fencing). C19 refuted: 5448 INV-DUR with three instances vs zero with two.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:proven|C14:untested|C15:untested|C16:refuted|C17:proven|C18:untested|C19:refuted|C1:proven|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#9"
+    },
+    {
+      "n": 6,
+      "at": "2026-09-10T04:46:10+00:00",
+      "note": "C20 proven: ascending epoch scan fixes C19. Zero INV-DUR at 3 and 4 instances across 33k traces.",
+      "fingerprint": "C10:untested|C11:untested|C12:untested|C13:proven|C14:untested|C15:untested|C16:refuted|C17:proven|C18:untested|C19:refuted|C1:proven|C20:proven|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#9"
+    },
+    {
+      "n": 7,
+      "at": "2026-09-10T04:49:58+00:00",
+      "note": "C12 uncertain (adoption half proven, session_name stability split out as C21, blocked on stage C). C15 refuted: base@n uniqueness is a preference, not a safety requirement.",
+      "fingerprint": "C10:untested|C11:untested|C12:uncertain|C13:proven|C14:untested|C15:refuted|C16:refuted|C17:proven|C18:untested|C19:refuted|C1:proven|C20:proven|C21:blocked|C2:untested|C3:untested|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#9"
+    },
+    {
+      "n": 8,
+      "at": "2026-09-10T04:55:23+00:00",
+      "note": "Stage B: write overhead is multiplicative x2.79 (C22 refuted), key count flat in N and recovery O(K) (C2 proven), band mapped (C3 half proven).",
+      "fingerprint": "C10:untested|C11:untested|C12:uncertain|C13:proven|C14:untested|C15:refuted|C16:refuted|C17:proven|C18:untested|C19:refuted|C1:proven|C20:proven|C21:blocked|C22:refuted|C2:proven|C3:uncertain|C4:untested|C5:untested|C6:proven|C7:untested|C8:untested|C9:untested#0#9"
+    },
+    {
+      "n": 9,
+      "at": "2026-09-10T05:01:37+00:00",
+      "note": "Stage C on real Ray 2.58: C8 and C21 proven, C4 driver-death half proven, C12 REFUTED because session_name is inherited from the storage path. C23 raised.",
+      "fingerprint": "C10:untested|C11:untested|C12:refuted|C13:proven|C14:untested|C15:refuted|C16:refuted|C17:proven|C18:untested|C19:refuted|C1:proven|C20:proven|C21:proven|C22:refuted|C23:untested|C2:proven|C3:uncertain|C4:uncertain|C5:untested|C6:proven|C7:untested|C8:proven|C9:untested#0#9"
+    },
+    {
+      "n": 10,
+      "at": "2026-09-10T05:05:22+00:00",
+      "note": "Iteration 9: C9 refuted (good news - KubeRay SidecarMode restarts the submitter without replacing the cluster), C7 blocked, C5/C23 uncertain, C10/C11/C14/C18 accepted risk. FINAL-REPORT.md written. Verdict BUDGET.",
+      "fingerprint": "C10:accepted_risk|C11:accepted_risk|C12:refuted|C13:proven|C14:accepted_risk|C15:refuted|C16:refuted|C17:proven|C18:accepted_risk|C19:refuted|C1:proven|C20:proven|C21:proven|C22:refuted|C23:uncertain|C2:proven|C3:uncertain|C4:uncertain|C5:uncertain|C6:proven|C7:blocked|C8:proven|C9:refuted#7#9"
+    },
+    {
+      "n": 11,
+      "at": "2026-09-10T05:52:46+00:00",
+      "note": "F6/F7 narrowed: clean at stale tails to 64, 5-6 incarnations, crash budget 3 (237840 traces). Two more rig defects found: an inert stale-tail parameter and a starved control.",
+      "fingerprint": "C10:accepted_risk|C11:accepted_risk|C12:refuted|C13:proven|C14:accepted_risk|C15:refuted|C16:refuted|C17:proven|C18:accepted_risk|C19:refuted|C1:proven|C20:proven|C21:proven|C22:refuted|C23:uncertain|C2:proven|C3:uncertain|C4:uncertain|C5:uncertain|C6:proven|C7:blocked|C8:proven|C9:refuted#7#9"
+    }
+  ],
+  "termination_note": "Mechanical verdict from ledger.py is REFUTED, because three load-bearing claims (C12, C16, C19) are refuted and the idea backlog is empty. That is the correct output for the rule as written, and it is NOT the correct reading of this loop. Every refuted load-bearing claim has a PROVEN SUCCESSOR: C12->C24, C16->C17, C19->C20. The design was not killed; it was corrected three times, each time by a repair that was pre-registered before the fix was implemented and then proven on its own terms. The tool does not model supersession, so the supersession is recorded per-claim in the superseded_by field rather than by editing the statuses, which would destroy the evidence."
+}

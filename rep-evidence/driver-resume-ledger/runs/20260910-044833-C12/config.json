@@ -1,0 +1,119 @@
+{
+  "experiment": "C12",
+  "git_rev": "798c7e7f79f8d01d5ca6dac1fbcb47e9ea6ac3ae",
+  "python": "3.10.14",
+  "budgets": [
+    1,
+    2
+  ],
+  "faults": [
+    "crash_before",
+    "crash_after",
+    "lost_ack"
+  ],
+  "workloads": {
+    "small": {
+      "session": "session-A",
+      "job": "job1",
+      "n_units": 6,
+      "W": 1,
+      "K": 2,
+      "fence_mode": "readback",
+      "epoch_scoped_state": true,
+      "sweep_before_ptr": false,
+      "compact_delete_before_ptr": false,
+      "compact_in_place": false,
+      "compact_ptr_before_base": false,
+      "startup_sweep": true,
+      "carry_forward": true,
+      "carry_forward_epochs_descending": false,
+      "carry_forward_ptr_first": false,
+      "session_scoped": true,
+      "resume_ignores_ledger": false,
+      "ack_before_commit": false
+    },
+    "batched": {
+      "session": "session-A",
+      "job": "job1",
+      "n_units": 8,
+      "W": 2,
+      "K": 2,
+      "fence_mode": "readback",
+      "epoch_scoped_state": true,
+      "sweep_before_ptr": false,
+      "compact_delete_before_ptr": false,
+      "compact_in_place": false,
+      "compact_ptr_before_base": false,
+      "startup_sweep": true,
+      "carry_forward": true,
+      "carry_forward_epochs_descending": false,
+      "carry_forward_ptr_first": false,
+      "session_scoped": true,
+      "resume_ignores_ledger": false,
+      "ack_before_commit": false
+    },
+    "wide": {
+      "session": "session-A",
+      "job": "job1",
+      "n_units": 12,
+      "W": 3,
+      "K": 3,
+      "fence_mode": "readback",
+      "epoch_scoped_state": true,
+      "sweep_before_ptr": false,
+      "compact_delete_before_ptr": false,
+      "compact_in_place": false,
+      "compact_ptr_before_base": false,
+      "startup_sweep": true,
+      "carry_forward": true,
+      "carry_forward_epochs_descending": false,
+      "carry_forward_ptr_first": false,
+      "session_scoped": true,
+      "resume_ignores_ledger": false,
+      "ack_before_commit": false
+    }
+  },
+  "controls": {
+    "NC1_fence_ignored": {
+      "fence_mode": "ignore"
+    },
+    "NC2_fence_inverted": {
+      "fence_mode": "inverted"
+    },
+    "NC3_state_not_epoch_scoped": {
+      "epoch_scoped_state": false
+    },
+    "NC4_sweep_before_ptr": {
+      "sweep_before_ptr": true
+    },
+    "NC5_compact_delete_before_ptr": {
+      "compact_delete_before_ptr": true
+    },
+    "NC6_compact_base_in_place": {
+      "compact_in_place": true
+    },
+    "NC7_no_startup_sweep": {
+      "startup_sweep": false
+    },
+    "NC8_ctor_seeds_empty_base": {
+      "carry_forward": false
+    },
+    "NC10_compact_ptr_before_base": {
+      "compact_ptr_before_base": true
+    },
+    "NC1b_fence_raw_no_readback": {
+      "fence_mode": "raw"
+    },
+    "NC11_ack_before_commit": {
+      "ack_before_commit": true
+    },
+    "NC12_resume_ignores_ledger": {
+      "resume_ignores_ledger": true
+    },
+    "NC13_carry_forward_ptr_first": {
+      "carry_forward_ptr_first": true
+    }
+  },
+  "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+  "started": "2026-09-10T04:48:33"
+}

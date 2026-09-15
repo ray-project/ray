@@ -1,0 +1,45 @@
+
+====================================================================
+ARM: die_healthy  (outage 0s)
+====================================================================
+  [die_healthy] control: die with GCS healthy, no outage
+  [die_healthy] max_epoch=14 num_restarts=13 ledger_keys=3 epoch_keys=1 committed=66 contiguous=True
+  [die_healthy] observed incarnations in samples: 11, sampler errors: 0
+
+====================================================================
+ARM: outage_10  (outage 10s)
+====================================================================
+  [outage_10] SIGKILL gcs_server 1104853; die at +6s, outage 10s
+  [outage_10] gcs_server restored
+  [outage_10] max_epoch=12 num_restarts=11 ledger_keys=3 epoch_keys=1 committed=45 contiguous=True
+  [outage_10] observed incarnations in samples: 11, sampler errors: 0
+
+====================================================================
+ARM: outage_30  (outage 30s)
+====================================================================
+  [outage_30] SIGKILL gcs_server 1106982; die at +6s, outage 30s
+  [outage_30] gcs_server restored
+  [outage_30] max_epoch=11 num_restarts=10 ledger_keys=3 epoch_keys=1 committed=45 contiguous=True
+  [outage_30] observed incarnations in samples: 11, sampler errors: 3
+
+====================================================================
+ARM: outage_60  (outage 60s)
+====================================================================
+  [outage_60] SIGKILL gcs_server 1110101; die at +6s, outage 60s
+  [outage_60] gcs_server restored
+
+====================================================================
+  NC_control_single_restart              False
+  control_max_epoch                      14
+  control_num_restarts                   13
+  VOID_control_churned                   True
+  epochs_by_arm                          {'die_healthy': 14, 'outage_10': 12, 'outage_30': 11, 'outage_60': None}
+  restarts_by_arm                        {'die_healthy': 13, 'outage_10': 11, 'outage_30': 10, 'outage_60': None}
+  clause2_epochs_scale_with_outage       False
+  ledger_keys_by_arm                     {'die_healthy': 3, 'outage_10': 3, 'outage_30': 3, 'outage_60': None}
+  clause1_keys_bounded                   False
+  clause3_redo_by_arm                    {'die_healthy': 1, 'outage_10': 3, 'outage_30': 3, 'outage_60': 3}
+  contiguous_everywhere                  False
+  dupes_anywhere                         False
+  C28_proven                             False
+====================================================================
