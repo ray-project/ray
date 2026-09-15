@@ -1620,28 +1620,33 @@ def clean_token_sources(cleanup_auth_token_env):
 def _isolate_token_auth_state(tmp_path_factory):
     """Isolate token-auth state across bazel targets, which share HOME.
 
-    Point HOME at a per-session temp dir so a default-on cluster's
+    Point the home dir at a per-session temp dir so a default-on cluster's
     ``~/.ray/auth_token`` is unique to this target. Both Python's ``Path.home()``
-    and the C++ token loader resolve the home via ``HOME``, so this keeps them in
-    sync. Bazel runs targets in parallel under a shared HOME, so mutating the
-    real ``~/.ray/auth_token`` would race across targets and could delete a
-    developer's own token; redirecting HOME per session sidesteps that entirely.
+    and the C++ token loader resolve home from ``HOME`` on POSIX and
+    ``USERPROFILE`` on Windows, so redirect both to keep them in sync
+    cross-platform. Bazel runs targets in parallel under a shared home, so
+    mutating the real ``~/.ray/auth_token`` would race across targets and could
+    delete a developer's own token; redirecting the home per session sidesteps
+    that entirely.
     """
-    isolated_home = tmp_path_factory.mktemp("ray_auth_home")
-    original_home = os.environ.get("HOME")
-    os.environ["HOME"] = str(isolated_home)
+    isolated_home = str(tmp_path_factory.mktemp("ray_auth_home"))
+    home_vars = ("HOME", "USERPROFILE")
+    original = {var: os.environ.get(var) for var in home_vars}
+    for var in home_vars:
+        os.environ[var] = isolated_home
     reset_auth_token_state()
     try:
         yield
     finally:
-        # Turn auth off before HOME changes: a still-draining Ray thread reloads
-        # the token on its next RPC and CHECK-fails if it's gone.
+        # Turn auth off before the home changes: a still-draining Ray thread
+        # reloads the token on its next RPC and CHECK-fails if it's gone.
         os.environ.pop("RAY_AUTH_MODE", None)
         reset_auth_token_state()
-        if original_home is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = original_home
+        for var, value in original.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
         reset_auth_token_state()
 
 
