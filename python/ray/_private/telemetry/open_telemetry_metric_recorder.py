@@ -14,6 +14,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 import ray
 from ray._private.metrics_agent import Record
 from ray._private.telemetry.metric_cardinality import MetricCardinality
+from ray._private.telemetry.metric_exclusion import MetricsExclusionConfig
 from ray._private.telemetry.metric_types import MetricType
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,11 @@ class OpenTelemetryMetricRecorder:
     _metrics_initialized = False
     _metrics_initialized_lock = threading.Lock()
 
-    def __init__(self, gauge_metric_ttl_seconds: Optional[float] = None):
+    def __init__(
+        self,
+        gauge_metric_ttl_seconds: Optional[float] = None,
+        exclusion_config: Optional[MetricsExclusionConfig] = None,
+    ):
         # Lock-ordering contract:
         #   _registration_lock -> SDK meter locks (via meter.create_*)
         #   _registration_lock -> _lock
@@ -72,6 +77,7 @@ class OpenTelemetryMetricRecorder:
         # same property.
         self._lock = threading.Lock()
         self._registration_lock = threading.Lock()
+        self._exclusion_config = exclusion_config or MetricsExclusionConfig()
         self._registered_instruments = {}
         # Gauge observations are stored as tag_key -> (value, last_update_monotonic).
         # Unlike counters/sums, gauges are evicted once they have not been refreshed
@@ -215,6 +221,8 @@ class OpenTelemetryMetricRecorder:
             OpenTelemetryMetricRecorder._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -239,6 +247,8 @@ class OpenTelemetryMetricRecorder:
         """
         Register an observable counter metric with the given name and description.
         """
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -266,6 +276,8 @@ class OpenTelemetryMetricRecorder:
         """
         Register an observable sum metric with the given name and description.
         """
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -295,6 +307,8 @@ class OpenTelemetryMetricRecorder:
         """
         Register a histogram metric with the given name and description.
         """
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._registration_lock:
             with self._lock:
                 if name in self._registered_instruments:
@@ -351,6 +365,8 @@ class OpenTelemetryMetricRecorder:
         If the metric is not registered, it lazily records the value for observable metrics or is a no-op for
         synchronous metrics.
         """
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._lock:
             tag_key = frozenset(tags.items())
             if self._gauge_observations_by_name.get(name) is not None:
@@ -403,6 +419,8 @@ class OpenTelemetryMetricRecorder:
 
         Note: The histogram sum value will be an approximation since we use bucket midpoints instead of actual values.
         """
+        if self._exclusion_config.is_excluded(name):
+            return
         with self._lock:
             instrument = self._registered_instruments.get(name)
             if not isinstance(instrument, metrics.Histogram):
