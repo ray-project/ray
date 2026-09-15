@@ -684,7 +684,8 @@ class DataContext:
             figure can cover several of your functions, and the phase breakdown
             says what kind of work was slow rather than which function. This
             puts one extra number per stage on every output block's metadata,
-            so it is off by default. It is independent of
+            so it is off by default. Each stage's figure covers its own input
+            prep, body and output block build. It is independent of
             ``accurate_map_phase_timing``: a row-based transform can have the
             per-stage split without the per-phase one.
         trace_allocations: Whether to trace allocations / eager free. This adds

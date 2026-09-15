@@ -2046,9 +2046,18 @@ def test_per_stage_timing_splits_a_fused_chain(
     ), f"expected one entry per fused stage, got {len(on.stage_time)}"
 
     read, fast, slow = on.stage_time
-    # The slow stage must be attributed the bulk of the time. The ratio is
-    # diluted by each stage's own prep and block building, so assert direction
-    # and a wide margin rather than the 10x the sleeps differ by.
+    # Each stage should land near the time its own body slept, summed over the
+    # blocks. The sleep is a hard floor -- 10% of slack absorbs the clamp in
+    # `_self_times` -- and the headroom above covers that stage's own prep and
+    # block building plus scheduling noise.
+    for label, stage, sleep_s in (("fast", fast, fast_s), ("slow", slow, slow_s)):
+        expected_s = num_blocks * sleep_s
+        assert (
+            expected_s * 0.9 <= stage.sum < expected_s + 0.5
+        ), f"{label} stage measured {stage.sum:.4f}s, expected ~{expected_s:.2f}s"
+    # The slow stage must also dominate. The ratio is diluted by each stage's
+    # own prep and block building, so assert a wide margin rather than the 10x
+    # the sleeps differ by.
     assert slow.sum > fast.sum * 3, (
         f"fast stage {fast.sum:.4f}s vs slow stage {slow.sum:.4f}s; the 10x "
         "slower stage should dominate"
@@ -2075,31 +2084,56 @@ def test_per_stage_timing_is_independent_of_phase_timing(
     ctx.per_stage_map_timing = True
     ctx.accurate_map_phase_timing = False
 
+    sleep_s = 0.01
+    num_rows = 8
+
+    def slow_row(row):
+        time.sleep(sleep_s)
+        return row
+
     ds = (
-        ray.data.range(8, override_num_blocks=2)
+        ray.data.range(num_rows, override_num_blocks=2)
         .map(lambda row: row)
-        .map(lambda row: row)
+        .map(slow_row)
         .materialize()
     )
     op = get_operator(ds.get_stats_summary(), name_pattern="Map")
 
     assert all(p is None for p in _phase_components(op).values())
     assert len(op.stage_time) == 3
+
+    # The sleeping stage is the last one, and its figure should land near the
+    # time it actually slept across every row.
+    expected_s = num_rows * sleep_s
+    assert expected_s * 0.9 <= op.stage_time[-1].sum < expected_s + 0.5, (
+        f"last stage measured {op.stage_time[-1].sum:.4f}s, "
+        f"expected ~{expected_s:.2f}s"
+    )
+
+    # Not a second magnitude check: this asserts the split is a partition of
+    # the total rather than an unrelated set of numbers, which is the property
+    # the whole breakdown rests on.
     assert sum(s.sum for s in op.stage_time) == pytest.approx(
         op.block_transform_time.sum, rel=1e-6
     )
 
 
-def test_single_stage_chain_skips_the_per_stage_split(
+def test_single_stage_chain_reports_one_entry(
     ray_start_regular_shared, restore_data_context
 ):
-    """One stage means the split would only repeat the total, so it is skipped."""
+    """An unfused operator reports one entry, equal to its total.
+
+    Reporting nothing would make the line appear and disappear as fusion
+    changes around an operator, which is harder to read than a figure that
+    repeats the total.
+    """
     DataContext.get_current().per_stage_map_timing = True
 
     ds = ray.data.range(8, override_num_blocks=2).materialize()
     op = get_operator(ds.get_stats_summary(), name_pattern="Read")
 
-    assert op.stage_time is None
+    assert len(op.stage_time) == 1
+    assert op.stage_time[0].sum == pytest.approx(op.block_transform_time.sum, rel=1e-6)
 
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):

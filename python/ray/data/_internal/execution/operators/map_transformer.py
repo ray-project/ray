@@ -335,9 +335,11 @@ class MapTransformPhaseTimes:
     operator reports one figure per phase rather than one per stage.
 
     ``stage_s`` splits the same total the other way: one entry per stage, in
-    chain order. Where the phase figures say what kind of work was slow, these
-    say which of the fused stages it was in. They sum to ``total_s`` as well,
-    since every stage gets an entry.
+    chain order. Each entry covers that stage's own input prep, body and output
+    build -- these are the same per-step numbers the phase figures group, keyed
+    by stage rather than by phase, which is why both decompositions sum to
+    ``total_s``. Where the phase figures say what kind of work was slow, these
+    say which of the fused stages it was in.
     """
 
     total_s: float = 0.0
@@ -346,8 +348,8 @@ class MapTransformPhaseTimes:
     input_prep_s: Optional[float] = None
     function_body_s: Optional[float] = None
     output_build_s: Optional[float] = None
-    # None unless `DataContext.per_stage_map_timing` is set, and only for a
-    # chain with more than one stage -- with one stage this repeats `total_s`.
+    # None unless `DataContext.per_stage_map_timing` is set. An unfused chain
+    # reports a single entry equal to `total_s`.
     stage_s: Optional[Tuple[float, ...]] = None
 
 
@@ -440,8 +442,10 @@ class TransformClock:
                 by_bucket[step.bucket] = by_bucket.get(step.bucket, 0.0) + seconds
             by_stage[step.stage_idx] = by_stage.get(step.stage_idx, 0.0) + seconds
 
-        # Every step carries a stage, so these sum to the total whether the
-        # chain was timed phase by phase or a stage at a time. `get_steps`
+        # A stage's three steps share its index, so its figure is its own
+        # prep, body and block building added together. Every step carries a
+        # stage, so these sum to the total whether the chain was timed phase by
+        # phase or a stage at a time. `get_steps`
         # numbers stages with `enumerate` and every stage contributes at least
         # one step, so the keys run 0..n-1 with no gaps; indexing by position
         # rather than by sort order means a gap would report that stage as
@@ -624,9 +628,10 @@ class MapTransformer:
 
         # Independent of `decomposed`: a coalesced stage is still one step with
         # one stage index, so a row transform can have the per-stage split
-        # without paying for the per-phase one. Skipped for a single stage,
-        # where the figure would only repeat the total.
-        per_stage = data_context.per_stage_map_timing and len(self._transform_fns) > 1
+        # without paying for the per-phase one. An unfused chain reports one
+        # entry equal to its total rather than nothing, so the line does not
+        # appear and disappear as fusion changes around it.
+        per_stage = data_context.per_stage_map_timing
 
         steps = self.get_steps(ctx, report_custom_op_stats, decomposed=decomposed)
         return clock.chain(steps, input_blocks, per_stage=per_stage)
