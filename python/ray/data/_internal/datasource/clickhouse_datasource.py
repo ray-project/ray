@@ -185,8 +185,9 @@ class ClickHouseDatasource(Datasource):
             return None
 
         requested_database, table = parsed_table
-        client = self._init_client()
+        client = None
         try:
+            client = self._init_client()
             database = requested_database or str(
                 getattr(client, "database", "") or "default"
             )
@@ -245,7 +246,8 @@ class ClickHouseDatasource(Datasource):
             )
             return None
         finally:
-            client.close()
+            if client is not None:
+                client.close()
 
     def _init_client(self):
         _check_import(self, module="clickhouse_connect", package="clickhouse-connect")

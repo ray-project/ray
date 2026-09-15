@@ -230,6 +230,27 @@ class TestClickHouseDatasource:
         mock_client.close.assert_called_once_with()
 
     @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_client_initialization_failure_falls_back(
+        self, mock_init_client
+    ):
+        mock_init_client.side_effect = RuntimeError("connection unavailable")
+
+        with mock.patch(
+            "ray.data._internal.datasource.clickhouse_datasource.logger.warning"
+        ) as mock_warning:
+            datasource = ClickHouseDatasource(
+                table="events",
+                dsn="clickhouse://user:password@localhost:8123/analytics",
+                auto_discover_order_by=True,
+            )
+
+        assert datasource._order_by is None
+        assert "ORDER BY" not in datasource._query
+        assert "connection unavailable" in " ".join(
+            str(arg) for arg in mock_warning.call_args.args
+        )
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
     def test_auto_discovery_is_skipped_for_filtered_reads(self, mock_init_client):
         mock_client = MagicMock()
         mock_init_client.return_value = mock_client
