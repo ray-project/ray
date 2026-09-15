@@ -14,7 +14,9 @@ from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAM
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
+    DirectStreamingIngress,
     OpenAiIngress,
+    make_direct_streaming_control_ingress,
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import (
@@ -24,6 +26,9 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
+)
+from ray.serve._private.constants import (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
 )
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
@@ -54,6 +59,7 @@ def _build_direct_streaming_llm_deployment(
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
     deployment_cls: Optional[Type[LLMServer]] = None,
+    direct_http: bool = False,
 ) -> Application:
     """Build an LLM deployment with late-bound ASGI ingress enabled.
 
@@ -66,6 +72,12 @@ def _build_direct_streaming_llm_deployment(
     Replica selection is driven by the deployment's ``request_router_config``.
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
     leave their configured value untouched.
+
+    ``direct_http`` marks the deployment as owning HTTP listeners without being
+    the application's ingress. The standard OpenAI builder sets it, because
+    there a ``DirectStreamingIngress`` deployment is the app's front door; the
+    DP and P/D builders do not, because there the server deployment still *is*
+    the ingress.
     """
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(
@@ -76,6 +88,7 @@ def _build_direct_streaming_llm_deployment(
         override_serve_options=_get_direct_streaming_serve_options(
             llm_config, override_serve_options
         ),
+        direct_http=direct_http,
     )
 
 
@@ -88,7 +101,10 @@ def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> Optional[dict]:
 
 
 def _build_openai_ingress_request_router(
-    *, server: Application, llm_config: LLMConfig
+    *,
+    servers: Dict[str, Application],
+    llm_config: Optional[LLMConfig] = None,
+    ingress: Optional[Application] = None,
 ) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -100,13 +116,25 @@ def _build_openai_ingress_request_router(
     above the Serve default because the router sits on the ingress hot path and
     must not throttle it.
 
+    ``servers`` is the model-id -> model deployment registry the router selects
+    from; the DP and P/D builders pass their single server, the standard builder
+    passes one entry per configured model.
+
+    ``ingress``, when given, is the application's control-plane ingress. The
+    router asks a live replica which routes it serves and sends those requests
+    to the ingress instead of to a model. The DP and P/D topologies have no
+    separate ingress -- their server deployment *is* the ingress -- so they
+    leave it unset.
+
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
+    kv_aware = llm_config is not None and is_kv_aware(llm_config)
+
     ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
-    if is_kv_aware(llm_config):
+    if kv_aware:
         runtime_env = _get_tokenizing_router_runtime_env(llm_config)
         if runtime_env is not None:
             ray_actor_options["runtime_env"] = runtime_env
@@ -117,8 +145,9 @@ def _build_openai_ingress_request_router(
         ray_actor_options=ray_actor_options,
     )
     return deployment.bind(
-        servers={llm_config.model_id: server},
-        llm_config=llm_config if is_kv_aware(llm_config) else None,
+        servers=servers,
+        llm_config=llm_config if kv_aware else None,
+        ingress=ingress,
     )
 
 
@@ -201,10 +230,44 @@ class LLMServingArgs(BaseModelExtended):
         return self
 
 
+def _validate_direct_streaming_ingress_cls_config(
+    ingress_cls_config: IngressClsConfig,
+) -> None:
+    """Reject a user-supplied ingress class while direct streaming is on.
+
+    Every builder rejects it, for two different reasons. Where the server class
+    is the ingress (DP, P/D) there is no ingress deployment to substitute at
+    all. In the standard builder there is one, ``DirectStreamingIngress``, but
+    the routes it declares are exactly the routes the ingress request router
+    takes away from the model deployments, so a custom ingress would silently
+    redirect inference traffic through a Python hop. Custom control ingresses
+    and custom control routes are deferred until that coupling is expressed in
+    the API.
+    """
+    if (
+        ingress_cls_config.ingress_cls != OpenAiIngress
+        or ingress_cls_config.ingress_extra_kwargs
+    ):
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
+            "ingress_cls_config. Direct streaming owns the ingress deployment "
+            "and the set of routes it claims from the model deployments; "
+            "custom ingress classes and custom ingress routes are not "
+            "supported yet."
+        )
+
+
 def _validate_direct_streaming_ingress_config(
     ingress_deployment_config: Optional[dict],
     ingress_cls_config: IngressClsConfig,
 ) -> None:
+    """Validation for the builders whose LLM server *is* the ingress (DP, P/D).
+
+    Those topologies have no ingress deployment of their own, so there is
+    nothing for ``ingress_deployment_config`` to configure. The standard
+    builder does have one and accepts it; see
+    ``_build_direct_streaming_openai_app``.
+    """
     if ingress_deployment_config:
         raise ValueError(
             "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
@@ -213,15 +276,150 @@ def _validate_direct_streaming_ingress_config(
             "each LLMConfig.deployment_config instead."
         )
 
-    if (
-        ingress_cls_config.ingress_cls != OpenAiIngress
-        or ingress_cls_config.ingress_extra_kwargs
-    ):
+    _validate_direct_streaming_ingress_cls_config(ingress_cls_config)
+
+
+def _get_min_replicas(deployment_options: Dict[str, Any]) -> Optional[int]:
+    """``autoscaling_config.min_replicas`` from built deployment options.
+
+    The value survives merging as either a dict or an ``AutoscalingConfig``
+    depending on what the user supplied, so read both shapes.
+    """
+    autoscaling_config = deployment_options.get("autoscaling_config")
+    if autoscaling_config is None:
+        return None
+    if isinstance(autoscaling_config, dict):
+        return autoscaling_config.get("min_replicas")
+    return getattr(autoscaling_config, "min_replicas", None)
+
+
+def _validate_control_ingress_stays_up(ingress_options: Dict[str, Any]) -> None:
+    """The control ingress must keep at least one replica.
+
+    Unlike ``OpenAiIngress``, it may not scale to zero along with the models.
+    It is the only deployment that answers ``GET /v1/models``, and the ingress
+    request router learns which routes belong to the ingress by asking a
+    running ingress replica -- with none, model discovery is exactly what an
+    idle application loses first. Serve's controller also stops publishing an
+    app's direct-HTTP targets once its ingress has no running replicas, so a
+    scaled-to-zero ingress takes the model backends down with it.
+    """
+    if _get_min_replicas(ingress_options) == 0:
         raise ValueError(
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING does not support "
-            "ingress_cls_config because the LLM server class is used directly "
-            "as the ingress deployment."
+            "The direct-streaming control ingress cannot scale to zero: it is "
+            "the only deployment serving model discovery, and the ingress "
+            "request router needs a running ingress replica to resolve its "
+            "routes. Set ingress_deployment_config.autoscaling_config."
+            "min_replicas to at least 1."
         )
+
+
+def _validate_direct_streaming_models(llm_configs: List[LLMConfig]) -> None:
+    """Reject the multi-model configurations direct streaming cannot serve yet.
+
+    Single-model apps are unaffected by all of these.
+    """
+    if len(llm_configs) <= 1:
+        return
+
+    if not RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY:
+        raise ValueError(
+            "Serving multiple models with RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING "
+            "requires RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1. The "
+            "request's `model` field lives in its body, so without body "
+            "forwarding HAProxy gives the ingress request router nothing to "
+            "select a model deployment with and every request fails closed. "
+            "Set it in the Ray controller's and proxies' environment, or "
+            "deploy one application per model."
+        )
+
+    kv_aware_models = sorted(c.model_id for c in llm_configs if is_kv_aware(c))
+    if kv_aware_models:
+        raise ValueError(
+            "KV-aware routing supports one model per application. The KV token "
+            "tracker is a process global and the pre-routing tokenizer is "
+            "per-model, so several KV-aware models in one ingress request "
+            "router would share one tracker and score against the wrong "
+            f"tokenizer. Models requesting KV-aware routing: {kv_aware_models}."
+        )
+
+    lora_models = sorted(c.model_id for c in llm_configs if c.lora_config is not None)
+    if lora_models:
+        raise ValueError(
+            "LoRA supports one model per application under "
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING. Adapter-aware replica "
+            "selection is not implemented for direct streaming, so a "
+            "multi-model app cannot report which adapters are loaded where. "
+            f"Models configuring lora_config: {lora_models}."
+        )
+
+
+def _build_direct_streaming_openai_app(builder_config: LLMServingArgs) -> Application:
+    """Build the multi-model direct-streaming topology.
+
+        DirectStreamingIngress          discovery routes; app front door
+        |- LLMServer:model-a            _direct_http=True
+        |- LLMServer:model-b            _direct_http=True
+        `- LLMRouter                    ingress request router
+
+    Every request reaches HAProxy, which asks ``LLMRouter`` where to send it.
+    A request on a route the ingress declares goes to an ingress replica;
+    anything else is matched by its ``model`` field to one model deployment and
+    sent straight to that deployment's replica, with no Python proxy hop.
+
+    The same bound model ``Application`` objects go to both the ingress (as
+    ``llm_deployments``) and the router (as ``servers``). Serve's graph
+    traversal keys on object identity, so passing the same objects is what makes
+    the router a peer of the existing model deployments rather than a second
+    copy of them -- and ``build_app`` rejects an ingress request router that
+    introduces more than its own deployment.
+    """
+    llm_configs = builder_config.llm_configs
+    _validate_direct_streaming_ingress_cls_config(builder_config.ingress_cls_config)
+    _validate_direct_streaming_models(llm_configs)
+
+    model_deployments = {
+        c.model_id: _build_direct_streaming_llm_deployment(c, direct_http=True)
+        for c in llm_configs
+    }
+    model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
+    lora_paths = {
+        c.model_id: c.lora_config.dynamic_lora_loading_path
+        for c in llm_configs
+        if c.lora_config is not None
+    }
+
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
+        DirectStreamingIngress.get_deployment_options(llm_configs),
+        builder_config.ingress_deployment_config,
+    )
+    _validate_control_ingress_stays_up(ingress_options)
+
+    logger.info("============== Ingress Options ==============")
+    logger.info(pprint.pformat(ingress_options))
+
+    ingress = serve.deployment(
+        make_direct_streaming_control_ingress(), **ingress_options
+    ).bind(
+        llm_deployments=model_deployments,
+        model_cards=model_cards,
+        lora_paths=lora_paths,
+    )
+
+    logger.info(
+        "Direct streaming enabled: DirectStreamingIngress=ingress, "
+        "LLMRouter=ingress_request_router, models=%s",
+        sorted(model_deployments),
+    )
+    return ingress._with_ingress_request_router(
+        _build_openai_ingress_request_router(
+            servers=model_deployments,
+            # Only a lone model can be KV-aware; `_validate_direct_streaming_models`
+            # has already rejected the multi-model case.
+            llm_config=llm_configs[0] if len(llm_configs) == 1 else None,
+            ingress=ingress,
+        )
+    )
 
 
 def build_openai_app(builder_config: dict) -> Application:
@@ -239,31 +437,10 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
-    # Direct streaming attaches LLMRouter as the ingress request router and
-    # uses the LLMServer deployment itself as the ingress app, so it returns
-    # before the regular OpenAiIngress wiring.
+    # Direct streaming fronts the model deployments with a control-plane ingress
+    # and an LLMRouter, so it returns before the regular OpenAiIngress wiring.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-        if len(llm_configs) > 1:
-            raise ValueError(
-                "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly "
-                "one LLM config. Multi-model direct streaming requires composing "
-                "multiple LLMServer deployments into the main application graph, "
-                "which is not supported yet."
-            )
-        _validate_direct_streaming_ingress_config(
-            builder_config.ingress_deployment_config,
-            builder_config.ingress_cls_config,
-        )
-        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
-        logger.info(
-            "Direct streaming enabled: "
-            "LLMServer=ingress, LLMRouter=ingress_request_router"
-        )
-        return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(
-                server=direct_deployment, llm_config=llm_configs[0]
-            )
-        )
+        return _build_direct_streaming_openai_app(builder_config)
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
     model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
