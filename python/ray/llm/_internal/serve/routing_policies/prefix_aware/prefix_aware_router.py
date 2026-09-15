@@ -265,7 +265,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                             input_text, candidate_replica_ids_strings
                         )
                     )
-                    match_rate = len(matched_text) / len(input_text)
+                    if len(input_text) == 0:
+                        match_rate = 0.0
+                    else:
+                        match_rate = len(matched_text) / len(input_text)
                     if match_rate < self._match_rate_threshold:
                         smallest_tenants_id_strings = ray.get(
                             self._tree_actor.get_smallest_tenants.remote()
