@@ -4582,6 +4582,27 @@ pluggy==1.6.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   pytest
+polars==1.40.0 \
+    --hash=sha256:60b1d677ca363e2fc6fdea8c3d16c0653fd52cc37f0249e0f29d9536d5aa45ef \
+    --hash=sha256:711dd50dcbc35ba42a2625fcadc2a1349e2e9abf48e35631bdabafb90d89874b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
+polars-runtime-32==1.40.0 \
+    --hash=sha256:081237dba07f15d61fc151825f203165480e9503ebe72a474a8c99aa78021962 \
+    --hash=sha256:1843272c0ef49f4a07435888f0059eca08ec16ab9880219c457195a081df0281 \
+    --hash=sha256:70e78c2f13a54a9d92ae30d2625bda759173cc4867ad6a39f85f140058d899c6 \
+    --hash=sha256:719c64eecde24a95aa3599eb9c8efc98c1499bab7ef9c01cbbe8939cd583e654 \
+    --hash=sha256:a034dc0d8481fc1ca0456ab33e98e53a4c6d6cc6a2edb36246cc81c936b925dc \
+    --hash=sha256:a916040e0b7f461ce987e4551fed9eea5914b4fbb5af907b1d9e80db71fadeb5 \
+    --hash=sha256:cab3ac7ff5bc9e0f4b3b146015569e9417cf0eaff8d3fb71004d73d67b6f09c7 \
+    --hash=sha256:d29624c75c4049253300786d00882fce620b3677ce495ebc4199292de8c2ba02 \
+    --hash=sha256:e31bff8bd37492c714e155e2e1429ac2d9ddf2dd6ec6474cc1cc70ac0b2bd6af
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   polars
 portalocker==2.10.1 \
     --hash=sha256:53a5984ebc86a025552264b459b46a2086e269b21823cb572f8f28ee759e45bf
     # via
