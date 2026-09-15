@@ -1722,6 +1722,35 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
+Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
+  // Note: unlike the upstream implementation, this fork does not implement the
+  // owner-worker DeleteObjects RPC path. Deletes always go through the local
+  // object store and in-memory store via DeleteImpl.
+  return DeleteImpl(object_ids, local_only);
+}
+
+Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
+  // Release the object from plasma. This does not affect the object's ref
+  // count. If this was called from a non-owning worker, then a warning will be
+  // logged and the object will not get released.
+  reference_counter_->FreePlasmaObjects(object_ids);
+
+  // Store an error in the in-memory store to indicate that the plasma value is
+  // no longer reachable.
+  memory_store_->Delete(object_ids);
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
+    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
+                       object_id,
+                       reference_counter_->HasReference(object_id));
+  }
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects can only be deleted once the ref count goes to 0.
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
+}
+
 Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids,
     int64_t timeout_ms,

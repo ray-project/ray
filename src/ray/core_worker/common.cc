@@ -44,6 +44,8 @@ std::string LanguageString(Language language) {
     return "java";
   } else if (language == Language::CPP) {
     return "cpp";
+  } else if (language == Language::GO) {
+    return "go";
   }
   RAY_CHECK(false);
   return "";
