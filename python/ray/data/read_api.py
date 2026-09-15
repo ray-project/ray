@@ -469,9 +469,9 @@ def _resolve_read_remote_args(
     )
     if not datasource.supports_distributed_reads:
         label_selector = (ray_remote_args.get("label_selector") or {}).copy()
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
+        label_selector[ray._raylet.RAY_NODE_ID_KEY] = (
+            ray.get_runtime_context().get_node_id()
+        )
         ray_remote_args["label_selector"] = label_selector
         ray_remote_args.pop("scheduling_strategy", None)
     if (
@@ -5660,6 +5660,7 @@ def read_clickhouse(
     dsn: str,
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
+    query_parameters: Optional[dict[str, Any]] = None,
     order_by: Optional[Tuple[List[str], bool]] = None,
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
@@ -5747,6 +5748,7 @@ def read_clickhouse(
         dsn=dsn,
         columns=columns,
         filter=filter,
+        query_parameters=query_parameters,
         order_by=order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,
